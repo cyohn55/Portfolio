@@ -1,6 +1,6 @@
 // script.js
 
-const projectsPerLoad = 6; // Number of projects to load each time
+const projectsPerLoad = 12; // Number of projects to load each time
 let currentProjectIndex = 0; // Tracks the next project to load
 let isLoading = false; // Prevents multiple simultaneous loads
 
@@ -163,4 +163,32 @@ document.getElementById('contact-form').addEventListener('submit', function(e) {
     // Reset the form
     document.getElementById('contact-form').reset();
 });
+
+// Get the button
+const backToTopButton = document.getElementById('back-to-top');
+
+// Function to show or hide the button based on scroll position
+function toggleBackToTopButton() {
+    // Show the button after scrolling down 300px
+    if (window.scrollY > 300) {
+        backToTopButton.classList.add('show');
+    } else {
+        backToTopButton.classList.remove('show');
+    }
+}
+
+// Function to smoothly scroll to the top
+function scrollToTop() {
+    window.scrollTo({
+        top: 0,
+        behavior: 'smooth' // For smooth scrolling
+    });
+}
+
+// Event listener for scroll to toggle button visibility
+window.addEventListener('scroll', toggleBackToTopButton);
+
+// Event listener for button click to scroll to top
+backToTopButton.addEventListener('click', scrollToTop);
+
 

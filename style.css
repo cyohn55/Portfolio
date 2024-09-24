@@ -10,7 +10,7 @@ body {
 
 /* Header */
 header {
-    background-color: #333;
+    background-color: #1468e6;
     color: #fff;
     padding: 20px 0;
     text-align: center;
@@ -44,7 +44,7 @@ nav ul li a:hover {
 
 /* Sections */
 section {
-    padding: 60px 20px;
+    padding: 10px 10px;
     max-width: 1000px;
     margin: auto;
 }
@@ -53,8 +53,6 @@ section h2 {
     text-align: center;
     margin-bottom: 20px;
 }
-
-/* style.css */
 
 /* Projects Section */
 #projects {
@@ -141,7 +139,7 @@ form input, form textarea {
 form button {
     padding: 10px;
     border: none;
-    background-color: #333;
+    background-color:  #555;
     color: #fff;
     cursor: pointer;
     border-radius: 4px;
@@ -149,18 +147,48 @@ form button {
 }
 
 form button:hover {
-    background-color: #555;
+    background-color:  #1468e6;
 }
 
-/* Footer */
+/* Fixed Footer Styles */
 footer {
-    background-color: #333;
+    position: fixed; /* Fixes the footer relative to the viewport */
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background-color: #1468e6;
     color: #fff;
     text-align: center;
-    padding: 10px 0;
-    position: fixed;
-    width: 100%;
-    bottom: 0;
+    padding: 15px 0;
+    z-index: 1000; /* Ensures the footer is above other elements */
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    main {
+        padding: 30px 15px;
+        padding-bottom: 60px; /* Adjust if footer height changes */
+    }
+
+    .navigation {
+        flex-direction: column;
+        gap: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    main {
+        padding: 20px 10px;
+        padding-bottom: 60px; /* Adjust if footer height changes */
+    }
+
+    .navigation li a {
+        font-size: 14px;
+    }
+
+    footer {
+        padding: 10px 0; /* Adjust padding for smaller screens */
+    }
 }
 
 /* Responsive */
@@ -181,3 +209,32 @@ footer {
         position: relative;
     }
 }
+
+/* Back to Top Button */
+#back-to-top {
+    position: fixed; 
+    bottom: 40px;
+    right: 40px;
+    z-index: 1000;
+    background-color: #333;
+    color: #1468e6;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 50%;
+    font-size: 18px;
+    cursor: pointer;
+    display: none; /* Hidden by default */
+    transition: background-color 0.3s, opacity 0.3s;
+    opacity: 1; /* Fully transparent */
+}
+
+/* Visible State */
+#back-to-top.show {
+    display: block;
+    opacity: 1; /* Fully opaque */
+}
+
+#back-to-top:hover {
+    background-color: #555;
+}
+
