@@ -95,7 +95,7 @@ form button {
     color: #fff;
     cursor: pointer;
     border-radius: 4px;
-    bottom: 10px;
+    margin-bottom: 20px;
 }
 
 form button:hover {
