@@ -42,6 +42,42 @@ const projects = [
         image: "images/project2.jpg",
         link: "https://github.com/username/project2"
     },
+    {
+        title: "Project 7",
+        description: "Description for Project 7.",
+        image: "images/project1.jpg", // Ensure these images exist in your 'images' folder
+        link: "https://github.com/username/project1"
+    },
+    {
+        title: "Project 8",
+        description: "Description for Project 8.",
+        image: "images/project2.jpg",
+        link: "https://github.com/username/project2"
+    },
+    {
+        title: "Project 9",
+        description: "Description for Project 9.",
+        image: "images/project1.jpg", // Ensure these images exist in your 'images' folder
+        link: "https://github.com/username/project1"
+    },
+    {
+        title: "Project 10",
+        description: "Description for Project 10.",
+        image: "images/project2.jpg",
+        link: "https://github.com/username/project2"
+    },
+    {
+        title: "Project 11",
+        description: "Description for Project 11.",
+        image: "images/project1.jpg", // Ensure these images exist in your 'images' folder
+        link: "https://github.com/username/project1"
+    },
+    {
+        title: "Project 12",
+        description: "Description for Project 12.",
+        image: "images/project2.jpg",
+        link: "https://github.com/username/project2"
+    },
     // Add more projects as needed
     // ...
 ];
