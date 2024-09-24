@@ -54,23 +54,73 @@ section h2 {
     margin-bottom: 20px;
 }
 
-/* Projects */
-.project-container {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-around;
+/* style.css */
+
+/* Projects Section */
+#projects {
+    padding: 60px 20px;
+    max-width: 1000px;
+    margin: auto;
 }
 
+#projects h2 {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+/* Project Container */
+.project-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+/* Individual Project */
 .project {
     background-color: #fff;
     padding: 20px;
-    margin: 10px;
-    width: 45%;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    border-radius: 8px;
+    transition: transform 0.2s;
+}
+
+.project:hover {
+    transform: translateY(-5px);
+}
+
+.project img {
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
 }
 
 .project h3 {
-    margin-top: 0;
+    margin-top: 15px;
+    margin-bottom: 10px;
+}
+
+.project p {
+    color: #555;
+}
+
+.project a {
+    display: inline-block;
+    margin-top: 10px;
+    color: #333;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.project a:hover {
+    color: #ff6347; /* Tomato color on hover */
+}
+
+/* Loader */
+.loader {
+    text-align: center;
+    margin: 20px 0;
+    font-size: 1.2em;
+    color: #555;
 }
 
 /* Contact Form */
