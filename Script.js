@@ -147,100 +147,6 @@ function scrollToTop() {
     });
 }
 
-// Modify your DOMContentLoaded event listener to include Three.js initialization
-document.addEventListener('DOMContentLoaded', () => {
-    loadProjects(); // Initial load
-    window.addEventListener('scroll', handleScroll);
-
-    // Initialize the Three.js scene
-    initThreeJSScene();
-});
-
-// Function to initialize the Three.js scene and load the glTF model
-function initThreeJSScene() {
-    // Get the container element
-    const container = document.getElementById('model-container');
-
-    // Check if the container exists
-    if (!container) {
-        console.error('No container element found for the 3D model.');
-        return;
-    }
-
-    // Create the scene
-    const scene = new THREE.Scene();
-
-    // Set up the camera
-    const camera = new THREE.PerspectiveCamera(
-        75, // Field of view
-        container.clientWidth / container.clientHeight, // Aspect ratio
-        0.1, // Near clipping plane
-        1000 // Far clipping plane
-    );
-
-    // Position the camera
-    camera.position.z = 5;
-
-    // Set up the renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    container.appendChild(renderer.domElement);
-
-    // Add ambient light
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
-
-    // Add directional light
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(0, 10, 10);
-    scene.add(directionalLight);
-
-    // Load the glTF model
-    const loader = new THREE.GLTFLoader();
-
-    // Declare 'model' in a scope accessible to both loader and animate function
-    let model;
-
-    loader.load(
-        'models/your-model.gltf', // Replace with the correct path to your model
-        function (gltf) {
-            model = gltf.scene;
-            scene.add(model);
-
-            // Optionally, scale or position the model
-            // model.scale.set(0.5, 0.5, 0.5);
-            // model.position.set(0, 0, 0);
-
-            // Start the animation loop
-            animate();
-        },
-        undefined,
-        function (error) {
-            console.error('An error occurred while loading the model', error);
-        }
-    );
-
-    // Handle window resize
-    window.addEventListener('resize', onWindowResize, false);
-    function onWindowResize() {
-        camera.aspect = container.clientWidth / container.clientHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(container.clientWidth, container.clientHeight);
-    }
-
-    // Animation loop
-    function animate() {
-        requestAnimationFrame(animate);
-
-        // Optional: Add rotation or other animations to the model
-        if (model) {
-            model.rotation.y += 0.01;
-        }
-
-        renderer.render(scene, camera);
-    }
-}
-
 // Fade-In Effect Using Intersection Observer
 document.addEventListener('DOMContentLoaded', function() {
     const faders = document.querySelectorAll('.fade-in');
@@ -266,7 +172,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-
 var images = [
     'image1.jpg',
     'image2.jpg',
@@ -287,14 +192,8 @@ function changeImage() {
 // Change image every 5000 milliseconds (5 seconds)
 setInterval(changeImage, 5000);
 
-
 // Event listener for scroll to toggle button visibility
 window.addEventListener('scroll', toggleBackToTopButton);
 
 // Event listener for button click to scroll to top
 backToTopButton.addEventListener('click', scrollToTop);
-
-
-
-
-
