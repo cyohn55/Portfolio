@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Portfolio</title>
+    <!-- Link to CSS -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts (Optional) -->
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <h1>Welcome to My Portfolio</h1>
+        <nav>
+            <ul class = "navigation">
+                <li><a href="index.html">Home</a></li>
+                <!-- <li><a href="about.html">About</a></li> -->
+                <li><a href="contact.html">Contact</a></li>
+            </ul>
+        </nav>
+    </header>    
+
+    <section id="about">
+        <h2>About Me</h2>
+        <p>Brief introduction about yourself.</p>
+    </section>
+
+<section id="projects">
+    <h2>Blog</h2>
+    <div id="project-container" class="project-container">
+        <!-- Project items will be dynamically inserted here -->
+    </div>
+    <div id="loader" class="loader" style="display: none;">
+        Loading more projects...
+    </div>
+</section>
+
+    <footer>
+        <p>&copy; 2024 Cody Yohn. All rights reserved.</p>
+    </footer>
+
+    <button id="back-to-top" title="Back to Top">↑ Top</button>
+    
+    <!-- Link to JavaScript -->
+    <script src="script.js"></script>
+</body>
+</html>
