@@ -42,60 +42,6 @@ const projects = [
         image: "images/project2.jpg",
         link: "https://github.com/username/project2"
     },
-    {
-        title: "Project 7",
-        description: "Description for Project 7.",
-        image: "images/project1.jpg", // Ensure these images exist in your 'images' folder
-        link: "https://github.com/username/project1"
-    },
-    {
-        title: "Project 8",
-        description: "Description for Project 8.",
-        image: "images/project2.jpg",
-        link: "https://github.com/username/project2"
-    },
-    {
-        title: "Project 9",
-        description: "Description for Project 9.",
-        image: "images/project1.jpg", // Ensure these images exist in your 'images' folder
-        link: "https://github.com/username/project1"
-    },
-    {
-        title: "Project 10",
-        description: "Description for Project 10.",
-        image: "images/project2.jpg",
-        link: "https://github.com/username/project2"
-    },
-    {
-        title: "Project 11",
-        description: "Description for Project 11.",
-        image: "images/project1.jpg", // Ensure these images exist in your 'images' folder
-        link: "https://github.com/username/project1"
-    },
-    {
-        title: "Project 12",
-        description: "Description for Project 12.",
-        image: "images/project2.jpg",
-        link: "https://github.com/username/project2"
-    },
-    {
-        title: "Project 13",
-        description: "Description for Project 13.",
-        image: "images/project2.jpg",
-        link: "https://github.com/username/project2"
-    },
-    {
-        title: "Project 14",
-        description: "Description for Project 14.",
-        image: "images/project1.jpg", // Ensure these images exist in your 'images' folder
-        link: "https://github.com/username/project1"
-    },
-    {
-        title: "Project 15",
-        description: "Description for Project 15.",
-        image: "images/project2.jpg",
-        link: "https://github.com/username/project2"
-    },
     // Add more projects as needed
     // ...
 ];
@@ -137,7 +83,7 @@ function loadProjects() {
         if (currentProjectIndex >= projects.length) {
             window.removeEventListener('scroll', handleScroll);
             const endMessage = document.createElement('p');
-            endMessage.textContent = 'You have reached the end of the projects.';
+            endMessage.textContent = 'You have reached the end of the blog.';
             endMessage.style.textAlign = 'center';
             endMessage.style.marginTop = '20px';
             projectContainer.appendChild(endMessage);
@@ -297,10 +243,60 @@ function initThreeJSScene() {
     }
 }
 
+// Fade-In Effect Using Intersection Observer
+document.addEventListener('DOMContentLoaded', function() {
+    const faders = document.querySelectorAll('.fade-in');
+
+    const appearOptions = {
+        threshold: 0.1,
+        rootMargin: "0px 0px -50px 0px"
+    };
+
+    const appearOnScroll = new IntersectionObserver(function(entries, observer) {
+        entries.forEach(function(entry) {
+            if (!entry.isIntersecting) {
+                return;
+            } else {
+                entry.target.classList.add('visible');
+                observer.unobserve(entry.target);
+            }
+        });
+    }, appearOptions);
+
+    faders.forEach(function(fader) {
+        appearOnScroll.observe(fader);
+    });
+});
+
+
+var images = [
+    'image1.jpg',
+    'image2.jpg',
+    'image3.jpg',
+];
+
+var currentIndex = 0;
+var carouselImage = document.getElementById('carousel-image');
+
+function changeImage() {
+    currentIndex++;
+    if (currentIndex >= images.length) {
+        currentIndex = 0;
+    }
+    carouselImage.src = images[currentIndex];
+}
+
+// Change image every 5000 milliseconds (5 seconds)
+setInterval(changeImage, 5000);
+
+
 // Event listener for scroll to toggle button visibility
 window.addEventListener('scroll', toggleBackToTopButton);
 
 // Event listener for button click to scroll to top
 backToTopButton.addEventListener('click', scrollToTop);
+
+
+
 
 

@@ -24,10 +24,11 @@
 
     <section id="contact">
         <h2>Get in Touch</h2>
-        <form id="contact-form" action="send_email.php" method="post">
+        <form id="contact-form" method="POST" action="https://formspree.io/f/xzzpnanr">
             <input type="text" id="name" name="name" placeholder="Your Name" required>
             <input type="email" id="email" name="email" placeholder="Your Email" required>
             <textarea id="message" name="message" placeholder="Your Message" required></textarea>
+            <input type="hidden" name="_subject" value="New message from your website">
             <button type="submit">Send Message</button>
         </form>
         <p id="form-status"></p>
