@@ -1,5 +1,3 @@
-// script.js
-
 const projectsPerLoad = 12; // Number of projects to load each time
 let currentProjectIndex = 0; // Tracks the next project to load
 let isLoading = false; // Prevents multiple simultaneous loads
