@@ -2,7 +2,7 @@
 body {
     font-family: 'Roboto', sans-serif;
     margin: 0;
-    padding: 0;
+    padding: 0 0 60px 0;
     line-height: 1.6;
     color: #333;
     background-color: #f4f4f4;
@@ -44,9 +44,10 @@ nav ul li a:hover {
 
 /* Sections */
 section {
-    padding: 10px 10px;
+    padding: 20px 10px;
     max-width: 1000px;
     margin: auto;
+    padding-bottom: 50px;
 }
 
 section h2 {
@@ -160,7 +161,6 @@ footer {
     color: #fff;
     text-align: center;
     padding: 15px 0;
-    z-index: 1000; /* Ensures the footer is above other elements */
 }
 
 /* Responsive Adjustments */
@@ -237,4 +237,12 @@ footer {
 #back-to-top:hover {
     background-color: #555;
 }
+
+#model-container {
+    width: 800px;  /* Set the desired width */
+    height: 600px; /* Set the desired height */
+    margin: 20px auto; /* Center the container and add some margin */
+    border: 1px solid #ccc; /* Optional border */
+}
+
 
