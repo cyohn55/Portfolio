@@ -159,35 +159,6 @@ section h2 {
     color: #555;
 }
 
-/* Contact Form */
-form {
-    display: flex;
-    flex-direction: column;
-    max-width: 600px;
-    margin: auto;
-}
-
-form input, form textarea {
-    padding: 10px;
-    margin-bottom: 15px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-}
-
-form button {
-    padding: 10px;
-    border: none;
-    background-color:  #555;
-    color: #fff;
-    cursor: pointer;
-    border-radius: 4px;
-    margin-bottom: 20px;
-}
-
-form button:hover {
-    background-color:  #1468e6;
-}
-
 /* Fixed Footer Styles */
 footer {
     position: fixed; /* Fixes the footer relative to the viewport */
@@ -246,13 +217,6 @@ footer {
     footer {
         position: relative;
     }
-}
-
-#model-container {
-    width: 800px;  /* Set the desired width */
-    height: 600px; /* Set the desired height */
-    margin: 20px auto; /* Center the container and add some margin */
-    border: 1px solid #ccc; /* Optional border */
 }
 
 #about {
