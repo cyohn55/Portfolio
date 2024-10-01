@@ -89,6 +89,7 @@ function loadProjects() {
     });
 }
 
+// delete comment
 function handleScroll() {
     const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
 
