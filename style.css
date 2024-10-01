@@ -183,6 +183,22 @@ footer {
         flex-direction: column;
         gap: 10px;
     }
+    
+    .project {
+        width: 100%;
+    }
+
+    nav ul {
+        flex-direction: column;
+    }
+
+    nav ul li {
+        margin: 10px 0;
+    }
+
+    footer {
+        position: relative;
+    }
 }
 
 @media (max-width: 480px) {
@@ -202,21 +218,7 @@ footer {
 
 /* Responsive */
 @media (max-width: 768px) {
-    .project {
-        width: 100%;
-    }
 
-    nav ul {
-        flex-direction: column;
-    }
-
-    nav ul li {
-        margin: 10px 0;
-    }
-
-    footer {
-        position: relative;
-    }
 }
 
 #about {
@@ -238,16 +240,6 @@ footer {
     display: block;
 }
 
-/* Fade-In Effect Styles */
-.fade-in {
-    opacity: 0;               /* Start invisible */
-    transform: translateY(10px); /* Optional: start slightly lower */
-    transition: opacity 10s ease-out, transform 10s ease-out;
-}
 
-.fade-in.visible {
-    opacity: 1;               /* Fade to fully visible */
-    transform: translateY(0); /* Move to original position */
-}
 
 
