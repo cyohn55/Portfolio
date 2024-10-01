@@ -7,37 +7,37 @@ const projects = [
     {
         title: "Project 1",
         description: "Description for Project 1.",
-        image: "images/project1.jpg", // Ensure these images exist in your 'images' folder
+        image: "images/colors.jpg", // Ensure these images exist in your 'images' folder
         link: "https://github.com/username/project1"
     },
     {
         title: "Project 2",
         description: "Description for Project 2.",
-        image: "images/project2.jpg",
+        image: "images/colors.jpg",
         link: "https://github.com/username/project2"
     },
     {
         title: "Project 3",
         description: "Description for Project 3.",
-        image: "images/project1.jpg", // Ensure these images exist in your 'images' folder
+        image: "images/colors.jpg", // Ensure these images exist in your 'images' folder
         link: "https://github.com/username/project1"
     },
     {
         title: "Project 4",
         description: "Description for Project 4.",
-        image: "images/project2.jpg",
+        image: "images/colors.jpg",
         link: "https://github.com/username/project2"
     },
     {
         title: "Project 5",
         description: "Description for Project 5.",
-        image: "images/project1.jpg", // Ensure these images exist in your 'images' folder
+        image: "images/colors.jpg", // Ensure these images exist in your 'images' folder
         link: "https://github.com/username/project1"
     },
     {
         title: "Project 6",
         description: "Description for Project 6.",
-        image: "images/project2.jpg",
+        image: "images/colors.jpg",
         link: "https://github.com/username/project2"
     },
     // Add more projects as needed

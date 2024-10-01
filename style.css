@@ -159,9 +159,9 @@ section h2 {
     color: #555;
 }
 
-/* Fixed Footer Styles */
+/* Footer Styles */
 footer {
-    position: fixed; /* Fixes the footer relative to the viewport */
+    position: fixed;
     bottom: 0;
     left: 0;
     width: 100%;
@@ -183,7 +183,7 @@ footer {
         flex-direction: column;
         gap: 10px;
     }
-    
+
     .project {
         width: 100%;
     }
@@ -216,11 +216,6 @@ footer {
     }
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-
-}
-
 #about {
     padding: 20px;
 }  
@@ -239,7 +234,3 @@ footer {
     height: 100%;
     display: block;
 }
-
-
-
-
