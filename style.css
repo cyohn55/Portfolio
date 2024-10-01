@@ -88,7 +88,6 @@ section h2 {
     }
 }
 
-
 /* Projects Section */
 #projects {
     padding: 10px 10px;
@@ -108,6 +107,8 @@ section h2 {
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 20px;
     margin: 20px;
+    padding: 10px 10px;
+    padding-bottom: 30px;
 }
 
 /* Individual Project */
@@ -245,34 +246,6 @@ footer {
     footer {
         position: relative;
     }
-}
-
-/* Back to Top Button */
-#back-to-top {
-    position: fixed; 
-    bottom: 40px;
-    right: 40px;
-    z-index: 1000;
-    background-color: #333;
-    color: #1468e6;
-    border: none;
-    padding: 10px 15px;
-    border-radius: 50%;
-    font-size: 18px;
-    cursor: pointer;
-    display: none; /* Hidden by default */
-    transition: background-color 0.3s, opacity 0.3s;
-    opacity: 1; /* Fully transparent */
-}
-
-/* Visible State */
-#back-to-top.show {
-    display: block;
-    opacity: 1; /* Fully opaque */
-}
-
-#back-to-top:hover {
-    background-color: #555;
 }
 
 #model-container {
