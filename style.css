@@ -29,7 +29,7 @@ header {
 header h1 {
     margin: 0;
     font-size: 6vw; /* Responsive font size */
-    max-font-size: 64px;
+    font-size: max(30vw, 30px);
 }
 
 /* Navigation */
