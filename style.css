@@ -222,8 +222,9 @@ footer {
 
 /* Carousel Styles */
 #carousel {
-    width: 1226.907px;      /* Adjust the width as needed */
-    height: 545.292px;     /* Adjust the height as needed */
+    width: 100%;      
+    height: auto;     
+    max-width: 100%;
     overflow: hidden;
     position: relative;
     margin: auto;
