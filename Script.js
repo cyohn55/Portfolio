@@ -112,7 +112,6 @@ function scrollToTop() {
     });
 } 
 
-
 /*var images = [
     'images/Screenshot 2024-09-22 173558.png',
     'image2.jpg',
