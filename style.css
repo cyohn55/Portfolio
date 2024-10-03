@@ -27,7 +27,8 @@ header {
 
 header h1 {
     margin: 0;
-    font-size: 64px;
+    font-size: 6vw; /* Adjust as needed */
+    font-size: max(30vw, 30px); /* Prevent it from getting too large on desktop */
 }
 
 nav ul {
@@ -58,6 +59,7 @@ section {
     max-width: 1000px;
     margin: auto;
     padding-bottom: 50px;
+    min-height: calc(100vh - [header height] - [footer height]);
 }
 
 section h1 {
@@ -218,10 +220,6 @@ footer {
 
     .navigation li a {
         font-size: 14px;
-    }
-
-    footer {
-        padding: 10px 0; /* Adjust padding for smaller screens */
     }
 }
 
