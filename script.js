@@ -19,7 +19,7 @@ const projects = [
     {
         title: "Project 3",
         description: "Description for Project 3.",
-        image: "images/colors.jpg", // Ensure these images exist in your 'images' folder
+        image: "images/colors.jpg",
         link: "https://github.com/username/project1"
     },
     {
@@ -31,7 +31,7 @@ const projects = [
     {
         title: "Project 5",
         description: "Description for Project 5.",
-        image: "images/colors.jpg", // Ensure these images exist in your 'images' folder
+        image: "images/colors.jpg",
         link: "https://github.com/username/project1"
     },
     {
@@ -86,10 +86,10 @@ function loadProjects() {
             endMessage.style.marginTop = '20px';
             projectContainer.appendChild(endMessage);
         }
-    });
+    }, 1000); // 1-second delay for demonstration
 }
 
-// delete comment
+// Handle scroll event
 function handleScroll() {
     const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
 
@@ -110,7 +110,7 @@ function scrollToTop() {
         top: 0,
         behavior: 'smooth' // For smooth scrolling
     });
-} 
+}
 
 /*var images = [
     'images/Screenshot 2024-09-22 173558.png',
