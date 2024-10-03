@@ -1,4 +1,8 @@
 /* General Styles */
+/* Apply border-box globally */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
 
 html, body {
     height: 100%;
