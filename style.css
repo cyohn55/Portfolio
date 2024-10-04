@@ -124,7 +124,7 @@ section h2 {
     }
 
     .project-container {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(2, 1fr);
     }
 
     footer {
