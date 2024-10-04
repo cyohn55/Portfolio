@@ -6,7 +6,7 @@ let isLoading = false; // Prevents multiple simultaneous loads
 const projects = [
     {
         title: "Bouncing Ball",
-        description: "An animation of a ball as it bounces around the screen.",
+        description: "A simple animation of a ball as it bounces around the screen using HTML and Javascript.",
         image: "images/ball.jpg", // Ensure these images exist in your 'images' folder
         link: "bouncingball.html"
     },
