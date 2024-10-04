@@ -1,5 +1,5 @@
 const projectsPerLoad = 12; // Number of projects to load each time
-let currentProjectIndex = 0; // Tracks the next project to load
+let currentProjectIndex = 0; // Tracks the next project to loadvoight kampff
 let isLoading = false; // Prevents multiple simultaneous loads
 
 // Array of project objects
@@ -17,10 +17,10 @@ const projects = [
         link: "codeexample.html"
     },
     {
-        title: "Project 3",
-        description: "Description for Project 3.",
-        image: "images/colors.png",
-        link: "https://github.com/username/project1"
+        title: "Algorithms",
+        description: "Recursion at all levels.",
+        image: "images/algorithms.webp",
+        link: "algorithms.html"
     },
     {
         title: "Project 4",

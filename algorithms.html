@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css"> <!-- Link to CSS -->
+    <title>Algorithms</title>
+    <!-- Additional metadata, styles, or scripts can go here -->
+</head>
+<body>
+    <pre>
+
+        When should you consider using recursive algorithms when writing a program? Discuss in terms of advantages and disadvantages.
+
+        To understand when we should use recursive algorithms, we must first understand how recursion works. A recursive algorithm is a program that repeatedly calls itself until reaching one or more base cases that can be solved without recursion. (Eck, 2019). A feature of recursive algorithms is that they can solve complex problems by breaking the problem down into smaller, repeatable processes or subroutines. We can simplify complex problems by defining the steps involved in solving the problem. For example, a Rubik's cube is difficult to solve by brute-forcing a solution. However, if we break down the problem into repeatable steps, we can solve the problem quickly.
+        
+        When writing our programs, we must identify if recursion can be applied to the problem and weigh the pros and cons of using recursion versus non-recursive techniques. Two basic requirements for a recursive algorithm are there are one or more base cases (i.e., searching an empty list) and that we can reduce the larger problem to smaller steps. (Eck, 2019). We can achieve this, in part, by passing in different parameters to our subroutines that specify where exactly to search in a data set. This reduces the amount of memory that needs to be allocated at one time because we don't need to look at the whole data set. Instead, we can process parts of the dataset by defining parameters to our subroutines that point to what data we want to process, running the steps involved in solving the problem, and then moving on to another part of the dataset. This recursive process repeatedly runs until reaching one of the base cases.
+        
+        However, recursion isn't always the best option for every problem. For one, recursion is difficult to understand and implement programmatically. If recursion is difficult to implement, it may become a question of: "will it take longer to write the recursive program, or should I use a non-recursive approach because it's faster to implement?" Another thing to consider is an improper implementation of recursion can lead to infinite recursion, which leads to StackOverflowErrors in Java and computer crashes when a computer's memory limit is exceeded. (Eck, 2019). Other things to consider are "how large is the problem?" and "can a non-recursive algorithm work just as well or better than a recursive algorithm?"
+        
+        In conclusion, recursive algorithms can be powerful tools in a programmer's arsenal when tackling complex problems. However, recursion can often be difficult to understand and implement. Additionally, recursion is best applied to problems that can be broken down into smaller repeatable processes. Finally, those processes must eventually reach a base case that doesn't require recursion to solve.
+        
+        Recursive Binary Search algorithm (Eck, 2019, 9.1.1 Recursive Binary Search).
+        
+        static int binarySearch(int[] A, int loIndex, int hiIndex, int value) {
+              
+           if (loIndex > hiIndex) { // The 'if' conditional is considered a base case.
+              return -1;            // The base case in this instance returns -1 if the list is empty.
+           }
+           else {
+              int middle = (loIndex + hiIndex) / 2;
+              if (value == A[middle]) // This is another base case if the value is found in the middle of the dataset.
+                 return middle;
+              else if (value < A[middle])
+                 return binarySearch(A, loIndex, middle - 1, value); // Both else conditionals call the 'binarySearch' function recursively.
+              else                                                   // paramaters that specify where to search the data are updated with
+                 return binarySearch(A, middle + 1, hiIndex, value); // each recursive call to the 'binarySearch' function.
+           }
+        
+        } 
+        Resources
+        
+        Eck, D. J. (2019). Introduction to programming using Java, version 8.1. Hobart and William Smith Colleges. http://math.hws.edu/javanotes
+
+    </pre>
+</body>
+</html>
