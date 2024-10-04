@@ -8,166 +8,68 @@
     <!-- Additional metadata, styles, or scripts can go here -->
 </head>
 <body>
-    <p>
-        def Object_Value():
-    # First two list objects are initialized and reference a list of chemical compounds, called terpenes.
+    <pre>
 
-    batch_ID_099 = ['Caryophyllene', 'Limonene', 'Linalool', 'Humulene', 'Myrcene']
-    batch_ID_100 = ['Caryophyllene', 'Limonene', 'Linalool', 'Humulene', 'Myrcene']
+        # Some lines from the 'Voight Kampff test' in the movie 'Blade Runner' are initialized. The scene involved a person asking the
+        # Blade Runner questions, followed by the Blade Runners responses. This 'Voight Kampff test' was meant to determine if the
+        # Blade Runners artificial intelligence was getting too intelligent and therefore dangerous.
+        
+        # The variables 'questions' and 'answers' is initialized and set equal to the correct dialog.
+        
+        questions = ("What's it like to hold the hand of someone you love?", 'Do they teach you how to feel finger to finger?',
+                    'Do you long for having your heart interlinked?', 'Do you dream about being interlinked?',
+                    'Have they left a place for you where you can dream?', "What's it like to hold your child in your arms?",
+                    "What's it like to play with your dog?", "Do you feel that there's a part of you that's missing?",
+                    'Do you like to connect to things?', 'What happens when that linkage is broken?','Have they let you feel heartbreak?',
+                    'Did you buy a present for the person you love?', "Why don't you say that three times?")
+        
+        answers = ('Interlinked.', 'Interlinked.', 'Interlinked.', '', 'Interlinked.', 'Interlinked.', 'Interlinked.',
+                   'Interlinked.', 'Interlinked.', 'Interlinked.', 'Interlinked.', 'Within cells interlinked.',
+                   'Within cells interlinked. ' * 3)
+        
+        # The function 'blade_runner' is defined. It takes has two parameters 'q' and 'a'
+        
+        def blade_runner(q, a):
+        
+            # First the beginning lines of the scene are printed to the screen.
+        
+            print('\nRecite your baseline...\n\n"A blood black nothingness.\n A system of cells.\n Within cells interlinked.\n Within one stem.'
+                  '\n And dreadfully distinct.\n Against the dark.\n A tall white fountain played."\n')
+        
+            # The for loop, loops through each element in both 'q' and 'a' and uses the zip function to match each of the
+            # corresponding elements. ie: "Why don't you say that three times?" and 'Within cells interlinked.' * 3,
+            # Those lines correspond because they are both the last elements in 'q' and 'a'
+        
+            for baseline_qa in zip(q, a):       # Demonstrates the zip function
+                print(baseline_qa)
+        
+        blade_runner(questions, answers)    # Takes the variables 'questions' and 'answers' as arguments to the function.
+        
+        <strong>Output:</strong>
+        Recite your baseline...
 
-    # This if statement checks if 'batch_ID_099' is identical to 'batch_ID_100' using the 'is' operator. The 'is'
-    # operator is a comparison operator that checks if two objects are the same object, and returns a boolean (true/false).
-    # Since both batch_ID's are two different list objects, each batch ID refers to a different list,
-    # even though both lists contain the same elements, and are considered equivalent.
+        "A blood black nothingness.
+        A system of cells.
+        Within cells interlinked.
+        Within one stem.
+        And dreadfully distinct.
+        Against the dark.
+        A tall white fountain played."
 
-    if batch_ID_099 is batch_ID_100:
-        print("Terpene profile is identical.")
-    else:
-        print("Terpene profile isn't identical")
+        ("What's it like to hold the hand of someone you love?", 'Interlinked.')
+        ('Do they teach you how to feel finger to finger?', 'Interlinked.')
+        ('Do you long for having your heart interlinked?', 'Interlinked.')
+        ('Do you dream about being interlinked?', '')
+        ('Have they left a place for you where you can dream?', 'Interlinked.')
+        ("What's it like to hold your child in your arms?", 'Interlinked.')
+        ("What's it like to play with your dog?", 'Interlinked.')
+        ("Do you feel that there's a part of you that's missing?", 'Interlinked.')
+        ('Do you like to connect to things?', 'Interlinked.')
+        ('What happens when that linkage is broken?', 'Interlinked.')
+        ('Have they let you feel heartbreak?', 'Interlinked.')
+        ('Did you buy a present for the person you love?', 'Within cells interlinked.')
+        ("Why don't you say that three times?", 'Within cells interlinked. Within cells interlinked. Within cells interlinked. ')
 
-    # OUTPUT: Terpene profile isn't identical
-
-
-    # Two different employees with the same name, 'Jim' are initialized. A single string object is created, and has a
-    # value of 'Jim', in this case they are identical because only one object was created. 'employee_03' and 'employee_18'
-    # reference the same string object, 'Jim'
-
-    employee_03 = 'Jim'
-    employee_18 = 'Jim'
-
-    if employee_03 is employee_18:
-        print("employee_03 and employee_18 are identical.")
-    else:
-        print("employee_03 and employee_18 are not identical.")
-
-    # OUTPUT: employee_03 and employee_18 are identical.
-
-Object_Value()
-
-#######################################################################################################################
-
-
-def obj_ref_aliasing():
-    # First a list object containing the top ten holdings of the Vanguard Tech ETF (VGT) is initialized.
-    # Then a second list containing how many shares are owned per company.
-
-    top_10_VGT_holdings = ['Apple', 'Microsoft', 'Nvidia', 'Visa', 'PayPal', 'Adobe', 'Mastercard', 'salesforce.com',
-                           'Cisco Systems', 'Intel']
-    shares_per_company = [27, 52, 87, 105, 18, 85, 200, 92, 39, 77]
-
-    # The block of code below demonstrates the issues with aliasing. Even though a copy of the 'shares_per_company' list object
-    # was made with the intent of avoiding changes to the values within 'shares_per_company', the 'shares_per_company_copy'
-    # still references to the 'shares_per_company' list object. Therefore, any changes made to 'shares_per_company_copy',
-    # are reflected in 'shares_per_company'. This block of code affects the output of the rest of the code and is considered,
-    # aliased.
-
-    print(shares_per_company)                       # Prints 'shares_per_company' list so we can see the starting values
-    shares_per_company_copy = shares_per_company    # Creates a copy of 'shares_per_company'.
-    shares_per_company_copy[0] = 0                  # Sets the first element in the copy equal to zero.
-
-    # Appends both 'top_10_VGT_holdings' and 'shares_per_company' into a single list object called 'my_portfolio'
-
-    i, j, k = 0, 0, 0
-    my_portfolio = []
-
-    while i < len(shares_per_company):
-        my_portfolio.append([top_10_VGT_holdings[i], shares_per_company[j]])
-        i += 1
-        j += 1
-        k += 1
-    print('stocks ' + str(k) + ': ' + str(my_portfolio))
-
-    # Increments the second element in each list pair in 'my_portfolio' by one, then prints the updated result to the
-    # screen for each month.
-
-    current_month = 1
-    months = 12
-    i = 0
-    j = 1
-
-    while current_month <= months:
-        second_elem = [(element[1] + j) for element in my_portfolio]
-        j += 1
-        while i < len(shares_per_company):
-            i += 1
-        print('month ' + str(current_month) + ': ' + str(second_elem))
-        current_month += 1
-
-
-obj_ref_aliasing()
-
-# EXPECTED OUTPUT:
-'''
-Correctly increments the amount of shares each month by one, for each individual stock. Apple in this case increments
-from 27 as expected.
-
-[27, 52, 87, 105, 18, 85, 200, 92, 39, 77]
-stocks 10: [['Apple', 27], ['Microsoft', 52], ['Nvidia', 87], ['Visa', 105], ['PayPal', 18], ['Adobe', 85], ['Mastercard', 200], ['salesforce.com', 92], ['Cisco Systems', 39], ['Intel', 77]]
-month 1: [28, 53, 88, 106, 19, 86, 201, 93, 40, 78]
-month 2: [29, 54, 89, 107, 20, 87, 202, 94, 41, 79]
-month 3: [30, 55, 90, 108, 21, 88, 203, 95, 42, 80]
-month 4: [31, 56, 91, 109, 22, 89, 204, 96, 43, 81]
-month 5: [32, 57, 92, 110, 23, 90, 205, 97, 44, 82]
-month 6: [33, 58, 93, 111, 24, 91, 206, 98, 45, 83]
-month 7: [34, 59, 94, 112, 25, 92, 207, 99, 46, 84]
-month 8: [35, 60, 95, 113, 26, 93, 208, 100, 47, 85]
-month 9: [36, 61, 96, 114, 27, 94, 209, 101, 48, 86]
-month 10: [37, 62, 97, 115, 28, 95, 210, 102, 49, 87]
-month 11: [38, 63, 98, 116, 29, 96, 211, 103, 50, 88]
-month 12: [39, 64, 99, 117, 30, 97, 212, 104, 51, 89]
-'''
-
-# ACTUAL OUTPUT:
-'''
-Notice the second element in ['Apple', 0] was set to zero because of the lines 47 & 48 above. Therefore, the first 
-element in each output increments from zero instead of 27, like the expected output.
-
-[27, 52, 87, 105, 18, 85, 200, 92, 39, 77]
-stocks 10: [['Apple', 0], ['Microsoft', 52], ['Nvidia', 87], ['Visa', 105], ['PayPal', 18], ['Adobe', 85], ['Mastercard', 200], ['salesforce.com', 92], ['Cisco Systems', 39], ['Intel', 77]]
-month 1: [1, 53, 88, 106, 19, 86, 201, 93, 40, 78]
-month 2: [2, 54, 89, 107, 20, 87, 202, 94, 41, 79]
-month 3: [3, 55, 90, 108, 21, 88, 203, 95, 42, 80]
-month 4: [4, 56, 91, 109, 22, 89, 204, 96, 43, 81]
-month 5: [5, 57, 92, 110, 23, 90, 205, 97, 44, 82]
-month 6: [6, 58, 93, 111, 24, 91, 206, 98, 45, 83]
-month 7: [7, 59, 94, 112, 25, 92, 207, 99, 46, 84]
-month 8: [8, 60, 95, 113, 26, 93, 208, 100, 47, 85]
-month 9: [9, 61, 96, 114, 27, 94, 209, 101, 48, 86]
-month 10: [10, 62, 97, 115, 28, 95, 210, 102, 49, 87]
-month 11: [11, 63, 98, 116, 29, 96, 211, 103, 50, 88]
-month 12: [12, 64, 99, 117, 30, 97, 212, 104, 51, 89]
-'''
-
-#######################################################################################################################
-
-# Two list objects are initialized and reference a list of employees. Objects have their own type and refer to values.
-
-current_employees = ['Mark', 'Gene', 'Tabitha', 'Layla', 'Ted']
-new_employees = ['Jane', 'Beth', 'Jake']
-
-# 'employee_list' is a parameter that refers to the object 'list'.
-# Since 'current_employees' is passed to the list, the 'employee_list' refers to the 'current_employees' object.
-
-def add_new_hire(employee_list: list):
-
-    # The for loop iterates through each of the 'new_employees', and appends a new name each iteration.
-    # Since the 'employee_list' references 'current_employees', the names are appended to the 'current_employee' list object.
-    # The appended 'current_employees' list is printed once each iteration.
-
-    for i in new_employees:
-        employee_list.append(i)
-        print(current_employees)
-
-
-add_new_hire(current_employees) # The 'current_employees' list object is an argument to the 'add_new_hire' function. It passes
-                                # the 'current_employees' list to the variable 'list' within the function definition.
-
-# OUTPUT:
-'''
-['Mark', 'Gene', 'Tabitha', 'Layla', 'Ted', 'Jane']
-['Mark', 'Gene', 'Tabitha', 'Layla', 'Ted', 'Jane', 'Beth']
-['Mark', 'Gene', 'Tabitha', 'Layla', 'Ted', 'Jane', 'Beth', 'Jake']
-'''
-    </p>
+    </pre>
 </body>
 </html>

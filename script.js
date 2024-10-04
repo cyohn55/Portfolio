@@ -11,10 +11,10 @@ const projects = [
         link: "bouncingball.html"
     },
     {
-        title: "Project 2",
-        description: "Description for Project 2.",
-        image: "images/colors.png",
-        link: "https://github.com/username/project2"
+        title: "Python",
+        description: "A few programs interlinked in Python.",
+        image: "images/bladerunner.webp",
+        link: "codeexample.html"
     },
     {
         title: "Project 3",
