@@ -86,7 +86,7 @@ function loadProjects() {
             endMessage.style.marginTop = '20px';
             projectContainer.appendChild(endMessage);
         }
-    }, 1000); // 1-second delay for demonstration
+    });
 }
 
 // Handle scroll event
