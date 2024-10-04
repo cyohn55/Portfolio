@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bouncing 3D Sphere with Fixed Light Source</title>
+    <style>
+        /* Ensure the canvas fills the entire viewport */
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Hide scrollbars */
+            background-color: #3c86e6; /* Background color of the page */
+        }
+        canvas {
+            display: block; /* Removes the small gap below the canvas */
+        }
+    </style>
+</head>
+<body>
+    <canvas id="myCanvas"></canvas>
+
+    <script>
+        // Get the canvas and its context
+        const canvas = document.getElementById('myCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Function to generate a random color in hexadecimal format
+        function getRandomColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        // Light source object definition
+        const lightSource = {
+            radius: 60, // Radius of the light source circle
+            x: 0, // Will be set in resizeCanvas
+            y: 0, // Will be set in resizeCanvas
+            color: '#FFFF00', // Yellow color
+        };
+
+        // Sphere object definition
+        const sphere = {
+            radius: 60, // Radius of the sphere
+            x: 0, // Will be set in resizeCanvas
+            y: 0, // Will be set in resizeCanvas
+            vx: 5, // Velocity in x-direction
+            vy: 3, // Velocity in y-direction
+            baseColor: getRandomColor(), // Base color of the sphere
+        };
+
+        // Function to lighten a hex color by a given factor (0 to 1)
+        function lightenColor(hex, factor) {
+            // Remove the hash symbol if present
+            hex = hex.replace('#', '');
+
+            // Parse the r, g, b values
+            let r = parseInt(hex.substring(0, 2), 16);
+            let g = parseInt(hex.substring(2, 4), 16);
+            let b = parseInt(hex.substring(4, 6), 16);
+
+            // Calculate lighter colors
+            r = Math.min(255, Math.floor(r + (255 - r) * factor));
+            g = Math.min(255, Math.floor(g + (255 - g) * factor));
+            b = Math.min(255, Math.floor(b + (255 - b) * factor));
+
+            // Convert back to hex and return
+            const newHex = "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+            return newHex;
+        }
+
+        // Helper function to convert a number to a two-digit hex string
+        function componentToHex(c) {
+            const hex = c.toString(16);
+            return hex.length === 1 ? "0" + hex : hex;
+        }
+
+        // Function to draw the light source
+        function drawLightSource() {
+            ctx.beginPath();
+            ctx.arc(lightSource.x, lightSource.y, lightSource.radius, 0, Math.PI * 2, false);
+            ctx.fillStyle = lightSource.color;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = lightSource.color;
+            ctx.fill();
+            ctx.shadowBlur = 0; // Reset shadow
+            ctx.closePath();
+        }
+
+        // Function to draw the 3D-like sphere using radial gradient
+        function drawSphere() {
+            // Calculate the vector from light source to sphere center
+            const dx = sphere.x - lightSource.x;
+            const dy = sphere.y - lightSource.y;
+            const distance = Math.sqrt(dx * dx + dy * dy) || 1; // Prevent division by zero
+
+            // Normalize the direction vector
+            const nx = dx / distance;
+            const ny = dy / distance;
+
+            // Determine the offset for the gradient's focal point
+            const gradientOffset = 0.3; // Adjust this value for shading intensity
+            const focalX = sphere.x - nx * sphere.radius * gradientOffset;
+            const focalY = sphere.y - ny * sphere.radius * gradientOffset;
+
+            // Create a radial gradient (focal point for light reflection)
+            const gradient = ctx.createRadialGradient(
+                focalX, // Focal point x
+                focalY, // Focal point y
+                sphere.radius * 0.1, // Inner radius
+                sphere.x, // Gradient center x
+                sphere.y, // Gradient center y
+                sphere.radius // Outer radius
+            );
+
+            // Define gradient color stops to simulate shading
+            gradient.addColorStop(0, lightenColor(sphere.baseColor, 0.5)); // Lighter center
+            gradient.addColorStop(1, sphere.baseColor); // Base color at edges
+
+            // Draw the sphere with the gradient
+            ctx.beginPath();
+            ctx.arc(sphere.x, sphere.y, sphere.radius, 0, Math.PI * 2, false);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        // Function to update the sphere's position and handle collisions
+        function update() {
+            // Update position
+            sphere.x += sphere.vx;
+            sphere.y += sphere.vy;
+
+            let collision = false;
+
+            // Check for collision with left or right walls
+            if (sphere.x + sphere.radius >= canvas.width) {
+                sphere.x = canvas.width - sphere.radius; // Re-position to prevent sticking
+                sphere.vx = -sphere.vx; // Reverse x velocity
+                collision = true;
+            } else if (sphere.x - sphere.radius <= 0) {
+                sphere.x = sphere.radius; // Re-position to prevent sticking
+                sphere.vx = -sphere.vx; // Reverse x velocity
+                collision = true;
+            }
+
+            // Check for collision with top or bottom walls
+            if (sphere.y + sphere.radius >= canvas.height) {
+                sphere.y = canvas.height - sphere.radius; // Re-position to prevent sticking
+                sphere.vy = -sphere.vy; // Reverse y velocity
+                collision = true;
+            } else if (sphere.y - sphere.radius <= 0) {
+                sphere.y = sphere.radius; // Re-position to prevent sticking
+                sphere.vy = -sphere.vy; // Reverse y velocity
+                collision = true;
+            }
+
+            // If a collision occurred, change the base color
+            if (collision) {
+                sphere.baseColor = getRandomColor();
+            }
+        }
+
+        // Function to handle canvas resizing
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            // Update light source position: 10% from left and top
+            lightSource.x = canvas.width * 0.05;
+            lightSource.y = canvas.height * 0.15;
+        }
+
+        // Initialize positions and canvas size
+        resizeCanvas();
+
+        // Update canvas size when the window is resized
+        window.addEventListener('resize', resizeCanvas);
+
+        // Animation loop using requestAnimationFrame for smooth animations
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+            drawLightSource(); // Draw the light source
+            drawSphere(); // Draw the sphere
+            update(); // Update sphere's position and handle collisions
+            requestAnimationFrame(animate); // Repeat the loop
+        }
+
+        // Start the animation
+        animate();
+    </script>
+</body>
+</html>

@@ -5,10 +5,10 @@ let isLoading = false; // Prevents multiple simultaneous loads
 // Array of project objects
 const projects = [
     {
-        title: "Project 1",
+        title: "Bouncing Ball",
         description: "Description for Project 1.",
         image: "images/colors.png", // Ensure these images exist in your 'images' folder
-        link: "https://github.com/username/project1"
+        link: "bouncingball.html"
     },
     {
         title: "Project 2",
