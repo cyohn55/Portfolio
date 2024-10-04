@@ -81,7 +81,7 @@ function loadProjects() {
         if (currentProjectIndex >= projects.length) {
             window.removeEventListener('scroll', handleScroll);
             const endMessage = document.createElement('p');
-            endMessage.textContent = 'You have reached the end of the blog.';
+            endMessage.textContent = 'You have reached the end of the page.';
             endMessage.style.textAlign = 'center';
             endMessage.style.marginTop = '20px';
             projectContainer.appendChild(endMessage);
