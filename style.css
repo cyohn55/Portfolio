@@ -139,6 +139,15 @@ section h2 {
         margin: 10px 0;
     }
 
+    .default-container {
+        flex-direction: column;
+    }
+
+    .default-container > div {
+        width: 100%;
+        margin: 10px 0;
+    }
+
     .project-container {
         grid-template-columns: repeat(2, 1fr);
     }
