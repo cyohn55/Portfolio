@@ -1,48 +1,6 @@
 const projectsPerLoad = 12; // Number of projects to load each time
-let currentProjectIndex = 0; // Tracks the next project to loadvoight kampff
+let currentProjectIndex = 0; // Tracks the next project to load
 let isLoading = false; // Prevents multiple simultaneous loads
-
-// Array of project objects
-const projects = [
-    {
-        title: "Bouncing Ball",
-        description: "A simple animation of a ball as it bounces around the screen using HTML and Javascript.",
-        image: "images/ball.jpg", // Ensure these images exist in your 'images' folder
-        link: "bouncingball.html"
-    },
-    {
-        title: "Python",
-        description: "A few programs interlinked in Python.",
-        image: "images/bladerunner.webp",
-        link: "codeexample.html"
-    },
-    {
-        title: "Algorithms",
-        description: "Recursion at all levels.",
-        image: "images/algorithms.webp",
-        link: "algorithms.html"
-    },
-    {
-        title: "Project 4",
-        description: "Description for Project 4.",
-        image: "images/colors.png",
-        link: "https://github.com/username/project2"
-    },
-    {
-        title: "Project 5",
-        description: "Description for Project 5.",
-        image: "images/colors.png",
-        link: "https://github.com/username/project1"
-    },
-    {
-        title: "Project 6",
-        description: "Description for Project 6.",
-        image: "images/colors.png",
-        link: "https://github.com/username/project2"
-    },
-    // Add more projects as needed
-    // ...
-];
 
 function loadProjects() {
     if (isLoading) return;

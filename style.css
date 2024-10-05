@@ -95,6 +95,21 @@ section h2 {
     padding-left: 20px;
 }
 
+.default-container {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.default-container > div {
+    flex: 1 1 45%;
+    margin: 10px;
+}
+
+.achievements-list {
+    padding-left: 15px;
+}
+
 /* Page container will expand to fill available space */
 .page-container {
     flex: none;
@@ -153,7 +168,7 @@ section h2 {
 
 /* Projects Section */
 #projects {
-    padding: 20px 0;
+    padding: 0px;
     margin: 0 auto;
     width: 100%;
     max-width: 1000px; /* Optional */
