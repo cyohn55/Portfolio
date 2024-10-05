@@ -27,7 +27,7 @@ body {
 header {
     background-color: #1468e6;
     color: #fff;
-    padding: 20px 0;
+    padding-bottom: 20px;
     text-align: center;
 }
 
@@ -163,7 +163,7 @@ section h2 {
     }
 
     nav ul li a {
-        font-size: 14px;
+        font-size: 18px;
     }
 
     .project-container {
