@@ -287,8 +287,8 @@ section h2 {
 }
 
 .code-container pre {
-    white-space: pre-wrap; /* Allows text to wrap */
-    word-wrap: break-word; /* Break long words */
+    white-space: pre; /* Prevents text from wrapping */
+    overflow: auto;   /* Enables scrolling if content overflows */
     font-size: 16px;
     line-height: 1.5;
 }
