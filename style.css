@@ -9,6 +9,7 @@ html, body {
     min-height: 100%;
     margin: 0;
     padding: 0;
+    overflow-x: hidden; /* Prevents horizontal scrolling on body */
 }
 
 /* General Styles */
@@ -124,14 +125,14 @@ section h2 {
     width: 100%;       /* Ensures the container doesn't exceed the viewport width */
     box-sizing: border-box; /* Includes padding in width calculation */
     margin: 0 auto;    /* Centers the container */
+    word-wrap: normal; /* Prevents breaking words */
 }
 
 .code-container pre {
     white-space: pre;    /* Preserves whitespace and prevents text wrapping */
     display: inline-block; /* Allows the pre element to size based on its content */
-    width: max-content;  /* Expands the pre element only as wide as its content */
-    font-size: 16px;
-    line-height: 1.5;
+    width: auto;          /* Allows the pre element to expand as needed */
+    min-width: 100%;      /* Ensures the pre element at least fills the container */
     margin: 0;
 }
 
@@ -287,6 +288,8 @@ section h2 {
     max-width: 1200px;
     margin: 0 auto;
     padding: 20px;
+    width: 100%; /* Ensure content doesn't exceed viewport width */
+    box-sizing: border-box;
 }
 
 /* Responsive Video Container */
@@ -296,6 +299,8 @@ section h2 {
     height: 0;
     overflow: hidden;
     margin-bottom: 20px;
+    width: 100%; /* Ensure the container doesn't exceed the viewport width */
+    max-width: 100%; /* Prevents the container from stretching beyond its parent */
 }
 
 .video-container iframe {
@@ -304,6 +309,7 @@ section h2 {
     left: 0;
     width: 100%;
     height: 100%;
+    border: 0; /* Removes any default border */
 }
 
 /* Footer Styles */
