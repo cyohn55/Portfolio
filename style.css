@@ -120,14 +120,16 @@ section h2 {
     background-color: #f5f5f5;
     padding: 15px;
     border-radius: 5px;
-    overflow-x: auto;    /* Enables horizontal scrolling */
-    max-width: 100%;     /* Prevents container from exceeding viewport width */
+    overflow-x: auto;  /* Enables horizontal scrolling within the container */
+    width: 100%;       /* Ensures the container doesn't exceed the viewport width */
     box-sizing: border-box; /* Includes padding in width calculation */
-    margin: 0 auto;      /* Centers the container */
+    margin: 0 auto;    /* Centers the container */
 }
 
 .code-container pre {
-    white-space: pre; /* Allows text to wrap */
+    white-space: pre;    /* Preserves whitespace and prevents text wrapping */
+    display: inline-block; /* Allows the pre element to size based on its content */
+    width: max-content;  /* Expands the pre element only as wide as its content */
     font-size: 16px;
     line-height: 1.5;
     margin: 0;
