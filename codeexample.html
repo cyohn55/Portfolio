@@ -24,15 +24,16 @@
 		             'What's it like to hold the hand of someone you love? Interlinked.', 
 		             'Do they teach you how to feel finger to finger? Interlinked.',
                      'Do you long for having your heart interlinked? Interlinked.',
-                     'Do you dream about being interlinked?', 
-		             'What's it like to hold your child in your arms? Interlinked.',
+                     'Do you dream about being interlinked?',
+                     'What's it like to hold your child in your arms? Interlinked.',
                      'Do you feel that there's a part of you that's missing? Interlinked.',
-		             'Within cells interlinked.',
+                     'Within cells interlinked.',
                      'Why don't you say that three times? Within cells interlinked.',
-		             'We're done... Constant K. You can pickup your bonus.)
+                     'We're done... Constant K. You can pickup your bonus.')
         
-        answers = ('Cells.', 'Cells.', 'Cells.', 'Cells', 'Interlinked.', 'Interlinked.', 'Interlinked.',
-                   'Interlinked.', 'Interlinked.', 'Interlinked.', 'Interlinked.', 'Within cells interlinked.',
+        answers = ('Cells.', 'Cells.', 'Cells.', 'Cells',
+                   'Interlinked.', 'Interlinked.', 'Interlinked.', 'Interlinked.',
+                   'Interlinked.', 'Interlinked.', 'Interlinked.', 'Within cells interlinked.',
                    'Within cells interlinked. ' * 3, 'Thank you, sir.')
         
         # The function 'blade_runner' is defined. It takes has two parameters 'q' and 'a'
@@ -41,17 +42,24 @@
         
             # First the beginning lines of the scene are printed to the screen.
         
-            print('\nRecite your baseline...\n\n'A blood black nothingness began to spin.\n A system of cells interlinked.\n Within cells interlinked.\n Within cells interlinked.\n Within one stem.'
-                  '\n And dreadfully distinct.\n Against the dark.\n A tall white fountain played.'\n')
+            print('\n Recite your baseline...\n
+                   \n A blood black nothingness began to spin.
+                   \n A system of cells interlinked.
+                   \n Within cells interlinked.
+                   \n Within cells interlinked.
+                   \n Within one stem.
+                   \n And dreadfully distinct against the dark.
+                   \n A tall white fountain played.'\n)
         
-            # The for loop, loops through each element in both 'q' and 'a' and uses the zip function to match each of the
+            # Iterates through each element in both 'q' and 'a' and uses the zip function to match each of the
             # corresponding elements. ie: q:'Why don't you say that three times?' a:'Within cells interlinked.' * 3,
-            # The two lines correspond because they are both the last elements in 'q' and 'a'
+            # The two lines above correspond because they are both the last elements in 'q' and 'a'
         
             for baseline_qa in zip(q, a):       # Demonstrates the zip function
                 print(baseline_qa)
         
-        blade_runner(questions, answers)    # Takes the variables 'questions' and 'answers' as arguments to the function.
+        # Takes the variables 'questions' and 'answers' as arguments to the function and prints tuple pairs to the screen.
+        blade_runner(questions, answers)    
         
         <strong>Output:</strong>
         Recite your baseline...
