@@ -8,7 +8,7 @@
     <!-- Additional metadata, styles, or scripts can go here -->
 </head>
 <body>
-    <pre>
+    <pre style="white-space: pre-wrap;">
 
         # Lines from the 'Voight Kampff test' in the movie 'Blade Runner' are initialized. The scene involved a person asking the
         # Blade Runner questions, followed by the Blade Runners responses. The 'Voight Kampff test' was meant to provoke an emotional response to determine if the
@@ -16,16 +16,24 @@
         
         # The variables 'questions' and 'answers' is initialized and set equal to the correct dialog.
         
-        questions = ("What's it like to hold the hand of someone you love?", 'Do they teach you how to feel finger to finger?',
-                    'Do you long for having your heart interlinked?', 'Do you dream about being interlinked?',
-                    'Have they left a place for you where you can dream?', "What's it like to hold your child in your arms?",
-                    "What's it like to play with your dog?", "Do you feel that there's a part of you that's missing?",
-                    'Do you like to connect to things?', 'What happens when that linkage is broken?','Have they let you feel heartbreak?',
-                    'Did you buy a present for the person you love?', "Why don't you say that three times?")
+        questions = ('Cells.',
+		             'Have you ever been in an institution? Cells.',
+		             'Do they keep you in a cell? Cells.',
+		             'When you're not performing your duties do they keep you in a little box? Cells.',
+		             'Interlinked.',
+		             'What's it like to hold the hand of someone you love? Interlinked.', 
+		             'Do they teach you how to feel finger to finger? Interlinked.',
+                     'Do you long for having your heart interlinked? Interlinked.',
+                     'Do you dream about being interlinked?', 
+		             'What's it like to hold your child in your arms? Interlinked.',
+                     'Do you feel that there's a part of you that's missing? Interlinked.',
+		             'Within cells interlinked.',
+                     'Why don't you say that three times? Within cells interlinked.',
+		             'We're done... Constant K. You can pickup your bonus.)
         
-        answers = ('Interlinked.', 'Interlinked.', 'Interlinked.', '', 'Interlinked.', 'Interlinked.', 'Interlinked.',
+        answers = ('Cells.', 'Cells.', 'Cells.', 'Cells', 'Interlinked.', 'Interlinked.', 'Interlinked.',
                    'Interlinked.', 'Interlinked.', 'Interlinked.', 'Interlinked.', 'Within cells interlinked.',
-                   'Within cells interlinked. ' * 3)
+                   'Within cells interlinked. ' * 3, 'Thank you, sir.')
         
         # The function 'blade_runner' is defined. It takes has two parameters 'q' and 'a'
         
@@ -33,12 +41,12 @@
         
             # First the beginning lines of the scene are printed to the screen.
         
-            print('\nRecite your baseline...\n\n"A blood black nothingness.\n A system of cells.\n Within cells interlinked.\n Within one stem.'
-                  '\n And dreadfully distinct.\n Against the dark.\n A tall white fountain played."\n')
+            print('\nRecite your baseline...\n\n'A blood black nothingness began to spin.\n A system of cells interlinked.\n Within cells interlinked.\n Within cells interlinked.\n Within one stem.'
+                  '\n And dreadfully distinct.\n Against the dark.\n A tall white fountain played.'\n')
         
             # The for loop, loops through each element in both 'q' and 'a' and uses the zip function to match each of the
-            # corresponding elements. ie: "Why don't you say that three times?" and 'Within cells interlinked.' * 3,
-            # Those lines correspond because they are both the last elements in 'q' and 'a'
+            # corresponding elements. ie: q:'Why don't you say that three times?' a:'Within cells interlinked.' * 3,
+            # The two lines correspond because they are both the last elements in 'q' and 'a'
         
             for baseline_qa in zip(q, a):       # Demonstrates the zip function
                 print(baseline_qa)
@@ -48,27 +56,29 @@
         <strong>Output:</strong>
         Recite your baseline...
 
-        "A blood black nothingness.
-        A system of cells.
-        Within cells interlinked.
-        Within one stem.
-        And dreadfully distinct.
-        Against the dark.
-        A tall white fountain played."
+        'A blood black nothingness began to spin.
+         A system of cells interlinked.
+         Within cells interlinked.
+         Within cells interlinked.
+         Within one stem.
+         And dreadfully distinct.
+         Against the dark.
+         A tall white fountain played.'
 
-        ("What's it like to hold the hand of someone you love?", 'Interlinked.')
-        ('Do they teach you how to feel finger to finger?', 'Interlinked.')
-        ('Do you long for having your heart interlinked?', 'Interlinked.')
-        ('Do you dream about being interlinked?', '')
-        ('Have they left a place for you where you can dream?', 'Interlinked.')
-        ("What's it like to hold your child in your arms?", 'Interlinked.')
-        ("What's it like to play with your dog?", 'Interlinked.')
-        ("Do you feel that there's a part of you that's missing?", 'Interlinked.')
-        ('Do you like to connect to things?', 'Interlinked.')
-        ('What happens when that linkage is broken?', 'Interlinked.')
-        ('Have they let you feel heartbreak?', 'Interlinked.')
-        ('Did you buy a present for the person you love?', 'Within cells interlinked.')
-        ("Why don't you say that three times?", 'Within cells interlinked. Within cells interlinked. Within cells interlinked. ')
+        ('Cells.', 'Cells.')
+        ('Have you ever been in an institution? Cells.', 'Cells.')
+        ('Do they keep you in a cell? Cells.', 'Cells.')
+        ('When you're not performing your duties do they keep you in a little box? Cells.', 'Cells')
+        ('Interlinked.', 'Interlinked.')
+        ('What's it like to hold the hand of someone you love? Interlinked.', 'Interlinked.')
+        ('Do they teach you how to feel finger to finger? Interlinked.', 'Interlinked.')
+        ('Do you long for having your heart interlinked? Interlinked.', 'Interlinked.')
+        ('Do you dream about being interlinked?', 'Interlinked.')
+        ('What's it like to hold your child in your arms? Interlinked.', 'Interlinked.')
+        ('Do you feel that there's a part of you that's missing? Interlinked.', 'Interlinked.')
+        ('Within cells interlinked.', 'Within cells interlinked.')
+        ('Why don't you say that three times? Within cells interlinked.', 'Within cells interlinked. Within cells interlinked. Within cells interlinked. ')
+        ("We're done... Constant K. You can pickup your bonus.", 'Thank you, sir.')
 
     </pre>
 </body>
