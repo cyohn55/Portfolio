@@ -152,6 +152,10 @@ section h2 {
         grid-template-columns: repeat(2, 1fr);
     }
 
+    .code-container pre {
+        font-size: 14px;
+    }
+
     footer {
         position: relative;
     }
@@ -168,6 +172,10 @@ section h2 {
 
     .project-container {
         grid-template-columns: 1fr;
+    }
+
+    .code-container pre {
+        font-size: 12px;
     }
 
     footer {
@@ -283,7 +291,7 @@ section h2 {
     background-color: #f5f5f5;
     padding: 15px;
     border-radius: 5px;
-    overflow: auto;   /* Enables scrolling if content overflows */
+    overflow-x: auto;   /* Enables scrolling if content overflows */
 }
 
 .code-container pre {
