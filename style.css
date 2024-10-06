@@ -282,15 +282,15 @@ section h2 {
 .code-container {
     background-color: #f5f5f5;
     padding: 15px;
-    overflow-x: auto;
     border-radius: 5px;
+    overflow: auto;   /* Enables scrolling if content overflows */
 }
 
 .code-container pre {
     white-space: pre; /* Prevents text from wrapping */
-    overflow: auto;   /* Enables scrolling if content overflows */
     font-size: 16px;
     line-height: 1.5;
+    margin: 0;
 }
 
 /* Responsive Font Sizes */
