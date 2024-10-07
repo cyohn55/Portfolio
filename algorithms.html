@@ -14,8 +14,8 @@
             <iframe src="https://www.youtube.com/embed/YzT8zDPihmc?autoplay=1&loop=1&playlist=YzT8zDPihmc&mute=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>         
         </div>
 
-        <!-- Code Section -->
-        <div class="code-container">
+        <!-- Written Section -->
+        <div class="wrap-text-container">
             <pre>
 <strong>When should you consider using recursive algorithms when writing a program? Discuss in terms of advantages and disadvantages.</strong>
 
@@ -42,7 +42,12 @@ Additionally, recursion is best applied to problems that can be broken down into
 Finally, those processes must eventually reach a base case that doesn't require recursion to solve.
                 
 Recursive Binary Search algorithm (Eck, 2019, 9.1.1 Recursive Binary Search).
-                
+        </pre>
+    </div>
+
+        <!-- Code Section -->
+        <div class="code-container">
+            <pre>
 static int binarySearch(int[] A, int loIndex, int hiIndex, int value) {
                       
     if (loIndex > hiIndex) { // The 'if' conditional is considered a base case.
@@ -54,7 +59,7 @@ static int binarySearch(int[] A, int loIndex, int hiIndex, int value) {
             return middle;
         else if (value < A[middle])
             return binarySearch(A, loIndex, middle - 1, value); // Both else conditionals call the 'binarySearch' function recursively.
-        else                                                   // paramaters that specify where to search the data are updated with
+        else                                                    // paramaters that specify where to search the data are updated with
             return binarySearch(A, middle + 1, hiIndex, value); // each recursive call to the 'binarySearch' function.
     }
                 
