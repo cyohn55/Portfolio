@@ -337,6 +337,11 @@ section h2 {
     border: 0; /* Removes any default border */
 }
 
+.no-margin-unordered-list {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
 /* Footer Styles */
 footer {
     width: 100%;
