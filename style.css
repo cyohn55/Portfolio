@@ -153,7 +153,7 @@ section h2 {
     white-space: pre-wrap;   /* Allows text wrapping while preserving whitespace */
     margin: 0;
     font-size: 12pt;         /* Default font size for desktop */
-    word-break: break-word;  /* Breaks long words to prevent overflow */
+    word-break: normal;  /* Breaks long words to prevent overflow */
     overflow-wrap: anywhere; /* Breaks long strings at any point if necessary */
     /* Removed display: inline-block; */
     /* Removed width: auto; */
