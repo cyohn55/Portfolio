@@ -134,7 +134,7 @@ section h2 {
     width: auto;          /* Allows the pre element to expand as needed */
     min-width: 100%;      /* Ensures the pre element at least fills the container */
     margin: 0;
-    font-size: 10pt;      /* Default font size for desktop */
+    font-size: 12pt;      /* Default font size for desktop */
 }
 
 /* Wrap Text Container */
