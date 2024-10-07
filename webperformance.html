@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Programming</title>
+    <!-- Link to CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="content">
+        <!-- Responsive Video Container -->
+        <div class="video-container">
+            <iframe src="https://www.youtube.com/embed/INEtYZqtjTo?autoplay=1&loop=1&playlist=INEtYZqtjTo&mute=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        </div>
+
+    <!-- Written Section -->
+    <div class="wrap-text-container">
+    <p><strong>List three ways in which caching can be used to speed up Web server performance.</strong></p>
+        <p>According to Silberschatz et al. (2001), "The cache is the fastest and most costly form of storage. Cache memory is small; its use is managed by the computer system hardware." Since physical cache memory is costly, it acts as a limiting factor for all forms of computer hardware. For cellphones, tablets, desktops, and more, cache memory is a finite resource.</p>
+        <p>This means serving up dynamically generated websites on cache memory-constrained hardware can lead to poor web server performance including excessive load times. Therefore, when developing web applications, it's imperative that we reserve cache memory only for the most intensive parts of our application. By saving the intensive parts of a website in cache memory, we can reduce the amount of time it takes to load a page. There are several caching techniques that can be used to increase web server performance. Below we will consider three caching techniques: Content Delivery Network (CDN), Key-Value, and Lazy caching.</p>
+
+    <p><strong>Content Delivery Network (CDN)</strong></p>
+        <p>The original version of a Content Delivery Network (CDN) was a globally distributed network that was meant to improve the delivery of frequently requested static content. However, as CDNs evolved, they gained the ability to handle more than just static content. Now CDNs can deliver static, dynamic, and non-cacheable data. Regarding caching, Amazon Web Services, Inc. (2023) states, "For caching, a CDN will reduce the load on an application origin and improve the experience of the requestor by delivering a local copy of the content from a nearby cache edge, or Point of Presence (PoP). The application origin is off the hook for opening the connection and delivering the content directly as the CDN takes care of the heavy lifting. The end result is that the application origins don’t need to scale to meet demands for static content."</p>
+        <p>However, caching is just one feature of CDNs, which makes them a crucial component for web applications. Below are just some of the features of CDNs:</p>
+            <ul>
+                <li>Caching static and dynamic content. (Amazon Web Services, Inc., 2023, Content Delivery Network (CDN) Caching).</li>
+                <li>Accelerated dynamic content retrieval. (Amazon Web Services, Inc., 2023, Content Delivery Network (CDN) Caching).</li>
+                <li>Secure connections are established and are located geographically closer to the requestor. (Amazon Web Services, Inc., 2023, Content Delivery Network (CDN) Caching).</li>
+                <li>Take advantage of low-latency connections and proxy behavior of the point of presence (PoP). This makes retrieval of form, image, and text data faster. (Amazon Web Services, Inc., 2023, Content Delivery Network (CDN) Caching).</li>
+                <li>Static and dynamic content delivery allows CDNs to provide interactivity and content delivery for the whole site. (Amazon Web Services, Inc., 2023, Content Delivery Network (CDN) Caching).</li>
+                <li>Intelligent delivery of cached data by using the request header to specify device type, requestor info, query string, and/or cookie settings. (Amazon Web Services, Inc., 2023, Content Delivery Network (CDN) Caching).</li>
+                <li>CDNs can enforce protocols, handle SSL connections, and restrict access based on location or user credentials. (Amazon Web Services, Inc., 2023, Content Delivery Network (CDN) Caching).</li>
+                <li>Recently developed CDNs are capable of handling logical operations, which provides even more flexibility and dynamism in web applications. (Amazon Web Services, Inc., 2023, Content Delivery Network (CDN) Caching).</li>
+            </ul>
+
+    <p><strong>Key-Values in a Non-Relational Database</strong></p>
+        <p>One of the most popular caching techniques is by using an in-memory Key-Value non-relational database. In-memory Key-Value databases are optimized for applications where performance is a concern. Read-heavy applications like social media, gaming, and media sharing are just some of the use cases for Key-Value databases. The "in-memory" feature of Key-Value databases means queries are faster than disk-based memory. Additionally, Key-Value databases are easy to use and implement, as they don't require query or aggregation logic. (Amazon Web Services, 2023, What is a Key-Value Database?).</p>
+        <p>According to Amazon Web Services, Inc. (2023), "A key-value database stores data as a collection of key-value pairs in which a key serves as a unique identifier. Both keys and values can be anything, ranging from simple objects to complex compound objects. Key-value databases are highly partitionable and allow horizontal scaling at scales that other types of databases cannot achieve. For example, Amazon DynamoDB allocates additional partitions to a table if an existing partition fills to capacity and more storage space is required."</p>
+        <p>In terms of web server applications, a web session begins when a user logs in and lasts until the user logs out, or the session times out. To speed up web server performance, session data like user profile info, notifications, recommendations, and more can be cached in the in-memory Key-Value database, making it easier to retrieve session data using the session's unique identifier as a primary key. As a general rule of thumb, key-value databases may produce less overhead per page compared to relational databases. (Amazon Web Services, Inc., 2023, What is a Key-Value Database?).</p>
+    
+    <p><strong>Lazy Caching</strong></p>
+        <p>Lazy caching is the most pervasive form of caching and is a good foundation for building responsive web applications. Lazy caching works by only caching an object when it is requested by the application. If a query for an object is received, the application checks the cache to see if the requested object is available, if so, the object is returned and the query ends. If not, the database is queried for the requested object and if found, the object is loaded to the cache. A message of "object not found" or something similar can be sent to the user if the object isn't available in the cache or database.</p>
+        <p>Below are some of the advantages of using lazy caching:</p>
+            <ul>
+                <li>"The cache only contains objects that the application actually requests, which helps keep the cache size manageable. New objects are only added to the cache as needed. You can then manage your cache memory passively, by simply letting the engine you are using evict the least-accessed keys as your cache fills up, which it does by default." (Amazon Web Services, Inc., 2023, Caching Best Practices).</li>
+                <li>"As new cache nodes come online, for example as your application scales up, the lazy population method will automatically add objects to the new cache nodes when the application first requests them." (Amazon Web Services, Inc., 2023, Caching Best Practices).</li>
+                <li>"Cache expiration is easily handled by simply deleting the cached object. A new object will be fetched from the database the next time it is requested." (Amazon Web Services, Inc., 2023, Caching Best Practices).</li>
+                <li>"Lazy caching is widely understood, and many web and app frameworks include support out of the box." (Amazon Web Services, Inc., 2023, Caching Best Practices).</li>
+            </ul>
+        <p>Lazy caching is best applied where there is frequently read, but rarely written data. For example, your Bio on a social media website may be frequently read, but infrequently updated. Therefore, a user's bio may be a good candidate for lazy caching. (Amazon Web Services, Inc., 2023, Caching Best Practices).</p>
+        <p>In summary, caching is crucial for maintaining fast and responsive web server performance. Cache memory is the fastest form of memory, which makes it ideal for handling memory-intensive operations and speeding up query retrieval. Despite the speed benefits of cache memory, it is expensive compared to slower disk-based forms of memory. The cost involved with cache memory typically acts as a limiting factor to hardware systems and less cache memory leads to bottlenecks when trying to run dynamic web applications. Therefore, developers must create web applications in a way that allocates memory-intensive aspects of the webpage to cache memory and less intensive aspects like static images, to slower forms of memory. We can also implement Content Delivery Networks to further optimize the delivery of static and dynamic content, based on a variety of factors like user location, user authentication, and the result of logical operations. Finally, we can use lazy caching as a great general-purpose foundation for creating web applications.</p>
+    <p><strong>References</strong></p>
+        <p>Amazon Web Services, Inc. (2023). Caching Best Practices. https://aws.amazon.com/caching/best-practices/</p>
+        <p>Amazon Web Services, Inc. (2023). Content Delivery Network (CDN) Caching. https://aws.amazon.com/caching/cdn/</p>
+        <p>Amazon Web Services, Inc. (2023). What is a Key-Value Database?. https://aws.amazon.com/nosql/key-value/</p>
+        <p>Silberschatz, A., Korth, H.F., & Sudarshan, S. (2001). Database System Concepts (4th ed.). New York, NY: McGraw-Hill. https://my.uopeople.edu/pluginfile.php/1771416/mod_book/chapter/455913/Database%20System%20Concepts%204th%20Edition%20By%20Silberschatz-Korth-Sudarshan.pdf</p>
+    </div>
+    </div>
+</body>
+</html>
