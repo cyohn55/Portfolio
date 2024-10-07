@@ -26,25 +26,26 @@
     <!-- Code Section -->
     <div class="code-container">
         <pre>
-<p><strong>Recursive Binary Search algorithm (Eck, 2019, 9.1.1 Recursive Binary Search).</strong></p>
-<p>static int binarySearch(int[] A, int loIndex, int hiIndex, int value) {</p>
+<h3><strong>Recursive Binary Search algorithm (Eck, 2019, 9.1.1 Recursive Binary Search).</strong></h3>
+static int binarySearch(int[] A, int loIndex, int hiIndex, int value) {
                       
-    <p>if (loIndex > hiIndex) {  // The 'if' conditional is considered a base case.</p>
-        <p>return -1;            // The base case in this instance returns -1 if the list is empty.</p>
-    <p>}</p>
-    <p>else {</p>
-        <p>int middle = (loIndex + hiIndex) / 2;</p>
-        <p>if (value == A[middle]) // This is another base case if the value is found in the middle of the dataset.</p>
-            <p>return middle;</p>
-        <p>else if (value < A[middle])</p>
-            <p>return binarySearch(A, loIndex, middle - 1, value); // Both else conditionals call the 'binarySearch' function recursively.</p>
-        <p>else                                                    // paramaters that specify where to search the data are updated with</p>
-            <p>return binarySearch(A, middle + 1, hiIndex, value); // each recursive call to the 'binarySearch' function.</p>
-    <p>}</p>              
-<p>}</p>
-<p><strong>References</strong></p>
+    if (loIndex > hiIndex) {  // The 'if' conditional is considered a base case.
+        return -1;            // The base case in this instance returns -1 if the list is empty.
+    }
+    else {
+        int middle = (loIndex + hiIndex) / 2;
+        if (value == A[middle]) // This is another base case if the value is found in the middle of the dataset.
+            return middle;
+        else if (value < A[middle])
+            return binarySearch(A, loIndex, middle - 1, value); // Both else conditionals call the 'binarySearch' function recursively.
+        else                                                    // paramaters that specify where to search the data are updated with
+            return binarySearch(A, middle + 1, hiIndex, value); // each recursive call to the 'binarySearch' function.
+    }              
+}
+
+<h3><strong>References</strong></h3>
                 
-<p>Eck, D. J. (2019). Introduction to programming using Java, version 8.1. Hobart and William Smith Colleges. http://math.hws.edu/javanotes</p>                
+Eck, D. J. (2019). Introduction to programming using Java, version 8.1. Hobart and William Smith Colleges. http://math.hws.edu/javanotes              
             </pre>
         </div>
     </div>
