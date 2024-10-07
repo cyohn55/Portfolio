@@ -134,7 +134,7 @@ section h2 {
     width: auto;          /* Allows the pre element to expand as needed */
     min-width: 100%;      /* Ensures the pre element at least fills the container */
     margin: 0;
-    font-size: 12pt;      /* Default font size for desktop */
+    font-size: 10pt;      /* Default font size for desktop */
 }
 
 /* Wrap Text Container */
@@ -152,7 +152,7 @@ section h2 {
 .wrap-text-container pre {
     white-space: pre-wrap;   /* Allows text wrapping while preserving whitespace */
     margin: 0;
-    font-size: 10pt;         /* Default font size for desktop */
+    font-size: 12pt;         /* Default font size for desktop */
     word-break: break-word;  /* Breaks long words to prevent overflow */
     overflow-wrap: anywhere; /* Breaks long strings at any point if necessary */
     /* Removed display: inline-block; */
