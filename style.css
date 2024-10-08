@@ -33,16 +33,16 @@ header {
     padding-top: 10px;
 }
 
-header h2 {
+h2 {
     margin-top: 5px;
     margin-bottom: 5px;
-    font-size: clamp(24px, 4vw, 42px);
 }
 
 /* Navigation */
 nav ul {
     list-style: none;
     padding: 0;
+    margin: 0;
     display: flex;
     justify-content: center;
 }
