@@ -29,9 +29,13 @@ header {
     background-color: #1468e6;
     color: #fff;
     text-align: center;
+    padding-bottom: 10px;
+    padding-top: 10px;
 }
 
 header h2 {
+    margin-top: 5px;
+    margin-bottom: 5px;
     font-size: clamp(24px, 4vw, 42px);
 }
 
