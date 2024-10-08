@@ -33,7 +33,7 @@ header {
     text-align: center;
 }
 
-header h1 {
+header h2 {
     margin: 0;
     font-size: clamp(24px, 4vw, 42px);
 }
