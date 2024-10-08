@@ -44,11 +44,10 @@ nav ul {
     padding: 0;
     display: flex;
     justify-content: center;
-    margin-top: 10px;
 }
 
 nav ul li {
-    margin: 0 15px;
+    margin: 0px;
 }
 
 nav ul li a {
