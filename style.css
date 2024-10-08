@@ -28,13 +28,10 @@ body {
 header {
     background-color: #1468e6;
     color: #fff;
-    padding-top: 10px;
-    padding-bottom: 10px;
     text-align: center;
 }
 
 header h2 {
-    margin: 0;
     font-size: clamp(24px, 4vw, 42px);
 }
 
