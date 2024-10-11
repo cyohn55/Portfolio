@@ -197,7 +197,6 @@ section h2 {
             margin-left: calc(50% - 50vw); /* Center the element */
             height: 100vh;
             background-image: url('images/forrestwallpaper.jpg');
-            background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background for readability */
             background-size: cover; /* Adjust background to cover the element */
             background-attachment: fixed;
             background-position: center;
@@ -227,11 +226,13 @@ section h2 {
             padding-left: 40px; /* Increase padding for better indentation */
             max-width: 90%; /* Prevent overflow */
             word-wrap: break-word;
+            background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background for readability */
         }
 
         .parallax-2 ul li {
             margin-bottom: 10px;
             color: inherit; /* Inherit color from .parallax-2 */
+            background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background for readability */
         }        
 
         /* Styling the content or paragraph */
