@@ -186,7 +186,7 @@ section h2 {
             text-align: center;
         }
 
-                /* Styling the second parallax's 
+        /* Styling the second parallax's 
         height, width and background color */
         .parallax-2 {
             display: flex;
@@ -215,7 +215,7 @@ section h2 {
             text-align: center;
             font-size: 2rem; /* Use relative units for better responsiveness */
             font-family: Verdana, sans-serif;
-            border-radius: 10px; /* Optional: adds rounded corners */
+            border-radius: 10px; /* Adds rounded corners */
             max-width: 90%; /* Prevent overflow on smaller screens */
             word-wrap: break-word; /* Allow breaking long words */
         }
@@ -226,15 +226,16 @@ section h2 {
             padding-left: 40px; /* Increase padding for better indentation */
             max-width: 90%; /* Prevent overflow */
             word-wrap: break-word;
-            background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background for readability */
+            background-color: rgba(0, 0, 0, 0.3); /* Semi-transparent background */
+            padding: 20px; /* Add padding for better readability */
+            border-radius: 5px; /* Optional: rounded corners */
         }
 
+        /* Styling individual list items */
         .parallax-2 ul li {
             margin-bottom: 10px;
-            color: inherit; /* Inherit color from .parallax-2 */
-            background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background for readability */
-        }        
-
+            color: inherit; /* Inherit color from .parallax-2 (white) */
+        }
         /* Styling the content or paragraph */
         .para-1 {
             padding: 50px;
@@ -264,6 +265,7 @@ section h2 {
 
     .parallax-2 ul {
         padding-left: 30px; /* Reduce padding on medium screens */
+        padding: 15px 20px; /* Adjust padding for better fit */
     }
 }
 
@@ -305,6 +307,7 @@ section h2 {
 
     .parallax-2 ul {
         padding-left: 20px; /* Further reduce padding on tablets */
+        padding: 10px 15px; /* Adjust padding for better fit */
     }
 
     .project-container {
@@ -347,6 +350,7 @@ section h2 {
 
     .parallax-2 ul {
         padding-left: 15px; /* Minimal padding on mobile devices */
+        padding: 5px 10px; /* Adjust padding for better fit */
     }
 }
 
