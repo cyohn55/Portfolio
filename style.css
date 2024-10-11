@@ -191,7 +191,7 @@ section h2 {
         .parallax-2 {
             width: 100vw; /* Set width to 100% of the viewport width */
             margin-left: calc(50% - 50vw); /* Center the element */
-            height: 1200px;
+            height: 100vh;
             background: url('https://media.geeksforgeeks.org/wp-content/uploads/20210402175040/back22.jpg');
             background-size: cover; /* Adjust background to cover the element */
             background-attachment: fixed;
