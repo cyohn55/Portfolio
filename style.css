@@ -192,7 +192,7 @@ section h2 {
             width: 100vw; /* Set width to 100% of the viewport width */
             margin-left: calc(50% - 50vw); /* Center the element */
             height: 100vh;
-            background: url('images/forrestwallpaper.jpg');
+            background-image: url('images/forrestwallpaper.jpg');
             background-size: cover; /* Adjust background to cover the element */
             background-attachment: fixed;
             background-position: center;
@@ -204,7 +204,7 @@ section h2 {
         .parallax-2 h2 {
             margin: auto;
             position: relative;
-            left: 500x;
+            left: 500px;
             top: 300px;
             width: 250px;
             height: 37px;
