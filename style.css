@@ -189,32 +189,30 @@ section h2 {
         /* Styling the second parallax's 
         height, width and background color */
         .parallax-2 {
-            width: 100vw; /* Set width to 100% of the viewport width */
-            margin-left: calc(50% - 50vw); /* Center the element */
+            display: flex;
+            justify-content: center; /* Horizontally center */
+            align-items: center;    /* Vertically center */
+            width: 100vw;
+            margin-left: calc(50% - 50vw);
             height: 100vh;
             background-image: url('images/forrestwallpaper.jpg');
-            background-size: cover; /* Adjust background to cover the element */
+            background-size: cover;
             background-attachment: fixed;
             background-position: center;
             background-repeat: no-repeat;
         }
         
-
-        /* Styling the title of second parallax */
         .parallax-2 h2 {
-            margin: auto;
-            position: relative;
-            left: 500px;
-            top: 300px;
-            width: 250px;
-            height: 37px;
+            /* Remove fixed positioning */
+            margin: 0;
             padding: 20px;
-            background-color: white;
+            background-color: rgba(0, 0, 0, 0.5); /* Optional */
             color: white;
             text-align: center;
             font-size: 30px;
             font-family: Verdana;
-        }
+            width: auto; /* Adjust as needed */
+        }        
 
         /* Styling the content or paragraph */
         .para-1 {
