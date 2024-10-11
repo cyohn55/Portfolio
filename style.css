@@ -175,17 +175,17 @@ height, width and background color */
 
 /* Styling the title of first parallax */
 .parallax-1 h2 {
-    margin: auto;
-    position: relative;
-    /* Corrected typo from '500x' to '500px' */
-    left: 500px;
-    top: 300px;
-    width: 250px;
-    height: 32px;
-    padding: 10px;
-    background-color: black;
+    margin: 0 auto; /* Center horizontally */
+    padding: 10px 20px;
+    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background for readability */
     color: white;
     text-align: center;
+    font-size: 2rem;
+    font-family: Verdana, sans-serif;
+    border-radius: 10px;
+    max-width: 90%; /* Prevent overflow on smaller screens */
+    word-wrap: break-word;
+    overflow-wrap: break-word; /* Ensure better word breaking */
 }
 
 /* Styling the second parallax's 
@@ -195,73 +195,17 @@ height, width and background color */
     flex-direction: column; /* Stack elements vertically */
     justify-content: center; /* Center vertically */
     align-items: center; /* Center horizontally */
-    width: 100vw; /* Set width to 100% of the viewport width */
-    /* Removed margin-left: calc(50% - 50vw); */
-    height: 100vh;
+    width: 100%; /* Changed from 100vw to 100% for better responsiveness */
+    min-height: 100vh; /* Ensures the section covers the viewport height on larger screens */
     background-image: url('images/stalenhag1.jpg'); 
-    background-size: cover; /* Adjust background to cover the element */
-    background-attachment: fixed;
+    background-size: cover; /* Maintains aspect ratio while covering the container */
     background-position: center;
     background-repeat: no-repeat;
     color: white; /* Set default text color to white */
     padding: 20px; /* Add padding to prevent text from touching edges */
     box-sizing: border-box;
+    background-attachment: fixed; /* Keep fixed for larger screens */
 }
-
-/* Styling the title of second parallax */
-.parallax-2 h1 {
-    margin: 20px 0; /* Adjust margins as needed */
-    padding: 10px 20px;
-    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background for readability */
-    color: white; /* Ensure text color is white */
-    text-align: center;
-    font-size: 2rem; /* Use relative units for better responsiveness */
-    font-family: Verdana, sans-serif;
-    border-radius: 10px; /* Adds rounded corners */
-    max-width: 90%; /* Prevent overflow on smaller screens */
-    word-wrap: break-word; /* Allow breaking long words */
-    overflow-wrap: break-word; /* Ensure better word breaking */
-}
-
-/* Styling the list inside parallax-2 */
-.parallax-2 ul {
-    list-style-type: disc;
-    padding-left: 40px; /* Increase padding for better indentation */
-    max-width: 90%; /* Prevent overflow */
-    word-wrap: break-word;
-    overflow-wrap: break-word; /* Ensure better word breaking */
-    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
-    padding: 20px; /* Add padding for better readability */
-    border-radius: 5px; /* Optional: rounded corners */
-    width: 100%; /* Ensure the list takes full available width */
-}
-
-/* Styling individual list items */
-.parallax-2 ul li {
-    margin-bottom: 10px;
-    color: inherit; /* Inherit color from .parallax-2 (white) */
-    word-break: break-word; /* Allow breaking long words */
-}
-
-/* Styling the content or paragraph */
-.para-1 {
-    padding: 50px;
-    background-color: black;
-    color: white;
-    font-size: 17px;
-}
-
-/* Styling the content or paragraph */
-.para-2 {
-    text-align: center;
-    padding: 25px;
-    font-size: 17px;
-    font-family: Verdana;
-    background-color: black;
-    color: white;
-}
-
-/* Responsive Adjustments */
 
 /* Responsive Styles for Parallax-2 */
 @media (max-width: 1024px) {
@@ -305,7 +249,8 @@ height, width and background color */
 
     .parallax-2 {
         flex-direction: column;
-        height: auto; /* Allow height to adjust based on content */
+        background-attachment: scroll; /* Disable fixed background on tablets */
+        min-height: auto; /* Allow height to adjust based on content */
     }
 
     .parallax-2 > div {
@@ -527,3 +472,4 @@ footer {
 #about {
     padding: 20px;
 }
+
