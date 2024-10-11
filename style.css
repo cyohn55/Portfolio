@@ -256,11 +256,11 @@ section h2 {
         margin: 10px 0;
     }
 
-    .para-1 {
+    .parallax-1 {
         flex-direction: column;
     }
 
-    .para-1 > div {
+    .parallax-1 > div {
         width: 100%;
         margin: 10px 0;
     }
