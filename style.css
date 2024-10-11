@@ -230,7 +230,7 @@ height, width and background color */
     max-width: 90%; /* Prevent overflow */
     word-wrap: break-word;
     overflow-wrap: break-word; /* Ensure better word breaking */
-    background-color: rgba(0, 0, 0, 0.3); /* Semi-transparent background */
+    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
     padding: 20px; /* Add padding for better readability */
     border-radius: 5px; /* Optional: rounded corners */
     width: 100%; /* Ensure the list takes full available width */
