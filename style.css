@@ -215,7 +215,7 @@ section h2 {
             text-align: center;
             font-size: 2rem; /* Use relative units for better responsiveness */
             font-family: Verdana, sans-serif;
-            border-radius: 5px; /* Optional: adds rounded corners */
+            border-radius: 10px; /* Optional: adds rounded corners */
             max-width: 90%; /* Prevent overflow on smaller screens */
             word-wrap: break-word; /* Allow breaking long words */
         }
