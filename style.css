@@ -186,32 +186,51 @@ section h2 {
             text-align: center;
         }
 
-        /* Styling the second parallax's 
+                /* Styling the second parallax's 
         height, width and background color */
         .parallax-2 {
             display: flex;
-            justify-content: center; /* Horizontally center */
-            align-items: center;    /* Vertically center */
-            width: 100vw;
-            margin-left: calc(50% - 50vw);
+            flex-direction: column; /* Stack elements vertically */
+            justify-content: center; /* Center vertically */
+            align-items: center; /* Center horizontally */
+            width: 100vw; /* Set width to 100% of the viewport width */
+            margin-left: calc(50% - 50vw); /* Center the element */
             height: 100vh;
             background-image: url('images/forrestwallpaper.jpg');
-            background-size: cover;
+            background-size: cover; /* Adjust background to cover the element */
             background-attachment: fixed;
             background-position: center;
             background-repeat: no-repeat;
+            color: white; /* Set default text color to white */
+            padding: 20px; /* Add padding to prevent text from touching edges */
+            box-sizing: border-box;
         }
-        
-        .parallax-2 h2 {
-            /* Remove fixed positioning */
-            margin: 0;
-            padding: 20px;
-            background-color: rgba(0, 0, 0, 0.5); /* Optional */
-            color: white;
+
+        /* Styling the title of second parallax */
+        .parallax-2 h1 {
+            margin: 20px 0; /* Adjust margins as needed */
+            padding: 10px 20px;
+            background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background for readability */
+            color: white; /* Ensure text color is white */
             text-align: center;
-            font-size: 30px;
-            font-family: Verdana;
-            width: auto; /* Adjust as needed */
+            font-size: 2rem; /* Use relative units for better responsiveness */
+            font-family: Verdana, sans-serif;
+            border-radius: 5px; /* Optional: adds rounded corners */
+            max-width: 90%; /* Prevent overflow on smaller screens */
+            word-wrap: break-word; /* Allow breaking long words */
+        }
+
+        /* Styling the list inside parallax-2 */
+        .parallax-2 ul {
+            list-style-type: disc;
+            padding-left: 40px; /* Increase padding for better indentation */
+            max-width: 90%; /* Prevent overflow */
+            word-wrap: break-word;
+        }
+
+        .parallax-2 ul li {
+            margin-bottom: 10px;
+            color: inherit; /* Inherit color from .parallax-2 */
         }        
 
         /* Styling the content or paragraph */
@@ -234,6 +253,18 @@ section h2 {
 
 
 /* Responsive Adjustments */
+
+/* Responsive Styles for Parallax-2 */
+@media (max-width: 1024px) {
+    .parallax-2 h1 {
+        font-size: 1.8rem; /* Slightly smaller font on medium screens */
+    }
+
+    .parallax-2 ul {
+        padding-left: 30px; /* Reduce padding on medium screens */
+    }
+}
+
 @media (max-width: 768px) {
     header h1 {
         font-size: 8vw;
@@ -264,6 +295,14 @@ section h2 {
     .parallax-2 > div {
         width: 100%;
         margin: 10px 0;
+    }
+
+    .parallax-2 h1 {
+        font-size: 1.5rem; /* Further reduce font size on tablets */
+    }
+
+    .parallax-2 ul {
+        padding-left: 20px; /* Further reduce padding on tablets */
     }
 
     .project-container {
@@ -298,6 +337,14 @@ section h2 {
 
     footer {
         padding: 10px 0;
+    }
+
+    .parallax-2 h1 {
+        font-size: 1.2rem; /* Smallest font size on mobile devices */
+    }
+
+    .parallax-2 ul {
+        padding-left: 15px; /* Minimal padding on mobile devices */
     }
 }
 
