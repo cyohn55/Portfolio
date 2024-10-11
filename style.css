@@ -197,6 +197,7 @@ section h2 {
             margin-left: calc(50% - 50vw); /* Center the element */
             height: 100vh;
             background-image: url('images/forrestwallpaper.jpg');
+            background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background for readability */
             background-size: cover; /* Adjust background to cover the element */
             background-attachment: fixed;
             background-position: center;
