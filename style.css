@@ -234,6 +234,7 @@ height, width and background color */
     padding: 20px; /* Add padding for better readability */
     border-radius: 10px; /* Optional: rounded corners */
     width: 100%; /* Ensure the list takes full available width */
+    text-align: left;
 }
 
 /* Styling individual list items */
@@ -272,11 +273,12 @@ height, width and background color */
     .parallax-2 ul {
         padding-left: 30px; /* Reduce padding on medium screens */
         padding: 15px 20px; /* Adjust padding for better fit */
+        max-width: 100%;
     }
 
     .parallax-1 h2 {
-        left: 300px; /* Adjust left position for smaller screens */
-        top: 200px;  /* Adjust top position for smaller screens */
+        /*left: 300px;  Adjust left position for smaller screens */
+        /*top: 200px;   Adjust top position for smaller screens */
     }
 }
 
@@ -305,7 +307,8 @@ height, width and background color */
 
     .parallax-2 {
         flex-direction: column;
-        height: auto; /* Allow height to adjust based on content */
+        background-attachment: scroll; /* Disable fixed background on tablets and mobiles */
+        min-height: auto; /* Allow height to adjust based on content */
     }
 
     .parallax-2 > div {
@@ -320,6 +323,7 @@ height, width and background color */
     .parallax-2 ul {
         padding-left: 20px; /* Further reduce padding on tablets */
         padding: 10px 15px; /* Adjust padding for better fit */
+        max-width: 100%;
     }
 
     .project-container {
@@ -368,6 +372,7 @@ height, width and background color */
     .parallax-2 ul {
         padding-left: 15px; /* Minimal padding on mobile devices */
         padding: 5px 10px; /* Adjust padding for better fit */
+        max-width: 100% /* Expand to the full width of the screen */
     }
 
     .parallax-1 h2 {
