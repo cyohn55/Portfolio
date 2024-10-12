@@ -239,7 +239,7 @@ height, width, and background color */
     padding: 20px; /* Add padding for better readability */
     border-radius: 10px; /* Optional: rounded corners */
     width: 100%; /* Ensure the list takes full available width */
-    text-align: left; /* Ensure list items are left-aligned for readability */
+    text-align: center; /* Ensure list items are left-aligned for readability */
 }
 
 /* Styling individual list items */
