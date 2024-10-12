@@ -45,20 +45,25 @@ nav ul {
     margin: 0;
     display: flex;
     justify-content: center;
+    flex-wrap: wrap; /* Allows wrapping on smaller screens */
 }
 
 nav ul li {
-    margin: 0px;
+    margin: 0px 15px; /* Adds spacing between navigation items */
 }
 
 nav ul li a {
     color: #fff;
     text-decoration: none;
     font-weight: bold;
+    padding: 5px 10px; /* Adds clickable area */
+    transition: background-color 0.3s, color 0.3s; /* Smooth hover transitions */
 }
 
 nav ul li a:hover {
-    text-decoration: underline;
+    text-decoration: none; /* Remove underline on hover */
+    background-color: rgba(255, 255, 255, 0.2); /* Light background on hover */
+    border-radius: 5px; /* Rounded corners on hover */
 }
 
 /* Sections */
@@ -67,7 +72,7 @@ section {
     max-width: 1000px;
     margin: auto;
     padding-bottom: 50px;
-    min-height: calc(100vh - 120px); /* Adjust based on header/footer height */
+    /* Removed min-height to allow natural height based on content */
 }
 
 section h1 {
@@ -162,7 +167,7 @@ section h2 {
 }
 
 /* Styling the first parallax's 
-height, width and background color */
+height, width, and background color */
 .parallax-1 {
     width: 100%;
     height: 600px;
@@ -186,26 +191,27 @@ height, width and background color */
     background-color: black;
     color: white;
     text-align: center;
+    border-radius: 5px; /* Optional: adds rounded corners */
 }
 
 /* Styling the second parallax's 
-height, width and background color */
+height, width, and background color */
 .parallax-2 {
     display: flex;
     flex-direction: column; /* Stack elements vertically */
     justify-content: center; /* Center vertically */
     align-items: center; /* Center horizontally */
-    width: 100%; /* Set width to 100% of the viewport width */
-    /* Removed margin-left: calc(50% - 50vw); */
-    min-height: 100vh;
+    width: 100vw; /* Full viewport width */
+    position: relative; /* Position relative to allow any absolute positioning if needed */
+    min-height: 100vh; /* Covers the viewport height on larger screens */
     background-image: url('images/stalenhag2.jpg'); 
-    background-size: cover; /* Adjust background to cover the element */
-    background-attachment: fixed;
+    background-size: cover; /* Maintains aspect ratio while covering the container */
     background-position: center;
     background-repeat: no-repeat;
     color: white; /* Set default text color to white */
-    padding: 20px; /* Add padding to prevent text from touching edges */
+    padding: 20px; /* Adds padding to prevent text from touching edges */
     box-sizing: border-box;
+    background-attachment: fixed; /* Parallax effect on larger screens */
 }
 
 /* Styling the title of second parallax */
@@ -234,7 +240,7 @@ height, width and background color */
     padding: 20px; /* Add padding for better readability */
     border-radius: 10px; /* Optional: rounded corners */
     width: 100%; /* Ensure the list takes full available width */
-    text-align: left;
+    text-align: left; /* Ensure list items are left-aligned for readability */
 }
 
 /* Styling individual list items */
@@ -273,12 +279,7 @@ height, width and background color */
     .parallax-2 ul {
         padding-left: 30px; /* Reduce padding on medium screens */
         padding: 15px 20px; /* Adjust padding for better fit */
-        max-width: 100%;
-    }
-
-    .parallax-1 h2 {
-        /*left: 300px;  Adjust left position for smaller screens */
-        /*top: 200px;   Adjust top position for smaller screens */
+        max-width: 100%; /* Ensure it utilizes available width */
     }
 }
 
@@ -311,11 +312,6 @@ height, width and background color */
         min-height: auto; /* Allow height to adjust based on content */
     }
 
-    .parallax-2 > div {
-        width: 100%;
-        margin: 10px 0;
-    }
-
     .parallax-2 h1 {
         font-size: 1.5rem; /* Further reduce font size on tablets */
     }
@@ -323,7 +319,7 @@ height, width and background color */
     .parallax-2 ul {
         padding-left: 20px; /* Further reduce padding on tablets */
         padding: 10px 15px; /* Adjust padding for better fit */
-        max-width: 100%;
+        max-width: 100%; /* Utilize full width */
     }
 
     .project-container {
@@ -336,11 +332,6 @@ height, width and background color */
 
     footer {
         position: relative;
-    }
-
-    .parallax-1 h2 {
-       /* left: 250px; Adjust left position for smaller screens */
-       /* top: 150px;   Adjust top position for smaller screens */
     }
 }
 
@@ -372,12 +363,7 @@ height, width and background color */
     .parallax-2 ul {
         padding-left: 15px; /* Minimal padding on mobile devices */
         padding: 5px 10px; /* Adjust padding for better fit */
-        max-width: 100% /* Expand to the full width of the screen */
-    }
-
-    .parallax-1 h2 {
-        /*left: 150px;  Adjust left position for smallest screens */
-        /*top: 100px;   Adjust top position for smallest screens */
+        max-width: 100%; /* Utilize full width */
     }
 }
 
