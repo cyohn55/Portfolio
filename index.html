@@ -26,8 +26,8 @@
             </nav>
         </header>
 
-<!-- Carousel Section -->
-<div id="carousel">
+ <!-- Carousel Section -->
+ <div id="carousel">
     <video id="carousel-video" autoplay muted loop playsinline>
         <source src="images/Blender Clip.mp4" type="video/mp4">
         Your browser does not support the video tag.
@@ -67,35 +67,37 @@
             </div>
         </div>
     </section>
+</main>
 
-    <!-- Parallax-2 Section (Moved outside of #about section) -->
-    <div class="parallax-2">
-        <h1>Notable Achievements</h1>
-        <ul class="achievements-list">
-            <li>
-                <strong>Solution Architect: <i>I lobbied for a data integration project at EnergyPricing.com that combined customer data from Excel, internal documents, and accounting data via Salesforce, ensuring data integrity and increasing sales.</i></strong>
-                Prior to my lobbying efforts, the company did not have processes in place for data management. 
-                As a result, data was stored in several areas. 
-                Duplicate customer accounts were created during previous Salesforce uploads, which caused our sales team to accidentally call the same customer twice or more on the same day.
-                
-                <p>To solve this issue, we needed to integrate customer account data, signed contracts, call logs, accounting data, and more into a single-parent account within Salesforce. 
-                The parent account would act as the central repository for all data related to a customer. 
-                During the integration process, we were able to clean redundancies created from previous Salesforce uploads and provide structure to our data by grouping customers by billing address.</p>
-                <p><strong><i>Also, since we could quote a client's electric accounts in aggregate, we could secure a lower wholesale rate from our energy supply partners, making our pricing more attractive to customers and our sales team more effective at closing deals.</i></strong></p>
-            </li>
-            <li>
-                <strong>Automation Engineer: <i>I automated my workflow in my role as a pricing analyst for EnergyPricing.com.</i></strong>
-                I created a request for pricing (RFP) spreadsheet in Excel that contained a list of customer accounts. 
-                We would send this list to our electric supply partners to request pricing for our electric supply customers. 
-                <strong><i>I didn't know how to program at the time, but I was able to hack together a spreadsheet that automated my workflow using Visual Basic, Excel Macros, and Microsoft Outlook.</i></strong>
-                The Excel spreadsheet had a macro button for each supplier that created a new email, attached the correct RFP, typed the recipient’s email address, name, pre-canned message, and subject line. 
-                From here, I could edit the email before sending it to one of our supply partners. 
-                After receiving several bids from our supply partners and compiling the pricing and savings data, I sent the completed quote to our sales team. 
-                <strong><i>The spreadsheet reduced the turnaround time for a quote from 30-45 minutes to 10-15 minutes.</i></strong>
-            </li>
-        </ul>
-    </div>
+<!-- Move .parallax-2 outside of <main> to prevent padding constraints -->
+<div class="parallax-2">
+    <h1>Notable Achievements</h1>
+    <ul class="achievements-list">
+        <li>
+            <strong>Solution Architect: <i>I lobbied for a data integration project at EnergyPricing.com that combined customer data from Excel, internal documents, and accounting data via Salesforce, ensuring data integrity and increasing sales.</i></strong>
+            Prior to my lobbying efforts, the company did not have processes in place for data management. 
+            As a result, data was stored in several areas. 
+            Duplicate customer accounts were created during previous Salesforce uploads, which caused our sales team to accidentally call the same customer twice or more on the same day.
+            
+            <p>To solve this issue, we needed to integrate customer account data, signed contracts, call logs, accounting data, and more into a single-parent account within Salesforce. 
+            The parent account would act as the central repository for all data related to a customer. 
+            During the integration process, we were able to clean redundancies created from previous Salesforce uploads and provide structure to our data by grouping customers by billing address.</p>
+            <p><strong><i>Also, since we could quote a client's electric accounts in aggregate, we could secure a lower wholesale rate from our energy supply partners, making our pricing more attractive to customers and our sales team more effective at closing deals.</i></strong></p>
+        </li>
+        <li>
+            <strong>Automation Engineer: <i>I automated my workflow in my role as a pricing analyst for EnergyPricing.com.</i></strong>
+            I created a request for pricing (RFP) spreadsheet in Excel that contained a list of customer accounts. 
+            We would send this list to our electric supply partners to request pricing for our electric supply customers. 
+            <strong><i>I didn't know how to program at the time, but I was able to hack together a spreadsheet that automated my workflow using Visual Basic, Excel Macros, and Microsoft Outlook.</i></strong>
+            The Excel spreadsheet had a macro button for each supplier that created a new email, attached the correct RFP, typed the recipient’s email address, name, pre-canned message, and subject line. 
+            From here, I could edit the email before sending it to one of our supply partners. 
+            After receiving several bids from our supply partners and compiling the pricing and savings data, I sent the completed quote to our sales team. 
+            <strong><i>The spreadsheet reduced the turnaround time for a quote from 30-45 minutes to 10-15 minutes.</i></strong>
+        </li>
+    </ul>
+</div>
 
+<main>
     <section id="projects">
         <h2>Research</h2>
         <div id="project-container" class="project-container">
@@ -149,4 +151,3 @@
 <script src="script.js"></script>
 </body>
 </html>
-
