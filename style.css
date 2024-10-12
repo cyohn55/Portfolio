@@ -198,7 +198,7 @@ height, width and background color */
     width: 100%; /* Set width to 100% of the viewport width */
     /* Removed margin-left: calc(50% - 50vw); */
     min-height: 100vh;
-    background-image: url('images/stalenhag1.jpg'); 
+    background-image: url('images/stalenhag2.jpg'); 
     background-size: cover; /* Adjust background to cover the element */
     background-attachment: fixed;
     background-position: center;
