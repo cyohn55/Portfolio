@@ -203,7 +203,7 @@ height, width, and background color */
     width: 100vw; /* Full viewport width */
     position: relative; /* Allows for absolute positioning of child elements if needed */
     min-height: 100vh; /* Covers the viewport height on larger screens */
-    background-image: url('images/stalenhag2.jpg'); 
+    background-image: url('images/forrestwallpaper.jpg'); 
     background-size: cover; /* Maintains aspect ratio while covering the container */
     background-position: center;
     background-repeat: no-repeat;
@@ -217,7 +217,7 @@ height, width, and background color */
 .parallax-2 h1 {
     margin: 20px 0; /* Adjust margins as needed */
     padding: 10px 20px;
-    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background for readability */
+    background-color: rgba(0, 0, 0, 0.7); /* Semi-transparent background for readability */
     color: white; /* Ensure text color is white */
     text-align: center;
     font-size: 2rem; /* Use relative units for better responsiveness */
@@ -235,7 +235,7 @@ height, width, and background color */
     max-width: 90%; /* Prevent overflow */
     word-wrap: break-word;
     overflow-wrap: break-word; /* Ensure better word breaking */
-    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
+    background-color: rgba(0, 0, 0, 0.7); /* Semi-transparent background */
     padding: 20px; /* Add padding for better readability */
     border-radius: 10px; /* Optional: rounded corners */
     width: 100%; /* Ensure the list takes full available width */
