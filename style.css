@@ -182,9 +182,8 @@ height, width, and background color */
 .parallax-1 h2 {
     margin: auto;
     position: relative;
-    /* Corrected typo from '500x' to '500px' */
-    left: 500px;
-    top: 300px;
+    left: 500px; /* Adjusted positioning */
+    top: 300px;  /* Adjusted positioning */
     width: 250px;
     height: 32px;
     padding: 10px;
@@ -202,7 +201,7 @@ height, width, and background color */
     justify-content: center; /* Center vertically */
     align-items: center; /* Center horizontally */
     width: 100vw; /* Full viewport width */
-    position: relative; /* Position relative to allow any absolute positioning if needed */
+    position: relative; /* Allows for absolute positioning of child elements if needed */
     min-height: 100vh; /* Covers the viewport height on larger screens */
     background-image: url('images/stalenhag2.jpg'); 
     background-size: cover; /* Maintains aspect ratio while covering the container */
@@ -518,3 +517,4 @@ footer {
 #about {
     padding: 20px;
 }
+
