@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const handleScroll = () => {
         if (!ticking) {
             window.requestAnimationFrame(() => {
-                const scrollTop = window.pageYOffset;
+                const scrollTop = window.scrollY;
                 const parallaxOffset = parallax3.offsetTop;
                 const windowHeight = window.innerHeight;
 
