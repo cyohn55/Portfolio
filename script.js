@@ -89,3 +89,40 @@ function changeImage() {
 
 // Change image every 5000 milliseconds (5 seconds)
 setInterval(changeImage, 5000); */
+
+// script.js
+
+document.addEventListener('DOMContentLoaded', () => {
+    const parallax3 = document.querySelector('.parallax-3');
+    const layers = parallax3.querySelectorAll('.parallax-layer');
+
+    // Check for reduced motion preference
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return;
+
+    let ticking = false;
+
+    const handleScroll = () => {
+        if (!ticking) {
+            window.requestAnimationFrame(() => {
+                const scrollTop = window.pageYOffset;
+                const parallaxOffset = parallax3.offsetTop;
+                const windowHeight = window.innerHeight;
+
+                // Check if parallax-3 is in the viewport
+                if (scrollTop + windowHeight > parallaxOffset && scrollTop < parallaxOffset + parallax3.offsetHeight) {
+                    layers.forEach(layer => {
+                        const speed = layer.getAttribute('data-speed');
+                        const yPos = (scrollTop - parallaxOffset) * speed;
+                        layer.style.transform = `translateY(${yPos}px)`;
+                    });
+                }
+                ticking = false;
+            });
+            ticking = true;
+        }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+});
+
