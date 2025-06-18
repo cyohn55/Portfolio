@@ -8,6 +8,7 @@ import re
 import os
 import sys
 import html
+import subprocess
 from datetime import datetime
 from typing import Dict, Any
 
@@ -177,6 +178,47 @@ def update_main_index_navigation():
         print(f"Error updating main navigation: {e}")
         return False
 
+def commit_and_push_changes(filename: str, title: str) -> bool:
+    """Commit and push the new page to GitHub"""
+    try:
+        # Change to the main directory (parent of MCP)
+        main_dir = ".."
+        
+        # Add the new file to git
+        result = subprocess.run([
+            'git', 'add', f'Pages/{filename}'
+        ], cwd=main_dir, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"Git add failed: {result.stderr}")
+            return False
+        
+        # Commit the changes
+        commit_message = f"Add new page: {title}\n\nAutomatically generated from email"
+        result = subprocess.run([
+            'git', 'commit', '-m', commit_message
+        ], cwd=main_dir, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"Git commit failed: {result.stderr}")
+            return False
+        
+        # Push to GitHub
+        result = subprocess.run([
+            'git', 'push'
+        ], cwd=main_dir, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"Git push failed: {result.stderr}")
+            return False
+        
+        print(f"Successfully pushed '{title}' to GitHub!")
+        return True
+        
+    except Exception as e:
+        print(f"Error with git operations: {e}")
+        return False
+
 def process_email_to_page(email_content: str) -> bool:
     """Process email content and create web page"""
     try:
@@ -191,9 +233,15 @@ def process_email_to_page(email_content: str) -> bool:
             # Update navigation
             update_main_index_navigation()
             
-            print(f"Page '{parsed['title']}' created successfully!")
-            print(f"File: Pages/{filename}")
-            return True
+            # Commit and push to GitHub
+            if commit_and_push_changes(filename, parsed["title"]):
+                print(f"Page '{parsed['title']}' created and pushed to GitHub successfully!")
+                print(f"File: Pages/{filename}")
+                print(f"Live at: https://cyohn55.github.io/Portfolio/Pages/{filename}")
+                return True
+            else:
+                print(f"Page created but failed to push to GitHub: {parsed['title']}")
+                return False
         else:
             return False
             
