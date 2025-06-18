@@ -79,21 +79,9 @@ def markdown_to_html(content: str) -> str:
     return '\n'.join(html_paragraphs)
 
 def get_existing_nav_links() -> str:
-    """Get navigation links from existing pages"""
-    pages_dir = "../Pages"
-    nav_links = []
-    
-    # Add home link
-    nav_links.append('                <li><a href="../index.html">Home</a></li>')
-    
-    # Add existing pages
-    if os.path.exists(pages_dir):
-        for filename in sorted(os.listdir(pages_dir)):
-            if filename.endswith('.html') and filename != 'index.html':
-                display_name = filename.replace('.html', '').replace('_', ' ').replace('-', ' ')
-                display_name = ' '.join(word.capitalize() for word in display_name.split())
-                nav_links.append(f'                <li><a href="{filename}">{display_name}</a></li>')
-    
+    """Get navigation links - only Home link as requested"""
+    # Only include Home link
+    nav_links = ['                <li><a href="../index.html">Home</a></li>']
     return '\n'.join(nav_links)
 
 def create_html_page(title: str, content: str, filename: str) -> bool:
@@ -159,7 +147,7 @@ def create_html_page(title: str, content: str, filename: str) -> bool:
         return False
 
 def update_main_index_navigation():
-    """Update navigation in main index.html"""
+    """Update navigation in main index.html - keep only Home link"""
     try:
         index_path = "../index.html"
         if not os.path.exists(index_path):
@@ -169,12 +157,12 @@ def update_main_index_navigation():
         with open(index_path, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # Get new navigation
-        new_nav_links = get_existing_nav_links().replace('../index.html', 'index.html').replace('../', 'Pages/')
+        # Only Home link for main navigation
+        home_nav_links = '                <li><a href="index.html">Home</a></li>'
         
         # Replace navigation section
         nav_pattern = r'<nav>\s*<ul>.*?</ul>\s*</nav>'
-        new_nav = f'<nav>\n            <ul>\n{new_nav_links}\n            </ul>\n        </nav>'
+        new_nav = f'<nav>\n            <ul>\n{home_nav_links}\n            </ul>\n        </nav>'
         
         updated_content = re.sub(nav_pattern, new_nav, content, flags=re.DOTALL)
         
