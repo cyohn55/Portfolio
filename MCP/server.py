@@ -114,8 +114,8 @@ def get_navigation_links() -> str:
     if not os.path.exists(pages_dir):
         return ""
     
-    nav_links = []
-    nav_links.append('                <li><a href="index.html">Home</a></li>')
+            nav_links = []
+        nav_links.append('                <li><a href="../index.html">Home</a></li>')
     
     # Get all HTML files in Pages directory
     for filename in os.listdir(pages_dir):
