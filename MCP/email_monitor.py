@@ -155,13 +155,13 @@ class EmailMonitor:
         formatted += email_data['body']
         return formatted
     
-    def create_page_from_email(self, email_content: str) -> Dict[str, any]:
-        """Create web page from email content"""
+    def create_page_from_email(self, raw_email_msg) -> Dict[str, any]:
+        """Create web page from full email message (preserves attachments)"""
         try:
-            # Save email content to temporary file
-            temp_file = 'temp_email.txt'
+            # Save full email message to temporary file
+            temp_file = 'temp_email.eml'
             with open(temp_file, 'w', encoding='utf-8') as f:
-                f.write(email_content)
+                f.write(raw_email_msg.as_string())
             
             # Call simplified email processor
             result = subprocess.run([
@@ -224,9 +224,8 @@ class EmailMonitor:
                 
                 # Check if this email should create a page
                 if self.is_page_creation_email(email_content['subject'], email_content['body']):
-                    # Format and process email
-                    formatted_content = self.format_email_for_processing(email_content)
-                    result = self.create_page_from_email(formatted_content)
+                    # Process full email message (preserves attachments)
+                    result = self.create_page_from_email(msg)
                     
                     if result['success']:
                         logger.info(f"Successfully created page: {email_content['subject']}")
