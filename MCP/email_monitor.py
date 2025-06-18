@@ -163,9 +163,9 @@ class EmailMonitor:
             with open(temp_file, 'w', encoding='utf-8') as f:
                 f.write(email_content)
             
-            # Call email processor
+            # Call simplified email processor
             result = subprocess.run([
-                sys.executable, 'email_processor.py', 'create', temp_file
+                sys.executable, 'simple_email_processor.py', temp_file
             ], capture_output=True, text=True, cwd='.')
             
             # Clean up temp file
@@ -229,14 +229,14 @@ class EmailMonitor:
                     result = self.create_page_from_email(formatted_content)
                     
                     if result['success']:
-                        logger.info(f"✅ Successfully created page: {email_content['subject']}")
+                        logger.info(f"Successfully created page: {email_content['subject']}")
                         # Mark email as processed
                         self.processed_emails.add(email_id_str)
                         
                         # Mark email as read
                         mail.store(email_id, '+FLAGS', '\\Seen')
                     else:
-                        logger.error(f"❌ Failed to create page: {result.get('error', 'Unknown error')}")
+                        logger.error(f"Failed to create page: {result.get('error', 'Unknown error')}")
                 else:
                     logger.info(f"Email not marked for page creation: {email_content['subject']}")
                     # Mark as processed but don't create page
