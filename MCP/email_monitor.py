@@ -11,7 +11,7 @@ import os
 import sys
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from email.header import decode_header
 import subprocess
@@ -193,8 +193,10 @@ class EmailMonitor:
             # Select inbox
             mail.select('inbox')
             
-            # Search for unread emails from authorized sender
-            search_criteria = f'(FROM "{self.authorized_sender}" UNSEEN)'
+            # Search for emails from authorized sender (last 24 hours, read or unread)
+            # This handles cases where emails are auto-marked as read
+            yesterday = (datetime.now() - timedelta(days=1)).strftime('%d-%b-%Y')
+            search_criteria = f'(FROM "{self.authorized_sender}" SINCE {yesterday})'
             status, messages = mail.search(None, search_criteria)
             
             if status != 'OK':
@@ -202,7 +204,7 @@ class EmailMonitor:
                 return
             
             email_ids = messages[0].split()
-            logger.info(f"Found {len(email_ids)} unread emails from {self.authorized_sender}")
+            logger.info(f"Found {len(email_ids)} recent emails from {self.authorized_sender}")
             
             for email_id in email_ids:
                 email_id_str = email_id.decode()
@@ -232,8 +234,11 @@ class EmailMonitor:
                         # Mark email as processed
                         self.processed_emails.add(email_id_str)
                         
-                        # Mark email as read
-                        mail.store(email_id, '+FLAGS', '\\Seen')
+                        # Optionally mark email as read (already might be read)
+                        try:
+                            mail.store(email_id, '+FLAGS', '\\Seen')
+                        except:
+                            pass  # Email might already be marked as read
                     else:
                         logger.error(f"Failed to create page: {result.get('error', 'Unknown error')}")
                 else:
