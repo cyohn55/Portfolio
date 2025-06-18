@@ -1,0 +1,26 @@
+# Email automation sensitive files
+email_monitor.log
+processed_emails.json
+temp_email.txt
+
+# Configuration files with passwords (keep template only)
+# email_config.json (commented out - we want to keep the template)
+
+# Test files
+test_email_*.txt
+*_test.txt
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo 

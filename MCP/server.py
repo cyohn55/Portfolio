@@ -7,7 +7,10 @@ Provides basic tools for managing portfolio website on GitHub
 import asyncio
 import os
 import subprocess
+import re
+import html
 from typing import Any, Dict, List
+from datetime import datetime
 
 import mcp.server
 import mcp.server.stdio
@@ -45,6 +48,111 @@ def run_git_command(command: List[str], cwd: str = None) -> Dict[str, Any]:
             "stdout": e.stdout.strip() if e.stdout else "",
             "stderr": e.stderr.strip() if e.stderr else ""
         }
+
+def sanitize_filename(title: str) -> str:
+    """Convert page title to a safe filename"""
+    # Remove special characters and convert to lowercase
+    filename = re.sub(r'[^a-zA-Z0-9\s-]', '', title)
+    filename = filename.lower().replace(' ', '')
+    return filename
+
+def generate_html_template(title: str, content: str) -> str:
+    """Generate HTML page with proper structure"""
+    # Escape HTML content to prevent injection
+    safe_content = html.escape(content)
+    
+    # Convert markdown-style headers to HTML
+    content_html = re.sub(r'^### (.*?)$', r'<h3>\1</h3>', safe_content, flags=re.MULTILINE)
+    content_html = re.sub(r'^## (.*?)$', r'<h2>\1</h2>', content_html, flags=re.MULTILINE)
+    content_html = re.sub(r'^# (.*?)$', r'<h1>\1</h1>', content_html, flags=re.MULTILINE)
+    
+    # Convert line breaks to paragraphs
+    content_html = re.sub(r'\n\n+', '</p><p>', content_html)
+    content_html = f'<p>{content_html}</p>'
+    
+    # Get current navigation links
+    nav_links = get_navigation_links()
+    
+    html_template = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+    <!-- Link to CSS -->
+    <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+    <header>
+        <h2>Code(Yohn's) Portfolio</h2>
+        <nav>
+            <ul>
+{nav_links}
+            </ul>
+        </nav>
+    </header>
+
+    <div class="content">
+        <!-- Written Section -->
+        <div class="wrap-text-container">
+            {content_html}
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2025 Cody Yohn. All rights reserved.</p>
+    </footer>
+    <script src="../script.js"></script>
+</body>
+</html>"""
+    
+    return html_template
+
+def get_navigation_links() -> str:
+    """Get current navigation links from existing pages"""
+    pages_dir = "Pages"
+    if not os.path.exists(pages_dir):
+        return ""
+    
+    nav_links = []
+    nav_links.append('                <li><a href="index.html">Home</a></li>')
+    
+    # Get all HTML files in Pages directory
+    for filename in os.listdir(pages_dir):
+        if filename.endswith('.html') and filename != 'index.html':
+            # Convert filename to display name
+            display_name = filename.replace('.html', '').replace('-', ' ').title()
+            nav_links.append(f'                <li><a href="{filename}">{display_name}</a></li>')
+    
+    return '\n'.join(nav_links)
+
+def update_all_navigation() -> None:
+    """Update navigation in all HTML files"""
+    pages_dir = "Pages"
+    if not os.path.exists(pages_dir):
+        return
+    
+    nav_links = get_navigation_links()
+    
+    # Update each HTML file
+    for filename in os.listdir(pages_dir):
+        if filename.endswith('.html'):
+            filepath = os.path.join(pages_dir, filename)
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # Replace navigation section
+                nav_pattern = r'<nav>\s*<ul>.*?</ul>\s*</nav>'
+                new_nav = f'<nav>\n            <ul>\n{nav_links}\n            </ul>\n        </nav>'
+                
+                updated_content = re.sub(nav_pattern, new_nav, content, flags=re.DOTALL)
+                
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    f.write(updated_content)
+                    
+            except Exception as e:
+                print(f"Error updating navigation in {filename}: {e}")
 
 @server.list_tools()
 async def handle_list_tools() -> ListToolsResult:
@@ -118,6 +226,51 @@ async def handle_list_tools() -> ListToolsResult:
                 "properties": {},
                 "required": []
             }
+        ),
+        Tool(
+            name="create_page_from_email",
+            description="Create a new HTML page from email content",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Page title"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Page content (supports markdown-style headers)"
+                    }
+                },
+                "required": ["title", "content"]
+            }
+        ),
+        Tool(
+            name="update_page_from_email",
+            description="Update existing page from email content",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "page_name": {
+                        "type": "string",
+                        "description": "Name of the page to update (without .html extension)"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "New page content"
+                    }
+                },
+                "required": ["page_name", "content"]
+            }
+        ),
+        Tool(
+            name="list_pages",
+            description="List all pages in the Pages directory",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
         )
     ]
     return ListToolsResult(tools=tools)
@@ -138,6 +291,12 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> CallToolResu
             return await setup_github_pages(arguments)
         elif name == "validate_files":
             return await validate_files()
+        elif name == "create_page_from_email":
+            return await create_page_from_email(arguments)
+        elif name == "update_page_from_email":
+            return await update_page_from_email(arguments)
+        elif name == "list_pages":
+            return await list_pages()
         else:
             return CallToolResult(
                 content=[
@@ -332,6 +491,100 @@ async def validate_files() -> CallToolResult:
             content=[
                 TextContent(
                     text=f"All portfolio files are present! ({len(existing_files)} files found)"
+                )
+            ]
+        )
+
+async def create_page_from_email(arguments: Dict[str, Any]) -> CallToolResult:
+    """Create a new HTML page from email content"""
+    title = arguments["title"]
+    content = arguments["content"]
+    
+    filename = sanitize_filename(title) + ".html"
+    filepath = os.path.join("Pages", filename)
+    
+    if os.path.exists(filepath):
+        return CallToolResult(
+            content=[
+                TextContent(
+                    text=f"Error: Page '{title}' already exists."
+                )
+            ]
+        )
+    
+    html_template = generate_html_template(title, content)
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(html_template)
+    
+    return CallToolResult(
+        content=[
+            TextContent(
+                text=f"Page '{title}' created successfully!"
+            )
+        ]
+    )
+
+async def update_page_from_email(arguments: Dict[str, Any]) -> CallToolResult:
+    """Update existing page from email content"""
+    page_name = arguments["page_name"]
+    content = arguments["content"]
+    
+    filename = sanitize_filename(page_name) + ".html"
+    filepath = os.path.join("Pages", filename)
+    
+    if not os.path.exists(filepath):
+        return CallToolResult(
+            content=[
+                TextContent(
+                    text=f"Error: Page '{page_name}' does not exist."
+                )
+            ]
+        )
+    
+    html_template = generate_html_template(page_name, content)
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(html_template)
+    
+    return CallToolResult(
+        content=[
+            TextContent(
+                text=f"Page '{page_name}' updated successfully!"
+            )
+        ]
+    )
+
+async def list_pages() -> CallToolResult:
+    """List all pages in the Pages directory"""
+    pages_dir = "Pages"
+    if not os.path.exists(pages_dir):
+        return CallToolResult(
+            content=[
+                TextContent(
+                    text="No pages found in the Pages directory."
+                )
+            ]
+        )
+    
+    pages = []
+    for filename in os.listdir(pages_dir):
+        if filename.endswith('.html'):
+            pages.append(filename.replace('.html', ''))
+    
+    if not pages:
+        return CallToolResult(
+            content=[
+                TextContent(
+                    text="No pages found in the Pages directory."
+                )
+            ]
+        )
+    else:
+        return CallToolResult(
+            content=[
+                TextContent(
+                    text=f"Pages in the Pages directory:\n" + "\n".join(pages)
                 )
             ]
         )

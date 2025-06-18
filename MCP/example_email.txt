@@ -1,0 +1,43 @@
+Subject: Machine Learning Projects
+
+# Machine Learning Journey
+
+I've been working on several machine learning projects that showcase my skills in data science and artificial intelligence.
+
+## Current Projects
+
+### 1. Image Classification with TensorFlow
+I developed a convolutional neural network using TensorFlow to classify images from the CIFAR-10 dataset. The model achieves 85% accuracy and demonstrates my understanding of:
+- Deep learning architectures
+- Computer vision techniques
+- Model optimization and hyperparameter tuning
+
+### 2. Natural Language Processing
+Created a sentiment analysis model using Python and NLTK that can classify text as positive, negative, or neutral. This project involved:
+- Text preprocessing and tokenization
+- Feature extraction using TF-IDF
+- Machine learning algorithms (Random Forest, SVM)
+
+### 3. Data Analysis and Visualization
+Built a comprehensive data analysis pipeline using pandas, numpy, and matplotlib to analyze customer behavior data. The project includes:
+- Data cleaning and preprocessing
+- Statistical analysis and hypothesis testing
+- Interactive visualizations with Plotly
+
+## Technical Skills
+
+My machine learning toolkit includes:
+- **Programming Languages**: Python, R
+- **Libraries**: TensorFlow, PyTorch, scikit-learn, pandas, numpy
+- **Tools**: Jupyter Notebooks, Google Colab, AWS SageMaker
+- **Techniques**: Supervised/Unsupervised learning, Deep Learning, NLP
+
+## Future Goals
+
+I'm excited to explore:
+- Reinforcement learning applications
+- Computer vision for autonomous systems
+- Large language models and transformers
+- Edge AI and mobile machine learning
+
+This journey in machine learning has taught me the importance of both theoretical understanding and practical implementation. Every project is an opportunity to learn new techniques and solve real-world problems. 

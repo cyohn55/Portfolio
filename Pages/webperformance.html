@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Web Performance</title>
     <!-- Link to CSS -->
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../style.css">
 </head>
 <body>
     <header>
@@ -13,13 +13,13 @@
         <nav>
             <ul>
                 <li><a href="index.html">Home</a></li>
-                <a href="bouncingball.html"></a>
-                <a href="codeexample.html"></a>
-                <a href="webperformance.html"></a>
-                <a href="hardwarearchitecture.html"></a>
-                <a href="database.html"></a>
-                <a href="algorithms.html"></a>
-                <!-- Add more navigation links as needed -->
+                <li><a href="bouncingball.html">Bouncing Ball</a></li>
+                <li><a href="codeexample.html">Python Code</a></li>
+                <li><a href="webperformance.html">Web Performance</a></li>
+                <li><a href="hardwarearchitecture.html">Hardware Architecture</a></li>
+                <li><a href="database.html">Database Design</a></li>
+                <li><a href="algorithms.html">Algorithms</a></li>
+                <li><a href="videogame.html">Video Games</a></li>
             </ul>
         </nav>
     </header>
@@ -37,7 +37,7 @@
         <p>This means serving up dynamically generated websites on cache memory-constrained hardware can lead to poor web server performance including excessive load times. Therefore, when developing web applications, it's imperative that we reserve cache memory only for the most intensive parts of our application. By saving the intensive parts of a website in cache memory, we can reduce the amount of time it takes to load a page. There are several caching techniques that can be used to increase web server performance. Below we will consider three caching techniques: Content Delivery Network (CDN), Key-Value, and Lazy caching.</p>
 
     <p><strong>Content Delivery Network (CDN)</strong></p>
-        <p>The original version of a Content Delivery Network (CDN) was a globally distributed network that was meant to improve the delivery of frequently requested static content. However, as CDNs evolved, they gained the ability to handle more than just static content. Now CDNs can deliver static, dynamic, and non-cacheable data. Regarding caching, Amazon Web Services, Inc. (2023) states, "For caching, a CDN will reduce the load on an application origin and improve the experience of the requestor by delivering a local copy of the content from a nearby cache edge, or Point of Presence (PoP). The application origin is off the hook for opening the connection and delivering the content directly as the CDN takes care of the heavy lifting. The end result is that the application origins don’t need to scale to meet demands for static content."</p>
+        <p>The original version of a Content Delivery Network (CDN) was a globally distributed network that was meant to improve the delivery of frequently requested static content. However, as CDNs evolved, they gained the ability to handle more than just static content. Now CDNs can deliver static, dynamic, and non-cacheable data. Regarding caching, Amazon Web Services, Inc. (2023) states, "For caching, a CDN will reduce the load on an application origin and improve the experience of the requestor by delivering a local copy of the content from a nearby cache edge, or Point of Presence (PoP). The application origin is off the hook for opening the connection and delivering the content directly as the CDN takes care of the heavy lifting. The end result is that the application origins don't need to scale to meet demands for static content."</p>
         <p>However, caching is just one feature of CDNs, which makes them a crucial component for web applications. Below are just some of the features of CDNs:</p>
             <ul>
                 <li>Caching static and dynamic content. (Amazon Web Services, Inc., 2023, Content Delivery Network (CDN) Caching).</li>
@@ -77,5 +77,6 @@
     <footer>
         <p>&copy; 2024 Cody Yohn. All rights reserved.</p>
     </footer>
+    <script src="../script.js"></script>
 </body>
 </html>

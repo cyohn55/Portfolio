@@ -1,1 +1,2 @@
-mcp>=1.0.0 
+mcp
+secure-smtplib>=1.0.0 
