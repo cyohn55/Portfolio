@@ -16,26 +16,41 @@ from datetime import datetime
 from typing import Dict, Any, List
 
 def extract_attachments(msg) -> List[Dict[str, Any]]:
-    """Extract attachments from email message"""
+    """Extract attachments and inline images from email message"""
     attachments = []
+    inline_counter = 1
     
     for part in msg.walk():
-        if part.get_content_disposition() == 'attachment':
+        content_disposition = part.get_content_disposition()
+        content_type = part.get_content_type()
+        
+        # Check for both attachments and inline images
+        if content_disposition in ['attachment', 'inline'] or content_type.startswith(('image/', 'video/')):
             filename = part.get_filename()
-            if filename:
-                # Get file content
-                content = part.get_payload(decode=True)
-                
-                # Determine MIME type
-                content_type = part.get_content_type()
-                
-                # Check if it's a supported media type
-                if content_type.startswith(('image/', 'video/')):
-                    attachments.append({
-                        'filename': filename,
-                        'content': content,
-                        'content_type': content_type
-                    })
+            
+            # Generate filename for inline images without names
+            if not filename and content_type.startswith('image/'):
+                ext = content_type.split('/')[-1]
+                if ext in ['jpeg', 'jpg', 'png', 'gif', 'webp', 'svg']:
+                    filename = f"inline_image_{inline_counter}.{ext}"
+                    inline_counter += 1
+            
+            if filename and content_type.startswith(('image/', 'video/')):
+                try:
+                    # Get file content
+                    content = part.get_payload(decode=True)
+                    
+                    if content and len(content) > 100:  # Ensure it's not empty/tiny
+                        attachments.append({
+                            'filename': filename,
+                            'content': content,
+                            'content_type': content_type,
+                            'disposition': content_disposition or 'inline'
+                        })
+                        print(f"Found {content_disposition or 'inline'} media: {filename} ({len(content)} bytes)")
+                except Exception as e:
+                    print(f"Error extracting {filename}: {e}")
+                    continue
     
     return attachments
 
@@ -220,22 +235,40 @@ def create_html_page(title: str, content: str, filename: str, attachments: List[
         saved_files = []
         
         if attachments:
-            print(f"Processing {len(attachments)} attachments...")
-            attachment_html = "\n<h2>Attachments</h2>\n"
+            print(f"Processing {len(attachments)} media files...")
             
-            for attachment in attachments:
-                saved_path = save_attachment(attachment, title)
-                if saved_path:
-                    saved_files.append(saved_path)
-                    
-                    if attachment['content_type'].startswith('image/'):
-                        # Add image
-                        alt_text = os.path.basename(attachment['filename'])
-                        attachment_html += f'<img src="{saved_path}" alt="{alt_text}" style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">\n'
-                    
-                    elif attachment['content_type'].startswith('video/'):
-                        # Add video
-                        attachment_html += f'<video controls style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px;"><source src="{saved_path}" type="{attachment["content_type"]}">Your browser does not support the video tag.</video>\n'
+            # Separate inline images from attachments
+            inline_images = [a for a in attachments if a.get('disposition') == 'inline']
+            file_attachments = [a for a in attachments if a.get('disposition') != 'inline']
+            
+            # Add inline images first (they're part of the email content)
+            if inline_images:
+                attachment_html += "\n<h2>Images</h2>\n"
+                for attachment in inline_images:
+                    saved_path = save_attachment(attachment, title)
+                    if saved_path:
+                        saved_files.append(saved_path)
+                        
+                        if attachment['content_type'].startswith('image/'):
+                            alt_text = os.path.basename(attachment['filename'])
+                            attachment_html += f'<img src="{saved_path}" alt="{alt_text}" style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">\n'
+            
+            # Add file attachments
+            if file_attachments:
+                attachment_html += "\n<h2>Attachments</h2>\n"
+                for attachment in file_attachments:
+                    saved_path = save_attachment(attachment, title)
+                    if saved_path:
+                        saved_files.append(saved_path)
+                        
+                        if attachment['content_type'].startswith('image/'):
+                            # Add image
+                            alt_text = os.path.basename(attachment['filename'])
+                            attachment_html += f'<img src="{saved_path}" alt="{alt_text}" style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">\n'
+                        
+                        elif attachment['content_type'].startswith('video/'):
+                            # Add video
+                            attachment_html += f'<video controls style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px;"><source src="{saved_path}" type="{attachment["content_type"]}">Your browser does not support the video tag.</video>\n'
         
         # Convert content to HTML
         content_html = markdown_to_html(content)
