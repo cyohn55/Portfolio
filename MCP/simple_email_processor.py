@@ -248,8 +248,21 @@ def process_alignment_tags(content: str) -> str:
             # Remove the tag and get content
             content_text = line[8:].strip()  # Remove '[center]' (8 characters)
             if content_text:
+                # Process markdown headers within alignment tags
+                if content_text.startswith('###'):
+                    # Convert ### to <h3> and center it
+                    header_text = content_text[3:].strip()
+                    processed_lines.append(f'<div style="text-align: center; margin: 10px 0;"><h3>{header_text}</h3></div>')
+                elif content_text.startswith('##'):
+                    # Convert ## to <h2> and center it
+                    header_text = content_text[2:].strip()
+                    processed_lines.append(f'<div style="text-align: center; margin: 10px 0;"><h2>{header_text}</h2></div>')
+                elif content_text.startswith('#'):
+                    # Convert # to <h1> and center it
+                    header_text = content_text[1:].strip()
+                    processed_lines.append(f'<div style="text-align: center; margin: 10px 0;"><h1>{header_text}</h1></div>')
                 # Check if content contains media elements (img, video, or media placeholders)
-                if ('<img ' in content_text or '<video ' in content_text or 
+                elif ('<img ' in content_text or '<video ' in content_text or 
                     '__MEDIA_PLACEHOLDER_' in content_text or 
                     any(content_text.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.mov', '.avi'])):
                     # For media, use flexbox centering for better control
@@ -264,8 +277,21 @@ def process_alignment_tags(content: str) -> str:
             # Remove the tag and get content
             content_text = line[6:].strip()  # Remove '[left]' (6 characters)
             if content_text:
+                # Process markdown headers within alignment tags
+                if content_text.startswith('###'):
+                    # Convert ### to <h3> and left-align it
+                    header_text = content_text[3:].strip()
+                    processed_lines.append(f'<div style="text-align: left; margin: 10px 0;"><h3>{header_text}</h3></div>')
+                elif content_text.startswith('##'):
+                    # Convert ## to <h2> and left-align it
+                    header_text = content_text[2:].strip()
+                    processed_lines.append(f'<div style="text-align: left; margin: 10px 0;"><h2>{header_text}</h2></div>')
+                elif content_text.startswith('#'):
+                    # Convert # to <h1> and left-align it
+                    header_text = content_text[1:].strip()
+                    processed_lines.append(f'<div style="text-align: left; margin: 10px 0;"><h1>{header_text}</h1></div>')
                 # Check if content contains media elements
-                if ('<img ' in content_text or '<video ' in content_text or 
+                elif ('<img ' in content_text or '<video ' in content_text or 
                     '__MEDIA_PLACEHOLDER_' in content_text or 
                     any(content_text.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.mov', '.avi'])):
                     # For media, use flexbox left alignment
@@ -280,8 +306,21 @@ def process_alignment_tags(content: str) -> str:
             # Remove the tag and get content
             content_text = line[7:].strip()  # Remove '[right]' (7 characters)
             if content_text:
+                # Process markdown headers within alignment tags
+                if content_text.startswith('###'):
+                    # Convert ### to <h3> and right-align it
+                    header_text = content_text[3:].strip()
+                    processed_lines.append(f'<div style="text-align: right; margin: 10px 0;"><h3>{header_text}</h3></div>')
+                elif content_text.startswith('##'):
+                    # Convert ## to <h2> and right-align it
+                    header_text = content_text[2:].strip()
+                    processed_lines.append(f'<div style="text-align: right; margin: 10px 0;"><h2>{header_text}</h2></div>')
+                elif content_text.startswith('#'):
+                    # Convert # to <h1> and right-align it
+                    header_text = content_text[1:].strip()
+                    processed_lines.append(f'<div style="text-align: right; margin: 10px 0;"><h1>{header_text}</h1></div>')
                 # Check if content contains media elements
-                if ('<img ' in content_text or '<video ' in content_text or 
+                elif ('<img ' in content_text or '<video ' in content_text or 
                     '__MEDIA_PLACEHOLDER_' in content_text or 
                     any(content_text.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.mov', '.avi'])):
                     # For media, use flexbox right alignment
@@ -306,28 +345,47 @@ def markdown_to_html(content: str) -> str:
         # Escape HTML for safety
         content = html.escape(content)
     
-    # Convert markdown headers (but skip the first H1 since it's already in the page title)
-    content = re.sub(r'^### (.*?)$', r'<h3>\1</h3>', content, flags=re.MULTILINE)
-    content = re.sub(r'^## (.*?)$', r'<h2>\1</h2>', content, flags=re.MULTILINE)
+    # Process custom alignment tags FIRST (before markdown headers)
+    # This allows alignment tags to handle their own markdown
+    content = process_alignment_tags(content)
     
-    # For H1, only convert if it's not the first line (to avoid duplicate titles)
+    # Convert markdown headers (but skip headers that are already inside alignment divs)
     lines = content.split('\n')
     processed_lines = []
     first_h1_found = False
+    inside_alignment_div = False
     
     for line in lines:
-        if line.startswith('# ') and not first_h1_found:
+        # Check if we're inside an alignment div
+        if '<div style=' in line and ('text-align:' in line or 'display: flex' in line):
+            inside_alignment_div = True
+            processed_lines.append(line)
+            continue
+        elif line.strip() == '</div>' and inside_alignment_div:
+            inside_alignment_div = False
+            processed_lines.append(line)
+            continue
+        elif inside_alignment_div:
+            # Skip markdown processing for lines inside alignment divs
+            processed_lines.append(line)
+            continue
+        
+        # Process markdown headers only if not inside alignment divs
+        if line.startswith('### '):
+            processed_lines.append(line.replace('### ', '<h3>', 1) + '</h3>')
+        elif line.startswith('## '):
+            processed_lines.append(line.replace('## ', '<h2>', 1) + '</h2>')
+        elif line.startswith('# ') and not first_h1_found:
             # Skip the first H1 to avoid duplication with page title
             first_h1_found = True
             continue
         elif line.startswith('# '):
             # Convert subsequent H1s to H2s for better hierarchy
-            processed_lines.append(line.replace('# ', '## ', 1))
+            processed_lines.append(line.replace('# ', '<h2>', 1) + '</h2>')
         else:
             processed_lines.append(line)
     
     content = '\n'.join(processed_lines)
-    content = re.sub(r'^# (.*?)$', r'<h1>\1</h1>', content, flags=re.MULTILINE)
     
     # Convert bold and italic
     content = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', content)
@@ -358,9 +416,6 @@ def markdown_to_html(content: str) -> str:
         return f'<div class="video-container" style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; margin: 10px 0;"><iframe src="https://www.youtube.com/embed/{video_id}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe></div>'
     
     content = re.sub(r'\[YOUTUBE\]\((.*?)\)', youtube_replacer, content)
-    
-    # Process custom alignment tags: [center], [left], [right]
-    content = process_alignment_tags(content)
     
     # Convert lists
     content = re.sub(r'^- (.*?)$', r'<li>\1</li>', content, flags=re.MULTILINE)

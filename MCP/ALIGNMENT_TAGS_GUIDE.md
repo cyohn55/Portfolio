@@ -68,6 +68,17 @@ Subject: Video Showcase
 [right] tutorial.mov
 ```
 
+### **Inline Markdown Headers**
+
+**NEW FEATURE**: You can now include markdown headers directly within alignment tags!
+
+```
+[center] ### This heading will be centered
+[left] ## This heading will be left-aligned  
+[right] # This heading will be right-aligned
+[center] ### Which, links to the newly created web page.
+```
+
 ### **Mixed Content Example**
 
 ```
@@ -92,6 +103,8 @@ Here's some more regular text.
 The text continues here with normal flow.
 
 [center] conclusion_video.mp4
+
+[center] ### Final Thoughts
 
 [right] - The End -
 ```
@@ -125,6 +138,13 @@ The text continues here with normal flow.
 [center] Hello World
 ↓
 <div style="text-align: center; margin: 10px 0;">Hello World</div>
+```
+
+**Inline Headers:**
+```html
+[center] ### My Heading
+↓
+<div style="text-align: center; margin: 10px 0;"><h3>My Heading</h3></div>
 ```
 
 **Images:**
@@ -175,6 +195,7 @@ Some text [center] This won't be processed
 ### **Works With:**
 - ✅ Responsive image sizing
 - ✅ Markdown formatting (`**bold**`, `*italic*`)
+- ✅ **NEW**: Inline markdown headers (`[center] ### Heading`)
 - ✅ Headers (`## Heading`)
 - ✅ Email attachments (images/videos)
 - ✅ YouTube embeds `[YOUTUBE](video_id)`
