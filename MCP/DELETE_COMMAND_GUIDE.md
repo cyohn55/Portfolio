@@ -11,8 +11,8 @@ The email-to-website system now supports deleting pages and their corresponding 
 Send an email with the delete command and the **exact page title**:
 
 **Subject Examples:**
-- `[Delete] This Web Page was Created with an Email`
-- `Delete: My Algorithm Projects`
+- `[Del] This Web Page was Created with an Email`
+- `Del: My Algorithm Projects`
 - `[Remove] Database Design Principles`
 - `Remove: Web Performance Optimization`
 
@@ -21,8 +21,8 @@ Send an email with the delete command and the **exact page title**:
 Send an email with the delete command and the **exact filename**:
 
 **Subject Examples:**
-- `[Delete] thiswebpagewascreatedwithanemail.html`
-- `Delete: algorithms.html`
+- `[Del] thiswebpagewascreatedwithanemail.html`
+- `Del: algorithms.html`
 - `[Remove] database.html`
 - `Remove: webperformance.html`
 
@@ -31,14 +31,14 @@ Send an email with the delete command and the **exact filename**:
 You can also put the delete command in the email body instead of the subject:
 
 **Subject:** `Website Update`
-**Body:** `[Delete] This Web Page was Created with an Email`
+**Body:** `[Del] This Web Page was Created with an Email`
 
 ## Supported Delete Formats
 
 The system recognizes these delete command patterns (case-insensitive):
 
-- `[Delete] <page identifier>`
-- `Delete: <page identifier>`
+- `[Del] <page identifier>`
+- `Del: <page identifier>`
 - `[Remove] <page identifier>`
 - `Remove: <page identifier>`
 
@@ -57,7 +57,7 @@ When you send a delete command, the system will:
 ```
 From: cyohn55@yahoo.com
 To: email.to.portfolio.site@gmail.com
-Subject: [Delete] This Web Page was Created with an Email
+Subject: [Del] This Web Page was Created with an Email
 
 Please remove this page from my portfolio.
 ```
@@ -66,7 +66,7 @@ Please remove this page from my portfolio.
 ```
 From: cyohn55@yahoo.com
 To: email.to.portfolio.site@gmail.com
-Subject: Delete: algorithms.html
+Subject: Del: algorithms.html
 
 This page is outdated and should be removed.
 ```
@@ -75,7 +75,7 @@ This page is outdated and should be removed.
 ```
 From: cyohn55@yahoo.com
 To: email.to.portfolio.site@gmail.com
-Subject: [Delete] Bouncing Ball Animation
+Subject: [Del] Bouncing Ball Animation
 
 Remove this old project.
 ```
@@ -84,7 +84,7 @@ Then send another email:
 ```
 From: cyohn55@yahoo.com
 To: email.to.portfolio.site@gmail.com
-Subject: [Delete] videogame.html
+Subject: [Del] videogame.html
 
 Also remove the video game page.
 ```
@@ -113,7 +113,7 @@ Also remove the video game page.
 After processing a delete command, you'll see in the logs:
 
 ```
-Delete command detected for: this web page was created with an email
+Del command detected for: this web page was created with an email
 Deleted page: thiswebpagewascreatedwithanemail.html
 Removed tile from home page
 Successfully pushed deletion of 'This Web Page was Created with an Email' to GitHub!
@@ -127,9 +127,38 @@ Page not found: ../Pages/nonexistent.html
 Failed to delete page: nonexistent page
 ```
 
+## ⚠️ CRITICAL SECURITY FEATURE: Most Recent Email Only
+
+**IMPORTANT**: The system now only processes delete commands from the **MOST RECENT EMAIL** from the authorized sender.
+
+### How It Works:
+- System sorts all emails by timestamp (newest first)
+- Only the most recent email is processed for ANY commands (create or delete)
+- All older emails are marked as processed but IGNORED
+- This prevents old delete commands from accidentally being processed
+
+### Example Scenario:
+```
+Email 1 (10:00 AM): "[Del] Important Project" 
+Email 2 (10:30 AM): "New Blog Post About Algorithms"
+
+Result: Only Email 2 is processed (creates new page)
+        Email 1's delete command is IGNORED
+```
+
+### Benefits:
+- ✅ Prevents accidental deletions from old emails
+- ✅ Eliminates risk of reprocessing old delete commands
+- ✅ System always acts on your latest intent only
+- ✅ No need to clean up old emails to prevent accidents
+
+### Emergency Override:
+If you need to delete something and have sent other emails after, send a NEW email with ONLY the delete command to make it the most recent email.
+
 ## Safety Features
 
 - ✅ Only authorized sender (cyohn55@yahoo.com) can delete pages
+- ✅ **Only the most recent email is processed (NEW SECURITY FEATURE)**
 - ✅ System checks if page exists before attempting deletion
 - ✅ Both page file and home page tile are removed together
 - ✅ Changes are automatically committed to git with descriptive messages
@@ -153,7 +182,7 @@ Get-Process python | Where-Object {$_.CommandLine -like "*email_monitor*"}
 ### Delete Command Not Working?
 
 1. **Check the sender**: Only emails from `cyohn55@yahoo.com` are processed
-2. **Check the format**: Use `[Delete] Title` or `Delete: filename.html`
+2. **Check the format**: Use `[Del] Title` or `Del: filename.html`
 3. **Check the page exists**: Verify the page title or filename is correct
 4. **Check the logs**: Look at `email_monitor_service.log` for error messages
 

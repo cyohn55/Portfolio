@@ -729,10 +729,10 @@ def is_delete_command(subject: str, content: str) -> tuple[bool, str]:
         subject_lower = subject.lower().strip()
         content_lower = content.lower().strip()
         
-        # Look for [Delete] or [delete] tag in subject or content
+        # Look for [Del] or [del] tag in subject or content
         delete_patterns = [
-            r'\[delete\]\s*(.+)',
-            r'delete:\s*(.+)',
+            r'\[del\]\s*(.+)',
+            r'del:\s*(.+)',
             r'remove:\s*(.+)',
             r'\[remove\]\s*(.+)'
         ]

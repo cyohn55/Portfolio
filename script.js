@@ -1,66 +1,4 @@
-const projectsPerLoad = 12; // Number of projects to load each time
-let currentProjectIndex = 0; // Tracks the next project to load
-let isLoading = false; // Prevents multiple simultaneous loads
-
-function loadProjects() {
-    if (isLoading) return;
-    isLoading = true;
-
-    // Show loader
-    document.getElementById('loader').style.display = 'block';
-
-    // Simulate loading delay (optional)
-    setTimeout(() => {
-        const projectContainer = document.getElementById('project-container');
-        const end = currentProjectIndex + projectsPerLoad;
-        const slicedProjects = projects.slice(currentProjectIndex, end);
-
-        slicedProjects.forEach(project => {
-            const projectElement = document.createElement('div');
-            projectElement.classList.add('project');
-
-            projectElement.innerHTML = `
-                <img src="${project.image}" alt="${project.title}">
-                <h3>${project.title}</h3>
-                <p>${project.description}</p>
-                <a href="${project.link}" target="_blank">View Project</a>
-            `;
-
-            projectContainer.appendChild(projectElement);
-        });
-
-        currentProjectIndex = end;
-        isLoading = false;
-
-        // Hide loader
-        document.getElementById('loader').style.display = 'none';
-
-        // If all projects are loaded, remove the scroll event listener
-        if (currentProjectIndex >= projects.length) {
-            window.removeEventListener('scroll', handleScroll);
-            const endMessage = document.createElement('p');
-            endMessage.textContent = 'You have reached the end of the page.';
-            endMessage.style.textAlign = 'center';
-            endMessage.style.marginTop = '20px';
-            projectContainer.appendChild(endMessage);
-        }
-    });
-}
-
-// Handle scroll event
-function handleScroll() {
-    const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-
-    // When the user has scrolled to within 100px of the bottom, load more projects
-    if (scrollTop + clientHeight >= scrollHeight - 100) {
-        loadProjects();
-    }
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    loadProjects(); // Initial load
-    window.addEventListener('scroll', handleScroll);
-});
+// Removed unused infinite scroll code since projects are static in the HTML
 
 // Function to smoothly scroll to the top
 function scrollToTop() {
@@ -70,30 +8,13 @@ function scrollToTop() {
     });
 }
 
-/*var images = [
-    'images/Screenshot 2024-09-22 173558.png',
-    'image2.jpg',
-    'image3.jpg',
-];
-
-var currentIndex = 0;
-var carouselImage = document.getElementById('carousel-image');
-
-function changeImage() {
-    currentIndex++;
-    if (currentIndex >= images.length) {
-        currentIndex = 0;
-    }
-    carouselImage.src = images[currentIndex];
-}
-
-// Change image every 5000 milliseconds (5 seconds)
-setInterval(changeImage, 5000); */
-
-// script.js
-
+// Parallax effect for .parallax-3 section if it exists
 document.addEventListener('DOMContentLoaded', () => {
     const parallax3 = document.querySelector('.parallax-3');
+    
+    // Exit early if parallax-3 doesn't exist
+    if (!parallax3) return;
+    
     const layers = parallax3.querySelectorAll('.parallax-layer');
 
     // Check for reduced motion preference
@@ -125,4 +46,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.addEventListener('scroll', handleScroll);
 });
+
+// Removed commented-out carousel code (unused)
 
