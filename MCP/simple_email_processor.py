@@ -634,7 +634,9 @@ def process_email_to_page(email_content: str) -> bool:
                             if attachment.get('content_type', '').startswith('image/'):
                                 # Found the first image in body order - get its saved path
                                 page_prefix = re.sub(r'[^a-zA-Z0-9]', '_', parsed["title"].lower())[:20]
-                                expected_filename = f"{page_prefix}_{attachment['filename']}"
+                                # Sanitize attachment filename the same way save_attachment does
+                                sanitized_attachment_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', attachment['filename'])
+                                expected_filename = f"{page_prefix}_{sanitized_attachment_filename}"
                                 tile_image = f"images/{expected_filename}"
                                 break
                 
