@@ -543,14 +543,22 @@ footer {
 /* Blog Content Images - Mobile: Full width */
 @media (max-width: 768px) {
     .wrap-text-container img,
-    .content img {
-        max-width: 100%; /* Full width on mobile */
-        width: 100%; /* Ensure it takes full width */
+    .content img,
+    .wrap-text-container div img,
+    .content div img {
+        max-width: 100% !important; /* Full width on mobile */
+        width: 100% !important; /* Ensure it takes full width */
         height: auto;
         display: block;
         margin: 15px auto;
         border-radius: 4px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    /* Ensure alignment containers don't restrict width on mobile */
+    .wrap-text-container div[style*="display: flex"],
+    .content div[style*="display: flex"] {
+        width: 100% !important;
     }
 }
 
