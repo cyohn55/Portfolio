@@ -342,7 +342,7 @@ def process_inline_media(content: str, attachments: List[Dict], title: str) -> t
             # Create HTML for the media
             if content_type.startswith('image/'):
                 alt_text = os.path.basename(original_filename)
-                media_html = f'<img src="{saved_path}" alt="{alt_text}" style="max-width: 50vw; height: auto; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">'
+                media_html = f'<img src="{saved_path}" alt="{alt_text}">'
             elif content_type.startswith('video/'):
                 media_html = f'<video controls style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px;"><source src="{saved_path}" type="{content_type}">Your browser does not support the video tag.</video>'
             else:

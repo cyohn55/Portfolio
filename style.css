@@ -527,7 +527,7 @@ footer {
     padding: 20px;
 }
 
-/* Blog Content Images - Desktop Only */
+/* Blog Content Images - Desktop: Centered and 50% width */
 @media (min-width: 769px) {
     .wrap-text-container img,
     .content img {
@@ -535,20 +535,22 @@ footer {
         height: auto;
         display: block;
         margin: 20px auto; /* Centers the image with vertical spacing */
-        border-radius: 4px;
+        border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
 }
 
-/* Blog Content Images - Mobile (maintain full responsiveness) */
+/* Blog Content Images - Mobile: Full width */
 @media (max-width: 768px) {
     .wrap-text-container img,
     .content img {
-        max-width: 100%;
+        max-width: 100%; /* Full width on mobile */
+        width: 100%; /* Ensure it takes full width */
         height: auto;
         display: block;
         margin: 15px auto;
         border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
 }
 
