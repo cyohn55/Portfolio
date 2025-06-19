@@ -427,8 +427,17 @@ def markdown_to_html(content: str) -> str:
     
     for para in paragraphs:
         para = para.strip()
-        if para and not para.startswith('<'):
-            html_paragraphs.append(f'<p>{para}</p>')
+        if para:
+            # Check if paragraph contains HTML tags or is already a complete HTML element
+            if (para.startswith('<') or 
+                '<h1>' in para or '<h2>' in para or '<h3>' in para or 
+                '<div' in para or '<img' in para or '<video' in para or 
+                '<ul>' in para or '<li>' in para):
+                # Don't wrap HTML content in paragraph tags
+                html_paragraphs.append(para)
+            else:
+                # Wrap plain text in paragraph tags
+                html_paragraphs.append(f'<p>{para}</p>')
         else:
             html_paragraphs.append(para)
     
