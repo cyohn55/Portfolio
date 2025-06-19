@@ -394,6 +394,15 @@ def create_html_page(title: str, content: str, filename: str, attachments: List[
         # Get navigation links
         nav_links = get_existing_nav_links()
         
+        # Determine the best image for social media (first image from saved files or default)
+        page_image = "images/python.jpg"  # Default fallback
+        if saved_files:
+            # Use the first saved image file
+            for file_path in saved_files:
+                if any(file_path.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.webp', '.gif']):
+                    page_image = file_path.replace('../', '')
+                    break
+        
         # Generate HTML
         html_template = f"""<!DOCTYPE html>
 <html lang="en">
@@ -402,6 +411,27 @@ def create_html_page(title: str, content: str, filename: str, attachments: List[
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{html.escape(title)}</title>
     <meta name="description" content="{html.escape(title)} - Cody's Portfolio">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="../{page_image}">
+    <link rel="icon" type="image/png" sizes="32x32" href="../{page_image}">
+    <link rel="icon" type="image/png" sizes="16x16" href="../{page_image}">
+    <link rel="apple-touch-icon" href="../{page_image}">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://cyohn55.github.io/Portfolio/Pages/{filename}">
+    <meta property="og:title" content="{html.escape(title)}">
+    <meta property="og:description" content="{html.escape(title)} - Cody's Portfolio">
+    <meta property="og:image" content="https://cyohn55.github.io/Portfolio/{page_image}">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://cyohn55.github.io/Portfolio/Pages/{filename}">
+    <meta property="twitter:title" content="{html.escape(title)}">
+    <meta property="twitter:description" content="{html.escape(title)} - Cody's Portfolio">
+    <meta property="twitter:image" content="https://cyohn55.github.io/Portfolio/{page_image}">
+    
     <!-- Link to CSS -->
     <link rel="stylesheet" href="../style.css">
 </head>
