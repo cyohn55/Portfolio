@@ -382,8 +382,8 @@ def process_inline_media(content: str, attachments: List[Dict], title: str) -> t
     
     return processed_content, saved_files
 
-def create_html_page(title: str, content: str, filename: str, attachments: List[Dict] = None) -> bool:
-    """Create HTML page with inline media embedded in content"""
+def create_html_page(title: str, content: str, filename: str, attachments: List[Dict] = None) -> tuple:
+    """Create HTML page with inline media embedded in content, returns (success, saved_files)"""
     try:
         # Process attachments and embed them inline in content
         processed_content, saved_files = process_inline_media(content, attachments or [], title)
@@ -444,11 +444,11 @@ def create_html_page(title: str, content: str, filename: str, attachments: List[
         if saved_files:
             print(f"Saved {len(saved_files)} media files: {', '.join(os.path.basename(f) for f in saved_files)}")
         
-        return True
+        return True, saved_files
         
     except Exception as e:
         print(f"Error creating HTML page: {e}")
-        return False
+        return False, []
 
 def update_main_index_navigation():
     """Update navigation in main index.html - keep only Home link"""
@@ -491,6 +491,11 @@ def add_research_tile(title: str, description: str, filename: str, tile_image: s
         # Read current index.html
         with open(index_path, 'r', encoding='utf-8') as f:
             content = f.read()
+        
+        # Check if tile already exists to prevent duplicates
+        if f'href="Pages/{filename}"' in content:
+            print(f"Tile for '{title}' already exists - skipping duplicate creation")
+            return True
         
         # Use default image if no tile image specified
         if not tile_image:
@@ -604,17 +609,10 @@ def process_email_to_page(email_content: str) -> bool:
         # Generate filename
         filename = sanitize_filename(parsed["title"])
         
-        # Track saved media files for git operations
-        saved_media_files = []
-        
         # Create HTML page with attachments
-        if create_html_page(parsed["title"], parsed["content"], filename, parsed.get("attachments")):
-            # Collect paths of saved media files
-            if parsed.get("attachments"):
-                for attachment in parsed["attachments"]:
-                    saved_path = save_attachment(attachment, parsed["title"])
-                    if saved_path:
-                        saved_media_files.append(saved_path)
+        success, saved_media_files = create_html_page(parsed["title"], parsed["content"], filename, parsed.get("attachments"))
+        
+        if success:
             
             # Update navigation
             update_main_index_navigation()
@@ -622,15 +620,16 @@ def process_email_to_page(email_content: str) -> bool:
             # Add research tile to home page if description is provided
             description = parsed.get("description", "")
             if description:
-                # Look for tile image in attachments (use first image found)
+                # Look for tile image in saved media files (use first image found)
                 tile_image = None
-                for attachment in parsed.get("attachments", []):
-                    if attachment.get('content_type', '').startswith('image/'):
-                        # Use the saved path of the first image
-                        saved_path = save_attachment(attachment, parsed["title"])
-                        if saved_path:
-                            tile_image = saved_path
-                            break
+                for media_file in saved_media_files:
+                    if media_file and any(ext in media_file.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                        # Convert path for home page context
+                        if media_file.startswith('../'):
+                            tile_image = media_file[3:]  # Remove '../' prefix
+                        else:
+                            tile_image = media_file
+                        break
                 
                 add_research_tile(parsed["title"], description, filename, tile_image)
             else:
