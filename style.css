@@ -155,6 +155,11 @@ section h2 {
     /* Removed word-wrap: normal; */
 }
 
+/* Article titles - responsive alignment */
+.article-title {
+    margin-bottom: 20px;
+}
+
 /* Email-generated content images - cap at 50% of viewport width */
 .wrap-text-container img {
     max-width: 50vw !important;
@@ -529,6 +534,11 @@ footer {
 
 /* Blog Content Images - Desktop: Centered and 80% width/height */
 @media (min-width: 769px) {
+    /* Desktop: Center article titles */
+    .article-title {
+        text-align: center;
+    }
+    
     .wrap-text-container img,
     .content img,
     .wrap-text-container div img,
@@ -547,6 +557,11 @@ footer {
 
 /* Blog Content Images - Mobile: Full width */
 @media (max-width: 768px) {
+    /* Mobile: Left-align article titles */
+    .article-title {
+        text-align: left;
+    }
+    
     .wrap-text-container img,
     .content img,
     .wrap-text-container div img,

@@ -608,7 +608,7 @@ def create_html_page(title: str, content: str, filename: str, attachments: List[
     <div class="content">
         <!-- Written Section -->
         <div class="wrap-text-container">
-            <h1 style="text-align: center;">{html.escape(title)}</h1>
+            <h1 class="article-title">{html.escape(title)}</h1>
             {content_html}
             <p><em>Created: {datetime.now().strftime('%B %d, %Y')}</em></p>
         </div>
