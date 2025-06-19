@@ -1,18 +1,19 @@
 # 🧹 Manual Email Cleanup Guide
 
-## ✅ **SECURITY UPDATE: Risk Significantly Reduced**
+## ✅ **SECURITY UPDATE: Title-Based Processing Implemented**
 
-**NEW FEATURE**: The system now only processes the **MOST RECENT EMAIL** from the authorized sender, making old delete commands harmless.
+**NEW FEATURE**: The system now processes emails based on **TITLE/SUBJECT** - processing only the most recent email for each unique title.
 
 ### **Previous Risk** (Now Eliminated):
 - ~~Old `[Del]` commands could delete newer versions if system restarts~~
 - ~~Processed emails tracking reset could cause reprocessing~~
 - ~~System configuration changes could trigger old commands~~
 
-### **Current Status**: 🟢 **SAFE**
-- ✅ Only the most recent email is processed
-- ✅ Old delete commands are automatically IGNORED
-- ✅ No risk of reprocessing old commands
+### **Current Status**: 🟢 **SAFE + ENHANCED**
+- ✅ Only the most recent email per title is processed
+- ✅ Old delete commands with same title are automatically IGNORED
+- ✅ **NEW**: Pages can be updated by sending new emails with same title
+- ✅ **NEW**: No duplicate pages created from same titles
 - ✅ Cleanup is now OPTIONAL (but still good practice)
 
 ## 🔍 **Check for Old Delete Commands**
@@ -140,6 +141,6 @@ Add the email IDs to the processed list:
 - The file gets deleted unexpectedly
 - System logs show unexpected delete commands
 
-**Status**: ✅ **SECURE**  
+**Status**: ✅ **SECURE + ENHANCED**  
 **Next Action**: Optional cleanup for email hygiene (no longer critical)  
-**Protection**: Most recent email only + backup system active 
+**Protection**: Title-based processing + automatic overwrite capability 

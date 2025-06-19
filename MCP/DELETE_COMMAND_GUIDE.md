@@ -127,33 +127,39 @@ Page not found: ../Pages/nonexistent.html
 Failed to delete page: nonexistent page
 ```
 
-## ⚠️ CRITICAL SECURITY FEATURE: Most Recent Email Only
+## ⚠️ ENHANCED FEATURE: Title-Based Email Processing
 
-**IMPORTANT**: The system now only processes delete commands from the **MOST RECENT EMAIL** from the authorized sender.
+**NEW BEHAVIOR**: The system now processes emails based on **TITLE/SUBJECT** - processing the most recent email for each unique title.
 
 ### How It Works:
-- System sorts all emails by timestamp (newest first)
-- Only the most recent email is processed for ANY commands (create or delete)
-- All older emails are marked as processed but IGNORED
-- This prevents old delete commands from accidentally being processed
+- **Title Grouping**: System groups emails by subject/title
+- **Most Recent Per Title**: For each unique title, only the most recent email is processed
+- **Overwrite Capability**: New emails with the same title will overwrite existing pages
+- **Update Feature**: Send a new email with the same title to update/edit a page
 
 ### Example Scenario:
 ```
-Email 1 (10:00 AM): "[Del] Important Project" 
-Email 2 (10:30 AM): "New Blog Post About Algorithms"
+Email 1 (10:00 AM): "My Algorithm Projects" (creates page)
+Email 2 (10:30 AM): "Database Design Tips" (creates page)  
+Email 3 (11:00 AM): "My Algorithm Projects" (UPDATES first page)
+Email 4 (11:30 AM): "[Del] Database Design Tips" (deletes second page)
 
-Result: Only Email 2 is processed (creates new page)
-        Email 1's delete command is IGNORED
+Result: 
+- "My Algorithm Projects" page shows content from Email 3 (most recent)
+- "Database Design Tips" page is deleted (Email 4)
 ```
 
 ### Benefits:
-- ✅ Prevents accidental deletions from old emails
-- ✅ Eliminates risk of reprocessing old delete commands
-- ✅ System always acts on your latest intent only
-- ✅ No need to clean up old emails to prevent accidents
+- ✅ **Easy Page Updates**: Send new email with same title to update content
+- ✅ **No Duplicate Pages**: Same titles overwrite instead of creating duplicates
+- ✅ **Prevents Old Delete Commands**: Only most recent delete commands per title are processed
+- ✅ **Flexible Workflow**: Edit pages by sending updated emails
+- ✅ **Safe Processing**: Old emails with same title are automatically ignored
 
-### Emergency Override:
-If you need to delete something and have sent other emails after, send a NEW email with ONLY the delete command to make it the most recent email.
+### Page Update Workflow:
+1. **Create Page**: Send email with title "My Project"
+2. **Update Page**: Send new email with same title "My Project" (overwrites)
+3. **Delete Page**: Send email with title "[Del] My Project"
 
 ## Safety Features
 

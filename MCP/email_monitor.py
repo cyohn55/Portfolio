@@ -184,7 +184,7 @@ class EmailMonitor:
             return {"success": False, "error": str(e)}
     
     def process_new_emails(self):
-        """Check for and process new emails - only process the most recent email"""
+        """Check for and process new emails - group by title and process most recent per title"""
         mail = self.connect_to_email()
         if not mail:
             return
@@ -209,23 +209,20 @@ class EmailMonitor:
             if not email_ids:
                 return
             
-            # Get email details (date and ID) for sorting
+            # Get email details (date, ID, and subject) for grouping by title
             email_details = []
             for email_id in email_ids:
                 email_id_str = email_id.decode()
-                
-                # Skip if already processed
-                if email_id_str in self.processed_emails:
-                    continue
                     
-                # Fetch email header for date
+                # Fetch email header for date and subject
                 status, msg_data = mail.fetch(email_id, '(INTERNALDATE RFC822.HEADER)')
                 if status != 'OK':
                     continue
                 
-                # Parse email for date
+                # Parse email for date and subject
                 msg = email.message_from_bytes(msg_data[0][1])
                 date_header = msg.get('Date', '')
+                subject = msg.get('Subject', 'No Subject')
                 
                 try:
                     # Parse email date
@@ -234,6 +231,7 @@ class EmailMonitor:
                         'id': email_id,
                         'id_str': email_id_str,
                         'date': email_date,
+                        'subject': subject,
                         'msg': msg
                     })
                 except Exception as e:
@@ -243,61 +241,77 @@ class EmailMonitor:
                         'id': email_id,
                         'id_str': email_id_str,
                         'date': datetime.now(),
+                        'subject': subject,
                         'msg': msg
                     })
             
             if not email_details:
-                logger.info("No new emails to process (all already processed)")
+                logger.info("No emails found to process")
                 return
             
-            # Sort by date (newest first)
-            email_details.sort(key=lambda x: x['date'], reverse=True)
+            # Group emails by subject/title and find the most recent for each title
+            title_groups = {}
+            for email_detail in email_details:
+                subject = email_detail['subject']
+                if subject not in title_groups:
+                    title_groups[subject] = []
+                title_groups[subject].append(email_detail)
             
-            # Process ONLY the most recent email
-            latest_email = email_details[0]
-            email_id_str = latest_email['id_str']
-            
-            logger.info(f"Processing MOST RECENT email only: ID {email_id_str} from {latest_email['date']}")
-            
-            # Fetch full email content
-            status, msg_data = mail.fetch(latest_email['id'], '(RFC822)')
-            if status != 'OK':
-                logger.error(f"Failed to fetch email {email_id_str}")
-                return
-            
-            # Parse email
-            msg = email.message_from_bytes(msg_data[0][1])
-            email_content = self.extract_email_content(msg)
-            
-            logger.info(f"Processing email: {email_content['subject']}")
-            
-            # Check if this email should create a page
-            if self.is_page_creation_email(email_content['subject'], email_content['body']):
-                # Process full email message (preserves attachments)
-                result = self.create_page_from_email(msg)
+            # Process the most recent email for each unique title
+            processed_any = False
+            for subject, email_list in title_groups.items():
+                # Sort by date (newest first) for this title
+                email_list.sort(key=lambda x: x['date'], reverse=True)
+                latest_email_for_title = email_list[0]
                 
-                if result['success']:
-                    logger.info(f"Successfully created page: {email_content['subject']}")
-                    # Mark email as processed
-                    self.processed_emails.add(email_id_str)
+                # Check if we've already processed this exact email
+                if latest_email_for_title['id_str'] in self.processed_emails:
+                    logger.info(f"Email already processed: {subject}")
+                    continue
+                
+                logger.info(f"Processing most recent email for title '{subject}': ID {latest_email_for_title['id_str']} from {latest_email_for_title['date']}")
+                
+                # Fetch full email content
+                status, msg_data = mail.fetch(latest_email_for_title['id'], '(RFC822)')
+                if status != 'OK':
+                    logger.error(f"Failed to fetch email {latest_email_for_title['id_str']}")
+                    continue
+                
+                # Parse email
+                msg = email.message_from_bytes(msg_data[0][1])
+                email_content = self.extract_email_content(msg)
+                
+                # Check if this email should create a page
+                if self.is_page_creation_email(email_content['subject'], email_content['body']):
+                    # Process full email message (preserves attachments)
+                    result = self.create_page_from_email(msg)
                     
-                    # Optionally mark email as read (already might be read)
-                    try:
-                        mail.store(latest_email['id'], '+FLAGS', '\\Seen')
-                    except:
-                        pass  # Email might already be marked as read
+                    if result['success']:
+                        logger.info(f"Successfully created/updated page: {email_content['subject']}")
+                        processed_any = True
+                        
+                        # Mark this email as processed
+                        self.processed_emails.add(latest_email_for_title['id_str'])
+                        
+                        # Mark ALL older emails with the same title as processed (to prevent reprocessing)
+                        for older_email in email_list[1:]:  # Skip the first (most recent) one
+                            self.processed_emails.add(older_email['id_str'])
+                            logger.info(f"Marked older email with same title as processed: ID {older_email['id_str']}")
+                        
+                        # Optionally mark email as read
+                        try:
+                            mail.store(latest_email_for_title['id'], '+FLAGS', '\\Seen')
+                        except:
+                            pass  # Email might already be marked as read
+                    else:
+                        logger.error(f"Failed to create page: {result.get('error', 'Unknown error')}")
                 else:
-                    logger.error(f"Failed to create page: {result.get('error', 'Unknown error')}")
-            else:
-                logger.info(f"Email not marked for page creation: {email_content['subject']}")
-                # Mark as processed but don't create page
-                self.processed_emails.add(email_id_str)
+                    logger.info(f"Email not marked for page creation: {email_content['subject']}")
+                    # Mark as processed but don't create page
+                    self.processed_emails.add(latest_email_for_title['id_str'])
             
-            # Mark ALL other emails as processed (but don't act on them)
-            for email_detail in email_details[1:]:
-                old_email_id_str = email_detail['id_str']
-                self.processed_emails.add(old_email_id_str)
-                logger.info(f"Marked older email as processed (skipped): ID {old_email_id_str}")
+            if not processed_any:
+                logger.info("No new emails to process (all titles already processed)")
             
             # Save processed emails list
             self.save_processed_emails()
