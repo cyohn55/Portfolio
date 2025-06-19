@@ -527,16 +527,21 @@ footer {
     padding: 20px;
 }
 
-/* Blog Content Images - Desktop: Centered and 50% width */
+/* Blog Content Images - Desktop: Centered and 50% width/height */
 @media (min-width: 769px) {
     .wrap-text-container img,
-    .content img {
+    .content img,
+    .wrap-text-container div img,
+    .content div img {
         max-width: 50vw; /* Half the viewport width */
+        max-height: 50vh; /* Half the viewport height */
         height: auto;
+        width: auto;
         display: block;
         margin: 20px auto; /* Centers the image with vertical spacing */
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        object-fit: contain; /* Maintain aspect ratio within the 50vw x 50vh bounds */
     }
 }
 
