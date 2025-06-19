@@ -600,12 +600,210 @@ def commit_and_push_changes(filename: str, title: str, media_files: List[str] = 
         print(f"Error with git operations: {e}")
         return False
 
+def delete_page_and_tile(page_identifier: str) -> bool:
+    """Delete a page and its corresponding tile from the home page"""
+    try:
+        # Determine if identifier is a title or filename
+        if page_identifier.endswith('.html'):
+            # It's a filename
+            filename = page_identifier
+            # Try to extract title from the file
+            page_path = f"../Pages/{filename}"
+            title = None
+            if os.path.exists(page_path):
+                with open(page_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    # Extract title from HTML
+                    title_match = re.search(r'<title>([^<]+)</title>', content)
+                    if title_match:
+                        title = title_match.group(1).strip()
+        else:
+            # It's a title, generate filename
+            title = page_identifier
+            filename = sanitize_filename(title)
+            if not filename.endswith('.html'):
+                filename += '.html'
+        
+        page_path = f"../Pages/{filename}"
+        
+        # Check if page exists
+        if not os.path.exists(page_path):
+            print(f"Page not found: {page_path}")
+            return False
+        
+        # Delete the page file
+        os.remove(page_path)
+        print(f"Deleted page: {filename}")
+        
+        # Remove tile from home page
+        success = remove_research_tile(filename, title)
+        if success:
+            print(f"Removed tile from home page")
+        else:
+            print(f"Warning: Could not remove tile from home page")
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error deleting page and tile: {e}")
+        return False
+
+def remove_research_tile(filename: str, title: str = None) -> bool:
+    """Remove a research tile from the home page"""
+    try:
+        index_path = "../index.html"
+        
+        if not os.path.exists(index_path):
+            print(f"Index file not found: {index_path}")
+            return False
+        
+        # Read current content
+        with open(index_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Find and remove the tile
+        # Look for the tile with the specific filename
+        tile_pattern = rf'<div class="project">\s*<img[^>]*>\s*<h3>[^<]*</h3>\s*<p>[^<]*</p>\s*<a href="Pages/{re.escape(filename)}"[^>]*>View Project</a>\s*</div>'
+        
+        # Try to find the tile
+        match = re.search(tile_pattern, content, re.DOTALL | re.IGNORECASE)
+        
+        if match:
+            # Remove the tile
+            updated_content = content.replace(match.group(0), '')
+            
+            # Write back
+            with open(index_path, 'w', encoding='utf-8') as f:
+                f.write(updated_content)
+            
+            print(f"Removed tile for: {filename}")
+            return True
+        else:
+            print(f"Tile not found for: {filename}")
+            return False
+        
+    except Exception as e:
+        print(f"Error removing research tile: {e}")
+        return False
+
+def is_delete_command(subject: str, content: str) -> tuple[bool, str]:
+    """Check if email is a delete command and extract the page identifier"""
+    try:
+        # Check subject for delete command
+        subject_lower = subject.lower().strip()
+        content_lower = content.lower().strip()
+        
+        # Look for [Delete] or [delete] tag in subject or content
+        delete_patterns = [
+            r'\[delete\]\s*(.+)',
+            r'delete:\s*(.+)',
+            r'remove:\s*(.+)',
+            r'\[remove\]\s*(.+)'
+        ]
+        
+        # Check subject first
+        for pattern in delete_patterns:
+            match = re.search(pattern, subject_lower)
+            if match:
+                page_identifier = match.group(1).strip()
+                return True, page_identifier
+        
+        # Check content
+        for pattern in delete_patterns:
+            match = re.search(pattern, content_lower)
+            if match:
+                page_identifier = match.group(1).strip()
+                return True, page_identifier
+        
+        return False, ""
+        
+    except Exception as e:
+        print(f"Error checking delete command: {e}")
+        return False, ""
+
+def commit_delete_changes(filename: str, title: str) -> bool:
+    """Commit and push page deletion to GitHub"""
+    try:
+        # Change to the main directory (parent of MCP)
+        main_dir = ".."
+        
+        # Remove the deleted page file from git
+        result = subprocess.run([
+            'git', 'rm', f'Pages/{filename}'
+        ], cwd=main_dir, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"Git rm page failed: {result.stderr}")
+            return False
+        
+        # Add updated index.html (for tile removal)
+        result = subprocess.run([
+            'git', 'add', 'index.html'
+        ], cwd=main_dir, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"Git add index.html failed: {result.stderr}")
+            return False
+        
+        # Commit the changes
+        commit_message = f"Delete page: {title or filename}\n\nAutomatically deleted via email command\nRemoved page and corresponding home page tile"
+            
+        result = subprocess.run([
+            'git', 'commit', '-m', commit_message
+        ], cwd=main_dir, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"Git commit failed: {result.stderr}")
+            return False
+        
+        # Push to GitHub
+        result = subprocess.run([
+            'git', 'push'
+        ], cwd=main_dir, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"Git push failed: {result.stderr}")
+            return False
+        
+        print(f"Successfully pushed deletion of '{title or filename}' to GitHub!")
+        return True
+        
+    except Exception as e:
+        print(f"Error with git operations: {e}")
+        return False
+
 def process_email_to_page(email_content: str) -> bool:
-    """Process email content and create web page with attachments"""
+    """Process email content - either create web page or delete existing page"""
     try:
         # Parse email
         parsed = parse_email_content(email_content)
         
+        # Check if this is a delete command
+        is_delete, page_identifier = is_delete_command(parsed["title"], parsed["content"])
+        
+        if is_delete:
+            print(f"Delete command detected for: {page_identifier}")
+            
+            # Delete the page and tile
+            if delete_page_and_tile(page_identifier):
+                # Get the actual filename that was used
+                if page_identifier.endswith('.html'):
+                    actual_filename = page_identifier
+                else:
+                    actual_filename = sanitize_filename(page_identifier) + '.html'
+                
+                # Commit and push the deletion
+                if commit_delete_changes(actual_filename, page_identifier):
+                    print(f"Successfully deleted '{page_identifier}' and pushed to GitHub!")
+                    return True
+                else:
+                    print(f"Page deleted locally but failed to push to GitHub: {page_identifier}")
+                    return False
+            else:
+                print(f"Failed to delete page: {page_identifier}")
+                return False
+        
+        # Regular page creation logic
         # Generate filename
         filename = sanitize_filename(parsed["title"])
         
