@@ -527,21 +527,21 @@ footer {
     padding: 20px;
 }
 
-/* Blog Content Images - Desktop: Centered and 25% width/height */
+/* Blog Content Images - Desktop: Centered and 40% width/height */
 @media (min-width: 769px) {
     .wrap-text-container img,
     .content img,
     .wrap-text-container div img,
     .content div img {
-        max-width: 25vw; /* Quarter of the viewport width */
-        max-height: 25vh; /* Quarter of the viewport height */
+        max-width: 40vw; /* 40% of the viewport width */
+        max-height: 40vh; /* 40% of the viewport height */
         height: auto;
         width: auto;
         display: block;
         margin: 20px auto; /* Centers the image with vertical spacing */
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        object-fit: contain; /* Maintain aspect ratio within the 25vw x 25vh bounds */
+        object-fit: contain; /* Maintain aspect ratio within the 40vw x 40vh bounds */
     }
 }
 
