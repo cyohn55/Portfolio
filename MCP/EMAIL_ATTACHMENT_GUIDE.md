@@ -91,7 +91,7 @@ Your email-to-website system now supports **direct email attachments**! Attach i
 All attachments get professional styling automatically:
 
 ### **Images:**
-- **Responsive**: Max-width 100%, auto-height
+- **Responsive**: Max-width 50% of viewport (50vw), auto-height
 - **Spacing**: 10px margins
 - **Visual**: Rounded corners (8px border-radius)
 - **Shadow**: Subtle drop shadow for depth

@@ -99,7 +99,7 @@ I'm planning to deploy this as a web app using Flask. Stay tuned for updates!
 ## 🎨 **STYLING**
 
 All media automatically includes responsive styling:
-- **Images**: Max-width 100%, auto-height, 10px margins
+- **Images**: Max-width 50% of viewport (50vw), auto-height, 10px margins, rounded corners, drop shadow
 - **Videos**: Responsive, controls enabled
 - **YouTube**: 16:9 aspect ratio, fully responsive
 - **Links**: Open in new tab
