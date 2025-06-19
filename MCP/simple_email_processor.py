@@ -234,6 +234,68 @@ def sanitize_filename(title: str) -> str:
     filename = filename.lower().replace(' ', '')
     return filename + '.html'
 
+def process_alignment_tags(content: str) -> str:
+    """Process custom alignment tags: [center], [left], [right] for text, images, and videos"""
+    lines = content.split('\n')
+    processed_lines = []
+    
+    for line in lines:
+        original_line = line
+        line = line.strip()
+        
+        # Check for alignment tags at the beginning of the line
+        if line.startswith('[center]'):
+            # Remove the tag and get content
+            content_text = line[8:].strip()  # Remove '[center]' (8 characters)
+            if content_text:
+                # Check if content contains media elements (img, video, or media placeholders)
+                if ('<img ' in content_text or '<video ' in content_text or 
+                    '__MEDIA_PLACEHOLDER_' in content_text or 
+                    any(content_text.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.mov', '.avi'])):
+                    # For media, use flexbox centering for better control
+                    processed_lines.append(f'<div style="display: flex; justify-content: center; margin: 10px 0;">{content_text}</div>')
+                else:
+                    # For text, use text-align
+                    processed_lines.append(f'<div style="text-align: center; margin: 10px 0;">{content_text}</div>')
+            else:
+                processed_lines.append(original_line)  # Keep original if no content after tag
+                
+        elif line.startswith('[left]'):
+            # Remove the tag and get content
+            content_text = line[6:].strip()  # Remove '[left]' (6 characters)
+            if content_text:
+                # Check if content contains media elements
+                if ('<img ' in content_text or '<video ' in content_text or 
+                    '__MEDIA_PLACEHOLDER_' in content_text or 
+                    any(content_text.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.mov', '.avi'])):
+                    # For media, use flexbox left alignment
+                    processed_lines.append(f'<div style="display: flex; justify-content: flex-start; margin: 10px 0;">{content_text}</div>')
+                else:
+                    # For text, use text-align
+                    processed_lines.append(f'<div style="text-align: left; margin: 10px 0;">{content_text}</div>')
+            else:
+                processed_lines.append(original_line)  # Keep original if no content after tag
+                
+        elif line.startswith('[right]'):
+            # Remove the tag and get content
+            content_text = line[7:].strip()  # Remove '[right]' (7 characters)
+            if content_text:
+                # Check if content contains media elements
+                if ('<img ' in content_text or '<video ' in content_text or 
+                    '__MEDIA_PLACEHOLDER_' in content_text or 
+                    any(content_text.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.mov', '.avi'])):
+                    # For media, use flexbox right alignment
+                    processed_lines.append(f'<div style="display: flex; justify-content: flex-end; margin: 10px 0;">{content_text}</div>')
+                else:
+                    # For text, use text-align
+                    processed_lines.append(f'<div style="text-align: right; margin: 10px 0;">{content_text}</div>')
+            else:
+                processed_lines.append(original_line)  # Keep original if no content after tag
+        else:
+            processed_lines.append(original_line)
+    
+    return '\n'.join(processed_lines)
+
 def markdown_to_html(content: str) -> str:
     """Convert basic markdown to HTML with media support"""
     # Don't escape HTML if it contains pre-embedded media tags
@@ -296,6 +358,9 @@ def markdown_to_html(content: str) -> str:
         return f'<div class="video-container" style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; margin: 10px 0;"><iframe src="https://www.youtube.com/embed/{video_id}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe></div>'
     
     content = re.sub(r'\[YOUTUBE\]\((.*?)\)', youtube_replacer, content)
+    
+    # Process custom alignment tags: [center], [left], [right]
+    content = process_alignment_tags(content)
     
     # Convert lists
     content = re.sub(r'^- (.*?)$', r'<li>\1</li>', content, flags=re.MULTILINE)
