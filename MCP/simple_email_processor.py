@@ -422,47 +422,44 @@ def markdown_to_html(content: str) -> str:
     content = re.sub(r'^- (.*?)$', r'<li>\1</li>', content, flags=re.MULTILINE)
     content = re.sub(r'(<li>.*?</li>)', r'<ul>\1</ul>', content, flags=re.DOTALL)
     
-    # Convert paragraphs
+    # Convert paragraphs - but first check each line for headers
     paragraphs = content.split('\n\n')
     html_paragraphs = []
     
     for para in paragraphs:
         para = para.strip()
         if para:
-            # Check if paragraph contains HTML tags or is already a complete HTML element
-            if (para.startswith('<') or 
-                '<h1>' in para or '<h2>' in para or '<h3>' in para or 
-                '<div' in para or '<img' in para or '<video' in para or 
-                '<ul>' in para or '<li>' in para):
-                # Don't wrap HTML content in paragraph tags
-                html_paragraphs.append(para)
-            else:
-                # Check if this paragraph contains headers that need to be separated
-                lines = para.split('\n')
-                processed_para_lines = []
-                current_text_block = []
+            # Split paragraph into lines to check for headers
+            lines = para.split('\n')
+            processed_para_lines = []
+            current_text_block = []
+            
+            for line in lines:
+                line_stripped = line.strip()
                 
-                for line in lines:
-                    line_stripped = line.strip()
-                    if (line_stripped.startswith('<h1>') or line_stripped.startswith('<h2>') or 
-                        line_stripped.startswith('<h3>') or line_stripped.startswith('<h4>') or
-                        line_stripped.startswith('<h5>') or line_stripped.startswith('<h6>')):
-                        # If we have accumulated text, wrap it in a paragraph
-                        if current_text_block:
-                            processed_para_lines.append(f'<p>{" ".join(current_text_block)}</p>')
-                            current_text_block = []
-                        # Add the header as-is
-                        processed_para_lines.append(line)
-                    else:
-                        # Accumulate text lines
-                        if line.strip():
-                            current_text_block.append(line.strip())
-                
-                # Handle any remaining text
-                if current_text_block:
-                    processed_para_lines.append(f'<p>{" ".join(current_text_block)}</p>')
-                
-                html_paragraphs.extend(processed_para_lines)
+                # Check if this line is already an HTML header or other HTML element
+                if (line_stripped.startswith('<h1>') or line_stripped.startswith('<h2>') or 
+                    line_stripped.startswith('<h3>') or line_stripped.startswith('<h4>') or
+                    line_stripped.startswith('<h5>') or line_stripped.startswith('<h6>') or
+                    line_stripped.startswith('<div') or line_stripped.startswith('<img') or 
+                    line_stripped.startswith('<video') or line_stripped.startswith('<ul>') or 
+                    line_stripped.startswith('<li>')):
+                    # If we have accumulated text, wrap it in a paragraph
+                    if current_text_block:
+                        processed_para_lines.append(f'<p>{" ".join(current_text_block)}</p>')
+                        current_text_block = []
+                    # Add the HTML element as-is
+                    processed_para_lines.append(line)
+                else:
+                    # Accumulate text lines
+                    if line.strip():
+                        current_text_block.append(line.strip())
+            
+            # Handle any remaining text
+            if current_text_block:
+                processed_para_lines.append(f'<p>{" ".join(current_text_block)}</p>')
+            
+            html_paragraphs.extend(processed_para_lines)
         else:
             html_paragraphs.append(para)
     
