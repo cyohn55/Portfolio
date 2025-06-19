@@ -371,17 +371,18 @@ def markdown_to_html(content: str) -> str:
             continue
         
         # Process markdown headers only if not inside alignment divs
-        if line.startswith('### '):
-            processed_lines.append(line.replace('### ', '<h3>', 1) + '</h3>')
-        elif line.startswith('## '):
-            processed_lines.append(line.replace('## ', '<h2>', 1) + '</h2>')
-        elif line.startswith('# ') and not first_h1_found:
+        line_stripped = line.strip()
+        if line_stripped.startswith('### '):
+            processed_lines.append('<h3>' + line_stripped[4:] + '</h3>')
+        elif line_stripped.startswith('## '):
+            processed_lines.append('<h2>' + line_stripped[3:] + '</h2>')
+        elif line_stripped.startswith('# ') and not first_h1_found:
             # Skip the first H1 to avoid duplication with page title
             first_h1_found = True
             continue
-        elif line.startswith('# '):
+        elif line_stripped.startswith('# '):
             # Convert subsequent H1s to H2s for better hierarchy
-            processed_lines.append(line.replace('# ', '<h2>', 1) + '</h2>')
+            processed_lines.append('<h2>' + line_stripped[2:] + '</h2>')
         else:
             processed_lines.append(line)
     
@@ -436,8 +437,32 @@ def markdown_to_html(content: str) -> str:
                 # Don't wrap HTML content in paragraph tags
                 html_paragraphs.append(para)
             else:
-                # Wrap plain text in paragraph tags
-                html_paragraphs.append(f'<p>{para}</p>')
+                # Check if this paragraph contains headers that need to be separated
+                lines = para.split('\n')
+                processed_para_lines = []
+                current_text_block = []
+                
+                for line in lines:
+                    line_stripped = line.strip()
+                    if (line_stripped.startswith('<h1>') or line_stripped.startswith('<h2>') or 
+                        line_stripped.startswith('<h3>') or line_stripped.startswith('<h4>') or
+                        line_stripped.startswith('<h5>') or line_stripped.startswith('<h6>')):
+                        # If we have accumulated text, wrap it in a paragraph
+                        if current_text_block:
+                            processed_para_lines.append(f'<p>{" ".join(current_text_block)}</p>')
+                            current_text_block = []
+                        # Add the header as-is
+                        processed_para_lines.append(line)
+                    else:
+                        # Accumulate text lines
+                        if line.strip():
+                            current_text_block.append(line.strip())
+                
+                # Handle any remaining text
+                if current_text_block:
+                    processed_para_lines.append(f'<p>{" ".join(current_text_block)}</p>')
+                
+                html_paragraphs.extend(processed_para_lines)
         else:
             html_paragraphs.append(para)
     
