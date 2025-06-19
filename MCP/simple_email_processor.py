@@ -75,7 +75,9 @@ def save_attachment(attachment: Dict[str, Any], page_title: str) -> str:
         # Save file
         filepath = os.path.join(images_dir, filename)
         with open(filepath, 'wb') as f:
-            f.write(attachment['content'])
+            # Handle both 'content' and 'data' keys for backwards compatibility
+            attachment_data = attachment.get('data') or attachment.get('content')
+            f.write(attachment_data)
         
         print(f"Saved attachment: {filename}")
         return f"../images/{filename}"
@@ -85,7 +87,7 @@ def save_attachment(attachment: Dict[str, Any], page_title: str) -> str:
         return None
 
 def parse_email_content(email_text: str) -> Dict[str, Any]:
-    """Parse email content to extract title, content, and attachments"""
+    """Parse email content maintaining exact sequential order of text and media"""
     try:
         # Try to parse as full email message first
         msg = email.message_from_string(email_text)
@@ -93,37 +95,95 @@ def parse_email_content(email_text: str) -> Dict[str, Any]:
         # Extract basic info
         subject = msg.get('Subject', 'New Page')
         
-        # Extract text content
-        content_lines = []
+        # Process parts in exact sequential order to maintain 1:1 structure
+        ordered_content = []
         attachments = []
         
         if msg.is_multipart():
-            # Extract attachments
-            attachments = extract_attachments(msg)
-            
-            # Extract text content
+            # Process all parts in the order they appear in the email
             for part in msg.walk():
-                if part.get_content_type() == "text/plain":
+                content_type = part.get_content_type()
+                content_disposition = part.get('Content-Disposition', '')
+                
+                if content_type == "text/plain" and 'attachment' not in content_disposition:
+                    # This is text content - add to ordered sequence
                     try:
                         text_content = part.get_payload(decode=True).decode('utf-8')
-                        content_lines.extend(text_content.split('\n'))
+                        if text_content.strip():
+                            ordered_content.append({
+                                'type': 'text',
+                                'content': text_content.strip()
+                            })
+                    except:
+                        continue
+                        
+                elif content_type.startswith(('image/', 'video/', 'audio/')):
+                    # This is media - add placeholder to ordered sequence
+                    filename = part.get_filename()
+                    if not filename:
+                        # Generate filename for inline attachments
+                        ext = mimetypes.guess_extension(content_type) or '.bin'
+                        filename = f"inline_media_{len(attachments) + 1}{ext}"
+                    
+                    try:
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            attachment_info = {
+                                'filename': filename,
+                                'content_type': content_type,
+                                'data': payload,
+                                'disposition': 'inline' if 'inline' in content_disposition else 'attachment'
+                            }
+                            attachments.append(attachment_info)
+                            
+                            # Add media placeholder to ordered content at exact position
+                            ordered_content.append({
+                                'type': 'media',
+                                'filename': filename,
+                                'attachment_index': len(attachments) - 1
+                            })
                     except:
                         continue
         else:
             # Single part message
             try:
                 text_content = msg.get_payload(decode=True).decode('utf-8')
-                content_lines.extend(text_content.split('\n'))
+                if text_content.strip():
+                    ordered_content.append({
+                        'type': 'text',
+                        'content': text_content.strip()
+                    })
             except:
                 text_content = str(msg.get_payload())
-                content_lines.extend(text_content.split('\n'))
+                if text_content.strip():
+                    ordered_content.append({
+                        'type': 'text',
+                        'content': text_content.strip()
+                    })
         
-        content = '\n'.join(content_lines).strip()
+        # Reconstruct content maintaining exact order with media placeholders
+        sequential_content = []
+        for item in ordered_content:
+            if item['type'] == 'text':
+                sequential_content.append(item['content'])
+            elif item['type'] == 'media':
+                # Insert media placeholder that preserves exact position
+                sequential_content.append(f"__MEDIA_PLACEHOLDER_{item['attachment_index']}__")
+        
+        content = '\n\n'.join(sequential_content)
+        
+        # Extract description if present and remove it from content
+        description = extract_description(content)
+        if description:
+            # Remove the [Description] tag from content
+            content = re.sub(r'\[Description\]\s*.+?(?:\n|$)', '', content, flags=re.IGNORECASE).strip()
         
         return {
             "title": subject,
             "content": content,
-            "attachments": attachments
+            "attachments": attachments,
+            "ordered_content": ordered_content,
+            "description": description
         }
         
     except Exception as e:
@@ -155,8 +215,18 @@ def parse_email_content(email_text: str) -> Dict[str, Any]:
         return {
             "title": title,
             "content": content,
-            "attachments": []
+            "attachments": [],
+            "ordered_content": [{'type': 'text', 'content': content}],
+            "description": ""
         }
+
+def extract_description(content: str) -> str:
+    """Extract description from [Description] tag in content"""
+    # Look for [Description] tag
+    description_match = re.search(r'\[Description\]\s*(.+?)(?:\n|$)', content, re.IGNORECASE)
+    if description_match:
+        return description_match.group(1).strip()
+    return ""
 
 def sanitize_filename(title: str) -> str:
     """Convert page title to a safe filename"""
@@ -166,12 +236,35 @@ def sanitize_filename(title: str) -> str:
 
 def markdown_to_html(content: str) -> str:
     """Convert basic markdown to HTML with media support"""
-    # Escape HTML first
-    content = html.escape(content)
+    # Don't escape HTML if it contains pre-embedded media tags
+    if '<img ' in content or '<video ' in content:
+        # Content already has HTML, process carefully
+        pass
+    else:
+        # Escape HTML for safety
+        content = html.escape(content)
     
-    # Convert markdown headers
+    # Convert markdown headers (but skip the first H1 since it's already in the page title)
     content = re.sub(r'^### (.*?)$', r'<h3>\1</h3>', content, flags=re.MULTILINE)
     content = re.sub(r'^## (.*?)$', r'<h2>\1</h2>', content, flags=re.MULTILINE)
+    
+    # For H1, only convert if it's not the first line (to avoid duplicate titles)
+    lines = content.split('\n')
+    processed_lines = []
+    first_h1_found = False
+    
+    for line in lines:
+        if line.startswith('# ') and not first_h1_found:
+            # Skip the first H1 to avoid duplication with page title
+            first_h1_found = True
+            continue
+        elif line.startswith('# '):
+            # Convert subsequent H1s to H2s for better hierarchy
+            processed_lines.append(line.replace('# ', '## ', 1))
+        else:
+            processed_lines.append(line)
+    
+    content = '\n'.join(processed_lines)
     content = re.sub(r'^# (.*?)$', r'<h1>\1</h1>', content, flags=re.MULTILINE)
     
     # Convert bold and italic
@@ -227,51 +320,76 @@ def get_existing_nav_links() -> str:
     nav_links = ['                <li><a href="../index.html">Home</a></li>']
     return '\n'.join(nav_links)
 
+def process_inline_media(content: str, attachments: List[Dict], title: str) -> tuple:
+    """Process content to embed media inline in exact 1:1 order from email"""
+    if not attachments:
+        return content, []
+    
+    saved_files = []
+    processed_content = content
+    
+    print(f"Processing {len(attachments)} media files for exact 1:1 positioning...")
+    
+    # Save all attachments and create media HTML in order
+    media_html_map = {}
+    for i, attachment in enumerate(attachments):
+        saved_path = save_attachment(attachment, title)
+        if saved_path:
+            saved_files.append(saved_path)
+            original_filename = attachment['filename']
+            content_type = attachment['content_type']
+            
+            # Create HTML for the media
+            if content_type.startswith('image/'):
+                alt_text = os.path.basename(original_filename)
+                media_html = f'<img src="{saved_path}" alt="{alt_text}" style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">'
+            elif content_type.startswith('video/'):
+                media_html = f'<video controls style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px;"><source src="{saved_path}" type="{content_type}">Your browser does not support the video tag.</video>'
+            else:
+                continue
+            
+            # Store media HTML with its index for placeholder replacement
+            media_html_map[i] = media_html
+    
+    # Replace media placeholders with actual HTML (this preserves exact order)
+    placeholders_replaced = []
+    for i, media_html in media_html_map.items():
+        placeholder = f"__MEDIA_PLACEHOLDER_{i}__"
+        if placeholder in processed_content:
+            processed_content = processed_content.replace(placeholder, media_html)
+            placeholders_replaced.append(i)
+            print(f"Replaced media placeholder {i} with inline media at exact position")
+    
+    # Also handle explicit filename references for backwards compatibility (but not for already replaced placeholders)
+    for i, attachment in enumerate(attachments):
+        if i not in placeholders_replaced:  # Only process if placeholder wasn't already replaced
+            original_filename = attachment['filename']
+            if i in media_html_map:
+                media_html = media_html_map[i]
+                
+                # Look for explicit references to replace
+                patterns_to_replace = [
+                    original_filename,  # Direct filename reference
+                    f"[{original_filename}]",  # Markdown-style reference
+                    f"![{original_filename}]",  # Markdown image reference
+                    f"<{original_filename}>",  # Angle bracket reference
+                ]
+                
+                for pattern in patterns_to_replace:
+                    if pattern in processed_content:
+                        processed_content = processed_content.replace(pattern, media_html)
+                        print(f"Replaced '{pattern}' with inline media at exact position")
+    
+    return processed_content, saved_files
+
 def create_html_page(title: str, content: str, filename: str, attachments: List[Dict] = None) -> bool:
-    """Create HTML page with proper structure and embedded attachments"""
+    """Create HTML page with inline media embedded in content"""
     try:
-        # Process attachments and save them
-        attachment_html = ""
-        saved_files = []
+        # Process attachments and embed them inline in content
+        processed_content, saved_files = process_inline_media(content, attachments or [], title)
         
-        if attachments:
-            print(f"Processing {len(attachments)} media files...")
-            
-            # Separate inline images from attachments
-            inline_images = [a for a in attachments if a.get('disposition') == 'inline']
-            file_attachments = [a for a in attachments if a.get('disposition') != 'inline']
-            
-            # Add inline images first (they're part of the email content)
-            if inline_images:
-                attachment_html += "\n<h2>Images</h2>\n"
-                for attachment in inline_images:
-                    saved_path = save_attachment(attachment, title)
-                    if saved_path:
-                        saved_files.append(saved_path)
-                        
-                        if attachment['content_type'].startswith('image/'):
-                            alt_text = os.path.basename(attachment['filename'])
-                            attachment_html += f'<img src="{saved_path}" alt="{alt_text}" style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">\n'
-            
-            # Add file attachments
-            if file_attachments:
-                attachment_html += "\n<h2>Attachments</h2>\n"
-                for attachment in file_attachments:
-                    saved_path = save_attachment(attachment, title)
-                    if saved_path:
-                        saved_files.append(saved_path)
-                        
-                        if attachment['content_type'].startswith('image/'):
-                            # Add image
-                            alt_text = os.path.basename(attachment['filename'])
-                            attachment_html += f'<img src="{saved_path}" alt="{alt_text}" style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">\n'
-                        
-                        elif attachment['content_type'].startswith('video/'):
-                            # Add video
-                            attachment_html += f'<video controls style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px;"><source src="{saved_path}" type="{attachment["content_type"]}">Your browser does not support the video tag.</video>\n'
-        
-        # Convert content to HTML
-        content_html = markdown_to_html(content)
+        # Convert content to HTML (this will process the embedded media HTML)
+        content_html = markdown_to_html(processed_content)
         
         # Get navigation links
         nav_links = get_existing_nav_links()
@@ -302,7 +420,6 @@ def create_html_page(title: str, content: str, filename: str, attachments: List[
         <div class="wrap-text-container">
             <h1>{html.escape(title)}</h1>
             {content_html}
-            {attachment_html}
             <p><em>Created: {datetime.now().strftime('%B %d, %Y')}</em></p>
         </div>
     </div>
@@ -364,6 +481,51 @@ def update_main_index_navigation():
         print(f"Error updating main navigation: {e}")
         return False
 
+def add_research_tile(title: str, description: str, filename: str, tile_image: str = None):
+    """Add a new tile to the Research section on the home page"""
+    try:
+        index_path = "../index.html"
+        if not os.path.exists(index_path):
+            return False
+        
+        # Read current index.html
+        with open(index_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Use default image if no tile image specified
+        if not tile_image:
+            tile_image = "images/python.jpg"  # Default fallback image
+        
+        # Create new tile HTML
+        new_tile = f'''            <div class="project">
+                <img src="{tile_image}" alt="{html.escape(title)}">
+                <h3>{html.escape(title)}</h3>
+                <p>{html.escape(description)}</p>
+                <a href="Pages/{filename}">View Project</a>
+            </div>'''
+        
+        # Find the end of the project container (before the "You have reached..." text)
+        end_marker = r'(\s*<p style="text-align: center; margin-top: 20px;">You have reached the end of the page\.</p>)'
+        
+        # Insert new tile before the end marker
+        if re.search(end_marker, content):
+            updated_content = re.sub(end_marker, f'\n{new_tile}\n\\1', content)
+        else:
+            # Fallback: insert before closing div of project-container
+            container_end = r'(\s*</div>\s*</section>)'
+            updated_content = re.sub(container_end, f'\n{new_tile}\n\\1', content)
+        
+        # Write back
+        with open(index_path, 'w', encoding='utf-8') as f:
+            f.write(updated_content)
+        
+        print(f"Added research tile: {title}")
+        return True
+        
+    except Exception as e:
+        print(f"Error adding research tile: {e}")
+        return False
+
 def commit_and_push_changes(filename: str, title: str, media_files: List[str] = None) -> bool:
     """Commit and push the new page and media files to GitHub"""
     try:
@@ -378,6 +540,15 @@ def commit_and_push_changes(filename: str, title: str, media_files: List[str] = 
         if result.returncode != 0:
             print(f"Git add page failed: {result.stderr}")
             return False
+        
+        # Add index.html if it was modified (for research tiles)
+        result = subprocess.run([
+            'git', 'add', 'index.html'
+        ], cwd=main_dir, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"Git add index.html failed: {result.stderr}")
+            # Continue anyway, this is not critical
         
         # Add media files if any
         if media_files:
@@ -448,12 +619,31 @@ def process_email_to_page(email_content: str) -> bool:
             # Update navigation
             update_main_index_navigation()
             
+            # Add research tile to home page if description is provided
+            description = parsed.get("description", "")
+            if description:
+                # Look for tile image in attachments (use first image found)
+                tile_image = None
+                for attachment in parsed.get("attachments", []):
+                    if attachment.get('content_type', '').startswith('image/'):
+                        # Use the saved path of the first image
+                        saved_path = save_attachment(attachment, parsed["title"])
+                        if saved_path:
+                            tile_image = saved_path
+                            break
+                
+                add_research_tile(parsed["title"], description, filename, tile_image)
+            else:
+                print("No [Description] found in email - skipping home page tile creation")
+            
             # Commit and push to GitHub (including media files)
             if commit_and_push_changes(filename, parsed["title"], saved_media_files):
                 print(f"Page '{parsed['title']}' created and pushed to GitHub successfully!")
                 print(f"File: Pages/{filename}")
                 if saved_media_files:
                     print(f"Media files: {', '.join(os.path.basename(f) for f in saved_media_files)}")
+                if description:
+                    print(f"Research tile added to home page with description: {description}")
                 print(f"Live at: https://cyohn55.github.io/Portfolio/Pages/{filename}")
                 return True
             else:
