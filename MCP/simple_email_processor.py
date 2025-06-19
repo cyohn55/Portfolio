@@ -620,16 +620,23 @@ def process_email_to_page(email_content: str) -> bool:
             # Add research tile to home page if description is provided
             description = parsed.get("description", "")
             if description:
-                # Look for tile image in saved media files (use first image found)
+                # Find the first image in the email body order (not just first in attachments)
                 tile_image = None
-                for media_file in saved_media_files:
-                    if media_file and any(ext in media_file.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
-                        # Convert path for home page context
-                        if media_file.startswith('../'):
-                            tile_image = media_file[3:]  # Remove '../' prefix
-                        else:
-                            tile_image = media_file
-                        break
+                ordered_content = parsed.get("ordered_content", [])
+                attachments = parsed.get("attachments", [])
+                
+                # Look through ordered content to find the first image
+                for item in ordered_content:
+                    if item.get('type') == 'media':
+                        attachment_index = item.get('attachment_index')
+                        if attachment_index is not None and attachment_index < len(attachments):
+                            attachment = attachments[attachment_index]
+                            if attachment.get('content_type', '').startswith('image/'):
+                                # Found the first image in body order - get its saved path
+                                page_prefix = re.sub(r'[^a-zA-Z0-9]', '_', parsed["title"].lower())[:20]
+                                expected_filename = f"{page_prefix}_{attachment['filename']}"
+                                tile_image = f"images/{expected_filename}"
+                                break
                 
                 add_research_tile(parsed["title"], description, filename, tile_image)
             else:
