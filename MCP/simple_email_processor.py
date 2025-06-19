@@ -403,6 +403,11 @@ def create_html_page(title: str, content: str, filename: str, attachments: List[
                     page_image = file_path.replace('../', '')
                     break
         
+        # Extract a meaningful description from the content
+        description = extract_description(content)
+        if not description:
+            description = f"Learn about {title} in Cody's portfolio"
+        
         # Generate HTML
         html_template = f"""<!DOCTYPE html>
 <html lang="en">
@@ -410,7 +415,7 @@ def create_html_page(title: str, content: str, filename: str, attachments: List[
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{html.escape(title)}</title>
-    <meta name="description" content="{html.escape(title)} - Cody's Portfolio">
+    <meta name="description" content="{html.escape(description)}">
     
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="../{page_image}">
@@ -422,14 +427,15 @@ def create_html_page(title: str, content: str, filename: str, attachments: List[
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://cyohn55.github.io/Portfolio/Pages/{filename}">
     <meta property="og:title" content="{html.escape(title)}">
-    <meta property="og:description" content="{html.escape(title)} - Cody's Portfolio">
+    <meta property="og:description" content="{html.escape(description)}">
     <meta property="og:image" content="https://cyohn55.github.io/Portfolio/{page_image}">
+    <meta property="og:site_name" content="Cody's Portfolio">
     
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://cyohn55.github.io/Portfolio/Pages/{filename}">
     <meta property="twitter:title" content="{html.escape(title)}">
-    <meta property="twitter:description" content="{html.escape(title)} - Cody's Portfolio">
+    <meta property="twitter:description" content="{html.escape(description)}">
     <meta property="twitter:image" content="https://cyohn55.github.io/Portfolio/{page_image}">
     
     <!-- Link to CSS -->
