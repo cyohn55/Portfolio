@@ -71,7 +71,7 @@ h2 {
 .house-silhouette::before {
     content: '';
     position: absolute;
-    top: -23px;
+    top: -21px;
     left: 50%;
     transform: translateX(-50%);
     width: 48px;
