@@ -70,7 +70,7 @@ h2 {
     position: relative;
     background-color: #fff;
     border-radius: 2px;
-    top: 4px; /* Lower the square by 4px on desktop */
+    top: 6px; /* Lower the square by 6px on desktop */
 }
 
 .house-silhouette::before {
