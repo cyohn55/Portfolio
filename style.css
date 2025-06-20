@@ -357,7 +357,7 @@ height, width, and background color */
     .house-silhouette::before {
         width: 16px;
         height: 9px;
-        top: -6px;
+        top: -9px;
     }
 
     nav ul {
@@ -432,7 +432,7 @@ height, width, and background color */
     .house-silhouette::before {
         width: 15px;
         height: 8px;
-        top: -8px;
+        top: -11px;
     }
 
     nav ul li a {
