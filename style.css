@@ -74,8 +74,8 @@ h2 {
     top: -17px;
     left: 50%;
     transform: translateX(-50%);
-    width: 29px;
-    height: 17px;
+    width: 32px;
+    height: 19px;
     background-color: #fff;
     clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
 }
@@ -355,8 +355,8 @@ height, width, and background color */
     }
 
     .house-silhouette::before {
-        width: 19px;
-        height: 11px;
+        width: 21px;
+        height: 12px;
         top: -9px;
     }
 
@@ -430,8 +430,8 @@ height, width, and background color */
     }
 
     .house-silhouette::before {
-        width: 18px;
-        height: 10px;
+        width: 20px;
+        height: 11px;
         top: -11px;
     }
 
