@@ -71,7 +71,7 @@ h2 {
 .house-silhouette::before {
     content: '';
     position: absolute;
-    top: -6px;
+    top: -12px;
     left: 50%;
     transform: translateX(-50%);
     width: 22px;
@@ -357,7 +357,7 @@ height, width, and background color */
     .house-silhouette::before {
         width: 18px;
         height: 10px;
-        top: -5px;
+        top: -10px;
     }
 
     nav ul {
@@ -432,7 +432,7 @@ height, width, and background color */
     .house-silhouette::before {
         width: 15px;
         height: 8px;
-        top: -4px;
+        top: -8px;
     }
 
     nav ul li a {
