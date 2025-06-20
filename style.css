@@ -384,8 +384,8 @@ height, width, and background color */
     }
 
     .parallax-2 ul {
-        padding-left: 25px; /* Reduced padding for mobile (30px - 5px) */
-        padding: 15px 20px 15px 25px; /* Adjust padding with specific left padding for bullets */
+        padding-left: 23px; /* Further reduced padding for mobile (25px - 2px) */
+        padding: 15px 20px 15px 23px; /* Adjust padding with specific left padding for bullets */
         max-width: 100%; /* Utilize full width */
         box-sizing: border-box; /* Ensure padding is included in width calculation */
         margin-left: 0; /* Remove any margin that might push bullets outside */
