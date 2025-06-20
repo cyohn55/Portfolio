@@ -245,12 +245,12 @@ height, width, and background color */
 /* Styling the list inside parallax-2 */
 .parallax-2 ul {
     list-style-type: disc;
-    padding-left: 40px; /* Increase padding for better indentation */
+    padding-left: 50px; /* Increase padding for better indentation on desktop */
     max-width: 90%; /* Prevent overflow */
     word-wrap: break-word;
     overflow-wrap: break-word; /* Ensure better word breaking */
     background-color: rgba(0, 0, 0, 0.7); /* Semi-transparent background */
-    padding: 20px; /* Add padding for better readability */
+    padding: 20px 20px 20px 50px; /* Add padding for better readability with increased left padding */
     border-radius: 10px; /* Optional: rounded corners */
     width: 100%; /* Ensure the list takes full available width */
     text-align: left; /* Ensure list items are left-aligned for readability */
@@ -332,8 +332,8 @@ height, width, and background color */
     }
 
     .parallax-2 ul {
-        padding-left: 30px; /* Ensure enough space for bullet points on tablets */
-        padding: 15px 20px 15px 30px; /* Adjust padding with specific left padding for bullets */
+        padding-left: 25px; /* Reduced padding for tablets (30px - 5px) */
+        padding: 15px 20px 15px 25px; /* Adjust padding with specific left padding for bullets */
         max-width: 100%; /* Utilize full width */
         box-sizing: border-box; /* Ensure padding is included in width calculation */
         margin-left: 0; /* Remove any margin that might push bullets outside */
@@ -384,8 +384,8 @@ height, width, and background color */
     }
 
     .parallax-2 ul {
-        padding-left: 30px; /* Ensure enough space for bullet points on mobile */
-        padding: 15px 20px 15px 30px; /* Adjust padding with specific left padding for bullets */
+        padding-left: 25px; /* Reduced padding for mobile (30px - 5px) */
+        padding: 15px 20px 15px 25px; /* Adjust padding with specific left padding for bullets */
         max-width: 100%; /* Utilize full width */
         box-sizing: border-box; /* Ensure padding is included in width calculation */
         margin-left: 0; /* Remove any margin that might push bullets outside */
