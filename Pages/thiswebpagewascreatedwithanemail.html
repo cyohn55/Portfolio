@@ -29,6 +29,29 @@
     
     <!-- Link to CSS -->
     <link rel="stylesheet" href="../style.css">
+    
+    <!-- Responsive Device Styling -->
+    <style>
+        /* Desktop-only content: visible on screens 769px and larger */
+        @media (min-width: 769px) {
+            .desktop-only {
+                display: block !important;
+            }
+            .mobile-only {
+                display: none !important;
+            }
+        }
+        
+        /* Mobile-only content: visible on screens 768px and smaller */
+        @media (max-width: 768px) {
+            .desktop-only {
+                display: none !important;
+            }
+            .mobile-only {
+                display: block !important;
+            }
+        }
+    </style>
 </head>
 <body>
     <header>
