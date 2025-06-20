@@ -261,6 +261,8 @@ height, width, and background color */
     margin-bottom: 10px;
     color: inherit; /* Inherit color from .parallax-2 (white) */
     word-break: break-word; /* Allow breaking long words */
+    position: relative; /* Ensure proper positioning */
+    padding-left: 5px; /* Small additional padding for text content */
 }
 
 /* Styling the content or paragraph */
@@ -330,9 +332,17 @@ height, width, and background color */
     }
 
     .parallax-2 ul {
-        padding-left: 20px; /* Further reduce padding on tablets */
-        padding: 10px 15px; /* Adjust padding for better fit */
+        padding-left: 30px; /* Ensure enough space for bullet points on tablets */
+        padding: 15px 20px 15px 30px; /* Adjust padding with specific left padding for bullets */
         max-width: 100%; /* Utilize full width */
+        box-sizing: border-box; /* Ensure padding is included in width calculation */
+        margin-left: 0; /* Remove any margin that might push bullets outside */
+        margin-right: 0;
+    }
+
+    .parallax-2 ul li {
+        margin-left: 0; /* Ensure list items don't have additional left margin */
+        list-style-position: inside; /* Ensure bullets are inside the content area */
     }
 
     .project-container {
@@ -374,9 +384,17 @@ height, width, and background color */
     }
 
     .parallax-2 ul {
-        padding-left: 15px; /* Minimal padding on mobile devices */
-        padding: 5px 10px; /* Adjust padding for better fit */
+        padding-left: 30px; /* Ensure enough space for bullet points on mobile */
+        padding: 15px 20px 15px 30px; /* Adjust padding with specific left padding for bullets */
         max-width: 100%; /* Utilize full width */
+        box-sizing: border-box; /* Ensure padding is included in width calculation */
+        margin-left: 0; /* Remove any margin that might push bullets outside */
+        margin-right: 0;
+    }
+
+    .parallax-2 ul li {
+        margin-left: 0; /* Ensure list items don't have additional left margin */
+        list-style-position: inside; /* Ensure bullets are inside the content area */
     }
 }
 
