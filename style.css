@@ -61,8 +61,8 @@ h2 {
 
 /* House Silhouette Icon */
 .house-silhouette {
-    width: 20px;
-    height: 20px;
+    width: 30px;
+    height: 30px;
     position: relative;
     background-color: #fff;
     border-radius: 2px;
@@ -71,11 +71,11 @@ h2 {
 .house-silhouette::before {
     content: '';
     position: absolute;
-    top: -17px;
+    top: -29px;
     left: 50%;
     transform: translateX(-50%);
-    width: 32px;
-    height: 19px;
+    width: 48px;
+    height: 29px;
     background-color: #fff;
     clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
 }
@@ -350,14 +350,14 @@ height, width, and background color */
     }
 
     .house-silhouette {
-        width: 16px;
-        height: 16px;
+        width: 21px;
+        height: 21px;
     }
 
     .house-silhouette::before {
-        width: 21px;
-        height: 12px;
-        top: -9px;
+        width: 30px;
+        height: 17px;
+        top: -17px;
     }
 
     nav ul {
@@ -425,14 +425,14 @@ height, width, and background color */
     }
 
     .house-silhouette {
-        width: 14px;
-        height: 14px;
+        width: 21px;
+        height: 21px;
     }
 
     .house-silhouette::before {
-        width: 20px;
-        height: 11px;
-        top: -11px;
+        width: 30px;
+        height: 17px;
+        top: -17px;
     }
 
     nav ul li a {
