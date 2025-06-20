@@ -16,6 +16,9 @@ from typing import Dict, List, Optional
 from email.header import decode_header
 import subprocess
 
+# Import wake controller
+from wake_controller import wake_controller
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -281,8 +284,30 @@ class EmailMonitor:
                 msg = email.message_from_bytes(msg_data[0][1])
                 email_content = self.extract_email_content(msg)
                 
-                # Check if this email should create a page
-                if self.is_page_creation_email(email_content['subject'], email_content['body']):
+                # First check for wake commands
+                wake_command = wake_controller.detect_wake_command(email_content['subject'], email_content['body'])
+                
+                if wake_command:
+                    logger.info(f"⚡ Wake command detected: {wake_command['description']}")
+                    
+                    # Execute wake command
+                    if wake_controller.execute_wake_command(wake_command):
+                        logger.info(f"✅ Wake command executed successfully: {wake_command['description']}")
+                        processed_any = True
+                        
+                        # Mark this email as processed
+                        self.processed_emails.add(latest_email_for_title['id_str'])
+                        
+                        # Mark as read
+                        try:
+                            mail.store(latest_email_for_title['id'], '+FLAGS', '\\Seen')
+                        except:
+                            pass
+                    else:
+                        logger.error(f"❌ Failed to execute wake command: {wake_command['description']}")
+                
+                # Check if this email should create a page (skip if it was a wake command)
+                elif self.is_page_creation_email(email_content['subject'], email_content['body']):
                     # Process full email message (preserves attachments)
                     result = self.create_page_from_email(msg)
                     
