@@ -756,7 +756,7 @@ def update_main_index_navigation():
         return False
 
 def add_research_tile(title: str, description: str, filename: str, tile_image: str = None):
-    """Add a new tile to the Research section on the home page"""
+    """Add a new tile to the Research section on the home page (newest first)"""
     try:
         index_path = "../index.html"
         if not os.path.exists(index_path):
@@ -783,16 +783,21 @@ def add_research_tile(title: str, description: str, filename: str, tile_image: s
                 <a href="Pages/{filename}">View Project</a>
             </div>'''
         
-        # Find the end of the project container (before the "You have reached..." text)
-        end_marker = r'(\s*<p style="text-align: center; margin-top: 20px;">You have reached the end of the page\.</p>)'
+        # Find the beginning of the project container to insert new tiles first (newest first)
+        container_start = r'(<div id="project-container" class="project-container">\s*<!-- Project items -->)'
         
-        # Insert new tile before the end marker
-        if re.search(end_marker, content):
-            updated_content = re.sub(end_marker, f'\n{new_tile}\n\\1', content)
+        # Insert new tile right after the container opening and comment
+        if re.search(container_start, content):
+            updated_content = re.sub(container_start, f'\\1\n{new_tile}', content)
         else:
-            # Fallback: insert before closing div of project-container
-            container_end = r'(\s*</div>\s*</section>)'
-            updated_content = re.sub(container_end, f'\n{new_tile}\n\\1', content)
+            # Fallback: look for just the container opening without comment
+            container_start_fallback = r'(<div id="project-container" class="project-container">)'
+            if re.search(container_start_fallback, content):
+                updated_content = re.sub(container_start_fallback, f'\\1\n{new_tile}', content)
+            else:
+                # Final fallback: insert before closing div of project-container (old behavior)
+                container_end = r'(\s*</div>\s*</section>)'
+                updated_content = re.sub(container_end, f'\n{new_tile}\n\\1', content)
         
         # Write back
         with open(index_path, 'w', encoding='utf-8') as f:
