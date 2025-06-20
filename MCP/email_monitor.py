@@ -387,7 +387,7 @@ def main():
         monitor.process_new_emails()
     else:
         # Continuous monitoring mode
-        monitor.run_continuous_monitoring(check_interval=300)  # Check every 5 minutes
+        monitor.run_continuous_monitoring(check_interval=60)  # Check every 1 minute
 
 if __name__ == "__main__":
     main() 

@@ -234,6 +234,56 @@ def sanitize_filename(title: str) -> str:
     filename = filename.lower().replace(' ', '')
     return filename + '.html'
 
+def process_responsive_tags(content: str) -> str:
+    """Process responsive device tags: [Desktop], [Mobile] with optional alignment"""
+    import re
+    
+    # Process [Desktop]...[/Desktop] blocks with optional alignment
+    def process_desktop_block(match):
+        block_content = match.group(1).strip()
+        
+        # Check for alignment tags within the desktop block
+        alignment_style = ""
+        if block_content.startswith('[center]'):
+            block_content = block_content[8:].strip()  # Remove [center]
+            alignment_style = "text-align: center; "
+        elif block_content.startswith('[left]'):
+            block_content = block_content[6:].strip()  # Remove [left]
+            alignment_style = "text-align: left; "
+        elif block_content.startswith('[right]'):
+            block_content = block_content[7:].strip()  # Remove [right]
+            alignment_style = "text-align: right; "
+        
+        # Wrap in desktop-only div with media query
+        return f'<div class="desktop-only" style="display: block; {alignment_style}margin: 10px 0;">{block_content}</div>'
+    
+    # Process [Mobile]...[/Mobile] blocks with optional alignment
+    def process_mobile_block(match):
+        block_content = match.group(1).strip()
+        
+        # Check for alignment tags within the mobile block (default to left if none specified)
+        alignment_style = "text-align: left; "  # Default mobile alignment
+        if block_content.startswith('[center]'):
+            block_content = block_content[8:].strip()  # Remove [center]
+            alignment_style = "text-align: center; "
+        elif block_content.startswith('[left]'):
+            block_content = block_content[6:].strip()  # Remove [left]
+            alignment_style = "text-align: left; "
+        elif block_content.startswith('[right]'):
+            block_content = block_content[7:].strip()  # Remove [right]
+            alignment_style = "text-align: right; "
+        
+        # Wrap in mobile-only div with media query
+        return f'<div class="mobile-only" style="display: none; {alignment_style}margin: 10px 0;">{block_content}</div>'
+    
+    # Replace [Desktop]...[/Desktop] blocks
+    content = re.sub(r'\[Desktop\](.*?)\[/Desktop\]', process_desktop_block, content, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Replace [Mobile]...[/Mobile] blocks
+    content = re.sub(r'\[Mobile\](.*?)\[/Mobile\]', process_mobile_block, content, flags=re.DOTALL | re.IGNORECASE)
+    
+    return content
+
 def process_alignment_tags(content: str) -> str:
     """Process custom alignment tags: [center], [left], [right] for text, images, and videos"""
     lines = content.split('\n')
@@ -345,7 +395,10 @@ def markdown_to_html(content: str) -> str:
         # Escape HTML for safety
         content = html.escape(content)
     
-    # Process custom alignment tags FIRST (before markdown headers)
+    # Process responsive device tags FIRST (before alignment and markdown headers)
+    content = process_responsive_tags(content)
+    
+    # Process custom alignment tags SECOND (before markdown headers)
     # This allows alignment tags to handle their own markdown
     content = process_alignment_tags(content)
     
@@ -422,14 +475,14 @@ def markdown_to_html(content: str) -> str:
     content = re.sub(r'^- (.*?)$', r'<li>\1</li>', content, flags=re.MULTILINE)
     content = re.sub(r'(<li>.*?</li>)', r'<ul>\1</ul>', content, flags=re.DOTALL)
     
-    # Convert paragraphs - but first check each line for headers
+    # Convert paragraphs - but preserve all HTML elements
     paragraphs = content.split('\n\n')
     html_paragraphs = []
     
     for para in paragraphs:
         para = para.strip()
         if para:
-            # Split paragraph into lines to check for headers
+            # Split paragraph into lines to check for headers and HTML elements
             lines = para.split('\n')
             processed_para_lines = []
             current_text_block = []
@@ -437,13 +490,21 @@ def markdown_to_html(content: str) -> str:
             for line in lines:
                 line_stripped = line.strip()
                 
-                # Check if this line is already an HTML header or other HTML element
+                # Check if this line is already an HTML element (including headers)
                 if (line_stripped.startswith('<h1>') or line_stripped.startswith('<h2>') or 
                     line_stripped.startswith('<h3>') or line_stripped.startswith('<h4>') or
                     line_stripped.startswith('<h5>') or line_stripped.startswith('<h6>') or
                     line_stripped.startswith('<div') or line_stripped.startswith('<img') or 
                     line_stripped.startswith('<video') or line_stripped.startswith('<ul>') or 
-                    line_stripped.startswith('<li>')):
+                    line_stripped.startswith('<li>') or line_stripped.startswith('<strong>') or
+                    line_stripped.startswith('<em>') or line_stripped.startswith('<a ') or
+                    line_stripped.endswith('</h1>') or line_stripped.endswith('</h2>') or
+                    line_stripped.endswith('</h3>') or line_stripped.endswith('</h4>') or
+                    line_stripped.endswith('</h5>') or line_stripped.endswith('</h6>') or
+                    line_stripped.endswith('</div>') or line_stripped.endswith('</video>') or
+                    line_stripped.endswith('</ul>') or line_stripped.endswith('</li>') or
+                    '<h1>' in line_stripped or '<h2>' in line_stripped or '<h3>' in line_stripped or
+                    '<h4>' in line_stripped or '<h5>' in line_stripped or '<h6>' in line_stripped):
                     # If we have accumulated text, wrap it in a paragraph
                     if current_text_block:
                         processed_para_lines.append(f'<p>{" ".join(current_text_block)}</p>')
@@ -451,7 +512,7 @@ def markdown_to_html(content: str) -> str:
                     # Add the HTML element as-is
                     processed_para_lines.append(line)
                 else:
-                    # Accumulate text lines
+                    # Accumulate text lines that aren't HTML elements
                     if line.strip():
                         current_text_block.append(line.strip())
             
@@ -559,6 +620,28 @@ def create_html_page(title: str, content: str, filename: str, attachments: List[
         if not description:
             description = f"Learn about {title} in Cody's portfolio"
         
+        # CSS for responsive device styling
+        responsive_css = """
+        /* Desktop-only content: visible on screens 769px and larger */
+        @media (min-width: 769px) {
+            .desktop-only {
+                display: block !important;
+            }
+            .mobile-only {
+                display: none !important;
+            }
+        }
+        
+        /* Mobile-only content: visible on screens 768px and smaller */
+        @media (max-width: 768px) {
+            .desktop-only {
+                display: none !important;
+            }
+            .mobile-only {
+                display: block !important;
+            }
+        }"""
+        
         # Generate HTML
         html_template = f"""<!DOCTYPE html>
 <html lang="en">
@@ -591,6 +674,10 @@ def create_html_page(title: str, content: str, filename: str, attachments: List[
     
     <!-- Link to CSS -->
     <link rel="stylesheet" href="../style.css">
+    
+    <!-- Responsive Device Styling -->
+    <style>{responsive_css}
+    </style>
 </head>
 <body>
     <header>
