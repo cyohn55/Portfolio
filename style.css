@@ -245,12 +245,12 @@ height, width, and background color */
 /* Styling the list inside parallax-2 */
 .parallax-2 ul {
     list-style-type: disc;
-    padding-left: 45px; /* Reduced padding for desktop (50px - 5px) */
+    padding-left: 43px; /* Further reduced padding for desktop (45px - 2px) */
     max-width: 90%; /* Prevent overflow */
     word-wrap: break-word;
     overflow-wrap: break-word; /* Ensure better word breaking */
     background-color: rgba(0, 0, 0, 0.7); /* Semi-transparent background */
-    padding: 20px 20px 20px 45px; /* Add padding for better readability with reduced left padding */
+    padding: 20px 20px 20px 43px; /* Add padding for better readability with further reduced left padding */
     border-radius: 10px; /* Optional: rounded corners */
     width: 100%; /* Ensure the list takes full available width */
     text-align: left; /* Ensure list items are left-aligned for readability */
