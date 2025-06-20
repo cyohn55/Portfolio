@@ -766,10 +766,14 @@ def add_research_tile(title: str, description: str, filename: str, tile_image: s
         with open(index_path, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # Check if tile already exists to prevent duplicates
+        # Check if tile already exists - if so, remove it first (for overwrite behavior)
         if f'href="Pages/{filename}"' in content:
-            print(f"Tile for '{title}' already exists - skipping duplicate creation")
-            return True
+            print(f"Tile for '{title}' already exists - removing old tile to replace with newest version")
+            # Remove the existing tile first
+            remove_research_tile(filename, title)
+            # Re-read the content after removal
+            with open(index_path, 'r', encoding='utf-8') as f:
+                content = f.read()
         
         # Use default image if no tile image specified
         if not tile_image:
@@ -784,16 +788,17 @@ def add_research_tile(title: str, description: str, filename: str, tile_image: s
             </div>'''
         
         # Find the beginning of the project container to insert new tiles first (newest first)
-        container_start = r'(<div id="project-container" class="project-container">\s*<!-- Project items -->)'
+        # Look for the container opening and any content after it (including whitespace and comments)
+        container_start = r'(<div id="project-container" class="project-container">[\s\S]*?<!-- Project items -->)'
         
         # Insert new tile right after the container opening and comment
         if re.search(container_start, content):
             updated_content = re.sub(container_start, f'\\1\n{new_tile}', content)
         else:
-            # Fallback: look for just the container opening without comment
-            container_start_fallback = r'(<div id="project-container" class="project-container">)'
+            # Fallback: look for just the container opening and insert after first non-whitespace content
+            container_start_fallback = r'(<div id="project-container" class="project-container">[^\n]*\n)'
             if re.search(container_start_fallback, content):
-                updated_content = re.sub(container_start_fallback, f'\\1\n{new_tile}', content)
+                updated_content = re.sub(container_start_fallback, f'\\1{new_tile}\n', content)
             else:
                 # Final fallback: insert before closing div of project-container (old behavior)
                 container_end = r'(\s*</div>\s*</section>)'
