@@ -76,7 +76,7 @@ h2 {
 .house-silhouette::before {
     content: '';
     position: absolute;
-    top: -16px; /* Raise the triangle by 2px (-14px - 2px = -16px) */
+    top: -18px; /* Raise the triangle by 4px total (-14px - 4px = -18px) */
     left: 50%;
     transform: translateX(-50%);
     width: 48px;
