@@ -26,6 +26,12 @@ def test_wake_commands():
         ("[Wake Up] for 2 hours", "Should detect stay_awake for 120 minutes"),
         ("[Wake Up] for 1 hr", "Should detect stay_awake for 60 minutes"),
         
+        # Natural language "for the next" patterns
+        ("[Wake Up] for the next hour", "Should detect stay_awake for 60 minutes"),
+        ("[Wake Up] for the next 2 hours", "Should detect stay_awake for 120 minutes"),
+        ("[Wake Up] for the next 30 minutes", "Should detect stay_awake for 30 minutes"),
+        ("[Wake Up] for the next minute", "Should detect stay_awake for 1 minute"),
+        
         # Invalid/unrecognized
         ("Regular email subject", "Should not detect any wake command"),
         ("[Wake Up] some weird text", "Should default to wake_once"),

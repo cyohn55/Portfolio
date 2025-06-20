@@ -31,8 +31,11 @@ Subject: [Wake Up] every 2 hours
 Subject: [Wake Up] for 30 minutes
 Subject: [Wake Up] for 2 hours
 Subject: [Wake Up] for 1 hr
+Subject: [Wake Up] for the next hour
+Subject: [Wake Up] for the next 30 minutes
 ```
 - Prevents computer from sleeping
+- Natural language support ("for the next hour")
 - Perfect for long calls or downloads
 - Automatically ends after specified time
 

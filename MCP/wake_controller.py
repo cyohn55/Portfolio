@@ -63,10 +63,48 @@ class WakeController:
                 'description': f'Wake every {amount} {every_match.group(2)}'
             }
         
-        # [Wake Up] for X hours/minutes  
+        # [Wake Up] for X hours/minutes OR for the next X hours/minutes
         for_pattern = r'for\s+(\d+)\s+(minutes?|mins?|hours?|hrs?)'
-        for_match = re.search(for_pattern, command_text, re.IGNORECASE)
+        for_next_pattern = r'for\s+the\s+next\s+(\d+)\s+(minutes?|mins?|hours?|hrs?)'
+        for_next_single_pattern = r'for\s+the\s+next\s+(hour|minute)'
         
+        # Try "for the next X hours/minutes" first
+        for_next_match = re.search(for_next_pattern, command_text, re.IGNORECASE)
+        if for_next_match:
+            amount = int(for_next_match.group(1))
+            unit = for_next_match.group(2).lower()
+            
+            # Convert to minutes
+            if unit.startswith('h'):
+                duration_minutes = amount * 60
+            else:
+                duration_minutes = amount
+                
+            return {
+                'type': 'stay_awake',
+                'duration_minutes': duration_minutes,
+                'description': f'Stay awake for the next {amount} {for_next_match.group(2)}'
+            }
+        
+        # Try "for the next hour" or "for the next minute" (no number)
+        for_next_single_match = re.search(for_next_single_pattern, command_text, re.IGNORECASE)
+        if for_next_single_match:
+            unit = for_next_single_match.group(1).lower()
+            
+            # Convert to minutes (1 hour = 60 minutes, 1 minute = 1 minute)
+            if unit.startswith('h'):
+                duration_minutes = 60
+            else:
+                duration_minutes = 1
+                
+            return {
+                'type': 'stay_awake',
+                'duration_minutes': duration_minutes,
+                'description': f'Stay awake for the next {unit}'
+            }
+        
+        # Original pattern: "for X hours/minutes"
+        for_match = re.search(for_pattern, command_text, re.IGNORECASE)
         if for_match:
             amount = int(for_match.group(1))
             unit = for_match.group(2).lower()
