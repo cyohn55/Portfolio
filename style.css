@@ -61,35 +61,23 @@ h2 {
 
 /* House Silhouette Icon */
 .house-silhouette {
-    width: 24px;
+    width: 20px;
     height: 20px;
     position: relative;
     background-color: #fff;
-    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+    border-radius: 2px;
 }
 
 .house-silhouette::before {
     content: '';
     position: absolute;
-    bottom: 0;
+    top: -6px;
     left: 50%;
     transform: translateX(-50%);
-    width: 16px;
+    width: 22px;
     height: 12px;
-    background-color: #1468e6;
-    clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%);
-}
-
-.house-silhouette::after {
-    content: '';
-    position: absolute;
-    bottom: 2px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 4px;
-    height: 6px;
     background-color: #fff;
-    clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%);
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
 }
 
 /* Navigation */
@@ -362,18 +350,14 @@ height, width, and background color */
     }
 
     .house-silhouette {
-        width: 20px;
+        width: 16px;
         height: 16px;
     }
 
     .house-silhouette::before {
-        width: 14px;
+        width: 18px;
         height: 10px;
-    }
-
-    .house-silhouette::after {
-        width: 3px;
-        height: 5px;
+        top: -5px;
     }
 
     nav ul {
@@ -441,18 +425,14 @@ height, width, and background color */
     }
 
     .house-silhouette {
-        width: 18px;
+        width: 14px;
         height: 14px;
     }
 
     .house-silhouette::before {
-        width: 12px;
+        width: 15px;
         height: 8px;
-    }
-
-    .house-silhouette::after {
-        width: 3px;
-        height: 4px;
+        top: -4px;
     }
 
     nav ul li a {
