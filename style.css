@@ -648,6 +648,7 @@ main {
     background-color: #fff; /* Ensure main content has background */
     border-radius: 13px 13px 0 0; /* Rounded top corners for overlay effect */
     box-shadow: 0 -4px 20px rgba(0,0,0,0.1); /* Subtle shadow */
+    /* Mobile override: margin-top: -22px applied in media queries below */
 }
 
 /* Carousel Styles */
