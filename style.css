@@ -353,7 +353,7 @@ height, width, and background color */
     }
 
     .home-icon {
-        left: 16px; /* Move the home-icon 1px to the right */
+        left: 17px; /* Move the home-icon 1px more to the right */
         height: 44px; /* Reduced by 25% from 59px */
         width: 44px; /* Reduced by 25% from 59px */
     }
@@ -432,7 +432,7 @@ height, width, and background color */
     }
 
     .home-icon {
-        left: 11px; /* Move the home-icon 1px to the right */
+        left: 12px; /* Move the home-icon 1px more to the right */
         height: 44px; /* Reduced by 25% from 59px */
         width: 44px; /* Reduced by 25% from 59px */
     }
