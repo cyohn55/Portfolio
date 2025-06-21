@@ -362,7 +362,7 @@ height, width, and background color */
     .house-silhouette::before {
         width: 32px;
         height: 18px;
-        top: -14px;
+        top: -12px; /* Lower the triangle by 2px on mobile */
     }
 
     nav ul {
@@ -437,7 +437,7 @@ height, width, and background color */
     .house-silhouette::before {
         width: 32px;
         height: 18px;
-        top: -14px;
+        top: -12px; /* Lower the triangle by 2px on mobile */
     }
 
     nav ul li a {
