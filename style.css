@@ -73,7 +73,6 @@ h2 {
     background-color: #fff;
     border-radius: 2px;
     top: 8px; /* Lower the square by 8px on desktop */
-    left: -40px; /* Move the entire house 40px to the left */
 }
 
 .house-silhouette::before {
@@ -361,7 +360,7 @@ height, width, and background color */
         width: 21px;
         height: 21px;
         top: 25px; /* Center the entire house (triangle + square) within the 59px home-icon container */
-        left: 14px; /* Center the house horizontally within the 59px home-icon container */
+        left: -26px; /* Move the house 40px to the left from centered position */
     }
 
     .house-silhouette::before {
@@ -438,7 +437,7 @@ height, width, and background color */
         width: 21px;
         height: 21px;
         top: 25px; /* Center the entire house (triangle + square) within the 59px home-icon container */
-        left: 14px; /* Center the house horizontally within the 59px home-icon container */
+        left: -26px; /* Move the house 40px to the left from centered position */
     }
 
     .house-silhouette::before {
