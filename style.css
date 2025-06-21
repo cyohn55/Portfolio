@@ -362,7 +362,7 @@ height, width, and background color */
         width: 21px;
         height: 21px;
         top: 5px; /* Move the house 20px up from previous position */
-        left: -6px; /* Move the house 20px to the right from previous position */
+        left: -1px; /* Move the house 5px more to the right */
     }
 
     .house-silhouette::before {
@@ -441,7 +441,7 @@ height, width, and background color */
         width: 21px;
         height: 21px;
         top: 5px; /* Move the house 20px up from previous position */
-        left: -6px; /* Move the house 20px to the right from previous position */
+        left: -1px; /* Move the house 5px more to the right */
     }
 
     .house-silhouette::before {
