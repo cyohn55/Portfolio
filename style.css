@@ -63,6 +63,14 @@ h2 {
     text-decoration: none;
 }
 
+.home-icon:hover .house-silhouette {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.home-icon:hover .house-silhouette::before {
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
 /* House Silhouette Icon */
 .house-silhouette {
     width: 30px;
