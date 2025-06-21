@@ -439,6 +439,11 @@ height, width, and background color */
         margin-top: -22px !important; /* Mobile override: change from desktop -57px to -22px */
         border-radius: 11px 11px 0 0; /* Reduced rounded corners on mobile */
     }
+    
+    /* Adjust content padding for mobile header */
+    .content {
+        padding-top: 90px; /* Slightly more padding on mobile for header */
+    }
 }
 
 @media (max-width: 480px) {
@@ -508,6 +513,11 @@ height, width, and background color */
     main {
         margin-top: -22px !important; /* Mobile override: change from desktop -57px to -22px */
         border-radius: 11px 11px 0 0; /* Reduced rounded corners on mobile */
+    }
+    
+    /* Adjust content padding for mobile header */
+    .content {
+        padding-top: 90px; /* Slightly more padding on mobile for header */
     }
 }
 
@@ -594,7 +604,7 @@ height, width, and background color */
 .content {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 80px 20px 20px 20px; /* Added top padding to account for header height */
     width: 100%; /* Ensure content doesn't exceed viewport width */
     box-sizing: border-box;
 }
