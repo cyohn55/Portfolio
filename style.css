@@ -442,7 +442,7 @@ height, width, and background color */
     
     /* Adjust content padding for mobile header */
     .content {
-        padding-top: 90px; /* Slightly more padding on mobile for header */
+        padding-top: 20px; /* Reduced padding on mobile for header */
     }
 }
 
@@ -517,7 +517,7 @@ height, width, and background color */
     
     /* Adjust content padding for mobile header */
     .content {
-        padding-top: 90px; /* Slightly more padding on mobile for header */
+        padding-top: 20px; /* Reduced padding on mobile for header */
     }
 }
 
