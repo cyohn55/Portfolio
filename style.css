@@ -38,7 +38,7 @@ header {
     min-height: 60px;
     z-index: 10;
     margin-bottom: -25px; /* Overlap the video */
-    border-radius: 0 0 20px 20px; /* Rounded bottom corners to match main */
+    border-radius: 0 0 15px 15px; /* Rounded bottom corners to match main */
     box-shadow: 0 4px 20px rgba(0,0,0,0.1); /* Subtle shadow */
 }
 
@@ -642,7 +642,7 @@ main {
     z-index: 10;
     margin-top: -25px; /* Overlap the video */
     background-color: #fff; /* Ensure main content has background */
-    border-radius: 20px 20px 0 0; /* Rounded top corners for overlay effect */
+    border-radius: 15px 15px 0 0; /* Rounded top corners for overlay effect */
     box-shadow: 0 -4px 20px rgba(0,0,0,0.1); /* Subtle shadow */
 }
 
