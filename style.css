@@ -73,6 +73,7 @@ h2 {
     background-color: #fff;
     border-radius: 2px;
     top: 8px; /* Lower the square by 8px on desktop */
+    left: -40px; /* Move the entire house 40px to the left */
 }
 
 .house-silhouette::before {
