@@ -357,13 +357,14 @@ height, width, and background color */
     .house-silhouette {
         width: 21px;
         height: 21px;
-        top: 0px; /* Square at original position on mobile */
+        top: -2px; /* Raise the square by 2px on mobile */
+        left: 2px; /* Move the square 2px to the right on mobile */
     }
 
     .house-silhouette::before {
         width: 32px;
         height: 18px;
-        top: -10px; /* Lower the triangle by 4px total on mobile */
+        top: -12px; /* Lower the triangle by 2px on mobile */
     }
 
     nav ul {
@@ -433,13 +434,14 @@ height, width, and background color */
     .house-silhouette {
         width: 21px;
         height: 21px;
-        top: 0px; /* Square at original position on mobile */
+        top: -2px; /* Raise the square by 2px on mobile */
+        left: 2px; /* Move the square 2px to the right on mobile */
     }
 
     .house-silhouette::before {
         width: 32px;
         height: 18px;
-        top: -10px; /* Lower the triangle by 4px total on mobile */
+        top: -12px; /* Lower the triangle by 2px on mobile */
     }
 
     nav ul li a {
