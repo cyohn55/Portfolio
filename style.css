@@ -38,7 +38,7 @@ header {
     min-height: 60px;
     z-index: 10;
     margin-bottom: -25px; /* Overlap the video */
-    border-radius: 0 0 15px 15px; /* Rounded bottom corners to match main */
+    border-radius: 0 0 13px 13px; /* Rounded bottom corners to match main */
     box-shadow: 0 4px 20px rgba(0,0,0,0.1); /* Subtle shadow */
 }
 
@@ -435,7 +435,7 @@ height, width, and background color */
     }
     
     main {
-        margin-top: -10px; /* Main content overlap 10px on mobile */
+        margin-top: -8px; /* Main content overlap 8px on mobile */
     }
 }
 
@@ -503,7 +503,7 @@ height, width, and background color */
     }
     
     main {
-        margin-top: -10px; /* Main content overlap 10px on mobile */
+        margin-top: -8px; /* Main content overlap 8px on mobile */
     }
 }
 
@@ -640,9 +640,9 @@ footer {
 main {
     position: relative;
     z-index: 10;
-    margin-top: -25px; /* Overlap the video */
+    margin-top: -23px; /* Overlap the video */
     background-color: #fff; /* Ensure main content has background */
-    border-radius: 15px 15px 0 0; /* Rounded top corners for overlay effect */
+    border-radius: 13px 13px 0 0; /* Rounded top corners for overlay effect */
     box-shadow: 0 -4px 20px rgba(0,0,0,0.1); /* Subtle shadow */
 }
 
