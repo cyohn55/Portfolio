@@ -435,7 +435,7 @@ height, width, and background color */
     }
     
     main {
-        margin-top: -25px; /* Main content overlap 25px on mobile */
+        margin-top: -20px; /* Main content overlap 20px on mobile */
     }
 }
 
@@ -503,7 +503,7 @@ height, width, and background color */
     }
     
     main {
-        margin-top: -25px; /* Main content overlap 25px on mobile */
+        margin-top: -20px; /* Main content overlap 20px on mobile */
     }
 }
 
