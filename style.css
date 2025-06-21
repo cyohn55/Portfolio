@@ -436,7 +436,7 @@ height, width, and background color */
     }
     
     main {
-        margin-top: 20px; /* Main content positioned 20px below video on mobile */
+        margin-top: -22px; /* Mobile override: change from desktop -57px to -22px */
         border-radius: 11px 11px 0 0; /* Reduced rounded corners on mobile */
     }
 }
@@ -506,7 +506,7 @@ height, width, and background color */
     }
     
     main {
-        margin-top: 20px; /* Main content positioned 20px below video on mobile */
+        margin-top: -22px; /* Mobile override: change from desktop -57px to -22px */
         border-radius: 11px 11px 0 0; /* Reduced rounded corners on mobile */
     }
 }
