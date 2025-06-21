@@ -442,7 +442,7 @@ height, width, and background color */
     
     /* Adjust content padding for mobile header */
     .content {
-        padding-top: 20px !important; /* Reduced padding on mobile for header */
+        padding-top: 40px !important; /* Creates 20px gap with header margin-bottom: -20px */
     }
 }
 
@@ -517,7 +517,7 @@ height, width, and background color */
     
     /* Adjust content padding for mobile header */
     .content {
-        padding-top: 20px !important; /* Reduced padding on mobile for header */
+        padding-top: 40px !important; /* Creates 20px gap with header margin-bottom: -20px */
     }
 }
 
