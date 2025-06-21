@@ -442,7 +442,7 @@ height, width, and background color */
     
     /* Adjust content padding for mobile header */
     .content {
-        padding-top: 20px !important; /* Reduced by 20px from 40px */
+        padding-top: 40px !important; /* Creates 20px gap with header margin-bottom: -20px */
     }
 }
 
@@ -517,11 +517,9 @@ height, width, and background color */
     
     /* Adjust content padding for mobile header */
     .content {
-        padding-top: 20px !important; /* Reduced by 20px from 40px */
+        padding-top: 40px !important; /* Creates 20px gap with header margin-bottom: -20px */
     }
 }
-
-/* Projects Section */
 #projects {
     padding: 0px;
     margin: 0 auto;
@@ -741,6 +739,19 @@ main {
     .wrap-text-container div[style*="display: flex"],
     .content div[style*="display: flex"] {
         width: 100% !important;
+    }
+}
+
+/* Special mobile CSS for "This Web Page was Created with an Email" article */
+@media (max-width: 768px) {
+    [title*="This Web Page was Created with an Email"] .content {
+        padding-top: 20px !important; /* Reduced padding for this specific article */
+    }
+}
+
+@media (max-width: 480px) {
+    [title*="This Web Page was Created with an Email"] .content {
+        padding-top: 20px !important; /* Reduced padding for this specific article */
     }
 }
 
