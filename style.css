@@ -431,11 +431,11 @@ height, width, and background color */
     
     /* Mobile overlay adjustments */
     header {
-        margin-bottom: -20px; /* Header overlap 20px on mobile */
+        margin-bottom: -19px; /* Header overlap 19px on mobile */
     }
     
     main {
-        margin-top: -8px; /* Main content overlap 8px on mobile */
+        margin-top: -6px; /* Main content overlap 6px on mobile */
     }
 }
 
@@ -499,11 +499,11 @@ height, width, and background color */
     
     /* Mobile overlay adjustments */
     header {
-        margin-bottom: -20px; /* Header overlap 20px on mobile */
+        margin-bottom: -19px; /* Header overlap 19px on mobile */
     }
     
     main {
-        margin-top: -8px; /* Main content overlap 8px on mobile */
+        margin-top: -6px; /* Main content overlap 6px on mobile */
     }
 }
 
@@ -640,7 +640,7 @@ footer {
 main {
     position: relative;
     z-index: 10;
-    margin-top: -23px; /* Overlap the video */
+    margin-top: -19px; /* Overlap the video */
     background-color: #fff; /* Ensure main content has background */
     border-radius: 13px 13px 0 0; /* Rounded top corners for overlay effect */
     box-shadow: 0 -4px 20px rgba(0,0,0,0.1); /* Subtle shadow */
