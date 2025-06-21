@@ -64,11 +64,11 @@ h2 {
 }
 
 .home-icon:hover .house-silhouette {
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 5px 9px rgba(0, 0, 0, 0.3);
 }
 
 .home-icon:hover .house-silhouette::before {
-    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+    filter: drop-shadow(0 5px 9px rgba(0, 0, 0, 0.3));
 }
 
 /* House Silhouette Icon */
