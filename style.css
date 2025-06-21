@@ -359,8 +359,8 @@ height, width, and background color */
     .house-silhouette {
         width: 21px;
         height: 21px;
-        top: 19px; /* Center the square within the 59px home-icon container */
-        left: 19px; /* Center the square within the 59px home-icon container */
+        top: 25px; /* Center the entire house (triangle + square) within the 59px home-icon container */
+        left: 14px; /* Center the house horizontally within the 59px home-icon container */
     }
 
     .house-silhouette::before {
@@ -436,8 +436,8 @@ height, width, and background color */
     .house-silhouette {
         width: 21px;
         height: 21px;
-        top: 19px; /* Center the square within the 59px home-icon container */
-        left: 19px; /* Center the square within the 59px home-icon container */
+        top: 25px; /* Center the entire house (triangle + square) within the 59px home-icon container */
+        left: 14px; /* Center the house horizontally within the 59px home-icon container */
     }
 
     .house-silhouette::before {
