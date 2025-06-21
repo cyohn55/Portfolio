@@ -37,7 +37,7 @@ header {
     justify-content: center;
     min-height: 60px;
     z-index: 10;
-    margin-bottom: -20px; /* Overlap the video */
+    margin-bottom: -15px; /* Overlap the video */
 }
 
 h2 {
@@ -620,7 +620,7 @@ footer {
 main {
     position: relative;
     z-index: 10;
-    margin-top: -40px; /* Overlap the video */
+    margin-top: -30px; /* Overlap the video */
     background-color: #fff; /* Ensure main content has background */
     border-radius: 20px 20px 0 0; /* Rounded top corners for overlay effect */
     box-shadow: 0 -4px 20px rgba(0,0,0,0.1); /* Subtle shadow */
