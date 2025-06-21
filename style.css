@@ -436,7 +436,7 @@ height, width, and background color */
     }
     
     main {
-        margin-top: 9px; /* Main content gap 9px on mobile */
+        margin-top: 25px; /* Main content gap 25px on mobile - no overlap */
         border-radius: 11px 11px 0 0; /* Reduced rounded corners on mobile */
     }
 }
@@ -506,7 +506,7 @@ height, width, and background color */
     }
     
     main {
-        margin-top: 9px; /* Main content gap 9px on mobile */
+        margin-top: 25px; /* Main content gap 25px on mobile - no overlap */
         border-radius: 11px 11px 0 0; /* Reduced rounded corners on mobile */
     }
 }
