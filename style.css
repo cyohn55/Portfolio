@@ -37,7 +37,7 @@ header {
     justify-content: center;
     min-height: 60px;
     z-index: 10;
-    margin-bottom: -31px; /* Overlap the video */
+    margin-bottom: -40px; /* Overlap the video */
     border-radius: 0 0 13px 13px; /* Rounded bottom corners to match main */
     box-shadow: 0 4px 20px rgba(0,0,0,0.1); /* Subtle shadow */
 }
@@ -644,7 +644,7 @@ footer {
 main {
     position: relative;
     z-index: 10;
-    margin-top: -32px; /* Overlap the video */
+    margin-top: -40px; /* Overlap the video */
     background-color: #fff; /* Ensure main content has background */
     border-radius: 13px 13px 0 0; /* Rounded top corners for overlay effect */
     box-shadow: 0 -4px 20px rgba(0,0,0,0.1); /* Subtle shadow */
@@ -658,6 +658,13 @@ main {
     padding-top: 56.25%; /* 16:9 Aspect Ratio */
     background-color: #000; /* Hide any potential gaps */
     z-index: 1; /* Behind header and main content */
+}
+
+/* Ultra-wide screen adjustments for full screen */
+@media (min-width: 1920px) {
+    #carousel {
+        padding-top: 50%; /* Slightly less height for ultra-wide screens */
+    }
 }
 
 #carousel video {
