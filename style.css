@@ -357,6 +357,7 @@ height, width, and background color */
     .house-silhouette {
         width: 21px;
         height: 21px;
+        top: -2px; /* Raise the square by 2px on mobile */
     }
 
     .house-silhouette::before {
@@ -432,6 +433,7 @@ height, width, and background color */
     .house-silhouette {
         width: 21px;
         height: 21px;
+        top: -2px; /* Raise the square by 2px on mobile */
     }
 
     .house-silhouette::before {
