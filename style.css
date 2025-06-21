@@ -63,19 +63,6 @@ h2 {
     text-decoration: none;
 }
 
-.home-icon:hover::after {
-    content: '';
-    position: absolute;
-    top: -14px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 52px;
-    height: 50px;
-    box-shadow: 0 0 12px rgba(0, 0, 0, 0.3);
-    pointer-events: none;
-    z-index: -1;
-}
-
 /* House Silhouette Icon */
 .house-silhouette {
     width: 30px;
