@@ -435,7 +435,7 @@ height, width, and background color */
     }
     
     main {
-        margin-top: -15px; /* Main content overlap 15px on mobile */
+        margin-top: -10px; /* Main content overlap 10px on mobile */
     }
 }
 
@@ -503,7 +503,7 @@ height, width, and background color */
     }
     
     main {
-        margin-top: -15px; /* Main content overlap 15px on mobile */
+        margin-top: -10px; /* Main content overlap 10px on mobile */
     }
 }
 
@@ -640,7 +640,7 @@ footer {
 main {
     position: relative;
     z-index: 10;
-    margin-top: -30px; /* Overlap the video */
+    margin-top: -25px; /* Overlap the video */
     background-color: #fff; /* Ensure main content has background */
     border-radius: 20px 20px 0 0; /* Rounded top corners for overlay effect */
     box-shadow: 0 -4px 20px rgba(0,0,0,0.1); /* Subtle shadow */
