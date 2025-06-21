@@ -37,7 +37,7 @@ header {
     justify-content: center;
     min-height: 60px;
     z-index: 10;
-    margin-bottom: -30px; /* Overlap the video */
+    margin-bottom: -31px; /* Overlap the video */
     border-radius: 0 0 13px 13px; /* Rounded bottom corners to match main */
     box-shadow: 0 4px 20px rgba(0,0,0,0.1); /* Subtle shadow */
 }
@@ -431,7 +431,7 @@ height, width, and background color */
     
     /* Mobile overlay adjustments */
     header {
-        margin-bottom: -19px; /* Header overlap 19px on mobile */
+        margin-bottom: -20px; /* Header overlap 20px on mobile */
         border-radius: 0 0 11px 11px; /* Reduced rounded corners on mobile */
     }
     
@@ -501,7 +501,7 @@ height, width, and background color */
     
     /* Mobile overlay adjustments */
     header {
-        margin-bottom: -19px; /* Header overlap 19px on mobile */
+        margin-bottom: -20px; /* Header overlap 20px on mobile */
         border-radius: 0 0 11px 11px; /* Reduced rounded corners on mobile */
     }
     
@@ -644,7 +644,7 @@ footer {
 main {
     position: relative;
     z-index: 10;
-    margin-top: -31px; /* Overlap the video */
+    margin-top: -32px; /* Overlap the video */
     background-color: #fff; /* Ensure main content has background */
     border-radius: 13px 13px 0 0; /* Rounded top corners for overlay effect */
     box-shadow: 0 -4px 20px rgba(0,0,0,0.1); /* Subtle shadow */
