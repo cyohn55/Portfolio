@@ -354,8 +354,8 @@ height, width, and background color */
 
     .home-icon {
         left: 15px;
-        width: 30px;
-        height: 30px;
+        height: 44px; /* Reduced by 25% from 59px */
+        width: 44px; /* Reduced by 25% from 59px */
     }
 
     .house-silhouette {
@@ -433,8 +433,8 @@ height, width, and background color */
 
     .home-icon {
         left: 10px;
-        width: 30px;
-        height: 30px;
+        height: 44px; /* Reduced by 25% from 59px */
+        width: 44px; /* Reduced by 25% from 59px */
     }
 
     .house-silhouette {
