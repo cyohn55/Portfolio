@@ -550,6 +550,9 @@ height, width, and background color */
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     border-radius: 8px;
     transition: transform 0.2s;
+    display: flex;
+    flex-direction: column;
+    height: 100%; /* Ensure all tiles have equal height */
 }
 
 .project:hover {
@@ -561,23 +564,29 @@ height, width, and background color */
     height: auto;
     object-fit: cover;
     border-radius: 4px;
+    flex-shrink: 0; /* Prevent image from shrinking */
 }
 
 .project h3 {
     margin-top: 15px;
     margin-bottom: 10px;
+    flex-shrink: 0; /* Prevent title from shrinking */
 }
 
 .project p {
     color: #555;
+    flex-grow: 1; /* Allow description to expand and fill available space */
+    margin-bottom: 10px; /* Add some space before the link */
 }
 
 .project a {
     display: inline-block;
-    margin-top: 10px;
+    margin-top: auto; /* Push the link to the bottom */
     color: #333;
     text-decoration: none;
     font-weight: bold;
+    align-self: flex-start; /* Align to left (bottom-left corner) */
+    flex-shrink: 0; /* Prevent link from shrinking */
 }
 
 .project a:hover {
