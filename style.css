@@ -400,6 +400,7 @@ section h2 {
     color: var(--white);
     padding: 10px 20px 20px 20px;
     box-sizing: border-box;
+    margin: 0;
 }
 
 .parallax-2 h1 {
