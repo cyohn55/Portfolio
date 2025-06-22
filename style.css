@@ -243,6 +243,19 @@ section h2 {
     padding: 20px;
 }
 
+/* Red Link Styling */
+.red-link {
+    color: #ff4444 !important;
+    text-decoration: none;
+    transition: color 0.3s ease, text-shadow 0.3s ease;
+}
+
+.red-link:hover {
+    color: #ff0000 !important;
+    text-shadow: 0 0 8px rgba(255, 68, 68, 0.6);
+    text-decoration: none;
+}
+
 /* Content Wrapper */
 .content {
     max-width: var(--max-content-width);
