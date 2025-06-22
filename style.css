@@ -390,7 +390,7 @@ section h2 {
 }
 
 .parallax-2 h1 {
-    margin: 0 0 20px 0;
+    margin: 10px 0 10px 0;
     padding: 10px 20px;
     background-color: var(--shadow-medium);
     color: var(--white);
@@ -413,7 +413,7 @@ section h2 {
     background-color: var(--shadow-medium);
     border-radius: 10px;
     text-align: left;
-    margin: 0;
+    margin: 10px 0 0 0;
     align-self: center;
 }
 
@@ -686,7 +686,7 @@ section h2 {
         padding: 15px 20px 15px 25px;
         max-width: 100%;
         box-sizing: border-box;
-        margin: 0;
+        margin: 10px 0 0 0;
     }
 
     .parallax-2 ul li {
@@ -781,7 +781,7 @@ section h2 {
         padding: 15px 20px 15px 23px;
         max-width: 100%;
         box-sizing: border-box;
-        margin: 0;
+        margin: 10px 0 0 0;
     }
 
     .parallax-2 ul li {
