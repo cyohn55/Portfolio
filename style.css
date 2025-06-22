@@ -184,9 +184,8 @@ nav ul li a:hover {
 main {
     padding: 20px;
     position: relative;
-    z-index: 1;
+    z-index: 10;
     margin-top: var(--header-overlap-desktop);
-    margin-bottom: 0;
     background-color: var(--white);
     border-radius: var(--border-radius-large) var(--border-radius-large) 0 0;
     box-shadow: 0 -4px 20px var(--shadow-light);
@@ -392,7 +391,6 @@ section h2 {
     align-items: center;
     width: 100vw;
     position: relative;
-    z-index: 5;
     min-height: 100vh;
     background-image: url('images/forrestwallpaper.jpg');
     background-size: cover;
@@ -400,7 +398,7 @@ section h2 {
     background-repeat: no-repeat;
     background-attachment: fixed;
     color: var(--white);
-    padding: 40px 20px;
+    padding: 10px 20px 20px 20px;
     box-sizing: border-box;
 }
 
@@ -691,7 +689,6 @@ section h2 {
         flex-direction: column;
         background-attachment: scroll;
         min-height: auto;
-        padding: 30px 20px;
     }
 
     .parallax-2 h1 {
