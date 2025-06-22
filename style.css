@@ -694,6 +694,13 @@ section h2 {
         list-style-position: inside;
     }
 
+    /* Make main heading display as h2 size on mobile */
+    #fade-in {
+        font-size: 1.5rem !important;
+        font-weight: 600;
+        line-height: 1.3;
+    }
+
     .project-container {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -787,6 +794,13 @@ section h2 {
     .parallax-2 ul li {
         margin-left: 0;
         list-style-position: inside;
+    }
+
+    /* Make main heading display as h2 size on small mobile */
+    #fade-in {
+        font-size: 1.3rem !important;
+        font-weight: 600;
+        line-height: 1.3;
     }
 
     [title*="This Web Page was Created with an Email"] .content {
