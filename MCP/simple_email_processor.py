@@ -546,7 +546,7 @@ def markdown_to_html(content: str) -> str:
     <button class="carousel-btn carousel-prev" onclick="moveCarousel('{carousel_id}', -1)" style="position: absolute; top: 50%; left: 10px; transform: translateY(-50%); background: rgba(0,0,0,0.7); color: white; border: none; padding: 10px 15px; border-radius: 50%; cursor: pointer; font-size: 18px; z-index: 10;">❮</button>
     <button class="carousel-btn carousel-next" onclick="moveCarousel('{carousel_id}', 1)" style="position: absolute; top: 50%; right: 10px; transform: translateY(-50%); background: rgba(0,0,0,0.7); color: white; border: none; padding: 10px 15px; border-radius: 50%; cursor: pointer; font-size: 18px; z-index: 10;">❯</button>
     <div class="carousel-indicators" style="text-align: center; padding: 15px;">
-        {" ".join([f'<span class="carousel-dot" onclick="currentSlide(\'{carousel_id}\', {i+1})" style="height: 12px; width: 12px; margin: 0 5px; background-color: #bbb; border-radius: 50%; display: inline-block; cursor: pointer; transition: background-color 0.3s;"></span>' for i in range(len(carousel_items))])}
+        {" ".join([f'<span class="carousel-dot" onclick="currentSlide(&quot;{carousel_id}&quot;, {i+1})" style="height: 12px; width: 12px; margin: 0 5px; background-color: #bbb; border-radius: 50%; display: inline-block; cursor: pointer; transition: background-color 0.3s;"></span>' for i in range(len(carousel_items))])}
     </div>
 </div>
 <script>
@@ -563,7 +563,7 @@ function moveCarousel(carouselId, direction) {{
     if (data.currentSlide >= data.totalSlides) data.currentSlide = 0;
     if (data.currentSlide < 0) data.currentSlide = data.totalSlides - 1;
     
-    track.style.transform = 'translateX(-' + (data.currentSlide * 100) + '%)';
+    track.style.transform = 'translateX(-' + (data.currentSlide * 100) + '%%)';
     updateDots(carouselId);
 }}
 
@@ -571,7 +571,7 @@ function currentSlide(carouselId, slideIndex) {{
     var data = carouselData[carouselId];
     var track = document.querySelector('#' + carouselId + ' .carousel-track');
     data.currentSlide = slideIndex - 1;
-    track.style.transform = 'translateX(-' + (data.currentSlide * 100) + '%)';
+    track.style.transform = 'translateX(-' + (data.currentSlide * 100) + '%%)';
     updateDots(carouselId);
 }}
 
