@@ -495,6 +495,119 @@ def markdown_to_html(content: str) -> str:
     
     content = re.sub(r'\[YOUTUBE\]\((.*?)\)', youtube_replacer, content)
     
+    # Process [Carousel][/Carousel] tags for image/video galleries
+    def process_carousel_tags(content):
+        """Process [Carousel] tags to create responsive image/video carousels"""
+        carousel_pattern = r'\[Carousel\](.*?)\[/Carousel\]'
+        
+        def carousel_replacer(match):
+            carousel_content = match.group(1).strip()
+            carousel_items = []
+            
+            # Split content by lines and process each item
+            for line in carousel_content.split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                # Check if line contains media (image or video)
+                if any(line.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                    # Image item
+                    if '__MEDIA_PLACEHOLDER_' in line:
+                        carousel_items.append(f'<div class="carousel-item"><img src="{line}" alt="Carousel Image" style="width: 100%; height: auto; border-radius: 8px;"></div>')
+                    else:
+                        carousel_items.append(f'<div class="carousel-item"><img src="../images/{line}" alt="Carousel Image" style="width: 100%; height: auto; border-radius: 8px;"></div>')
+                elif any(line.lower().endswith(ext) for ext in ['.mp4', '.mov', '.avi']):
+                    # Video item
+                    if '__MEDIA_PLACEHOLDER_' in line:
+                        carousel_items.append(f'<div class="carousel-item"><video controls style="width: 100%; height: auto; border-radius: 8px;"><source src="{line}" type="video/mp4">Your browser does not support the video tag.</video></div>')
+                    else:
+                        carousel_items.append(f'<div class="carousel-item"><video controls style="width: 100%; height: auto; border-radius: 8px;"><source src="../images/{line}" type="video/mp4">Your browser does not support the video tag.</video></div>')
+                elif '<img ' in line or '<video ' in line or '__MEDIA_PLACEHOLDER_' in line:
+                    # Already processed media
+                    carousel_items.append(f'<div class="carousel-item">{line}</div>')
+                else:
+                    # Text content or captions
+                    carousel_items.append(f'<div class="carousel-item carousel-text"><p style="text-align: center; margin: 10px 0; font-style: italic;">{line}</p></div>')
+            
+            if not carousel_items:
+                return carousel_content  # Return original if no items found
+            
+            # Generate unique carousel ID
+            import random
+            carousel_id = f"carousel_{random.randint(1000, 9999)}"
+            
+            # Create carousel HTML with navigation
+            carousel_html = f'''
+<div class="carousel-container" id="{carousel_id}" style="position: relative; max-width: 800px; margin: 20px auto; background: #f5f5f5; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+    <div class="carousel-track" style="display: flex; transition: transform 0.3s ease;">
+        {"".join(carousel_items)}
+    </div>
+    <button class="carousel-btn carousel-prev" onclick="moveCarousel('{carousel_id}', -1)" style="position: absolute; top: 50%; left: 10px; transform: translateY(-50%); background: rgba(0,0,0,0.7); color: white; border: none; padding: 10px 15px; border-radius: 50%; cursor: pointer; font-size: 18px; z-index: 10;">❮</button>
+    <button class="carousel-btn carousel-next" onclick="moveCarousel('{carousel_id}', 1)" style="position: absolute; top: 50%; right: 10px; transform: translateY(-50%); background: rgba(0,0,0,0.7); color: white; border: none; padding: 10px 15px; border-radius: 50%; cursor: pointer; font-size: 18px; z-index: 10;">❯</button>
+    <div class="carousel-indicators" style="text-align: center; padding: 15px;">
+        {" ".join([f'<span class="carousel-dot" onclick="currentSlide(\'{carousel_id}\', {i+1})" style="height: 12px; width: 12px; margin: 0 5px; background-color: #bbb; border-radius: 50%; display: inline-block; cursor: pointer; transition: background-color 0.3s;"></span>' for i in range(len(carousel_items))])}
+    </div>
+</div>
+<script>
+if (typeof carouselData === 'undefined') {{
+    var carouselData = {{}};
+}}
+carouselData['{carousel_id}'] = {{currentSlide: 0, totalSlides: {len(carousel_items)}}};
+
+function moveCarousel(carouselId, direction) {{
+    var data = carouselData[carouselId];
+    var track = document.querySelector('#' + carouselId + ' .carousel-track');
+    data.currentSlide += direction;
+    
+    if (data.currentSlide >= data.totalSlides) data.currentSlide = 0;
+    if (data.currentSlide < 0) data.currentSlide = data.totalSlides - 1;
+    
+    track.style.transform = 'translateX(-' + (data.currentSlide * 100) + '%)';
+    updateDots(carouselId);
+}}
+
+function currentSlide(carouselId, slideIndex) {{
+    var data = carouselData[carouselId];
+    var track = document.querySelector('#' + carouselId + ' .carousel-track');
+    data.currentSlide = slideIndex - 1;
+    track.style.transform = 'translateX(-' + (data.currentSlide * 100) + '%)';
+    updateDots(carouselId);
+}}
+
+function updateDots(carouselId) {{
+    var data = carouselData[carouselId];
+    var dots = document.querySelectorAll('#' + carouselId + ' .carousel-dot');
+    dots.forEach((dot, index) => {{
+        dot.style.backgroundColor = index === data.currentSlide ? '#333' : '#bbb';
+    }});
+}}
+
+// Initialize carousel
+document.addEventListener('DOMContentLoaded', function() {{
+    updateDots('{carousel_id}');
+}});
+</script>
+<style>
+.carousel-item {{
+    min-width: 100%;
+    padding: 20px;
+    box-sizing: border-box;
+}}
+.carousel-btn:hover {{
+    background: rgba(0,0,0,0.9) !important;
+}}
+.carousel-dot:hover {{
+    background-color: #333 !important;
+}}
+</style>'''
+            
+            return carousel_html
+        
+        return re.sub(carousel_pattern, carousel_replacer, content, flags=re.DOTALL | re.IGNORECASE)
+    
+    content = process_carousel_tags(content)
+    
     # Convert lists
     content = re.sub(r'^- (.*?)$', r'<li>\1</li>', content, flags=re.MULTILINE)
     content = re.sub(r'(<li>.*?</li>)', r'<ul>\1</ul>', content, flags=re.DOTALL)
