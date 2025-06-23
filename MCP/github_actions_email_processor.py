@@ -7,12 +7,13 @@ Optimized for GitHub Actions cloud execution
 
 import imaplib
 import email
+import email.utils
 import os
 import sys
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from email.header import decode_header
 import subprocess
 import re
@@ -63,6 +64,10 @@ class GitHubActionsEmailProcessor:
     
     def connect_to_email(self) -> Optional[imaplib.IMAP4_SSL]:
         """Connect to email server with retry logic"""
+        if not self.password:
+            logger.error("Gmail password not provided")
+            return None
+            
         for attempt in range(3):  # 3 retry attempts
             try:
                 mail = imaplib.IMAP4_SSL(self.server, self.port)
@@ -167,7 +172,7 @@ class GitHubActionsEmailProcessor:
         
         return None
     
-    def create_page_from_email(self, raw_email_msg) -> Dict[str, any]:
+    def create_page_from_email(self, raw_email_msg) -> Dict[str, Any]:
         """Create web page from email using enhanced processor"""
         try:
             # Save email to temporary file
@@ -224,7 +229,7 @@ class GitHubActionsEmailProcessor:
             'body': body
         }
     
-    def group_emails_by_title(self, emails: List[Tuple[str, any, Dict]]) -> Dict[str, Tuple[str, any, Dict]]:
+    def group_emails_by_title(self, emails: List[Tuple[str, Any, Dict]]) -> Dict[str, Tuple[str, Any, Dict]]:
         """Group emails by title and return most recent for each title"""
         title_groups = {}
         
@@ -289,10 +294,16 @@ class GitHubActionsEmailProcessor:
                 # Fetch email
                 try:
                     status, msg_data = mail.fetch(email_id, '(RFC822)')
-                    if status != 'OK':
+                    if status != 'OK' or not msg_data or not msg_data[0]:
                         continue
                     
-                    raw_msg = email.message_from_bytes(msg_data[0][1])
+                    # Ensure we have the email data in the right format
+                    email_data_bytes = msg_data[0][1]
+                    if isinstance(email_data_bytes, bytes):
+                        raw_msg = email.message_from_bytes(email_data_bytes)
+                    else:
+                        logger.warning(f"Unexpected email data type: {type(email_data_bytes)}")
+                        continue
                     email_data = self.extract_email_data(raw_msg)
                     
                     # Check if authorized
