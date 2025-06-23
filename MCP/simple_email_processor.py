@@ -228,6 +228,30 @@ def extract_description(content: str) -> str:
         return description_match.group(1).strip()
     return ""
 
+def generate_description_from_content(content: str, title: str) -> str:
+    """Generate a description from content if no explicit description provided"""
+    try:
+        # Remove markdown formatting and HTML tags
+        clean_content = re.sub(r'[#*`_]', '', content)
+        clean_content = re.sub(r'<[^>]+>', '', clean_content)
+        clean_content = re.sub(r'\[.*?\]\(.*?\)', '', clean_content)  # Remove links
+        
+        # Get first meaningful sentence
+        sentences = re.split(r'[.!?]+', clean_content.strip())
+        
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if len(sentence) > 20 and len(sentence) < 160:
+                # Make sure it's not just markdown artifacts
+                if not re.match(r'^[#\s]*$', sentence):
+                    return sentence + "."
+        
+        # Fallback: use title-based description
+        return f"Explore {title} - a project in Cody's portfolio showcasing programming skills and innovation."
+        
+    except Exception:
+        return f"Learn about {title} in Cody's portfolio"
+
 def sanitize_filename(title: str) -> str:
     """Convert page title to a safe filename"""
     filename = re.sub(r'[^a-zA-Z0-9\s-]', '', title)
@@ -1099,32 +1123,35 @@ def process_email_to_page(email_content: str) -> bool:
             # Update navigation
             update_main_index_navigation()
             
-            # Add research tile to home page if description is provided
+            # Always add research tile to home page (FIXED: no longer conditional on description)
             description = parsed.get("description", "")
-            if description:
-                # Find the first image in the email body order (not just first in attachments)
-                tile_image = None
-                ordered_content = parsed.get("ordered_content", [])
-                attachments = parsed.get("attachments", [])
-                
-                # Look through ordered content to find the first image
-                for item in ordered_content:
-                    if item.get('type') == 'media':
-                        attachment_index = item.get('attachment_index')
-                        if attachment_index is not None and attachment_index < len(attachments):
-                            attachment = attachments[attachment_index]
-                            if attachment.get('content_type', '').startswith('image/'):
-                                # Found the first image in body order - get its saved path
-                                page_prefix = re.sub(r'[^a-zA-Z0-9]', '_', parsed["title"].lower())[:20]
-                                # Sanitize attachment filename the same way save_attachment does
-                                sanitized_attachment_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', attachment['filename'])
-                                expected_filename = f"{page_prefix}_{sanitized_attachment_filename}"
-                                tile_image = f"images/{expected_filename}"
-                                break
-                
-                add_research_tile(parsed["title"], description, filename, tile_image)
-            else:
-                print("No [Description] found in email - skipping home page tile creation")
+            if not description:
+                # Auto-generate description from content if not provided
+                description = generate_description_from_content(parsed["content"], parsed["title"])
+            
+            # Find the first image in the email body order (not just first in attachments)
+            tile_image = None
+            ordered_content = parsed.get("ordered_content", [])
+            attachments = parsed.get("attachments", [])
+            
+            # Look through ordered content to find the first image
+            for item in ordered_content:
+                if item.get('type') == 'media':
+                    attachment_index = item.get('attachment_index')
+                    if attachment_index is not None and attachment_index < len(attachments):
+                        attachment = attachments[attachment_index]
+                        if attachment.get('content_type', '').startswith('image/'):
+                            # Found the first image in body order - get its saved path
+                            page_prefix = re.sub(r'[^a-zA-Z0-9]', '_', parsed["title"].lower())[:20]
+                            # Sanitize attachment filename the same way save_attachment does
+                            sanitized_attachment_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', attachment['filename'])
+                            expected_filename = f"{page_prefix}_{sanitized_attachment_filename}"
+                            tile_image = f"images/{expected_filename}"
+                            break
+            
+            # ALWAYS create the tile (this was the main bug - tiles only created with [Description])
+            add_research_tile(parsed["title"], description, filename, tile_image)
+            print(f"✅ Research tile added to home page: {parsed['title']} - {description}")
             
             # Commit and push to GitHub (including media files)
             if commit_and_push_changes(filename, parsed["title"], saved_media_files):

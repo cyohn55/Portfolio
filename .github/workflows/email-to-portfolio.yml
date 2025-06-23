@@ -2,43 +2,37 @@ name: Email to Portfolio Publisher
 
 on:
   schedule:
-    # Run every 5 minutes (minimum allowed by GitHub Actions)
+    # Runs every 5 minutes (minimum allowed by GitHub Actions)
     - cron: '*/5 * * * *'
-  repository_dispatch:
-    types: [email_trigger]
   workflow_dispatch: # Allow manual triggering
 
 jobs:
-  check-and-publish:
+  email-to-portfolio:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pages: write
-      id-token: write
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0
         token: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: Setup Python
+        fetch-depth: 0
+    
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-        
+    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r MCP/requirements.txt
-        
+    
     - name: Configure Git
       run: |
-        git config --global user.name "GitHub Actions Email Bot"
+        git config --global user.name "GitHub Actions Bot"
         git config --global user.email "actions@github.com"
-        
-    - name: Check for new emails and generate pages
+    
+    - name: Run Email Processor
       env:
         GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
         GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
@@ -46,21 +40,25 @@ jobs:
       run: |
         cd MCP
         python github_actions_email_processor.py
-        
-    - name: Commit and push changes if any
+    
+    - name: Check for changes
+      id: verify-changed-files
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "changed=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Commit and push changes
+      if: steps.verify-changed-files.outputs.changed == 'true'
       run: |
         git add .
-        if ! git diff --cached --quiet; then
-          git commit -m "🤖 Auto-publish from email ($(date '+%Y-%m-%d %H:%M:%S'))"
-          git push
-          echo "✅ Changes pushed to main branch"
-        else
-          echo "ℹ️  No changes to commit"
-        fi
-
-    - name: Deploy to GitHub Pages
-      if: success() && github.ref == 'refs/heads/main'
-      uses: actions/deploy-pages@v3
-      with:
-        publish_dir: .
-        github_token: ${{ secrets.GITHUB_TOKEN }} 
+        git commit -m "📧 Auto-update from email-to-portfolio system
+        
+        - Processed new email(s) from authorized sender
+        - Generated web page(s) and home page tile(s)
+        - Updated navigation and deployed to GitHub Pages
+        
+        Automated by GitHub Actions 🤖"
+        git push 
