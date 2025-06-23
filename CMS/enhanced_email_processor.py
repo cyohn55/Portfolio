@@ -405,5 +405,12 @@ def main():
         print(f"❌ Error reading email file: {e}")
         sys.exit(1)
 
+def enhanced_safe_delete_check(subject: str, content: str) -> tuple[bool, str]:
+    """
+    Enhanced safe delete check - uses the same logic as simple_email_processor
+    This ensures consistency across all processors
+    """
+    return is_delete_command(subject, content)
+
 if __name__ == "__main__":
     main() 

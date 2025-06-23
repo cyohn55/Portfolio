@@ -140,35 +140,44 @@ class GitHubActionsEmailProcessor:
         return len(subject.strip()) > 3  # Must have meaningful subject
     
     def is_delete_command(self, subject: str, body: str) -> Optional[str]:
-        """Check if email is a delete command and return the target"""
-        if not subject:
+        """
+        ENHANCED SAFE Delete Command Detection for GitHub Actions
+        
+        Requirements for deletion to prevent accidents:
+        1. Must be EXACTLY in subject line (not body) - reduces false positives
+        2. Must start with [DELETE] (case insensitive) - stronger pattern  
+        3. Must include "CONFIRM" keyword - explicit confirmation required
+        4. Subject must match pattern: [DELETE CONFIRM] <page_identifier>
+        """
+        if not subject or not subject.strip():
             return None
             
-        subject = subject.strip()
+        subject_clean = subject.strip()
         
-        # Check for delete patterns in subject
-        delete_patterns = [
-            r'^\[Del\]\s*(.+)$',
-            r'^Del:\s*(.+)$',
-            r'^\[Delete\]\s*(.+)$',
-            r'^Delete:\s*(.+)$',
-            r'^\[Remove\]\s*(.+)$',
-            r'^Remove:\s*(.+)$'
+        # STRICT PATTERN: Must be exact format with CONFIRM keyword
+        # Pattern: [DELETE CONFIRM] page_identifier
+        delete_pattern = re.compile(r'^\[DELETE\s+CONFIRM\]\s*(.+)$', re.IGNORECASE)
+        
+        match = delete_pattern.match(subject_clean)
+        if match:
+            page_identifier = match.group(1).strip()
+            if page_identifier:  # Ensure we have something to delete
+                logger.info(f"🚨 SAFE DELETE COMMAND CONFIRMED: '{page_identifier}'")
+                logger.info(f"📧 Subject: {subject}")
+                return page_identifier
+        
+        # Log potential unsafe delete attempts for monitoring
+        unsafe_patterns = [
+            r'\[del\]', r'del:', r'delete:', r'\[delete\]', 
+            r'remove:', r'\[remove\]', r'rm '
         ]
         
-        for pattern in delete_patterns:
-            match = re.match(pattern, subject, re.IGNORECASE)
-            if match:
-                return match.group(1).strip()
-        
-        # Check body for delete commands
-        if body:
-            for line in body.split('\n'):
-                line = line.strip()
-                for pattern in delete_patterns:
-                    match = re.match(pattern, line, re.IGNORECASE)
-                    if match:
-                        return match.group(1).strip()
+        subject_lower = subject.lower()
+        for pattern in unsafe_patterns:
+            if re.search(pattern, subject_lower):
+                logger.warning(f"⚠️  UNSAFE DELETE PATTERN DETECTED (IGNORED): '{subject}'")
+                logger.warning("ℹ️  To delete pages, use format: [DELETE CONFIRM] page_name")
+                break
         
         return None
     

@@ -1278,38 +1278,55 @@ def remove_research_tile(filename: str, title: Optional[str] = None) -> bool:
         return False
 
 def is_delete_command(subject: str, content: str) -> tuple[bool, str]:
-    """Check if email is a delete command and extract the page identifier"""
+    """
+    ENHANCED SAFE Delete Command Detection
+    
+    Requirements for deletion to prevent accidents:
+    1. Must be EXACTLY in subject line (not content) - reduces false positives
+    2. Must start with [DELETE] (case insensitive) - stronger pattern
+    3. Must include "CONFIRM" keyword - explicit confirmation required
+    4. Subject must match pattern: [DELETE CONFIRM] <page_identifier>
+    
+    This prevents accidental deletions from:
+    - Regular email content mentioning "delete" 
+    - Casual subject lines like "del old stuff"
+    - Email forwards/replies containing delete-like text
+    """
     try:
-        # Check subject for delete command
-        subject_lower = subject.lower().strip()
-        content_lower = content.lower().strip()
+        if not subject or not subject.strip():
+            return False, ""
         
-        # Look for [Del] or [del] tag in subject or content
-        delete_patterns = [
-            r'\[del\]\s*(.+)',
-            r'del:\s*(.+)',
-            r'remove:\s*(.+)',
-            r'\[remove\]\s*(.+)'
+        subject_clean = subject.strip()
+        
+        # STRICT PATTERN: Must be exact format with CONFIRM keyword
+        # Pattern: [DELETE CONFIRM] page_identifier
+        delete_pattern = re.compile(r'^\[DELETE\s+CONFIRM\]\s*(.+)$', re.IGNORECASE)
+        
+        match = delete_pattern.match(subject_clean)
+        if match:
+            page_identifier = match.group(1).strip()
+            if page_identifier:  # Ensure we have something to delete
+                logger.info(f"🚨 SAFE DELETE COMMAND CONFIRMED: '{page_identifier}'")
+                logger.info(f"📧 Subject: {subject}")
+                return True, page_identifier
+        
+        # Log potential unsafe delete attempts for monitoring
+        unsafe_patterns = [
+            r'\[del\]', r'del:', r'delete:', r'\[delete\]', 
+            r'remove:', r'\[remove\]', r'rm '
         ]
         
-        # Check subject first
-        for pattern in delete_patterns:
-            match = re.search(pattern, subject_lower)
-            if match:
-                page_identifier = match.group(1).strip()
-                return True, page_identifier
-        
-        # Check content
-        for pattern in delete_patterns:
-            match = re.search(pattern, content_lower)
-            if match:
-                page_identifier = match.group(1).strip()
-                return True, page_identifier
+        subject_lower = subject.lower()
+        for pattern in unsafe_patterns:
+            if re.search(pattern, subject_lower):
+                logger.warning(f"⚠️  UNSAFE DELETE PATTERN DETECTED (IGNORED): '{subject}'")
+                logger.warning("ℹ️  To delete pages, use format: [DELETE CONFIRM] page_name")
+                break
         
         return False, ""
         
     except Exception as e:
-        print(f"Error checking delete command: {e}")
+        logger.error(f"Error checking delete command: {e}")
         return False, ""
 
 def commit_delete_changes(filename: str, title: str) -> bool:
