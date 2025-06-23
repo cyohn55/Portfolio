@@ -295,8 +295,8 @@ def process_enhanced_email_to_page(email_content: str) -> bool:
         print(f"📧 Processing email: {parsed['title']}")
         
         # Check for delete command
-        if is_delete_command(parsed.get('subject', ''), parsed.get('body', '')):
-            delete_target = parsed.get('subject', '').replace('[Del]', '').replace('[DELETE]', '').strip()
+        is_delete, delete_target = is_delete_command(parsed.get('title', ''), parsed.get('content', ''))
+        if is_delete:
             print(f"🗑️  Delete command detected for: {delete_target}")
             
             if delete_page_and_tile(delete_target):
@@ -311,8 +311,8 @@ def process_enhanced_email_to_page(email_content: str) -> bool:
                 return False
         
         # Regular page creation/update
-        # Extract attachments
-        attachments = extract_attachments(email_content)
+        # Extract attachments - get them from parsed data
+        attachments = parsed.get('attachments', [])
         print(f"📎 Found {len(attachments)} attachments")
         
         # Save attachments and get file paths
@@ -327,7 +327,9 @@ def process_enhanced_email_to_page(email_content: str) -> bool:
                 print(f"⚠️  Failed to save attachment: {e}")
         
         # Generate filename
-        filename = sanitize_filename(parsed["title"]) + ".html"
+        filename = sanitize_filename(parsed["title"])
+        if not filename.endswith('.html'):
+            filename += '.html'
         
         # Create HTML page
         success, saved_files, description = create_enhanced_html_page(
