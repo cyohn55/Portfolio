@@ -25,7 +25,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r MCP/requirements.txt
+        pip install -r CMS/requirements.txt
     
     - name: Configure Git
       run: |
@@ -38,7 +38,7 @@ jobs:
         GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
         AUTHORIZED_SENDER: ${{ secrets.AUTHORIZED_SENDER }}
       run: |
-        cd MCP
+        cd CMS
         python github_actions_email_processor.py
     
     - name: Check for changes
