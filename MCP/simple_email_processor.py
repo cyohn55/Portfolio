@@ -276,7 +276,8 @@ def parse_email_content(email_text: str) -> Dict[str, Any]:
                 if content_type == "text/plain" and 'attachment' not in content_disposition:
                     # This is text content - add to ordered sequence
                     try:
-                        text_content = part.get_payload(decode=True).decode('utf-8')
+                        payload = part.get_payload(decode=True)
+                        text_content = payload.decode('utf-8') if isinstance(payload, bytes) else str(payload)
                         if text_content.strip():
                             ordered_content.append({
                                 'type': 'text',
@@ -315,7 +316,8 @@ def parse_email_content(email_text: str) -> Dict[str, Any]:
         else:
             # Single part message
             try:
-                text_content = msg.get_payload(decode=True).decode('utf-8')
+                payload = msg.get_payload(decode=True)
+                text_content = payload.decode('utf-8') if isinstance(payload, bytes) else str(payload)
                 if text_content.strip():
                     ordered_content.append({
                         'type': 'text',
@@ -1237,7 +1239,7 @@ def delete_page_and_tile(page_identifier: str) -> bool:
         print(f"Error deleting page and tile: {e}")
         return False
 
-def remove_research_tile(filename: str, title: str = None) -> bool:
+def remove_research_tile(filename: str, title: Optional[str] = None) -> bool:
     """Remove a research tile from the home page"""
     try:
         index_path = "../index.html"
