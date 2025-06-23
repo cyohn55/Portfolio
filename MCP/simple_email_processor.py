@@ -896,7 +896,7 @@ def process_inline_media(content: str, attachments: List[Dict], title: str) -> t
     
     return processed_content, saved_files
 
-def create_html_page(title: str, content: str, filename: str, attachments: List[Dict] = None) -> tuple:
+def create_html_page(title: str, content: str, filename: str, attachments: Optional[List[Dict]] = None) -> tuple:
     """Create HTML page with inline media embedded in content, returns (success, saved_files)"""
     try:
         # Process attachments and embed them inline in content
@@ -1057,7 +1057,7 @@ def update_main_index_navigation():
         print(f"Error updating main navigation: {e}")
         return False
 
-def add_research_tile(title: str, description: str, filename: str, tile_image: str = None):
+def add_research_tile(title: str, description: str, filename: str, tile_image: Optional[str] = None):
     """Add a new tile to the Research section on the home page (newest first)"""
     try:
         index_path = "../index.html"
@@ -1120,7 +1120,7 @@ def add_research_tile(title: str, description: str, filename: str, tile_image: s
         print(f"Error adding research tile: {e}")
         return False
 
-def commit_and_push_changes(filename: str, title: str, media_files: List[str] = None) -> bool:
+def commit_and_push_changes(filename: str, title: str, media_files: Optional[List[str]] = None) -> bool:
     """Commit and push the new page and media files to GitHub"""
     try:
         # Change to the main directory (parent of MCP)
