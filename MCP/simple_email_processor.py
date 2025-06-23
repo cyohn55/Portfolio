@@ -930,16 +930,19 @@ def add_research_tile(title: str, description: str, filename: str, tile_image: s
         
         # Insert new tile right after the container opening and comment
         if re.search(container_start, content):
-            updated_content = re.sub(container_start, f'\\1\n{new_tile}', content)
+            replacement = f'\\1\n{new_tile}'
+            updated_content = re.sub(container_start, replacement, content)
         else:
             # Fallback: look for just the container opening and insert after first non-whitespace content
             container_start_fallback = r'(<div id="project-container" class="project-container">[^\n]*\n)'
             if re.search(container_start_fallback, content):
-                updated_content = re.sub(container_start_fallback, f'\\1{new_tile}\n', content)
+                replacement = f'\\1{new_tile}\n'
+                updated_content = re.sub(container_start_fallback, replacement, content)
             else:
                 # Final fallback: insert before closing div of project-container (old behavior)
                 container_end = r'(\s*</div>\s*</section>)'
-                updated_content = re.sub(container_end, f'\n{new_tile}\n\\1', content)
+                replacement = f'\n{new_tile}\n\\1'
+                updated_content = re.sub(container_end, replacement, content)
         
         # Write back
         with open(index_path, 'w', encoding='utf-8') as f:
