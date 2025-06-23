@@ -745,7 +745,7 @@ section h2 {
     }
     
     .line-3 {
-        margin-top: 0.25em;
+        margin-top: 0;
         display: block;
     }
 
@@ -881,7 +881,7 @@ section h2 {
     }
     
     .line-3 {
-        margin-top: 0.2em;
+        margin-top: 0;
         display: block;
     }
 
