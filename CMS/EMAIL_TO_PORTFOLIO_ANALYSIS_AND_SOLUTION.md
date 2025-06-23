@@ -169,7 +169,7 @@ def generate_description_from_content(content: str, title: str) -> str:
 ### **Quick Start:**
 1. **Add GitHub Secrets** (in repository settings):
    - `GMAIL_USERNAME`: `email.to.portfolio.site@gmail.com`
-   - `GMAIL_PASSWORD`: `zwmj pydw zkkh dnlq`
+   - `GMAIL_PASSWORD`: `ibkq xgxo dosu rmid`
    - `AUTHORIZED_SENDER`: `cyohn55@yahoo.com`
 
 2. **Commit and Push** all new files to your repository
