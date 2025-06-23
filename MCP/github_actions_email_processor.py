@@ -36,7 +36,7 @@ class GitHubActionsEmailProcessor:
         if not self.password:
             raise ValueError("GMAIL_PASSWORD environment variable is required")
             
-        self.processed_emails_file = 'MCP/processed_emails_cloud.json'
+        self.processed_emails_file = 'processed_emails_cloud.json'
         self.processed_emails = self.load_processed_emails()
         
     def load_processed_emails(self) -> set:
@@ -177,7 +177,7 @@ class GitHubActionsEmailProcessor:
             
             # Call enhanced email processor
             result = subprocess.run([
-                sys.executable, 'MCP/enhanced_email_processor.py', temp_file
+                sys.executable, 'enhanced_email_processor.py', temp_file
             ], capture_output=True, text=True, cwd='.')
             
             # Clean up temp file
