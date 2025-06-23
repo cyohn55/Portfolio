@@ -1,4 +1,8 @@
 mcp
 secure-smtplib>=1.0.0
 pywin32>=306
-pywin32-ctypes>=0.2.0 
+pywin32-ctypes>=0.2.0
+email
+imaplib2
+python-dateutil
+markdown 

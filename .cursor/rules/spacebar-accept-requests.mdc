@@ -3,3 +3,29 @@ description:
 globs:
 alwaysApply: false
 ---
+# Space Bar Shortcut for Accepting Run Requests
+
+## Quick Accept with Space Bar
+
+When the AI proposes terminal commands or other executable requests, you can quickly accept them by pressing the **space bar** instead of clicking the accept button.
+
+## Usage
+
+1. AI proposes a command to run
+2. Press **Space Bar** to accept and execute
+3. Press **Escape** or click "Reject" to decline
+
+## Benefits
+
+- **Faster workflow**: No need to reach for the mouse
+- **Keyboard-driven**: Keeps hands on keyboard for efficient coding
+- **Quick iteration**: Rapidly accept and test AI suggestions
+
+## When This Applies
+
+- Terminal command proposals
+- Code execution requests
+- File operation confirmations
+- Any pending action that requires user approval
+
+This shortcut significantly speeds up the development workflow when working with AI assistance.

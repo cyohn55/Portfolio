@@ -21,6 +21,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
         
     - name: Setup Python
       uses: actions/setup-python@v4
@@ -34,8 +35,8 @@ jobs:
         
     - name: Configure Git
       run: |
-        git config --global user.name "Email Portfolio Bot"
-        git config --global user.email "email.to.portfolio.site@gmail.com"
+        git config --global user.name "GitHub Actions Email Bot"
+        git config --global user.email "actions@github.com"
         
     - name: Check for new emails and generate pages
       env:
@@ -50,15 +51,16 @@ jobs:
       run: |
         git add .
         if ! git diff --cached --quiet; then
-          git commit -m "Auto-publish from email ($(date))"
-          git push origin main
-          echo "Changes pushed to main branch"
+          git commit -m "🤖 Auto-publish from email ($(date '+%Y-%m-%d %H:%M:%S'))"
+          git push
+          echo "✅ Changes pushed to main branch"
         else
-          echo "No changes to commit"
+          echo "ℹ️  No changes to commit"
         fi
-        
+
     - name: Deploy to GitHub Pages
-      if: github.ref == 'refs/heads/main'
+      if: success() && github.ref == 'refs/heads/main'
       uses: actions/deploy-pages@v3
       with:
-        publish_dir: . 
+        publish_dir: .
+        github_token: ${{ secrets.GITHUB_TOKEN }} 

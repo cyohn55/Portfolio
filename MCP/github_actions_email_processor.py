@@ -2,6 +2,7 @@
 """
 GitHub Actions Email Processor for Portfolio Website
 Cloud-based email monitoring and page generation
+Optimized for GitHub Actions cloud execution
 """
 
 import imaplib
@@ -11,11 +12,12 @@ import sys
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from email.header import decode_header
 import subprocess
+import re
 
-# Configure logging
+# Configure logging for GitHub Actions
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -24,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class GitHubActionsEmailProcessor:
     def __init__(self):
-        """Initialize with environment variables"""
+        """Initialize with environment variables for GitHub Actions"""
         self.server = "imap.gmail.com"
         self.port = 993
         self.username = os.getenv('GMAIL_USERNAME', 'email.to.portfolio.site@gmail.com')
@@ -34,7 +36,7 @@ class GitHubActionsEmailProcessor:
         if not self.password:
             raise ValueError("GMAIL_PASSWORD environment variable is required")
             
-        self.processed_emails_file = 'processed_emails_cloud.json'
+        self.processed_emails_file = 'MCP/processed_emails_cloud.json'
         self.processed_emails = self.load_processed_emails()
         
     def load_processed_emails(self) -> set:
@@ -42,7 +44,8 @@ class GitHubActionsEmailProcessor:
         try:
             if os.path.exists(self.processed_emails_file):
                 with open(self.processed_emails_file, 'r') as f:
-                    return set(json.load(f))
+                    data = json.load(f)
+                    return set(data) if isinstance(data, list) else set()
         except Exception as e:
             logger.warning(f"Could not load processed emails: {e}")
         return set()
@@ -50,78 +53,131 @@ class GitHubActionsEmailProcessor:
     def save_processed_emails(self):
         """Save list of processed email IDs"""
         try:
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(self.processed_emails_file), exist_ok=True)
             with open(self.processed_emails_file, 'w') as f:
                 json.dump(list(self.processed_emails), f)
+            logger.info(f"Saved {len(self.processed_emails)} processed email IDs")
         except Exception as e:
             logger.error(f"Could not save processed emails: {e}")
     
     def connect_to_email(self) -> Optional[imaplib.IMAP4_SSL]:
-        """Connect to email server"""
-        try:
-            mail = imaplib.IMAP4_SSL(self.server, self.port)
-            mail.login(self.username, self.password)
-            logger.info("Successfully connected to email server")
-            return mail
-        except Exception as e:
-            logger.error(f"Failed to connect to email server: {e}")
-            return None
+        """Connect to email server with retry logic"""
+        for attempt in range(3):  # 3 retry attempts
+            try:
+                mail = imaplib.IMAP4_SSL(self.server, self.port)
+                mail.login(self.username, self.password)
+                logger.info("Successfully connected to email server")
+                return mail
+            except Exception as e:
+                logger.warning(f"Connection attempt {attempt + 1} failed: {e}")
+                if attempt == 2:  # Last attempt
+                    logger.error(f"Failed to connect to email server after 3 attempts: {e}")
+                    return None
+        return None
     
     def decode_email_header(self, header: str) -> str:
-        """Decode email header"""
+        """Decode email header safely"""
+        if not header:
+            return ""
         try:
             decoded = decode_header(header)[0]
             if isinstance(decoded[0], bytes):
                 return decoded[0].decode(decoded[1] or 'utf-8')
-            return decoded[0]
+            return str(decoded[0])
         except Exception as e:
             logger.warning(f"Could not decode header: {e}")
-            return header
+            return str(header)
     
     def is_authorized_sender(self, sender: str) -> bool:
         """Check if sender is authorized to create pages"""
+        if not sender or not self.authorized_sender:
+            return False
         return self.authorized_sender.lower() in sender.lower()
     
     def is_page_creation_email(self, subject: str, body: str) -> bool:
-        """Check if email is intended for page creation"""
-        # Check for specific keywords or patterns
-        page_keywords = [
-            'create page',
-            'new page',
-            'portfolio page',
-            'add page',
-            'website update'
+        """Determine if email should create a page"""
+        if not subject:
+            return False
+            
+        subject_lower = subject.lower().strip()
+        body_lower = body.lower() if body else ""
+        
+        # Skip common non-page email patterns
+        skip_patterns = [
+            'unsubscribe', 'delivery failure', 'out of office', 
+            'automatic reply', 'bounce', 'mailer-daemon',
+            'no-reply', 'noreply'
         ]
         
-        subject_lower = subject.lower()
-        body_lower = body.lower()
+        if any(pattern in subject_lower for pattern in skip_patterns):
+            return False
         
-        # Check if subject or body contains page creation keywords
-        for keyword in page_keywords:
-            if keyword in subject_lower or keyword in body_lower:
-                return True
+        # Skip reply and forward patterns
+        if subject_lower.startswith(('re:', 'fwd:', 'fw:')):
+            return False
         
-        # Check if email has markdown-style content (headers with #)
+        # Check for markdown content (strong indicator)
         if '#' in body and any(line.strip().startswith('#') for line in body.split('\n')):
             return True
         
-        # If subject doesn't contain common non-page words, assume it's a page
-        non_page_keywords = ['re:', 'fwd:', 'meeting', 'call', 'urgent']
-        if not any(keyword in subject_lower for keyword in non_page_keywords):
+        # Check for page creation keywords
+        page_keywords = [
+            'create page', 'new page', 'portfolio page', 'add page', 
+            'website update', 'blog post', 'project update'
+        ]
+        
+        if any(keyword in subject_lower or keyword in body_lower for keyword in page_keywords):
             return True
         
-        return False
+        # For authorized senders, assume most emails are page creation unless clearly not
+        # This is more permissive for the portfolio use case
+        return len(subject.strip()) > 3  # Must have meaningful subject
+    
+    def is_delete_command(self, subject: str, body: str) -> Optional[str]:
+        """Check if email is a delete command and return the target"""
+        if not subject:
+            return None
+            
+        subject = subject.strip()
+        
+        # Check for delete patterns in subject
+        delete_patterns = [
+            r'^\[Del\]\s*(.+)$',
+            r'^Del:\s*(.+)$',
+            r'^\[Delete\]\s*(.+)$',
+            r'^Delete:\s*(.+)$',
+            r'^\[Remove\]\s*(.+)$',
+            r'^Remove:\s*(.+)$'
+        ]
+        
+        for pattern in delete_patterns:
+            match = re.match(pattern, subject, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        
+        # Check body for delete commands
+        if body:
+            for line in body.split('\n'):
+                line = line.strip()
+                for pattern in delete_patterns:
+                    match = re.match(pattern, line, re.IGNORECASE)
+                    if match:
+                        return match.group(1).strip()
+        
+        return None
     
     def create_page_from_email(self, raw_email_msg) -> Dict[str, any]:
-        """Create web page from full email message using enhanced processor"""
+        """Create web page from email using enhanced processor"""
         try:
-            # Save full email message to temporary file
+            # Save email to temporary file
             temp_file = 'temp_email.eml'
             with open(temp_file, 'w', encoding='utf-8') as f:
                 f.write(raw_email_msg.as_string())
             
             # Call enhanced email processor
             result = subprocess.run([
-                sys.executable, 'enhanced_email_processor.py', temp_file
+                sys.executable, 'MCP/enhanced_email_processor.py', temp_file
             ], capture_output=True, text=True, cwd='.')
             
             # Clean up temp file
@@ -139,33 +195,70 @@ class GitHubActionsEmailProcessor:
             logger.error(f"Error creating page from email: {e}")
             return {"success": False, "error": str(e)}
     
-    def group_emails_by_title(self, emails: List[tuple]) -> Dict[str, tuple]:
-        """Group emails by title and return the most recent email for each title"""
+    def extract_email_data(self, raw_msg) -> Dict[str, str]:
+        """Extract key data from email message"""
+        subject = self.decode_email_header(raw_msg.get('Subject', ''))
+        sender = self.decode_email_header(raw_msg.get('From', ''))
+        date = raw_msg.get('Date', '')
+        
+        # Extract body text
+        body = ""
+        if raw_msg.is_multipart():
+            for part in raw_msg.walk():
+                if part.get_content_type() == "text/plain":
+                    try:
+                        body = part.get_payload(decode=True).decode('utf-8')
+                        break
+                    except:
+                        continue
+        else:
+            try:
+                body = raw_msg.get_payload(decode=True).decode('utf-8')
+            except:
+                body = str(raw_msg.get_payload())
+        
+        return {
+            'subject': subject,
+            'sender': sender,
+            'date': date,
+            'body': body
+        }
+    
+    def group_emails_by_title(self, emails: List[Tuple[str, any, Dict]]) -> Dict[str, Tuple[str, any, Dict]]:
+        """Group emails by title and return most recent for each title"""
         title_groups = {}
         
         for email_id, raw_msg, email_data in emails:
             title = email_data['subject'].strip()
-            email_date = datetime.strptime(email_data['date'], '%a, %d %b %Y %H:%M:%S %z') if email_data['date'] else datetime.now()
             
-            # If this title doesn't exist or this email is newer, use this email
+            # Parse email date
+            try:
+                email_date = email.utils.parsedate_to_datetime(email_data['date'])
+            except:
+                email_date = datetime.now()
+            
+            # Keep the most recent email for each title
             if title not in title_groups or email_date > title_groups[title][3]:
                 title_groups[title] = (email_id, raw_msg, email_data, email_date)
         
-        # Return without the date (just the first 3 elements)
+        # Return without the date
         return {title: data[:3] for title, data in title_groups.items()}
     
     def process_new_emails(self):
-        """Check for and process new emails"""
+        """Main email processing function for GitHub Actions"""
+        logger.info("Starting email processing for GitHub Actions")
+        
         mail = self.connect_to_email()
         if not mail:
+            logger.error("Could not connect to email server")
             return
         
         try:
             # Select inbox
             mail.select('inbox')
             
-            # Search for emails from authorized sender (last 7 days)
-            since_date = (datetime.now() - timedelta(days=7)).strftime('%d-%b-%Y')
+            # Search for recent emails from authorized sender
+            since_date = (datetime.now() - timedelta(days=3)).strftime('%d-%b-%Y')
             search_criteria = f'(FROM "{self.authorized_sender}" SINCE {since_date})'
             
             status, messages = mail.search(None, search_criteria)
@@ -177,110 +270,109 @@ class GitHubActionsEmailProcessor:
             email_ids = messages[0].split()
             
             if not email_ids:
-                logger.info("No emails found from authorized sender")
+                logger.info("No recent emails found from authorized sender")
                 return
             
-            logger.info(f"Found {len(email_ids)} emails from authorized sender")
+            logger.info(f"Found {len(email_ids)} recent emails from {self.authorized_sender}")
             
-            # Collect all new emails
+            # Process emails
             new_emails = []
+            processed_count = 0
             
             for email_id in email_ids:
                 email_id_str = email_id.decode()
                 
+                # Skip already processed emails
                 if email_id_str in self.processed_emails:
                     continue
                 
                 # Fetch email
-                status, msg_data = mail.fetch(email_id, '(RFC822)')
-                
-                if status != 'OK':
+                try:
+                    status, msg_data = mail.fetch(email_id, '(RFC822)')
+                    if status != 'OK':
+                        continue
+                    
+                    raw_msg = email.message_from_bytes(msg_data[0][1])
+                    email_data = self.extract_email_data(raw_msg)
+                    
+                    # Check if authorized
+                    if not self.is_authorized_sender(email_data['sender']):
+                        logger.info(f"Skipping email from unauthorized sender: {email_data['sender']}")
+                        self.processed_emails.add(email_id_str)
+                        continue
+                    
+                    # Check for delete commands first
+                    delete_target = self.is_delete_command(email_data['subject'], email_data['body'])
+                    if delete_target:
+                        logger.info(f"Delete command detected for: {delete_target}")
+                        # TODO: Implement delete functionality in enhanced_email_processor
+                        self.processed_emails.add(email_id_str)
+                        processed_count += 1
+                        continue
+                    
+                    # Check if it's a page creation email
+                    if self.is_page_creation_email(email_data['subject'], email_data['body']):
+                        new_emails.append((email_id_str, raw_msg, email_data))
+                        logger.info(f"Found page creation email: {email_data['subject']}")
+                    else:
+                        logger.info(f"Skipping non-page email: {email_data['subject']}")
+                        self.processed_emails.add(email_id_str)
+                        
+                except Exception as e:
+                    logger.error(f"Error processing email {email_id_str}: {e}")
                     continue
-                
-                # Parse email
-                raw_msg = email.message_from_bytes(msg_data[0][1])
-                
-                # Extract email content
-                subject = self.decode_email_header(raw_msg['Subject'] or 'No Subject')
-                sender = self.decode_email_header(raw_msg['From'] or '')
-                date = raw_msg['Date']
-                
-                email_data = {
-                    'subject': subject,
-                    'sender': sender,
-                    'date': date
-                }
-                
-                # Check if it's a page creation email
-                body = ""
-                if raw_msg.is_multipart():
-                    for part in raw_msg.walk():
-                        if part.get_content_type() == "text/plain":
-                            try:
-                                body = part.get_payload(decode=True).decode('utf-8')
-                                break
-                            except:
-                                continue
-                else:
-                    try:
-                        body = raw_msg.get_payload(decode=True).decode('utf-8')
-                    except:
-                        body = str(raw_msg.get_payload())
-                
-                if self.is_page_creation_email(subject, body):
-                    new_emails.append((email_id_str, raw_msg, email_data))
-                    logger.info(f"Found page creation email: {subject}")
-                else:
-                    # Mark as processed even if not a page creation email
-                    self.processed_emails.add(email_id_str)
             
             if not new_emails:
-                logger.info("No new page creation emails found")
+                logger.info("No new page creation emails to process")
+                self.save_processed_emails()
                 return
             
-            # Group emails by title and process most recent per title
+            # Group by title and process most recent per title
             title_groups = self.group_emails_by_title(new_emails)
-            
             logger.info(f"Processing {len(title_groups)} unique titles from {len(new_emails)} emails")
             
-            processed_count = 0
             for title, (email_id_str, raw_msg, email_data) in title_groups.items():
-                logger.info(f"Processing email: {title}")
+                logger.info(f"Processing: {title}")
                 
                 result = self.create_page_from_email(raw_msg)
                 
                 if result['success']:
-                    logger.info(f"Successfully processed: {title}")
+                    logger.info(f"✅ Successfully created/updated page: {title}")
                     processed_count += 1
+                    
+                    # Mark this email as processed
+                    self.processed_emails.add(email_id_str)
+                    
+                    # Mark all older emails with same title as processed
+                    for other_email_id, _, other_data in new_emails:
+                        if other_data['subject'].strip() == title and other_email_id != email_id_str:
+                            self.processed_emails.add(other_email_id)
+                            logger.info(f"Marked older email with same title as processed: {other_email_id}")
+                            
                 else:
-                    logger.error(f"Failed to process {title}: {result.get('error', 'Unknown error')}")
-                
-                # Mark as processed
-                self.processed_emails.add(email_id_str)
+                    logger.error(f"❌ Failed to create page for '{title}': {result.get('error', 'Unknown error')}")
             
-            # Save processed emails list
+            logger.info(f"Processing complete. Processed {processed_count} emails")
             self.save_processed_emails()
             
-            if processed_count > 0:
-                logger.info(f"Successfully processed {processed_count} emails")
-            else:
-                logger.info("No emails were successfully processed")
-            
         except Exception as e:
-            logger.error(f"Error processing emails: {e}")
-        
+            logger.error(f"Error in email processing: {e}")
         finally:
-            mail.close()
-            mail.logout()
+            try:
+                mail.close()
+                mail.logout()
+            except:
+                pass
 
 def main():
     """Main function for GitHub Actions"""
     try:
+        logger.info("GitHub Actions Email Processor starting...")
         processor = GitHubActionsEmailProcessor()
         processor.process_new_emails()
-        logger.info("Email processing completed")
+        logger.info("GitHub Actions Email Processor completed successfully")
     except Exception as e:
-        logger.error(f"Error in main: {e}")
+        logger.error(f"Fatal error in main: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

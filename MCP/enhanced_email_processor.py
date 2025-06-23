@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Enhanced Email Processor for Portfolio Website
-Fixes tile generation issue and optimized for GitHub Actions
+Optimized for GitHub Actions cloud execution
 """
 
 import re
@@ -15,7 +15,7 @@ import base64
 from datetime import datetime
 from typing import Dict, Any, List
 
-# Import functions from the original processor
+# Import functions from the simple email processor
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from simple_email_processor import (
     extract_attachments, save_attachment, parse_email_content,
@@ -26,7 +26,7 @@ from simple_email_processor import (
 )
 
 def create_enhanced_html_page(title: str, content: str, filename: str, attachments: List[Dict] = None) -> tuple:
-    """Enhanced HTML page creation with better error handling"""
+    """Enhanced HTML page creation with better error handling and cloud optimization"""
     try:
         # Process attachments and embed them inline in content
         processed_content, saved_files = process_inline_media(content, attachments or [], title)
@@ -76,7 +76,7 @@ def create_enhanced_html_page(title: str, content: str, filename: str, attachmen
             }
         }"""
         
-        # Generate HTML
+        # Generate HTML with optimized structure
         html_template = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -148,43 +148,46 @@ def create_enhanced_html_page(title: str, content: str, filename: str, attachmen
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(html_template)
         
-        print(f"Successfully created: {filepath}")
+        print(f"✅ Successfully created: {filepath}")
         if saved_files:
-            print(f"Saved {len(saved_files)} media files: {', '.join(os.path.basename(f) for f in saved_files)}")
+            print(f"📎 Saved {len(saved_files)} media files: {', '.join(os.path.basename(f) for f in saved_files)}")
         
         return True, saved_files, description
         
     except Exception as e:
-        print(f"Error creating HTML page: {e}")
+        print(f"❌ Error creating HTML page: {e}")
         return False, [], ""
 
 def generate_description_from_content(content: str, title: str) -> str:
     """Generate a description from content if no explicit description provided"""
     try:
         # Remove markdown formatting and HTML tags
-        clean_content = re.sub(r'[#*`]', '', content)
+        clean_content = re.sub(r'[#*`_]', '', content)
         clean_content = re.sub(r'<[^>]+>', '', clean_content)
+        clean_content = re.sub(r'\[.*?\]\(.*?\)', '', clean_content)  # Remove links
         
-        # Get first paragraph or sentence
+        # Get first meaningful sentence
         sentences = re.split(r'[.!?]+', clean_content.strip())
         
-        if sentences and len(sentences) > 0:
-            first_sentence = sentences[0].strip()
-            if len(first_sentence) > 20 and len(first_sentence) < 160:
-                return first_sentence + "."
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if len(sentence) > 20 and len(sentence) < 160:
+                # Make sure it's not just markdown artifacts
+                if not re.match(r'^[#\s]*$', sentence):
+                    return sentence + "."
         
         # Fallback: use title-based description
         return f"Explore {title} - a project in Cody's portfolio showcasing programming skills and innovation."
         
     except Exception:
-        return ""
+        return f"Learn about {title} in Cody's portfolio"
 
 def add_enhanced_research_tile(title: str, description: str, filename: str, tile_image: str = None):
-    """Enhanced tile creation that always creates tiles, even without explicit descriptions"""
+    """Enhanced tile creation that always creates tiles with cloud optimization"""
     try:
         index_path = "../index.html"
         if not os.path.exists(index_path):
-            print(f"Warning: Index file not found at {index_path}")
+            print(f"⚠️  Warning: Index file not found at {index_path}")
             return False
         
         # Read current index.html
@@ -193,7 +196,7 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
         
         # Check if tile already exists - if so, remove it first (for overwrite behavior)
         if f'href="Pages/{filename}"' in content:
-            print(f"Tile for '{title}' already exists - removing old tile to replace with newest version")
+            print(f"🔄 Updating existing tile for '{title}'")
             # Remove the existing tile first
             remove_research_tile(filename, title)
             # Re-read the content after removal
@@ -212,7 +215,7 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
         if len(description) > 120:
             description = description[:117] + "..."
         
-        # Create new tile HTML
+        # Create new tile HTML with clean formatting
         new_tile = f'''            <div class="project">
                 <img src="{tile_image}" alt="{html.escape(title)}">
                 <h3>{html.escape(title)}</h3>
@@ -233,7 +236,7 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
             if re.search(container_start_fallback, content):
                 updated_content = re.sub(container_start_fallback, f'\\1{new_tile}\n', content)
             else:
-                # Final fallback: insert before closing div of project-container (old behavior)
+                # Final fallback: insert before closing div of project-container
                 container_end = r'(\s*</div>\s*</section>)'
                 updated_content = re.sub(container_end, f'\n{new_tile}\n\\1', content)
         
@@ -241,168 +244,163 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
         with open(index_path, 'w', encoding='utf-8') as f:
             f.write(updated_content)
         
-        print(f"Added research tile: {title}")
+        print(f"🏠 Added homepage tile: {title}")
         return True
         
     except Exception as e:
-        print(f"Error adding research tile: {e}")
+        print(f"❌ Error adding research tile: {e}")
         return False
 
-def remove_research_tile(filename: str, title: str = None) -> bool:
-    """Remove a research tile from the home page"""
+def remove_research_tile(filename: str, title: str = None):
+    """Remove a research tile from the homepage"""
     try:
         index_path = "../index.html"
-        
         if not os.path.exists(index_path):
-            print(f"Index file not found: {index_path}")
             return False
         
-        # Read current content
         with open(index_path, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # Find and remove the tile
-        # Look for the tile with the specific filename
-        tile_pattern = rf'<div class="project">\s*<img[^>]*>\s*<h3>[^<]*</h3>\s*<p>[^<]*</p>\s*<a href="Pages/{re.escape(filename)}"[^>]*>View Project</a>\s*</div>'
+        # Pattern to match the entire tile div
+        tile_pattern = r'<div class="project">\s*<img[^>]*>\s*<h3>[^<]*</h3>\s*<p>[^<]*</p>\s*<a href="Pages/' + re.escape(filename) + r'"[^>]*>.*?</a>\s*</div>'
         
-        # Try to find the tile
-        match = re.search(tile_pattern, content, re.DOTALL | re.IGNORECASE)
+        # Remove the tile
+        updated_content = re.sub(tile_pattern, '', content, flags=re.DOTALL)
         
-        if match:
-            # Remove the tile
-            updated_content = content.replace(match.group(0), '')
-            
-            # Write back
-            with open(index_path, 'w', encoding='utf-8') as f:
-                f.write(updated_content)
-            
-            print(f"Removed tile for: {filename}")
-            return True
-        else:
-            print(f"Tile not found for: {filename}")
-            return False
+        # Clean up any extra whitespace
+        updated_content = re.sub(r'\n\s*\n\s*\n', '\n\n', updated_content)
+        
+        with open(index_path, 'w', encoding='utf-8') as f:
+            f.write(updated_content)
+        
+        print(f"🗑️  Removed tile: {title or filename}")
+        return True
         
     except Exception as e:
-        print(f"Error removing research tile: {e}")
+        print(f"❌ Error removing tile: {e}")
         return False
 
 def process_enhanced_email_to_page(email_content: str) -> bool:
-    """Enhanced email processing that always creates tiles"""
+    """Enhanced email to page processing optimized for GitHub Actions"""
     try:
-        # Parse email
+        print("🚀 Starting enhanced email processing...")
+        
+        # Parse email content
         parsed = parse_email_content(email_content)
         
-        # Check if this is a delete command
-        is_delete, page_identifier = is_delete_command(parsed["title"], parsed["content"])
+        if not parsed:
+            print("❌ Failed to parse email content")
+            return False
         
-        if is_delete:
-            print(f"Delete command detected for: {page_identifier}")
+        print(f"📧 Processing email: {parsed['title']}")
+        
+        # Check for delete command
+        if is_delete_command(parsed.get('subject', ''), parsed.get('body', '')):
+            delete_target = parsed.get('subject', '').replace('[Del]', '').replace('[DELETE]', '').strip()
+            print(f"🗑️  Delete command detected for: {delete_target}")
             
-            # Delete the page and tile
-            if delete_page_and_tile(page_identifier):
-                # Get the actual filename that was used
-                if page_identifier.endswith('.html'):
-                    actual_filename = page_identifier
-                else:
-                    actual_filename = sanitize_filename(page_identifier) + '.html'
-                
-                # Commit and push the deletion
-                if commit_delete_changes(actual_filename, page_identifier):
-                    print(f"Successfully deleted '{page_identifier}' and pushed to GitHub!")
+            if delete_page_and_tile(delete_target):
+                if commit_delete_changes(delete_target):
+                    print(f"✅ Successfully deleted and committed: {delete_target}")
                     return True
                 else:
-                    print(f"Page deleted locally but failed to push to GitHub: {page_identifier}")
+                    print(f"⚠️  Page deleted but commit failed: {delete_target}")
                     return False
             else:
-                print(f"Failed to delete page: {page_identifier}")
+                print(f"❌ Failed to delete: {delete_target}")
                 return False
         
-        # Regular page creation logic
-        # Generate filename
-        filename = sanitize_filename(parsed["title"])
+        # Regular page creation/update
+        # Extract attachments
+        attachments = extract_attachments(email_content)
+        print(f"📎 Found {len(attachments)} attachments")
         
-        # Create HTML page with attachments (enhanced version)
-        success, saved_media_files, generated_description = create_enhanced_html_page(
+        # Save attachments and get file paths
+        saved_media_files = []
+        for attachment in attachments:
+            try:
+                saved_path = save_attachment(attachment, parsed["title"])
+                if saved_path:
+                    saved_media_files.append(saved_path)
+                    print(f"💾 Saved attachment: {os.path.basename(saved_path)}")
+            except Exception as e:
+                print(f"⚠️  Failed to save attachment: {e}")
+        
+        # Generate filename
+        filename = sanitize_filename(parsed["title"]) + ".html"
+        
+        # Create HTML page
+        success, saved_files, description = create_enhanced_html_page(
             parsed["title"], 
             parsed["content"], 
             filename, 
-            parsed.get("attachments")
+            attachments
         )
         
-        if success:
-            # Update navigation
-            update_main_index_navigation()
-            
-            # ALWAYS add research tile to home page (this fixes the main issue)
-            # Use explicit description from email, or generated description, or fallback
-            description = parsed.get("description", "") or generated_description
-            
-            # Find the first image for the tile
-            tile_image = None
-            ordered_content = parsed.get("ordered_content", [])
-            attachments = parsed.get("attachments", [])
-            
-            # Look through ordered content to find the first image
-            for item in ordered_content:
-                if item.get('type') == 'media':
-                    attachment_index = item.get('attachment_index')
-                    if attachment_index is not None and attachment_index < len(attachments):
-                        attachment = attachments[attachment_index]
-                        if attachment.get('content_type', '').startswith('image/'):
-                            # Found the first image in body order - get its saved path
-                            page_prefix = re.sub(r'[^a-zA-Z0-9]', '_', parsed["title"].lower())[:20]
-                            # Sanitize attachment filename the same way save_attachment does
-                            sanitized_attachment_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', attachment['filename'])
-                            expected_filename = f"{page_prefix}_{sanitized_attachment_filename}"
-                            tile_image = f"images/{expected_filename}"
-                            break
-            
-            # Always create a tile (this is the key fix)
-            add_enhanced_research_tile(parsed["title"], description, filename, tile_image)
-            print(f"Research tile added to home page with description: {description}")
-            
-            # Commit and push to GitHub (including media files)
-            if commit_and_push_changes(filename, parsed["title"], saved_media_files):
-                print(f"Page '{parsed['title']}' created and pushed to GitHub successfully!")
-                print(f"File: Pages/{filename}")
-                if saved_media_files:
-                    print(f"Media files: {', '.join(os.path.basename(f) for f in saved_media_files)}")
-                print(f"Live at: https://cyohn55.github.io/Portfolio/Pages/{filename}")
-                return True
-            else:
-                print(f"Page created but failed to push to GitHub: {parsed['title']}")
-                return False
+        if not success:
+            print("❌ Failed to create HTML page")
+            return False
+        
+        # Combine saved files
+        all_saved_files = saved_media_files + saved_files
+        
+        # Always create/update homepage tile (this is the key enhancement)
+        tile_success = add_enhanced_research_tile(
+            parsed["title"], 
+            description, 
+            filename,
+            all_saved_files[0] if all_saved_files else None
+        )
+        
+        if not tile_success:
+            print("⚠️  Warning: Failed to create homepage tile, but page was created")
+        
+        # Commit and push to GitHub (including media files)
+        if commit_and_push_changes(filename, parsed["title"], all_saved_files):
+            print(f"🎉 Page '{parsed['title']}' created and pushed to GitHub successfully!")
+            print(f"📄 File: Pages/{filename}")
+            if all_saved_files:
+                print(f"📎 Media files: {', '.join(os.path.basename(f) for f in all_saved_files)}")
+            print(f"🌐 Live at: https://cyohn55.github.io/Portfolio/Pages/{filename}")
+            return True
         else:
+            print(f"⚠️  Page created but failed to push to GitHub: {parsed['title']}")
             return False
             
     except Exception as e:
-        print(f"Error processing email: {e}")
+        print(f"❌ Error processing email: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def main():
-    """Main function for command line usage"""
-    if len(sys.argv) < 2:
-        print("Usage: python enhanced_email_processor.py <email_file>")
-        print("Example: python enhanced_email_processor.py example_email.txt")
+    """Main function for enhanced email processor"""
+    if len(sys.argv) != 2:
+        print("❌ Usage: python enhanced_email_processor.py <email_file>")
+        print("📖 Example: python enhanced_email_processor.py example_email.txt")
         sys.exit(1)
     
     email_file = sys.argv[1]
+    
+    if not os.path.exists(email_file):
+        print(f"❌ Email file not found: {email_file}")
+        sys.exit(1)
     
     try:
         with open(email_file, 'r', encoding='utf-8') as f:
             email_content = f.read()
         
+        print(f"📧 Processing email from file: {email_file}")
+        
         if process_enhanced_email_to_page(email_content):
-            print("Success! Email converted to web page with tile.")
+            print("✅ Email processed successfully!")
+            sys.exit(0)
         else:
-            print("Failed to process email.")
+            print("❌ Failed to process email")
             sys.exit(1)
             
-    except FileNotFoundError:
-        print(f"Error: Email file '{email_file}' not found")
-        sys.exit(1)
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"❌ Error reading email file: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
