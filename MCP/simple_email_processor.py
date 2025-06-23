@@ -2,6 +2,12 @@
 """
 Simplified Email Processor for Portfolio Website
 Directly creates HTML pages from email content without MCP server dependency
+
+IMPROVEMENTS:
+- Configuration constants for maintainability
+- Pre-compiled regex patterns for performance
+- Enhanced error logging with context
+- Better code organization and documentation
 """
 
 import re
@@ -12,8 +18,172 @@ import subprocess
 import email
 import mimetypes
 import base64
+import traceback
+import logging
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
+
+# =============================================================================
+# CONFIGURATION CONSTANTS
+# =============================================================================
+
+# Directory paths (relative to MCP directory)
+PAGES_DIR = "../Pages"
+IMAGES_DIR = "../images"
+INDEX_PATH = "../index.html"
+
+# Default settings
+DEFAULT_IMAGE = "images/python.jpg"
+DEFAULT_DESCRIPTION_TEMPLATE = "Learn about {title} in Cody's portfolio"
+MAX_DESCRIPTION_LENGTH = 120
+MAX_TITLE_PREFIX_LENGTH = 20
+
+# File extensions
+SUPPORTED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg']
+SUPPORTED_VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.webm']
+SUPPORTED_AUDIO_EXTENSIONS = ['.mp3', '.wav', '.ogg']
+
+# Git configuration
+GIT_COMMIT_AUTHOR = "Email-to-Portfolio System"
+GIT_COMMIT_EMAIL = "system@portfolio.local"
+
+# =============================================================================
+# PRE-COMPILED REGEX PATTERNS FOR PERFORMANCE
+# =============================================================================
+
+# Delete command patterns
+DELETE_PATTERNS = [
+    re.compile(r'\[del\]\s*(.+)', re.IGNORECASE),
+    re.compile(r'del:\s*(.+)', re.IGNORECASE),
+    re.compile(r'remove:\s*(.+)', re.IGNORECASE),
+    re.compile(r'\[remove\]\s*(.+)', re.IGNORECASE),
+    re.compile(r'\[delete\]\s*(.+)', re.IGNORECASE),
+    re.compile(r'delete:\s*(.+)', re.IGNORECASE)
+]
+
+# Content processing patterns
+DESCRIPTION_PATTERN = re.compile(r'\[Description\]\s*(.+?)(?:\n|$)', re.IGNORECASE | re.DOTALL)
+MARKDOWN_BOLD_PATTERN = re.compile(r'\*\*(.*?)\*\*')
+MARKDOWN_ITALIC_PATTERN = re.compile(r'\*(.*?)\*')
+MARKDOWN_IMAGE_PATTERN = re.compile(r'!\[(.*?)\]\((.*?)\)')
+MARKDOWN_LINK_PATTERN = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
+YOUTUBE_PATTERN = re.compile(r'\[YOUTUBE\]\((.*?)\)')
+VIDEO_PATTERN = re.compile(r'\[VIDEO\]\((.*?)\)')
+
+# Responsive tag patterns
+DESKTOP_PATTERN = re.compile(r'\[Desktop\](.*?)\[/Desktop\]', re.DOTALL | re.IGNORECASE)
+MOBILE_PATTERN = re.compile(r'\[Mobile\](.*?)\[/Mobile\]', re.DOTALL | re.IGNORECASE)
+
+# Alignment patterns
+ALIGNMENT_PATTERNS = {
+    'center': re.compile(r'\[center\](.*?)$', re.IGNORECASE),
+    'left': re.compile(r'\[left\](.*?)$', re.IGNORECASE),
+    'right': re.compile(r'\[right\](.*?)$', re.IGNORECASE)
+}
+
+# Carousel pattern
+CAROUSEL_PATTERN = re.compile(r'\[Carousel\](.*?)\[/Carousel\]', re.DOTALL | re.IGNORECASE)
+
+# Filename sanitization pattern
+FILENAME_SANITIZE_PATTERN = re.compile(r'[^a-zA-Z0-9._-]')
+
+# =============================================================================
+# ENHANCED LOGGING SETUP
+# =============================================================================
+
+def setup_logging():
+    """Setup enhanced logging with context"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    return logging.getLogger(__name__)
+
+logger = setup_logging()
+
+# =============================================================================
+# ENHANCED ERROR HANDLING DECORATOR
+# =============================================================================
+
+def log_errors(func_name: str):
+    """Decorator for enhanced error logging with context"""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Error in {func_name}: {str(e)}")
+                logger.error(f"Function args: {args[:2] if args else 'None'}")  # First 2 args only for privacy
+                logger.error(f"Exception type: {type(e).__name__}")
+                logger.debug(f"Full traceback: {traceback.format_exc()}")
+                raise
+        return wrapper
+    return decorator
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+def ensure_directory_exists(directory_path: str) -> bool:
+    """Ensure directory exists, create if necessary"""
+    try:
+        if not os.path.exists(directory_path):
+            os.makedirs(directory_path)
+            logger.info(f"Created directory: {directory_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to create directory {directory_path}: {e}")
+        return False
+
+def is_supported_media_file(filename: str) -> Tuple[bool, str]:
+    """Check if file is supported media and return type"""
+    filename_lower = filename.lower()
+    
+    if any(filename_lower.endswith(ext) for ext in SUPPORTED_IMAGE_EXTENSIONS):
+        return True, 'image'
+    elif any(filename_lower.endswith(ext) for ext in SUPPORTED_VIDEO_EXTENSIONS):
+        return True, 'video'
+    elif any(filename_lower.endswith(ext) for ext in SUPPORTED_AUDIO_EXTENSIONS):
+        return True, 'audio'
+    
+    return False, 'unknown'
+
+def sanitize_filename_enhanced(title: str) -> str:
+    """Enhanced filename sanitization with better handling"""
+    if not title or not title.strip():
+        return f"untitled_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    # Remove extra whitespace and convert to lowercase
+    sanitized = title.strip().lower()
+    
+    # Replace spaces with hyphens for better URL structure
+    sanitized = re.sub(r'\s+', '-', sanitized)
+    
+    # Remove or replace special characters
+    sanitized = FILENAME_SANITIZE_PATTERN.sub('', sanitized)
+    
+    # Remove consecutive hyphens
+    sanitized = re.sub(r'-+', '-', sanitized)
+    
+    # Remove leading/trailing hyphens
+    sanitized = sanitized.strip('-')
+    
+    # Ensure reasonable length
+    if len(sanitized) > 50:
+        sanitized = sanitized[:50].rstrip('-')
+    
+    # Ensure it ends with .html
+    if not sanitized.endswith('.html'):
+        sanitized += '.html'
+    
+    return sanitized
+
+# =============================================================================
+# ORIGINAL FUNCTIONS (Enhanced with logging and error handling)
+# =============================================================================
 
 def extract_attachments(msg) -> List[Dict[str, Any]]:
     """Extract attachments and inline images from email message"""
@@ -54,37 +224,35 @@ def extract_attachments(msg) -> List[Dict[str, Any]]:
     
     return attachments
 
-def save_attachment(attachment: Dict[str, Any], page_title: str) -> str:
+@log_errors("save_attachment")
+def save_attachment(attachment: Dict[str, Any], page_title: str) -> Optional[str]:
     """Save attachment to images directory and return relative path"""
-    try:
-        # Create images directory if it doesn't exist
-        images_dir = "../images"
-        if not os.path.exists(images_dir):
-            os.makedirs(images_dir)
-        
-        # Sanitize filename
-        filename = attachment['filename']
-        # Remove any path components and sanitize
-        filename = os.path.basename(filename)
-        filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
-        
-        # Add page prefix to avoid conflicts
-        page_prefix = re.sub(r'[^a-zA-Z0-9]', '_', page_title.lower())[:20]
-        filename = f"{page_prefix}_{filename}"
-        
-        # Save file
-        filepath = os.path.join(images_dir, filename)
-        with open(filepath, 'wb') as f:
-            # Handle both 'content' and 'data' keys for backwards compatibility
-            attachment_data = attachment.get('data') or attachment.get('content')
-            f.write(attachment_data)
-        
-        print(f"Saved attachment: {filename}")
-        return f"../images/{filename}"
-        
-    except Exception as e:
-        print(f"Error saving attachment {attachment['filename']}: {e}")
+    # Ensure images directory exists
+    if not ensure_directory_exists(IMAGES_DIR):
         return None
+    
+    # Validate attachment data
+    attachment_data = attachment.get('data') or attachment.get('content')
+    if not attachment_data:
+        logger.warning(f"No attachment data found for {attachment.get('filename', 'unknown')}")
+        return None
+    
+    # Sanitize filename
+    filename = attachment.get('filename', 'unknown_file')
+    filename = os.path.basename(filename)  # Remove path components
+    filename = FILENAME_SANITIZE_PATTERN.sub('_', filename)
+    
+    # Add page prefix to avoid conflicts (using enhanced function)
+    page_prefix = FILENAME_SANITIZE_PATTERN.sub('_', page_title.lower())[:MAX_TITLE_PREFIX_LENGTH]
+    filename = f"{page_prefix}_{filename}"
+    
+    # Save file
+    filepath = os.path.join(IMAGES_DIR, filename)
+    with open(filepath, 'wb') as f:
+        f.write(attachment_data)
+    
+    logger.info(f"Saved attachment: {filename} ({len(attachment_data)} bytes)")
+    return f"../images/{filename}"
 
 def parse_email_content(email_text: str) -> Dict[str, Any]:
     """Parse email content maintaining exact sequential order of text and media"""
@@ -221,12 +389,9 @@ def parse_email_content(email_text: str) -> Dict[str, Any]:
         }
 
 def extract_description(content: str) -> str:
-    """Extract description from [Description] tag in content"""
-    # Look for [Description] tag
-    description_match = re.search(r'\[Description\]\s*(.+?)(?:\n|$)', content, re.IGNORECASE)
-    if description_match:
-        return description_match.group(1).strip()
-    return ""
+    """Extract description from [Description] tag in content using pre-compiled pattern"""
+    match = DESCRIPTION_PATTERN.search(content)
+    return match.group(1).strip() if match else ""
 
 def generate_description_from_content(content: str, title: str) -> str:
     """Generate a description from content if no explicit description provided"""
@@ -465,18 +630,18 @@ def markdown_to_html(content: str) -> str:
     
     content = '\n'.join(processed_lines)
     
-    # Convert bold and italic
-    content = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', content)
-    content = re.sub(r'\*(.*?)\*', r'<em>\1</em>', content)
+    # Convert markdown formatting using pre-compiled patterns for better performance
+    content = MARKDOWN_BOLD_PATTERN.sub(r'<strong>\1</strong>', content)
+    content = MARKDOWN_ITALIC_PATTERN.sub(r'<em>\1</em>', content)
     
     # Convert markdown images: ![alt text](url)
-    content = re.sub(r'!\[(.*?)\]\((.*?)\)', r'<img src="\2" alt="\1" style="max-width: 50vw; height: auto; margin: 10px 0;">', content)
+    content = MARKDOWN_IMAGE_PATTERN.sub(r'<img src="\2" alt="\1" style="max-width: 50vw; height: auto; margin: 10px 0;">', content)
     
     # Convert markdown links: [text](url)
-    content = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2" target="_blank">\1</a>', content)
+    content = MARKDOWN_LINK_PATTERN.sub(r'<a href="\2" target="_blank">\1</a>', content)
     
     # Convert video tags: [VIDEO](url)
-    content = re.sub(r'\[VIDEO\]\((.*?)\)', r'<video controls style="max-width: 100%; height: auto; margin: 10px 0;"><source src="\1" type="video/mp4">Your browser does not support the video tag.</video>', content)
+    content = VIDEO_PATTERN.sub(r'<video controls style="max-width: 100%; height: auto; margin: 10px 0;"><source src="\1" type="video/mp4">Your browser does not support the video tag.</video>', content)
     
     # Convert YouTube links: [YOUTUBE](video_id or full_url)
     def youtube_replacer(match):
@@ -493,7 +658,7 @@ def markdown_to_html(content: str) -> str:
         
         return f'<div class="video-container" style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; margin: 10px 0;"><iframe src="https://www.youtube.com/embed/{video_id}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe></div>'
     
-    content = re.sub(r'\[YOUTUBE\]\((.*?)\)', youtube_replacer, content)
+    content = YOUTUBE_PATTERN.sub(youtube_replacer, content)
     
     # Process [Carousel][/Carousel] tags for image/video galleries
     def process_carousel_tags(content):
