@@ -726,7 +726,7 @@ section h2 {
     }
     
     .line-1-part2::after {
-        content: "\A\A";
+        content: "\A";
         white-space: pre;
     }
     
@@ -737,6 +737,16 @@ section h2 {
     
     .line-1, .line-1-part2, .line-2, .line-3 {
         display: inline;
+    }
+    
+    .line-2 {
+        margin-top: 0.5em;
+        display: block;
+    }
+    
+    .line-3 {
+        margin-top: 0.25em;
+        display: block;
     }
 
     .project-container {
@@ -852,7 +862,7 @@ section h2 {
     }
     
     .line-1-part2::after {
-        content: "\A\A";
+        content: "\A";
         white-space: pre;
     }
     
@@ -863,6 +873,16 @@ section h2 {
     
     .line-1, .line-1-part2, .line-2, .line-3 {
         display: inline;
+    }
+    
+    .line-2 {
+        margin-top: 0.4em;
+        display: block;
+    }
+    
+    .line-3 {
+        margin-top: 0.2em;
+        display: block;
     }
 
     [title*="This Web Page was Created with an Email"] .content {
