@@ -877,6 +877,7 @@ section h2 {
     /* Adjust container height for mobile */
     #typing-animation-container {
         min-height: 240px; /* Smaller height for mobile */
+        margin-bottom: 10px; /* Changed from default 1.5rem (~24px) to 10px */
     }
     
     #typing-text {
