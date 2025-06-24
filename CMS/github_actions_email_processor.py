@@ -37,7 +37,8 @@ class GitHubActionsEmailProcessor:
         if not self.password:
             raise ValueError("GMAIL_PASSWORD environment variable is required")
             
-        self.processed_emails_file = 'processed_emails_cloud.json'
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.processed_emails_file = os.path.join(script_dir, 'processed_emails_cloud.json')
         self.processed_emails = self.load_processed_emails()
         
     def load_processed_emails(self) -> set:
@@ -272,7 +273,7 @@ class GitHubActionsEmailProcessor:
             mail.select('inbox')
             
             # Search for recent emails from authorized sender
-            since_date = (datetime.now() - timedelta(days=3)).strftime('%d-%b-%Y')
+            since_date = (datetime.now() - timedelta(hours=1)).strftime('%d-%b-%Y')
             search_criteria = f'(FROM "{self.authorized_sender}" SINCE {since_date})'
             
             status, messages = mail.search(None, search_criteria)
