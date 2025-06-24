@@ -41,28 +41,28 @@ But, no one ever asks...
     // Break down the content into pieces for typing
     const typingSequence = [
         // Line 1
-        { text: "Everyone ", delay: 300 },
-        { text: "asks...", delay: 300 },
+        { text: "Everyone ", delay: 500 },
+        { text: "asks...", delay: 500 },
         
         // Line 2
-        { text: "\n'How ", delay: 300 },
-        { text: "to ", delay: 300 },
-        { text: "Code?'", delay: 300 },
+        { text: "\n'How ", delay: 500 },
+        { text: "to ", delay: 500 },
+        { text: "Code?'", delay: 500 },
         
         // Single blank line - slightly longer delay
         { text: "\n\n", delay: 500 },
         
         // Line 4
-        { text: "But, ", delay: 300 },
-        { text: "no ", delay: 300 },
-        { text: "one ", delay: 300 },
-        { text: "ever ", delay: 300 },
+        { text: "But, ", delay: 500 },
+        { text: "no ", delay: 500 },
+        { text: "one ", delay: 500 },
+        { text: "ever ", delay: 500 },
         { text: "asks...", delay: 1000 }, // Longer delay before the Who IS Code part
         
         // Line 5 with special styling
         { text: "\n'Who ", delay: 1000, isWhoLine: true },
         { text: "IS ", delay: 1000, isWhoLine: true },
-        { text: "Code?'", delay: 300, isWhoLine: true, isLast: true }
+        { text: "Code?'", delay: 500, isWhoLine: true, isLast: true }
     ];
     
     let currentIndex = 0;
@@ -118,7 +118,7 @@ But, no one ever asks...
     }
     
     // Start typing after a delay
-    setTimeout(typeNextPiece, 300);
+    setTimeout(typeNextPiece, 500);
 });
 
 // Parallax effect for .parallax-3 section if it exists
