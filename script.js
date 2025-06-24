@@ -67,7 +67,7 @@ But, no one ever asks...
     // Break down the content into pieces for typing
     const typingSequence = [
         // Line 1
-        { text: "Everyone ", delay: 800 },
+        { text: "Everyone ", delay: 600 },
         { text: "asks...", delay: 400 },
         
         // Line 2
