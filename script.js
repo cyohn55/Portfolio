@@ -31,91 +31,94 @@ document.addEventListener('DOMContentLoaded', function() {
     // Clear the pre-filled text (which is a fallback)
     typingText.textContent = '';
     
-    // Define the lines of text with their words
-    const lines = [
-        ["Everyone", "asks..."],
-        ["'How", "to", "Code?'"],
-        ["But,", "no", "one", "ever", "asks..."],
-        ["'Who", "IS", "Code?'"]
+    // Define exact sequence of content to be displayed
+    const finalContent = `Everyone asks...
+'How to Code?'
+
+But, no one ever asks...
+<a href="Pages/aboutcode.html" class="red-link">'Who IS Code?'</a>`;
+
+    // Break down the content into pieces for typing
+    const typingSequence = [
+        // Line 1
+        { text: "Everyone ", delay: 300 },
+        { text: "asks...", delay: 300 },
+        
+        // Line 2
+        { text: "\n'How ", delay: 300 },
+        { text: "to ", delay: 300 },
+        { text: "Code?'", delay: 300 },
+        
+        // Single blank line - slightly longer delay
+        { text: "\n\n", delay: 500 },
+        
+        // Line 4
+        { text: "But, ", delay: 300 },
+        { text: "no ", delay: 300 },
+        { text: "one ", delay: 300 },
+        { text: "ever ", delay: 300 },
+        { text: "asks...", delay: 1000 }, // Longer delay before the Who IS Code part
+        
+        // Line 5 with special styling
+        { text: "\n'Who ", delay: 1000, isWhoLine: true },
+        { text: "IS ", delay: 1000, isWhoLine: true },
+        { text: "Code?'", delay: 300, isWhoLine: true, isLast: true }
     ];
     
-    let currentLine = 0;
-    let currentWord = 0;
-    let displayText = '';
-    let lineBreaks = '';
+    let currentIndex = 0;
+    let currentText = '';
+    let whoLineStarted = false;
+    let whoLineContent = '';
     
-    function typeNextWord() {
-        // If we've finished all lines, we're done
-        if (currentLine >= lines.length) {
+    function typeNextPiece() {
+        // If we've finished all pieces, we're done
+        if (currentIndex >= typingSequence.length) {
             typingText.classList.add('typing-done');
             return;
         }
         
-        // If we've finished the current line, move to the next line
-        if (currentWord >= lines[currentLine].length) {
-            // Add a single line break after completing a line
-            lineBreaks += '<br>';
-            
-            // Add an extra line break only between "Code?'" and "But,"
-            if (currentLine === 1) {
-                lineBreaks += '<br>';
+        const piece = typingSequence[currentIndex];
+        
+        // Handle the "Who IS Code?" line specially
+        if (piece.isWhoLine) {
+            if (!whoLineStarted) {
+                whoLineStarted = true;
+                whoLineContent = '';
             }
             
-            // Move to next line
-            currentLine++;
-            currentWord = 0;
+            whoLineContent += piece.text;
             
-            // Special longer delay before the 'Who IS Code?' part
-            if (currentLine === 3) { // Now line 3 is "Who IS Code?" since we removed the empty line
-                setTimeout(typeNextWord, 1000); // 1 second delay before "Who IS Code?"
+            // Format the entire text
+            const beforeWho = currentText;
+            const formatted = beforeWho + `<a href="Pages/aboutcode.html" class="red-link">${whoLineContent}</a>`;
+            
+            // Replace \n with <br> for HTML
+            typingText.innerHTML = formatted.replace(/\n/g, '<br>');
+            
+            // If this is the last piece, we're done
+            if (piece.isLast) {
+                setTimeout(() => {
+                    typingText.classList.add('typing-done');
+                }, piece.delay);
+            } else {
+                currentIndex++;
+                setTimeout(typeNextPiece, piece.delay);
             }
-            // Standard delay between lines
-            else {
-                setTimeout(typeNextWord, 300);
-            }
-            return;
+        } 
+        else {
+            // Regular text
+            currentText += piece.text;
+            
+            // Replace \n with <br> for HTML
+            typingText.innerHTML = currentText.replace(/\n/g, '<br>');
+            
+            currentIndex++;
+            setTimeout(typeNextPiece, piece.delay);
         }
-        
-        // Add the next word with space if not first word
-        if (currentWord > 0) {
-            displayText += ' ';
-        }
-        
-        // Add the word
-        displayText += lines[currentLine][currentWord];
-        
-        // Format with proper styling for 'Who IS Code?' part
-        let formattedText = displayText;
-        if (currentLine === 3) { // If we're on the 'Who IS Code?' line (now line 3)
-            const whoText = "'Who IS Code?'";
-            const whoIndex = formattedText.lastIndexOf("'Who");
-            if (whoIndex !== -1) {
-                formattedText = formattedText.substring(0, whoIndex) + 
-                                '<a href="Pages/aboutcode.html" class="red-link">' + 
-                                whoText + 
-                                '</a>';
-            }
-        }
-        
-        // Add line breaks
-        typingText.innerHTML = formattedText + lineBreaks;
-        
-        // Move to next word
-        currentWord++;
-        
-        // Determine delay - special longer delays for 'Who IS Code?' part
-        let delay = 300; // Default delay
-        
-        if (currentLine === 3) { // If we're on the "Who IS Code?" line (now line 3)
-            delay = 1000; // Longer delay for each word in this line
-        }
-        
-        // Schedule next word
-        setTimeout(typeNextWord, delay);
     }
     
     // Start typing after a delay
-    setTimeout(typeNextWord, 300);
+    setTimeout(typeNextPiece, 300);
 });
 
 // Parallax effect for .parallax-3 section if it exists

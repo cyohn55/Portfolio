@@ -102,13 +102,15 @@ body {
     font-weight: bold;
     min-height: 150px; /* Restored to original value */
     text-align: left;
+    white-space: pre-line; /* This ensures \n characters create line breaks */
 }
 
-/* Add more spacing between the lines */
+/* Add more spacing between the lines but remove any margin that might cause extra space */
 #typing-text br {
     display: block;
     content: "";
-    margin-top: 0.8rem;
+    margin: 0.5rem 0 0 0;
+    padding: 0;
 }
 
 #typing-text .highlight {
