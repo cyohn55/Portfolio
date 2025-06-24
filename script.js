@@ -31,84 +31,98 @@ document.addEventListener('DOMContentLoaded', function() {
     // Clear the pre-filled text (which is a fallback)
     typingText.textContent = '';
     
-    // Define the sentence parts with their own lines
-    const parts = [
-        ["Everyone", "asks", "'How", "to", "Code?'"],
-        ["But,", "no", "one", "ever", "asks...", "'Who", "IS", "Code?'"]
+    // Define the lines of text with their words
+    const lines = [
+        ["Everyone", "asks..."],
+        ["'How", "to", "Code?'"],
+        [], // Empty line for spacing
+        ["But,", "no", "one", "ever", "asks..."],
+        ["'Who", "IS", "Code?'"]
     ];
     
-    let currentPart = 0;
+    let currentLine = 0;
     let currentWord = 0;
-    let displayPart1 = '';
-    let displayPart2 = '';
+    let displayText = '';
+    let lineBreaks = '';
     
     function typeNextWord() {
-        // If we're done with all parts, stop
-        if (currentPart >= parts.length) {
+        // If we've finished all lines, we're done
+        if (currentLine >= lines.length) {
             typingText.classList.add('typing-done');
             return;
         }
         
+        // If this is an empty line (for spacing), just add a line break and move to the next line
+        if (lines[currentLine].length === 0) {
+            lineBreaks += '<br>';
+            displayText += lineBreaks;
+            typingText.innerHTML = displayText;
+            currentLine++;
+            currentWord = 0;
+            setTimeout(typeNextWord, 300);
+            return;
+        }
+        
+        // If we've finished the current line, move to the next line
+        if (currentWord >= lines[currentLine].length) {
+            // Add line break after completing a line
+            lineBreaks += '<br>';
+            
+            // Move to next line
+            currentLine++;
+            currentWord = 0;
+            
+            // For empty spacing line, don't add delay
+            if (currentLine < lines.length && lines[currentLine].length === 0) {
+                setTimeout(typeNextWord, 0);
+            }
+            // Special longer delay before the 'Who IS Code?' part
+            else if (currentLine === 4) {
+                setTimeout(typeNextWord, 1000); // 1 second delay before "Who IS Code?"
+            }
+            // Standard delay between lines
+            else {
+                setTimeout(typeNextWord, 300);
+            }
+            return;
+        }
+        
         // Add the next word with space if not first word
-        if (currentWord < parts[currentPart].length) {
-            if (currentPart === 0) {
-                // First line
-                if (currentWord > 0) {
-                    displayPart1 += ' ';
-                }
-                displayPart1 += parts[currentPart][currentWord];
-                
-                // Update display
-                typingText.innerHTML = displayPart1;
-            } else {
-                // Second line
-                if (currentWord > 0) {
-                    displayPart2 += ' ';
-                }
-                displayPart2 += parts[currentPart][currentWord];
-                
-                // Format for special styling of 'Who IS Code?'
-                let formattedPart2 = displayPart2;
-                if (formattedPart2.includes("'Who")) {
-                    const whoIndex = formattedPart2.indexOf("'Who");
-                    if (whoIndex !== -1) {
-                        formattedPart2 = formattedPart2.substring(0, whoIndex) + 
-                                         '<a href="Pages/aboutcode.html" class="red-link">' + 
-                                         formattedPart2.substring(whoIndex) + 
-                                         '</a>';
-                    }
-                }
-                
-                // Update display with both parts
-                typingText.innerHTML = displayPart1 + '<br><br>' + formattedPart2;
-            }
-            
-            currentWord++;
-            
-            // Determine delay based on which word
-            let delay = 300; // Default delay
-            
-            // Special longer delays for 'Who IS Code?' part
-            if (currentPart === 1 && (currentWord >= parts[1].indexOf("'Who") + 1)) {
-                delay = 1000;
-            }
-            
-            // Schedule next word
-            setTimeout(typeNextWord, delay);
-        } else {
-            // Move to next part
-            if (currentPart === 0) {
-                // After first part, add a pause before the second part
-                setTimeout(() => {
-                    currentPart++;
-                    currentWord = 0;
-                    typeNextWord();
-                }, 500);
-            } else {
-                // We're done
-                typingText.classList.add('typing-done');
+        if (currentWord > 0) {
+            displayText += ' ';
+        }
+        
+        // Add the word
+        displayText += lines[currentLine][currentWord];
+        
+        // Format with proper styling for 'Who IS Code?' part
+        let formattedText = displayText;
+        if (currentLine === 4) { // If we're on the 'Who IS Code?' line
+            const whoText = "'Who IS Code?'";
+            const whoIndex = formattedText.lastIndexOf("'Who");
+            if (whoIndex !== -1) {
+                formattedText = formattedText.substring(0, whoIndex) + 
+                                '<a href="Pages/aboutcode.html" class="red-link">' + 
+                                whoText + 
+                                '</a>';
             }
         }
+        
+        // Add line breaks
+        typingText.innerHTML = formattedText + lineBreaks;
+        
+        // Move to next word
+        currentWord++;
+        
+        // Determine delay - special longer delays for 'Who IS Code?' part
+        let delay = 300; // Default delay
+        
+        if (currentLine === 4) { // If we're on the "Who IS Code?" line
+            delay = 1000; // Longer delay for each word in this line
+        }
+        
+        // Schedule next word
+        setTimeout(typeNextWord, delay);
     }
     
     // Start typing after a delay
