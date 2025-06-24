@@ -87,7 +87,7 @@ But, no one ever asks...
         
         // Line 5 with special styling
         { text: "\n'Who ", delay: 800, isWhoLine: true },
-        { text: "IS ", delay: 500, isWhoLine: true },
+        { text: "IS ", delay: 300, isWhoLine: true },
         { text: "Code?'", delay: 400, isWhoLine: true, isLast: true }
     ];
     
