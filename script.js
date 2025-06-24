@@ -83,11 +83,11 @@ But, no one ever asks...
         { text: "no ", delay: 400 },
         { text: "one ", delay: 400 },
         { text: "ever ", delay: 400 },
-        { text: "asks...", delay: 1000 }, // Longer delay before the Who IS Code part
+        { text: "asks...", delay: 800 }, // Longer delay before the Who IS Code part
         
         // Line 5 with special styling
-        { text: "\n'Who ", delay: 1000, isWhoLine: true },
-        { text: "IS ", delay: 1000, isWhoLine: true },
+        { text: "\n'Who ", delay: 800, isWhoLine: true },
+        { text: "IS ", delay: 800, isWhoLine: true },
         { text: "Code?'", delay: 400, isWhoLine: true, isLast: true }
     ];
     
