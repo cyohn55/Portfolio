@@ -88,7 +88,7 @@ body {
 #typing-animation-container {
     position: relative;
     margin-bottom: 1.5rem;
-    min-height: 150px; /* Increased height for the new 5-line layout */
+    min-height: 120px; /* Restored to original value */
     width: 100%;
     display: block;
     text-align: left;
@@ -98,9 +98,9 @@ body {
     display: block;
     margin: 0;
     font-size: 3rem;
-    line-height: 1.3; /* Slightly increased line height for better readability */
+    line-height: 1.2; /* Restored to original value */
     font-weight: bold;
-    min-height: 200px; /* Increased height to accommodate 5 lines */
+    min-height: 150px; /* Restored to original value */
     text-align: left;
 }
 
