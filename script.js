@@ -31,66 +31,79 @@ document.addEventListener('DOMContentLoaded', function() {
     // Clear the pre-filled text (which is a fallback)
     typingText.textContent = '';
     
-    // Define the sentences
-    const sentences = [
-        "Everyone asks 'How to Code?'",
-        "But, no one ever asks... 'Who IS Code?'"
+    // Define the sentence parts with their own lines
+    const parts = [
+        ["Everyone", "asks", "'How", "to", "Code?'"],
+        ["But,", "no", "one", "ever", "asks...", "'Who", "IS", "Code?'"]
     ];
     
-    // Create arrays of words
-    const words = sentences.map(sentence => sentence.split(' '));
-    
-    let currentSentence = 0;
+    let currentPart = 0;
     let currentWord = 0;
-    let displayText = '';
+    let displayPart1 = '';
+    let displayPart2 = '';
     
     function typeNextWord() {
-        // If we're at the end of all sentences, stop
-        if (currentSentence >= sentences.length) {
+        // If we're done with all parts, stop
+        if (currentPart >= parts.length) {
             typingText.classList.add('typing-done');
             return;
         }
         
-        // Add the next word
-        if (currentWord < words[currentSentence].length) {
-            // Add space if not the first word
-            if (currentWord > 0) {
-                displayText += ' ';
+        // Add the next word with space if not first word
+        if (currentWord < parts[currentPart].length) {
+            if (currentPart === 0) {
+                // First line
+                if (currentWord > 0) {
+                    displayPart1 += ' ';
+                }
+                displayPart1 += parts[currentPart][currentWord];
+                
+                // Update display
+                typingText.innerHTML = displayPart1;
+            } else {
+                // Second line
+                if (currentWord > 0) {
+                    displayPart2 += ' ';
+                }
+                displayPart2 += parts[currentPart][currentWord];
+                
+                // Format for special styling of 'Who IS Code?'
+                let formattedPart2 = displayPart2;
+                if (formattedPart2.includes("'Who")) {
+                    const whoIndex = formattedPart2.indexOf("'Who");
+                    if (whoIndex !== -1) {
+                        formattedPart2 = formattedPart2.substring(0, whoIndex) + 
+                                         '<a href="Pages/aboutcode.html" class="red-link">' + 
+                                         formattedPart2.substring(whoIndex) + 
+                                         '</a>';
+                    }
+                }
+                
+                // Update display with both parts
+                typingText.innerHTML = displayPart1 + '<br><br>' + formattedPart2;
             }
             
-            // Add the word
-            displayText += words[currentSentence][currentWord];
             currentWord++;
             
-            // Format the text
-            let formattedText = displayText;
+            // Determine delay based on which word
+            let delay = 300; // Default delay
             
-            // Add styling for 'Who IS Code?' part
-            if (currentSentence === 1 && formattedText.includes("'Who")) {
-                const parts = formattedText.split("'Who");
-                formattedText = parts[0] + '<a href="Pages/aboutcode.html" class="red-link">\'Who' + 
-                    (parts.length > 1 ? parts[1] : '') + '</a>';
-            }
-            
-            typingText.innerHTML = formattedText;
-            
-            // Determine the delay
-            let delay = 300; // Default
-            
-            if (formattedText.includes("'Who")) {
-                delay = 1000; // Longer for emphasizing "Who IS Code?"
+            // Special longer delays for 'Who IS Code?' part
+            if (currentPart === 1 && (currentWord >= parts[1].indexOf("'Who") + 1)) {
+                delay = 1000;
             }
             
             // Schedule next word
             setTimeout(typeNextWord, delay);
         } else {
-            // Move to next sentence
-            if (currentSentence < sentences.length - 1) {
-                displayText += '<br>';
-                typingText.innerHTML = displayText;
-                currentSentence++;
-                currentWord = 0;
-                setTimeout(typeNextWord, 500); // Wait before starting next line
+            // Move to next part
+            if (currentPart === 0) {
+                // After first part, add a pause before the second part
+                setTimeout(() => {
+                    currentPart++;
+                    currentWord = 0;
+                    typeNextWord();
+                }, 500);
             } else {
                 // We're done
                 typingText.classList.add('typing-done');
@@ -99,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Start typing after a delay
-    setTimeout(typeNextWord, 500);
+    setTimeout(typeNextWord, 300);
 });
 
 // Parallax effect for .parallax-3 section if it exists

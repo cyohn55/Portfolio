@@ -87,8 +87,10 @@ body {
 
 #typing-animation-container {
     position: relative;
-    margin-bottom: 1rem;
+    margin-bottom: 1.5rem;
     min-height: 120px; /* Ensure enough height for the text */
+    width: 100%;
+    display: block;
 }
 
 #typing-text {
@@ -97,7 +99,7 @@ body {
     font-size: 3rem;
     line-height: 1.2;
     font-weight: bold;
-    min-height: 120px; /* Ensure space for two lines */
+    min-height: 150px; /* Increased height for two lines with spacing */
 }
 
 #typing-text .highlight {
@@ -131,6 +133,17 @@ body {
 @keyframes blink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0; }
+}
+
+/* Style for the intro section */
+.intro-text {
+    margin-top: 1rem;
+    clear: both;
+    width: 100%;
+}
+
+.intro-text h3 {
+    margin-top: 0;
 }
 
 /* ==========================================================================
