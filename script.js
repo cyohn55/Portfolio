@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Elements
     const typingText = document.getElementById('typing-text');
+    const typingContainer = document.getElementById('typing-animation-container');
     const originalText = document.getElementById('fade-in');
     
     if (!typingText) {
@@ -28,9 +29,6 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     
-    // Clear the pre-filled text (which is a fallback)
-    typingText.textContent = '';
-    
     // Define exact sequence of content to be displayed
     const finalContent = `Everyone asks...
 'How to Code?'
@@ -38,6 +36,47 @@ document.addEventListener('DOMContentLoaded', function() {
 But, no one ever asks...
 <a href="Pages/aboutcode.html" class="red-link">'Who IS Code?'</a>`;
 
+    // Pre-calculate the height by temporarily showing the full content
+    function preCalculateHeight() {
+        // Create a temporary element with the same styling
+        const tempElement = document.createElement('h1');
+        tempElement.id = 'temp-height-calc';
+        tempElement.style.cssText = `
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+            visibility: hidden;
+            display: block;
+            font-size: ${window.getComputedStyle(typingText).fontSize};
+            line-height: ${window.getComputedStyle(typingText).lineHeight};
+            font-weight: ${window.getComputedStyle(typingText).fontWeight};
+            white-space: pre-line;
+            margin: 0;
+            padding: 0;
+            width: ${typingText.offsetWidth}px;
+        `;
+        tempElement.innerHTML = finalContent.replace(/\n/g, '<br>');
+        document.body.appendChild(tempElement);
+        
+        // Measure the height
+        const finalHeight = tempElement.offsetHeight;
+        console.log("Calculated final height:", finalHeight);
+        
+        // Set the container height
+        if (finalHeight > 0) {
+            typingContainer.style.minHeight = `${finalHeight}px`;
+        }
+        
+        // Clean up
+        document.body.removeChild(tempElement);
+    }
+    
+    // Run height calculation
+    preCalculateHeight();
+    
+    // Clear the pre-filled text (which is a fallback)
+    typingText.textContent = '';
+    
     // Break down the content into pieces for typing
     const typingSequence = [
         // Line 1
