@@ -354,7 +354,10 @@ section h2 {
 
 .default-container {
     max-width: 800px;
-    margin: 0 auto;
+    margin-top: 0;
+    margin-bottom: 0;
+    margin-left: 0;
+    margin-right: 0;
     padding: 20px;
     display: flex;
     flex-direction: column; /* Force vertical stacking */
