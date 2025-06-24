@@ -82,6 +82,56 @@ body {
 }
 
 /* ==========================================================================
+   TYPING ANIMATION
+   ========================================================================== */
+
+#typing-animation-container {
+    position: relative;
+    margin-bottom: 1rem;
+    min-height: 120px; /* Ensure enough height for the text */
+}
+
+#typing-text {
+    display: inline-block;
+    margin: 0;
+    font-size: 3rem;
+    line-height: 1.2;
+    font-weight: bold;
+}
+
+#typing-text .highlight {
+    color: #ff4444;
+    font-style: italic;
+}
+
+#typing-text a.red-link {
+    color: #ff4444;
+    text-decoration: none;
+    transition: color 0.3s ease, text-shadow 0.3s ease;
+    font-style: italic;
+}
+
+#typing-text a.red-link:hover {
+    text-shadow: 0 0 8px rgba(255, 68, 68, 0.7);
+}
+
+/* Cursor effect */
+#typing-text::after {
+    content: '|';
+    animation: blink 1s step-end infinite;
+}
+
+#typing-text.typing-done::after {
+    content: '';
+    animation: none;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+/* ==========================================================================
    HEADER & NAVIGATION
    ========================================================================== */
 
