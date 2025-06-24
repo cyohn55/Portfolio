@@ -88,7 +88,8 @@ body {
 #typing-animation-container {
     position: relative;
     margin-bottom: 1.5rem;
-    min-height: 120px; /* Restored to original value */
+    min-height: 287.969px; /* Set to exact height needed */
+    height: 287.969px; /* Fixed height */
     width: 100%;
     display: block;
     text-align: left;
@@ -98,11 +99,13 @@ body {
     display: block;
     margin: 0;
     font-size: 3rem;
-    line-height: 1.2; /* Restored to original value */
+    line-height: 1.2;
     font-weight: bold;
-    min-height: 150px; /* Restored to original value */
+    min-height: 287.969px; /* Set to exact height needed */
+    height: 287.969px; /* Fixed height */
     text-align: left;
     white-space: pre-line; /* This ensures \n characters create line breaks */
+    overflow: hidden; /* Prevent content from spilling out */
 }
 
 /* Add more spacing between the lines but remove any margin that might cause extra space */
