@@ -71,12 +71,12 @@ But, no one ever asks...
         { text: "asks...", delay: 400 },
         
         // Line 2
-        { text: "\n'How ", delay: 400 },
+        { text: "\n'How ", delay: 300 },
         { text: "to ", delay: 400 },
         { text: "Code?'", delay: 400 },
         
         // Single blank line - slightly longer delay
-        { text: "\n\n", delay: 400 },
+        { text: "\n\n", delay: 800 },
         
         // Line 4
         { text: "But, ", delay: 400 },
