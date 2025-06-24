@@ -8,131 +8,98 @@ function scrollToTop() {
     });
 }
 
-// Word-by-word typing animation
-document.addEventListener('DOMContentLoaded', () => {
+// Simple word-by-word typing animation
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded');
+    
+    // Elements
+    const typingText = document.getElementById('typing-text');
+    const originalText = document.getElementById('fade-in');
+    
+    if (!typingText) {
+        console.error('Typing text element not found!');
+        return;
+    }
+    
     // Check for reduced motion preference
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) {
+        // Just display the text normally
+        return;
+    }
     
-    // Typing animation
-    const typingAnimation = () => {
-        const originalText = document.getElementById('fade-in');
-        const typingContainer = document.getElementById('typing-text');
-        
-        if (!originalText || !typingContainer) return;
-        
-        // Skip animation for reduced motion
-        if (prefersReducedMotion) {
-            originalText.style.visibility = 'visible';
-            typingContainer.style.display = 'none';
+    // Clear the pre-filled text (which is a fallback)
+    typingText.textContent = '';
+    
+    // Define the sentences
+    const sentences = [
+        "Everyone asks 'How to Code?'",
+        "But, no one ever asks... 'Who IS Code?'"
+    ];
+    
+    // Create arrays of words
+    const words = sentences.map(sentence => sentence.split(' '));
+    
+    let currentSentence = 0;
+    let currentWord = 0;
+    let displayText = '';
+    
+    function typeNextWord() {
+        // If we're at the end of all sentences, stop
+        if (currentSentence >= sentences.length) {
+            typingText.classList.add('typing-done');
             return;
         }
         
-        // Extract the text to animate
-        const line1Full = "Everyone asks 'How to Code?'";
-        const line2Full = "But, no one ever asks... 'Who IS Code?'";
-        
-        // Split into words preserving punctuation
-        const wordsToType = [];
-        let currentWord = '';
-        let line1Words = 0;
-        
-        // Process line 1
-        for (let i = 0; i < line1Full.length; i++) {
-            const char = line1Full[i];
-            if (char === ' ') {
-                if (currentWord) {
-                    wordsToType.push(currentWord);
-                    currentWord = '';
-                    line1Words++;
-                }
+        // Add the next word
+        if (currentWord < words[currentSentence].length) {
+            // Add space if not the first word
+            if (currentWord > 0) {
+                displayText += ' ';
+            }
+            
+            // Add the word
+            displayText += words[currentSentence][currentWord];
+            currentWord++;
+            
+            // Format the text
+            let formattedText = displayText;
+            
+            // Add styling for 'Who IS Code?' part
+            if (currentSentence === 1 && formattedText.includes("'Who")) {
+                const parts = formattedText.split("'Who");
+                formattedText = parts[0] + '<a href="Pages/aboutcode.html" class="red-link">\'Who' + 
+                    (parts.length > 1 ? parts[1] : '') + '</a>';
+            }
+            
+            typingText.innerHTML = formattedText;
+            
+            // Determine the delay
+            let delay = 300; // Default
+            
+            if (formattedText.includes("'Who")) {
+                delay = 1000; // Longer for emphasizing "Who IS Code?"
+            }
+            
+            // Schedule next word
+            setTimeout(typeNextWord, delay);
+        } else {
+            // Move to next sentence
+            if (currentSentence < sentences.length - 1) {
+                displayText += '<br>';
+                typingText.innerHTML = displayText;
+                currentSentence++;
+                currentWord = 0;
+                setTimeout(typeNextWord, 500); // Wait before starting next line
             } else {
-                currentWord += char;
+                // We're done
+                typingText.classList.add('typing-done');
             }
         }
-        if (currentWord) {
-            wordsToType.push(currentWord);
-            currentWord = '';
-            line1Words++;
-        }
-        
-        // Process line 2
-        for (let i = 0; i < line2Full.length; i++) {
-            const char = line2Full[i];
-            if (char === ' ') {
-                if (currentWord) {
-                    wordsToType.push(currentWord);
-                    currentWord = '';
-                }
-            } else {
-                currentWord += char;
-            }
-        }
-        if (currentWord) {
-            wordsToType.push(currentWord);
-        }
-        
-        let currentText = '';
-        let currentWordIndex = 0;
-        let currentLine = 1;
-        
-        // Initialize with empty content
-        typingContainer.textContent = '';
-        
-        // Function to add the next word
-        const addNextWord = () => {
-            if (currentWordIndex < wordsToType.length) {
-                // Add space before if not first word
-                if (currentWordIndex > 0) {
-                    currentText += ' ';
-                }
-                
-                // Add the next word
-                currentText += wordsToType[currentWordIndex];
-                currentWordIndex++;
-                
-                // Format the text with proper styling
-                let formattedText = '';
-                
-                // Check if we're moving to line 2
-                if (currentWordIndex === line1Words && currentLine === 1) {
-                    formattedText = currentText + '<br>';
-                    currentLine = 2;
-                } else {
-                    formattedText = currentText;
-                }
-                
-                // Style "Who IS Code?" with red link when those words start appearing
-                if (currentLine === 2 && formattedText.includes("'Who")) {
-                    const parts = formattedText.split("'Who");
-                    formattedText = parts[0] + '<a href="Pages/aboutcode.html" class="red-link">\'Who' + 
-                        (parts.length > 1 ? parts[1] : '') + '</a>';
-                }
-                
-                typingContainer.innerHTML = formattedText;
-                
-                // Determine the delay for the next word
-                let delay = 300; // Default delay of 300ms
-                
-                // Special delays for emphasis on "Who IS Code?"
-                if (formattedText.includes("'Who")) {
-                    delay = 1000; // Longer delay for the Who IS Code part
-                }
-                
-                // Schedule the next word
-                setTimeout(addNextWord, delay);
-            }
-            else {
-                // Animation complete - hide the cursor
-                typingContainer.classList.add('typing-done');
-            }
-        };
-        
-        // Start the typing animation after a short delay
-        setTimeout(addNextWord, 300);
-    };
+    }
     
-    // Run the typing animation
-    typingAnimation();
+    // Start typing after a delay
+    setTimeout(typeNextWord, 500);
 });
 
 // Parallax effect for .parallax-3 section if it exists

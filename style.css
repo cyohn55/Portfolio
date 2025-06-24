@@ -92,11 +92,12 @@ body {
 }
 
 #typing-text {
-    display: inline-block;
+    display: block;
     margin: 0;
     font-size: 3rem;
     line-height: 1.2;
     font-weight: bold;
+    min-height: 120px; /* Ensure space for two lines */
 }
 
 #typing-text .highlight {
@@ -119,6 +120,7 @@ body {
 #typing-text::after {
     content: '|';
     animation: blink 1s step-end infinite;
+    margin-left: 2px;
 }
 
 #typing-text.typing-done::after {
