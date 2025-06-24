@@ -55,6 +55,8 @@ class GitHubActionsEmailProcessor:
     def save_processed_emails(self):
         """Save list of processed email IDs"""
         try:
+            logger.info(f"Attempting to save {len(self.processed_emails)} email IDs to: '{self.processed_emails_file}'")
+            
             # Ensure directory exists
             os.makedirs(os.path.dirname(self.processed_emails_file), exist_ok=True)
             with open(self.processed_emails_file, 'w') as f:
@@ -201,10 +203,14 @@ class GitHubActionsEmailProcessor:
             
             if result.returncode == 0:
                 logger.info("Successfully created page from email")
+                logger.info(f"Subprocess output:\n{result.stdout}")
                 return {"success": True, "output": result.stdout}
             else:
-                logger.error(f"Failed to create page: {result.stderr}")
-                return {"success": False, "error": result.stderr}
+                error_output = f"Return Code: {result.returncode}\n"
+                error_output += f"--- STDOUT ---\n{result.stdout}\n"
+                error_output += f"--- STDERR ---\n{result.stderr}\n"
+                logger.error(f"Failed to create page. Full output:\n{error_output}")
+                return {"success": False, "error": error_output}
                 
         except Exception as e:
             logger.error(f"Error creating page from email: {e}")
