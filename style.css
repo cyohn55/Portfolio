@@ -91,6 +91,7 @@ body {
     min-height: 120px; /* Ensure enough height for the text */
     width: 100%;
     display: block;
+    text-align: left;
 }
 
 #typing-text {
@@ -100,6 +101,7 @@ body {
     line-height: 1.2;
     font-weight: bold;
     min-height: 150px; /* Increased height for two lines with spacing */
+    text-align: left;
 }
 
 #typing-text .highlight {
@@ -140,6 +142,7 @@ body {
     margin-top: 1rem;
     width: 100%;
     display: block;
+    text-align: left;
 }
 
 .intro-text h3 {
@@ -356,6 +359,7 @@ section h2 {
     display: flex;
     flex-direction: column; /* Force vertical stacking */
     align-items: stretch;
+    text-align: left; /* Ensure left alignment of text */
 }
 
 .default-container > div {
