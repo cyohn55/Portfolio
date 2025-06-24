@@ -38,44 +38,31 @@ But, no one ever asks...
 
     // Pre-calculate the height by temporarily showing the full content
     function preCalculateHeight() {
-        // Create a temporary element with the same styling
-        const tempElement = document.createElement('h1');
-        tempElement.id = 'temp-height-calc';
-        tempElement.style.cssText = `
-            position: absolute;
-            top: -9999px;
-            left: -9999px;
-            visibility: hidden;
-            display: block;
-            font-size: ${window.getComputedStyle(typingText).fontSize};
-            line-height: ${window.getComputedStyle(typingText).lineHeight};
-            font-weight: ${window.getComputedStyle(typingText).fontWeight};
-            white-space: pre-line;
-            margin: 0;
-            padding: 0;
-            width: ${typingText.offsetWidth}px;
-        `;
-        tempElement.innerHTML = finalContent.replace(/\n/g, '<br>');
-        document.body.appendChild(tempElement);
-        
-        // Measure the height
-        const finalHeight = tempElement.offsetHeight;
+        // Temporarily modify the actual element to get the final rendered height
+        typingText.style.visibility = 'hidden'; // Hide it briefly
+        typingText.classList.add('typing-done'); // Apply final styles
+        typingText.innerHTML = finalContent.replace(/\n/g, '<br>');
+
+        const finalHeight = typingText.offsetHeight;
         console.log("Calculated final height:", finalHeight);
         
         // Set the container height
         if (finalHeight > 0) {
             typingContainer.style.minHeight = `${finalHeight}px`;
+            typingText.style.minHeight = `${finalHeight}px`;
         }
         
-        // Clean up
-        document.body.removeChild(tempElement);
+        // Revert the changes
+        typingText.style.visibility = 'visible';
+        typingText.classList.remove('typing-done');
+        typingText.innerHTML = ''; // Clear it for typing
     }
     
     // Run height calculation
     preCalculateHeight();
     
-    // Clear the pre-filled text (which is a fallback)
-    typingText.textContent = '';
+    // The text is already cleared in preCalculateHeight
+    // typingText.textContent = '';
     
     // Break down the content into pieces for typing
     const typingSequence = [

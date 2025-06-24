@@ -881,6 +881,9 @@ section h2 {
     }
     
     #typing-text {
+        font-size: 2rem;
+        line-height: 1.3;
+        font-weight: 600;
         min-height: 240px; /* Match container height */
     }
 }
