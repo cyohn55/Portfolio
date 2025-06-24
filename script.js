@@ -80,7 +80,7 @@ But, no one ever asks...
         
         // Line 4
         { text: "But, ", delay: 400 },
-        { text: "no ", delay: 400 },
+        { text: "no ", delay: 300 },
         { text: "one ", delay: 400 },
         { text: "ever ", delay: 400 },
         { text: "asks...", delay: 800 }, // Longer delay before the Who IS Code part
