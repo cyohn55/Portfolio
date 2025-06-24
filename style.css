@@ -138,8 +138,8 @@ body {
 /* Style for the intro section */
 .intro-text {
     margin-top: 1rem;
-    clear: both;
     width: 100%;
+    display: block;
 }
 
 .intro-text h3 {
@@ -350,9 +350,12 @@ section h2 {
 }
 
 .default-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
     display: flex;
-    justify-content: space-between;
-    flex-wrap: wrap;
+    flex-direction: column; /* Force vertical stacking */
+    align-items: stretch;
 }
 
 .default-container > div {
