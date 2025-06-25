@@ -184,6 +184,30 @@ def sanitize_filename_enhanced(title: str) -> str:
     
     return sanitized
 
+# -------------------------------------------------
+# HTML to plain-text helper (for HTML-only emails)
+# -------------------------------------------------
+
+def html_to_text(html_content: str) -> str:
+    """Convert basic HTML to plain text for tag parsing.
+
+    Keeps line breaks created by <br> and </p> so that later markdown/
+    description extraction logic still sees paragraph boundaries.
+    No external dependencies, quick regex-based stripping is enough
+    because we only need the raw text for the [Description] block.
+    """
+    import html as _html
+
+    # Normalise newline-style breaks
+    text = re.sub(r'<\s*br\s*/?>', '\n', html_content, flags=re.IGNORECASE)
+    text = re.sub(r'</\s*p\s*>', '\n', text, flags=re.IGNORECASE)
+
+    # Drop all other tags
+    text = re.sub(r'<[^>]+>', '', text)
+
+    # Un-escape HTML entities (&amp; → & etc.)
+    return _html.unescape(text)
+
 # =============================================================================
 # ORIGINAL FUNCTIONS (Enhanced with logging and error handling)
 # =============================================================================
@@ -276,11 +300,13 @@ def parse_email_content(email_text: str) -> Dict[str, Any]:
                 content_type = part.get_content_type()
                 content_disposition = part.get('Content-Disposition', '')
                 
-                if content_type == "text/plain" and 'attachment' not in content_disposition:
+                if content_type in ("text/plain", "text/html") and 'attachment' not in content_disposition:
                     # This is text content - add to ordered sequence
                     try:
                         payload = part.get_payload(decode=True)
-                        text_content = payload.decode('utf-8') if isinstance(payload, bytes) else str(payload)
+                        raw_text = payload.decode('utf-8') if isinstance(payload, bytes) else str(payload)
+                        # If HTML, convert to plain text first
+                        text_content = html_to_text(raw_text) if content_type == "text/html" else raw_text
                         if text_content.strip():
                             ordered_content.append({
                                 'type': 'text',
@@ -317,22 +343,17 @@ def parse_email_content(email_text: str) -> Dict[str, Any]:
                     except:
                         continue
         else:
-            # Single part message
+            # Single part message (non-multipart)
             try:
                 payload = msg.get_payload(decode=True)
-                text_content = payload.decode('utf-8') if isinstance(payload, bytes) else str(payload)
-                if text_content.strip():
-                    ordered_content.append({
-                        'type': 'text',
-                        'content': text_content.strip()
-                    })
-            except:
-                text_content = str(msg.get_payload())
-                if text_content.strip():
-                    ordered_content.append({
-                        'type': 'text',
-                        'content': text_content.strip()
-                    })
+                raw_text = payload.decode('utf-8') if isinstance(payload, bytes) else str(payload)
+            except Exception:
+                raw_text = str(msg.get_payload())
+
+            if raw_text.strip():
+                content_type = msg.get_content_type()
+                text_content = html_to_text(raw_text) if content_type == "text/html" else raw_text
+                ordered_content.append({'type': 'text', 'content': text_content.strip()})
         
         # Reconstruct content maintaining exact order with media placeholders
         sequential_content = []
@@ -399,8 +420,8 @@ def extract_description(content: str) -> str:
     if match:
         # Extract the description and remove any media placeholders
         description = match.group(1).strip()
-        # Clean up any media placeholders from the description
-        description = re.sub(r'__MEDIA_PLACEHOLDER_\d+__', '', description).strip()
+        # Remove any placeholder artefacts (both new and legacy spellings)
+        description = re.sub(r'(?:__)?MEDIA_?PLACEHOLDER_?\d+__?', '', description, flags=re.IGNORECASE).strip()
         return description
     return ""
 

@@ -61,4 +61,7 @@ jobs:
         - Updated navigation and deployed to GitHub Pages
         
         Automated by GitHub Actions 🤖"
+        # Pull any remote updates made by other concurrent runs (rebase to avoid merge commits)
+        git pull --rebase origin main
+        # Now push our rebased commit; will succeed unless genuine conflict exists
         git push 
