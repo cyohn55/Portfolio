@@ -1066,7 +1066,7 @@ def update_main_index_navigation():
         return False
 
 def add_research_tile(title: str, description: str, filename: str, tile_image: Optional[str] = None):
-    """Add research tile to main page"""
+    """Add a new tile to the Research section on the home page (newest first)"""
     try:
         index_path = "../index.html"
         if not os.path.exists(index_path):
@@ -1080,6 +1080,7 @@ def add_research_tile(title: str, description: str, filename: str, tile_image: O
         # Check if tile already exists
         if f'href="Pages/{filename}"' in content:
             print(f"Updating existing tile for '{title}'")
+            # Remove the existing tile first
             remove_research_tile(filename, title)
             # Re-read content after removal
             with open(index_path, 'r', encoding='utf-8') as f:
@@ -1096,19 +1097,19 @@ def add_research_tile(title: str, description: str, filename: str, tile_image: O
             tile_image = "images/python.jpg"  # Default fallback image
         
         # Prepare new tile HTML
-        tile_html = f'''
-            <div class="project">
+        tile_html = f'''            <div class="project">
                 <img src="{tile_image}" alt="{html.escape(title)}">
                 <h3>{html.escape(title)}</h3>
                 <p>{html.escape(description)}</p>
                 <a href="Pages/{filename}">View Project</a>
-            </div>
-'''
+            </div>'''
         
-        # Insert before the "end of page" paragraph
-        target = '<p style="text-align: center; margin-top: 20px;">You have reached the end of the page.</p>'
-        if target in content:
-            updated_content = content.replace(target, tile_html + '\n\n            ' + target)
+        # Find the beginning of the project container to insert new tiles first (newest first)
+        container_pattern = r'(<div id="project-container" class="project-container">[\s\S]*?<!-- Project items -->)'
+        
+        if re.search(container_pattern, content):
+            # Insert new tile right after the container opening and comment
+            updated_content = re.sub(container_pattern, f'\\1\n{tile_html}', content)
             
             # Write updated content
             with open(index_path, 'w', encoding='utf-8') as f:
@@ -1117,10 +1118,10 @@ def add_research_tile(title: str, description: str, filename: str, tile_image: O
             print(f"Successfully added research tile for: {title}")
             return True
         else:
-            # Fallback - insert before the project-container closing div if target paragraph not found
-            target = '</div>\n    </section>'
-            if target in content:
-                updated_content = content.replace(target, tile_html + '\n        ' + target)
+            # Fallback - try a simpler pattern if the full pattern isn't found
+            simple_pattern = r'(<div id="project-container" class="project-container">)'
+            if re.search(simple_pattern, content):
+                updated_content = re.sub(simple_pattern, f'\\1\n            <!-- Project items -->\n{tile_html}', content)
                 
                 # Write updated content
                 with open(index_path, 'w', encoding='utf-8') as f:
@@ -1448,12 +1449,17 @@ def process_email_to_page(email_content: str) -> bool:
             ordered_content = parsed.get("ordered_content", [])
             attachments = parsed.get("attachments", [])
             
+            print(f"DEBUG: Found {len(ordered_content)} ordered content items")
+            print(f"DEBUG: Found {len(attachments)} attachments")
+            
             # Look through ordered content to find the first image
             for item in ordered_content:
                 if item.get('type') == 'media':
                     attachment_index = item.get('attachment_index')
                     if attachment_index is not None and attachment_index < len(attachments):
                         attachment = attachments[attachment_index]
+                        print(f"DEBUG: Checking attachment {attachment_index}: {attachment.get('filename')} - {attachment.get('content_type')}")
+                        
                         if attachment.get('content_type', '').startswith('image/'):
                             # Found the first image in body order - get its saved path
                             page_prefix = re.sub(r'[^a-zA-Z0-9]', '_', parsed["title"].lower())[:20]
@@ -1461,20 +1467,43 @@ def process_email_to_page(email_content: str) -> bool:
                             sanitized_attachment_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', attachment['filename'])
                             expected_filename = f"{page_prefix}_{sanitized_attachment_filename}"
                             
-                            # Look through saved_media_files to find the actual path that was saved
-                            matching_file = None
-                            for file_path in saved_media_files:
-                                if os.path.basename(file_path) == expected_filename:
-                                    matching_file = file_path
+                            print(f"DEBUG: Found first image: {expected_filename}")
+                            
+                            # Check if file exists directly in the saved files
+                            for saved_file in saved_media_files:
+                                base_saved_file = os.path.basename(saved_file)
+                                print(f"DEBUG: Checking saved file: {base_saved_file}")
+                                
+                                if base_saved_file == expected_filename:
+                                    tile_image = saved_file.replace('../', '')
+                                    print(f"DEBUG: MATCH! Setting tile image to: {tile_image}")
                                     break
                             
-                            if matching_file:
-                                tile_image = matching_file.replace('../', '')
-                            else:
-                                tile_image = f"images/{expected_filename}"
+                            # If we didn't find an exact match, check for partial filename matches
+                            if not tile_image:
+                                for saved_file in saved_media_files:
+                                    base_saved_file = os.path.basename(saved_file)
+                                    # Check if sanitized filename is part of saved file
+                                    if sanitized_attachment_filename in base_saved_file:
+                                        tile_image = saved_file.replace('../', '')
+                                        print(f"DEBUG: Partial Match! Setting tile image to: {tile_image}")
+                                        break
                             
-                            print(f"Setting tile image to: {tile_image}")
+                            # If we still didn't find a match, use the expected path
+                            if not tile_image:
+                                tile_image = f"images/{expected_filename}"
+                                print(f"DEBUG: No match found, defaulting to expected path: {tile_image}")
+                                
+                            # Once we find the first image, we're done
                             break
+                            
+            # If no image was found in the content order, look directly at saved media files for images
+            if not tile_image and saved_media_files:
+                for saved_file in saved_media_files:
+                    if any(saved_file.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                        tile_image = saved_file.replace('../', '')
+                        print(f"DEBUG: Using first saved image file: {tile_image}")
+                        break
             
             # ALWAYS create the tile (this was the main bug - tiles only created with [Description])
             add_research_tile(parsed["title"], description, filename, tile_image)

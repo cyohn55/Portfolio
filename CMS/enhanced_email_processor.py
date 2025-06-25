@@ -31,6 +31,8 @@ def create_enhanced_html_page(title: str, content: str, filename: str, attachmen
         # Process attachments and embed them inline in content
         processed_content, saved_files = process_inline_media(content, attachments or [], title)
         
+        print(f"DEBUG: Processed {len(attachments or [])} attachments, saved {len(saved_files)} files")
+        
         # Convert content to HTML (this will process the embedded media HTML)
         content_html = markdown_to_html(processed_content)
         
@@ -44,6 +46,7 @@ def create_enhanced_html_page(title: str, content: str, filename: str, attachmen
             for file_path in saved_files:
                 if any(file_path.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.webp', '.gif']):
                     page_image = file_path.replace('../', '')
+                    print(f"DEBUG: Setting page image to: {page_image}")
                     break
         
         # Extract a meaningful description from the content
@@ -56,6 +59,8 @@ def create_enhanced_html_page(title: str, content: str, filename: str, attachmen
         else:
             # Clean up any media placeholders from the description
             description = re.sub(r'__MEDIA_PLACEHOLDER_\d+__', '', description).strip()
+            
+        print(f"DEBUG: Description: '{description}'")
         
         # CSS for responsive device styling
         responsive_css = """
@@ -186,7 +191,7 @@ def generate_description_from_content(content: str, title: str) -> str:
         return f"Learn about {title} in Cody's portfolio"
 
 def add_enhanced_research_tile(title: str, description: str, filename: str, tile_image: str = None):
-    """Enhanced tile creation that always creates tiles with cloud optimization"""
+    """Enhanced tile creation that adds tiles to the top (newest first)"""
     try:
         index_path = "../index.html"
         if not os.path.exists(index_path):
@@ -217,20 +222,20 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
         if not tile_image:
             tile_image = "images/python.jpg"  # Default fallback image
         
-        # Prepare new tile HTML
-        tile_html = f'''
-            <div class="project">
+        # Prepare new tile HTML with proper indentation
+        tile_html = f'''            <div class="project">
                 <img src="{tile_image}" alt="{html.escape(title)}">
                 <h3>{html.escape(title)}</h3>
                 <p>{html.escape(description)}</p>
                 <a href="Pages/{filename}">View Project</a>
-            </div>
-'''
+            </div>'''
         
-        # Insert before the "end of page" paragraph
-        target = '<p style="text-align: center; margin-top: 20px;">You have reached the end of the page.</p>'
-        if target in content:
-            updated_content = content.replace(target, tile_html + '\n\n            ' + target)
+        # Find the beginning of the project container to insert new tiles first (newest first)
+        container_pattern = r'(<div id="project-container" class="project-container">[\s\S]*?<!-- Project items -->)'
+        
+        if re.search(container_pattern, content):
+            # Insert new tile right after the container opening and comment
+            updated_content = re.sub(container_pattern, f'\\1\n{tile_html}', content)
             
             # Write updated content
             with open(index_path, 'w', encoding='utf-8') as f:
@@ -239,10 +244,10 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
             print(f"✅ Successfully added research tile for: {title}")
             return True
         else:
-            # Fallback - insert before the project-container closing div if target paragraph not found
-            target = '</div>\n    </section>'
-            if target in content:
-                updated_content = content.replace(target, tile_html + '\n        ' + target)
+            # Fallback - try a simpler pattern if the full pattern isn't found
+            simple_pattern = r'(<div id="project-container" class="project-container">)'
+            if re.search(simple_pattern, content):
+                updated_content = re.sub(simple_pattern, f'\\1\n            <!-- Project items -->\n{tile_html}', content)
                 
                 # Write updated content
                 with open(index_path, 'w', encoding='utf-8') as f:
@@ -288,94 +293,130 @@ def remove_research_tile(filename: str, title: str = None):
         return False
 
 def process_enhanced_email_to_page(email_content: str) -> bool:
-    """Enhanced email to page processing optimized for GitHub Actions"""
+    """Process email content into a web page with enhanced error handling"""
     try:
-        print("🚀 Starting enhanced email processing...")
+        # Parse email
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        from simple_email_processor import parse_email_content, is_delete_command, delete_page_and_tile, commit_delete_changes
         
-        # Parse email content
         parsed = parse_email_content(email_content)
         
-        if not parsed:
-            print("❌ Failed to parse email content")
-            return False
+        # Check if this is a delete command
+        is_delete, page_identifier = is_delete_command(parsed["title"], parsed["content"])
         
-        print(f"📧 Processing email: {parsed['title']}")
-        
-        # Check for delete command
-        is_delete, delete_target = is_delete_command(parsed.get('title', ''), parsed.get('content', ''))
         if is_delete:
-            print(f"🗑️  Delete command detected for: {delete_target}")
+            print(f"🗑️ Delete command detected for: {page_identifier}")
             
-            if delete_page_and_tile(delete_target):
-                if commit_delete_changes(delete_target):
-                    print(f"✅ Successfully deleted and committed: {delete_target}")
+            # Delete the page and tile
+            if delete_page_and_tile(page_identifier):
+                # Get the actual filename that was used
+                if page_identifier.endswith('.html'):
+                    actual_filename = page_identifier
+                else:
+                    actual_filename = sanitize_filename(page_identifier) + '.html'
+                
+                # Commit and push the deletion
+                if commit_delete_changes(actual_filename, page_identifier):
+                    print(f"✅ Successfully deleted '{page_identifier}' and pushed to GitHub!")
                     return True
                 else:
-                    print(f"⚠️  Page deleted but commit failed: {delete_target}")
+                    print(f"⚠️ Page deleted locally but failed to push to GitHub: {page_identifier}")
                     return False
             else:
-                print(f"❌ Failed to delete: {delete_target}")
+                print(f"❌ Failed to delete page: {page_identifier}")
                 return False
         
-        # Regular page creation/update
-        # Extract attachments - get them from parsed data
-        attachments = parsed.get('attachments', [])
-        print(f"📎 Found {len(attachments)} attachments")
-        
-        # Save attachments and get file paths
-        saved_media_files = []
-        for attachment in attachments:
-            try:
-                saved_path = save_attachment(attachment, parsed["title"])
-                if saved_path:
-                    saved_media_files.append(saved_path)
-                    print(f"💾 Saved attachment: {os.path.basename(saved_path)}")
-            except Exception as e:
-                print(f"⚠️  Failed to save attachment: {e}")
-        
+        # Regular page creation logic
         # Generate filename
         filename = sanitize_filename(parsed["title"])
-        if not filename.endswith('.html'):
-            filename += '.html'
         
-        # Create HTML page
+        # Create HTML page with attachments
         success, saved_files, description = create_enhanced_html_page(
             parsed["title"], 
             parsed["content"], 
             filename, 
-            attachments
+            parsed.get("attachments")
         )
         
-        if not success:
-            print("❌ Failed to create HTML page")
-            return False
-        
-        # Combine saved files
-        all_saved_files = saved_media_files + saved_files
-        
-        # Always create/update homepage tile (this is the key enhancement)
-        tile_success = add_enhanced_research_tile(
-            parsed["title"], 
-            description, 
-            filename,
-            all_saved_files[0] if all_saved_files else None
-        )
-        
-        if not tile_success:
-            print("⚠️  Warning: Failed to create homepage tile, but page was created")
-        
-        # Commit and push to GitHub (including media files)
-        if commit_and_push_changes(filename, parsed["title"], all_saved_files):
-            print(f"🎉 Page '{parsed['title']}' created and pushed to GitHub successfully!")
-            print(f"📄 File: Pages/{filename}")
-            if all_saved_files:
-                print(f"📎 Media files: {', '.join(os.path.basename(f) for f in all_saved_files)}")
-            print(f"🌐 Live at: https://cyohn55.github.io/Portfolio/Pages/{filename}")
-            return True
-        else:
-            print(f"⚠️  Page created but failed to push to GitHub: {parsed['title']}")
-            return False
+        if success:
+            # Update navigation
+            update_main_index_navigation()
             
+            # Find the first image to use for the tile
+            tile_image = None
+            ordered_content = parsed.get("ordered_content", [])
+            attachments = parsed.get("attachments", [])
+            
+            print(f"DEBUG: Found {len(ordered_content)} ordered content items")
+            print(f"DEBUG: Found {len(attachments)} attachments")
+            
+            # Look through ordered content to find the first image
+            for item in ordered_content:
+                if item.get('type') == 'media':
+                    attachment_index = item.get('attachment_index')
+                    if attachment_index is not None and attachment_index < len(attachments):
+                        attachment = attachments[attachment_index]
+                        print(f"DEBUG: Checking attachment {attachment_index}: {attachment.get('filename')} - {attachment.get('content_type')}")
+                        
+                        if attachment.get('content_type', '').startswith('image/'):
+                            # Found the first image in body order - get its saved path
+                            page_prefix = re.sub(r'[^a-zA-Z0-9]', '_', parsed["title"].lower())[:20]
+                            # Sanitize attachment filename the same way save_attachment does
+                            sanitized_attachment_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', attachment['filename'])
+                            expected_filename = f"{page_prefix}_{sanitized_attachment_filename}"
+                            
+                            print(f"DEBUG: Found first image: {expected_filename}")
+                            
+                            # Check if file exists directly in the saved files
+                            for saved_file in saved_files:
+                                base_saved_file = os.path.basename(saved_file)
+                                print(f"DEBUG: Checking saved file: {base_saved_file}")
+                                
+                                if base_saved_file == expected_filename:
+                                    tile_image = saved_file.replace('../', '')
+                                    print(f"DEBUG: MATCH! Setting tile image to: {tile_image}")
+                                    break
+                            
+                            # If we didn't find an exact match, check for partial filename matches
+                            if not tile_image:
+                                for saved_file in saved_files:
+                                    base_saved_file = os.path.basename(saved_file)
+                                    # Check if sanitized filename is part of saved file
+                                    if sanitized_attachment_filename in base_saved_file:
+                                        tile_image = saved_file.replace('../', '')
+                                        print(f"DEBUG: Partial Match! Setting tile image to: {tile_image}")
+                                        break
+                            
+                            # If we still didn't find a match, use the expected path
+                            if not tile_image:
+                                tile_image = f"images/{expected_filename}"
+                                print(f"DEBUG: No match found, defaulting to expected path: {tile_image}")
+                                
+                            # Once we find the first image, we're done
+                            break
+                            
+            # If no image was found in the content order, look directly at saved media files for images
+            if not tile_image and saved_files:
+                for saved_file in saved_files:
+                    if any(saved_file.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                        tile_image = saved_file.replace('../', '')
+                        print(f"DEBUG: Using first saved image file: {tile_image}")
+                        break
+            
+            # Add research tile to home page
+            add_enhanced_research_tile(parsed["title"], description, filename, tile_image)
+            
+            # Commit changes
+            from simple_email_processor import commit_and_push_changes
+            if commit_and_push_changes(filename, parsed["title"], saved_files):
+                print(f"✅ Successfully created page '{parsed['title']}' and pushed to GitHub!")
+                return True
+            else:
+                print(f"⚠️ Page created but failed to push to GitHub: {parsed['title']}")
+                return False
+        else:
+            return False
+    
     except Exception as e:
         print(f"❌ Error processing email: {e}")
         import traceback
