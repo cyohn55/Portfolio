@@ -231,12 +231,22 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
                 <a href="Pages/{filename}">View Project</a>
             </div>'''
         
-        # Find the beginning of the project container to insert new tiles first (newest first)
-        container_pattern = r'(<div id="project-container" class="project-container">[\s\S]*?<!-- Project items -->)'
-        
-        if re.search(container_pattern, content):
-            # Insert new tile right after the container opening and comment
-            updated_content = re.sub(container_pattern, f'\\1\n{tile_html}', content)
+        # More flexible approach - find the project container without requiring specific comment format
+        if '<div id="project-container" class="project-container">' in content:
+            print(f"DEBUG: Found project container div")
+            
+            # Get index of container div
+            container_index = content.find('<div id="project-container" class="project-container">')
+            
+            # Find the end of the opening div tag
+            end_of_div_tag = content.find('>', container_index) + 1
+            
+            # Insert new tile right after the div tag
+            before_insertion = content[:end_of_div_tag]
+            after_insertion = content[end_of_div_tag:]
+            updated_content = before_insertion + '\n              <!-- Project items -->\n' + tile_html + after_insertion
+            
+            print(f"DEBUG: Inserting tile at position {end_of_div_tag}")
             
             # Write updated content
             with open(index_path, 'w', encoding='utf-8') as f:
@@ -245,20 +255,9 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
             print(f"✅ Successfully added research tile for: {title}")
             return True
         else:
-            # Fallback - try a simpler pattern if the full pattern isn't found
-            simple_pattern = r'(<div id="project-container" class="project-container">)'
-            if re.search(simple_pattern, content):
-                updated_content = re.sub(simple_pattern, f'\\1\n            <!-- Project items -->\n{tile_html}', content)
-                
-                # Write updated content
-                with open(index_path, 'w', encoding='utf-8') as f:
-                    f.write(updated_content)
-                    
-                print(f"✅ Successfully added research tile for: {title}")
-                return True
-            else:
-                print("❌ Could not find insertion point for tile")
-                return False
+            print("DEBUG: Could not find project container div")
+            print("❌ Could not find insertion point for tile")
+            return False
                 
     except Exception as e:
         print(f"❌ Error adding research tile: {e}")
