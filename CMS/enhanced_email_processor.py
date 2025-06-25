@@ -53,6 +53,9 @@ def create_enhanced_html_page(title: str, content: str, filename: str, attachmen
             description = generate_description_from_content(content, title)
             if not description:
                 description = f"Learn about {title} in Cody's portfolio"
+        else:
+            # Clean up any media placeholders from the description
+            description = re.sub(r'__MEDIA_PLACEHOLDER_\d+__', '', description).strip()
         
         # CSS for responsive device styling
         responsive_css = """
@@ -198,55 +201,59 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
         if f'href="Pages/{filename}"' in content:
             print(f"🔄 Updating existing tile for '{title}'")
             # Remove the existing tile first
+            from simple_email_processor import remove_research_tile
             remove_research_tile(filename, title)
-            # Re-read the content after removal
+            # Re-read content after removal
             with open(index_path, 'r', encoding='utf-8') as f:
                 content = f.read()
         
-        # Use default image if no tile image specified
+        # Clean description - remove any media placeholders
+        if description:
+            description = re.sub(r'__MEDIA_PLACEHOLDER_\d+__', '', description).strip()
+        else:
+            description = f"Learn about {title} in Cody's portfolio"
+            
+        # Default image if none provided
         if not tile_image:
             tile_image = "images/python.jpg"  # Default fallback image
         
-        # Ensure description exists
-        if not description or len(description.strip()) == 0:
-            description = f"Explore {title} - a project showcasing programming skills and innovation."
-        
-        # Truncate description if too long
-        if len(description) > 120:
-            description = description[:117] + "..."
-        
-        # Create new tile HTML with clean formatting
-        new_tile = f'''            <div class="project">
+        # Prepare new tile HTML
+        tile_html = f'''
+            <div class="project">
                 <img src="{tile_image}" alt="{html.escape(title)}">
                 <h3>{html.escape(title)}</h3>
                 <p>{html.escape(description)}</p>
                 <a href="Pages/{filename}">View Project</a>
-            </div>'''
+            </div>
+'''
         
-        # Find the beginning of the project container to insert new tiles first (newest first)
-        # Look for the container opening and any content after it (including whitespace and comments)
-        container_start = r'(<div id="project-container" class="project-container">[\s\S]*?<!-- Project items -->)'
-        
-        # Insert new tile right after the container opening and comment
-        if re.search(container_start, content):
-            updated_content = re.sub(container_start, f'\\1\n{new_tile}', content)
+        # Insert before the "end of page" paragraph
+        target = '<p style="text-align: center; margin-top: 20px;">You have reached the end of the page.</p>'
+        if target in content:
+            updated_content = content.replace(target, tile_html + '\n\n            ' + target)
+            
+            # Write updated content
+            with open(index_path, 'w', encoding='utf-8') as f:
+                f.write(updated_content)
+                
+            print(f"✅ Successfully added research tile for: {title}")
+            return True
         else:
-            # Fallback: look for just the container opening and insert after first non-whitespace content
-            container_start_fallback = r'(<div id="project-container" class="project-container">[^\n]*\n)'
-            if re.search(container_start_fallback, content):
-                updated_content = re.sub(container_start_fallback, f'\\1{new_tile}\n', content)
+            # Fallback - insert before the project-container closing div if target paragraph not found
+            target = '</div>\n    </section>'
+            if target in content:
+                updated_content = content.replace(target, tile_html + '\n        ' + target)
+                
+                # Write updated content
+                with open(index_path, 'w', encoding='utf-8') as f:
+                    f.write(updated_content)
+                    
+                print(f"✅ Successfully added research tile for: {title}")
+                return True
             else:
-                # Final fallback: insert before closing div of project-container
-                container_end = r'(\s*</div>\s*</section>)'
-                updated_content = re.sub(container_end, f'\n{new_tile}\n\\1', content)
-        
-        # Write back
-        with open(index_path, 'w', encoding='utf-8') as f:
-            f.write(updated_content)
-        
-        print(f"🏠 Added homepage tile: {title}")
-        return True
-        
+                print("❌ Could not find insertion point for tile")
+                return False
+                
     except Exception as e:
         print(f"❌ Error adding research tile: {e}")
         return False

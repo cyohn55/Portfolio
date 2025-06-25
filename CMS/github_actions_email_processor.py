@@ -274,80 +274,101 @@ class GitHubActionsEmailProcessor:
             logger.error("Could not connect to email server")
             return
         
+        new_emails = []
+        
         try:
-            # Select inbox
-            mail.select('inbox')
+            # Check both inbox and spam folders
+            folders_to_check = ['inbox', '[Gmail]/Spam']
             
-            # Search for recent emails from authorized sender
-            since_date = (datetime.now() - timedelta(hours=1)).strftime('%d-%b-%Y')
-            search_criteria = f'(FROM "{self.authorized_sender}" SINCE {since_date})'
-            
-            status, messages = mail.search(None, search_criteria)
-            
-            if status != 'OK':
-                logger.error("Could not search emails")
-                return
-            
-            email_ids = messages[0].split()
-            
-            if not email_ids:
-                logger.info("No recent emails found from authorized sender")
-                return
-            
-            logger.info(f"Found {len(email_ids)} recent emails from {self.authorized_sender}")
-            
-            # Process emails
-            new_emails = []
-            processed_count = 0
-            
-            for email_id in email_ids:
-                email_id_str = email_id.decode()
-                
-                # Skip already processed emails
-                if email_id_str in self.processed_emails:
-                    continue
-                
-                # Fetch email
+            for folder in folders_to_check:
                 try:
-                    status, msg_data = mail.fetch(email_id, '(RFC822)')
-                    if status != 'OK' or not msg_data or not msg_data[0]:
+                    # Select folder
+                    status, messages = mail.select(folder)
+                    
+                    if status != 'OK':
+                        logger.warning(f"Could not select folder: {folder}, skipping")
                         continue
                     
-                    # Ensure we have the email data in the right format
-                    email_data_bytes = msg_data[0][1]
-                    if isinstance(email_data_bytes, bytes):
-                        raw_msg = email.message_from_bytes(email_data_bytes)
-                    else:
-                        logger.warning(f"Unexpected email data type: {type(email_data_bytes)}")
-                        continue
-                    email_data = self.extract_email_data(raw_msg)
+                    logger.info(f"Checking folder: {folder}")
                     
-                    # Check if authorized
-                    if not self.is_authorized_sender(email_data['sender']):
-                        logger.info(f"Skipping email from unauthorized sender: {email_data['sender']}")
-                        self.processed_emails.add(email_id_str)
+                    # Search for recent emails from authorized sender
+                    since_date = (datetime.now() - timedelta(hours=24)).strftime('%d-%b-%Y')
+                    search_criteria = f'(FROM "{self.authorized_sender}" SINCE {since_date})'
+                    
+                    status, messages = mail.search(None, search_criteria)
+                    
+                    if status != 'OK':
+                        logger.error(f"Could not search emails in {folder}")
                         continue
                     
-                    # Check for delete commands first
-                    delete_target = self.is_delete_command(email_data['subject'], email_data['body'])
-                    if delete_target:
-                        logger.info(f"Delete command detected for: {delete_target}")
-                        # TODO: Implement delete functionality in enhanced_email_processor
-                        self.processed_emails.add(email_id_str)
-                        processed_count += 1
+                    email_ids = messages[0].split()
+                    
+                    if not email_ids:
+                        logger.info(f"No recent emails found from authorized sender in {folder}")
                         continue
                     
-                    # Check if it's a page creation email
-                    if self.is_page_creation_email(email_data['subject'], email_data['body']):
-                        new_emails.append((email_id_str, raw_msg, email_data))
-                        logger.info(f"Found page creation email: {email_data['subject']}")
-                    else:
-                        logger.info(f"Skipping non-page email: {email_data['subject']}")
-                        self.processed_emails.add(email_id_str)
+                    logger.info(f"Found {len(email_ids)} recent emails from {self.authorized_sender} in {folder}")
+                    
+                    # Process emails in this folder
+                    for email_id in email_ids:
+                        email_id_str = f"{folder}:{email_id.decode()}"  # Add folder prefix to differentiate IDs
                         
+                        # Skip already processed emails
+                        if email_id_str in self.processed_emails:
+                            continue
+                        
+                        # Fetch email
+                        try:
+                            status, msg_data = mail.fetch(email_id, '(RFC822)')
+                            if status != 'OK' or not msg_data or not msg_data[0]:
+                                continue
+                            
+                            # Ensure we have the email data in the right format
+                            email_data_bytes = msg_data[0][1]
+                            if isinstance(email_data_bytes, bytes):
+                                raw_msg = email.message_from_bytes(email_data_bytes)
+                            else:
+                                logger.warning(f"Unexpected email data type: {type(email_data_bytes)}")
+                                continue
+                            email_data = self.extract_email_data(raw_msg)
+                            
+                            # Check if authorized
+                            if not self.is_authorized_sender(email_data['sender']):
+                                logger.info(f"Skipping email from unauthorized sender: {email_data['sender']}")
+                                self.processed_emails.add(email_id_str)
+                                continue
+                            
+                            # Check for delete commands first
+                            delete_target = self.is_delete_command(email_data['subject'], email_data['body'])
+                            if delete_target:
+                                logger.info(f"Delete command detected for: {delete_target}")
+                                # TODO: Implement delete functionality in enhanced_email_processor
+                                self.processed_emails.add(email_id_str)
+                                continue
+                            
+                            # Check if it's a page creation email
+                            if self.is_page_creation_email(email_data['subject'], email_data['body']):
+                                new_emails.append((email_id_str, raw_msg, email_data))
+                                logger.info(f"Found page creation email: {email_data['subject']} in {folder}")
+                                
+                                # If this is in spam folder, mark it as not spam
+                                if folder.lower().endswith('spam'):
+                                    try:
+                                        logger.info(f"Moving email from spam to inbox: {email_data['subject']}")
+                                        mail.copy(email_id, 'inbox')  # Copy to inbox
+                                    except Exception as e:
+                                        logger.warning(f"Failed to move email from spam: {e}")
+                            else:
+                                logger.info(f"Skipping non-page email: {email_data['subject']}")
+                                self.processed_emails.add(email_id_str)
+                                
+                        except Exception as e:
+                            logger.error(f"Error processing email {email_id_str}: {e}")
+                            continue
                 except Exception as e:
-                    logger.error(f"Error processing email {email_id_str}: {e}")
-                    continue
+                    logger.error(f"Error checking folder {folder}: {e}")
+            
+            processed_count = 0
             
             if not new_emails:
                 logger.info("No new page creation emails to process")

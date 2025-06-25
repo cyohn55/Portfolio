@@ -393,7 +393,13 @@ def parse_email_content(email_text: str) -> Dict[str, Any]:
 def extract_description(content: str) -> str:
     """Extract description from [Description] tag in content using pre-compiled pattern"""
     match = DESCRIPTION_PATTERN.search(content)
-    return match.group(1).strip() if match else ""
+    if match:
+        # Extract the description and remove any media placeholders
+        description = match.group(1).strip()
+        # Clean up any media placeholders from the description
+        description = re.sub(r'__MEDIA_PLACEHOLDER_\d+__', '', description).strip()
+        return description
+    return ""
 
 def generate_description_from_content(content: str, title: str) -> str:
     """Generate a description from content if no explicit description provided"""
@@ -902,7 +908,7 @@ def create_html_page(title: str, content: str, filename: str, attachments: Optio
     """Create HTML page with inline media embedded in content, returns (success, saved_files)"""
     try:
         # Process attachments and embed them inline in content
-        processed_content, saved_files = process_inline_media(content, attachments or [], title)
+        processed_content, saved_media_files = process_inline_media(content, attachments or [], title)
         
         # Convert content to HTML (this will process the embedded media HTML)
         content_html = markdown_to_html(processed_content)
@@ -912,9 +918,9 @@ def create_html_page(title: str, content: str, filename: str, attachments: Optio
         
         # Determine the best image for social media (first image from saved files or default)
         page_image = "images/python.jpg"  # Default fallback
-        if saved_files:
+        if saved_media_files:
             # Use the first saved image file
-            for file_path in saved_files:
+            for file_path in saved_media_files:
                 if any(file_path.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.webp', '.gif']):
                     page_image = file_path.replace('../', '')
                     break
@@ -1019,10 +1025,10 @@ def create_html_page(title: str, content: str, filename: str, attachments: Optio
             f.write(html_template)
         
         print(f"Successfully created: {filepath}")
-        if saved_files:
-            print(f"Saved {len(saved_files)} media files: {', '.join(os.path.basename(f) for f in saved_files)}")
+        if saved_media_files:
+            print(f"Saved {len(saved_media_files)} media files: {', '.join(os.path.basename(f) for f in saved_media_files)}")
         
-        return True, saved_files
+        return True, saved_media_files
         
     except Exception as e:
         print(f"Error creating HTML page: {e}")
@@ -1060,64 +1066,72 @@ def update_main_index_navigation():
         return False
 
 def add_research_tile(title: str, description: str, filename: str, tile_image: Optional[str] = None):
-    """Add a new tile to the Research section on the home page (newest first)"""
+    """Add research tile to main page"""
     try:
         index_path = "../index.html"
         if not os.path.exists(index_path):
+            print(f"Warning: Index file not found at {index_path}")
             return False
         
         # Read current index.html
         with open(index_path, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # Check if tile already exists - if so, remove it first (for overwrite behavior)
+        # Check if tile already exists
         if f'href="Pages/{filename}"' in content:
-            print(f"Tile for '{title}' already exists - removing old tile to replace with newest version")
-            # Remove the existing tile first
+            print(f"Updating existing tile for '{title}'")
             remove_research_tile(filename, title)
-            # Re-read the content after removal
+            # Re-read content after removal
             with open(index_path, 'r', encoding='utf-8') as f:
                 content = f.read()
         
-        # Use default image if no tile image specified
+        # Clean description - remove any media placeholders
+        if description:
+            description = re.sub(r'__MEDIA_PLACEHOLDER_\d+__', '', description).strip()
+        else:
+            description = f"Learn about {title} in Cody's portfolio"
+        
+        # Set default image if none provided
         if not tile_image:
             tile_image = "images/python.jpg"  # Default fallback image
         
-        # Create new tile HTML
-        new_tile = f'''            <div class="project">
+        # Prepare new tile HTML
+        tile_html = f'''
+            <div class="project">
                 <img src="{tile_image}" alt="{html.escape(title)}">
                 <h3>{html.escape(title)}</h3>
                 <p>{html.escape(description)}</p>
                 <a href="Pages/{filename}">View Project</a>
-            </div>'''
+            </div>
+'''
         
-        # Find the beginning of the project container to insert new tiles first (newest first)
-        # Look for the container opening and any content after it (including whitespace and comments)
-        container_start = r'(<div id="project-container" class="project-container">[\s\S]*?<!-- Project items -->)'
-        
-        # Insert new tile right after the container opening and comment
-        if re.search(container_start, content):
-            replacement = f'\\1\n{new_tile}'
-            updated_content = re.sub(container_start, replacement, content)
+        # Insert before the "end of page" paragraph
+        target = '<p style="text-align: center; margin-top: 20px;">You have reached the end of the page.</p>'
+        if target in content:
+            updated_content = content.replace(target, tile_html + '\n\n            ' + target)
+            
+            # Write updated content
+            with open(index_path, 'w', encoding='utf-8') as f:
+                f.write(updated_content)
+                
+            print(f"Successfully added research tile for: {title}")
+            return True
         else:
-            # Fallback: look for just the container opening and insert after first non-whitespace content
-            container_start_fallback = r'(<div id="project-container" class="project-container">[^\n]*\n)'
-            if re.search(container_start_fallback, content):
-                replacement = f'\\1{new_tile}\n'
-                updated_content = re.sub(container_start_fallback, replacement, content)
+            # Fallback - insert before the project-container closing div if target paragraph not found
+            target = '</div>\n    </section>'
+            if target in content:
+                updated_content = content.replace(target, tile_html + '\n        ' + target)
+                
+                # Write updated content
+                with open(index_path, 'w', encoding='utf-8') as f:
+                    f.write(updated_content)
+                    
+                print(f"Successfully added research tile for: {title}")
+                return True
             else:
-                # Final fallback: insert before closing div of project-container (old behavior)
-                container_end = r'(\s*</div>\s*</section>)'
-                replacement = f'\n{new_tile}\n\\1'
-                updated_content = re.sub(container_end, replacement, content)
-        
-        # Write back
-        with open(index_path, 'w', encoding='utf-8') as f:
-            f.write(updated_content)
-        
-        print(f"Added research tile: {title}")
-        return True
-        
+                print("Could not find insertion point for tile")
+                return False
+                
     except Exception as e:
         print(f"Error adding research tile: {e}")
         return False
@@ -1446,7 +1460,20 @@ def process_email_to_page(email_content: str) -> bool:
                             # Sanitize attachment filename the same way save_attachment does
                             sanitized_attachment_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', attachment['filename'])
                             expected_filename = f"{page_prefix}_{sanitized_attachment_filename}"
-                            tile_image = f"images/{expected_filename}"
+                            
+                            # Look through saved_media_files to find the actual path that was saved
+                            matching_file = None
+                            for file_path in saved_media_files:
+                                if os.path.basename(file_path) == expected_filename:
+                                    matching_file = file_path
+                                    break
+                            
+                            if matching_file:
+                                tile_image = matching_file.replace('../', '')
+                            else:
+                                tile_image = f"images/{expected_filename}"
+                            
+                            print(f"Setting tile image to: {tile_image}")
                             break
             
             # ALWAYS create the tile (this was the main bug - tiles only created with [Description])
