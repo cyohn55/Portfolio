@@ -22,7 +22,8 @@ from simple_email_processor import (
     extract_description, sanitize_filename, process_responsive_tags,
     process_alignment_tags, markdown_to_html, get_existing_nav_links,
     process_inline_media, update_main_index_navigation, commit_and_push_changes,
-    is_delete_command, delete_page_and_tile, commit_delete_changes
+    is_delete_command, delete_page_and_tile, commit_delete_changes,
+    DESCRIPTION_PATTERN  # Import the updated description pattern
 )
 
 def create_enhanced_html_page(title: str, content: str, filename: str, attachments: List[Dict] = None) -> tuple:

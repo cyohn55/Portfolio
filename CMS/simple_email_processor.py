@@ -62,12 +62,15 @@ DELETE_PATTERNS = [
 ]
 
 # Content processing patterns
-DESCRIPTION_PATTERN = re.compile(r'\[Description\]\s*(.+?)(?:\n|$)', re.IGNORECASE | re.DOTALL)
+DESCRIPTION_PATTERN = re.compile(r'\[Description\](.*?)\[/Description\]', re.IGNORECASE | re.DOTALL)
 MARKDOWN_BOLD_PATTERN = re.compile(r'\*\*(.*?)\*\*')
 MARKDOWN_ITALIC_PATTERN = re.compile(r'\*(.*?)\*')
 MARKDOWN_IMAGE_PATTERN = re.compile(r'!\[(.*?)\]\((.*?)\)')
 MARKDOWN_LINK_PATTERN = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
-YOUTUBE_PATTERN = re.compile(r'\[YOUTUBE\]\((.*?)\)')
+YOUTUBE_PATTERN = re.compile(r'https?://(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})')
+YOUTUBE_SHORT_PATTERN = re.compile(r'https?://(?:www\.)?youtu\.be/([a-zA-Z0-9_-]{11})')
+EMAIL_PATTERN = re.compile(r'\[Email:[^\]]*\]', re.IGNORECASE)
+DELETE_PATTERN = re.compile(r'\[DELETE\s+CONFIRM\]\s*(.+)$', re.IGNORECASE)
 VIDEO_PATTERN = re.compile(r'\[VIDEO\]\((.*?)\)')
 
 # Responsive tag patterns
@@ -346,7 +349,7 @@ def parse_email_content(email_text: str) -> Dict[str, Any]:
         description = extract_description(content)
         if description:
             # Remove the [Description] tag from content
-            content = re.sub(r'\[Description\]\s*.+?(?:\n|$)', '', content, flags=re.IGNORECASE).strip()
+            content = re.sub(r'\[Description\](.*?)\[/Description\]', '', content, flags=re.IGNORECASE).strip()
         
         return {
             "title": subject,
