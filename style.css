@@ -331,7 +331,7 @@ section h2 {
 
 /* Red Link Styling */
 .red-link {
-    color: #ff4444 !important;
+    color: #000 !important;
     text-decoration: none;
     transition: color 0.3s ease, text-shadow 0.3s ease;
 }
