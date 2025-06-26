@@ -26,7 +26,7 @@ from simple_email_processor import (
     DESCRIPTION_PATTERN  # Import the updated description pattern
 )
 
-def create_enhanced_html_page(title: str, content: str, filename: str, attachments: List[Dict] = None) -> tuple:
+def create_enhanced_html_page(title: str, content: str, filename: str, attachments: List[Dict] = None, description_override: str = "") -> tuple:
     """Enhanced HTML page creation with better error handling and cloud optimization"""
     try:
         # Process attachments and embed them inline in content
@@ -50,17 +50,19 @@ def create_enhanced_html_page(title: str, content: str, filename: str, attachmen
                     print(f"DEBUG: Setting page image to: {page_image}")
                     break
         
-        # Extract a meaningful description from the content
-        description = extract_description(content)
-        if not description:
-            # Generate a description from the content if none provided
-            description = generate_description_from_content(content, title)
-            if not description:
-                description = f"Learn about {title} in Cody's portfolio"
+        # Determine description (prefer override from original email)
+        if description_override:
+            description = description_override.strip()
         else:
-            # Clean up any media placeholders from the description
-            description = re.sub(r'__MEDIA_PLACEHOLDER_\d+__', '', description).strip()
-            
+            # Extract from content or generate fallback
+            description = extract_description(content)
+            if not description:
+                description = generate_description_from_content(content, title)
+                if not description:
+                    description = f"Learn about {title} in Cody's portfolio"
+            else:
+                description = re.sub(r'(?:__)?MEDIA_?PLACEHOLDER_?\d+__?', '', description, flags=re.IGNORECASE).strip()
+        
         print(f"DEBUG: Description: '{description}'")
         
         # CSS for responsive device styling
@@ -215,7 +217,7 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
         
         # Clean description - remove any media placeholders
         if description:
-            description = re.sub(r'__MEDIA_PLACEHOLDER_\d+__', '', description).strip()
+            description = re.sub(r'(?:__)?MEDIA_?PLACEHOLDER_?\d+__?', '', description, flags=re.IGNORECASE).strip()
         else:
             description = f"Learn about {title} in Cody's portfolio"
             
@@ -332,10 +334,11 @@ def process_enhanced_email_to_page(email_content: str) -> bool:
         
         # Create HTML page with attachments
         success, saved_files, description = create_enhanced_html_page(
-            parsed["title"], 
-            parsed["content"], 
-            filename, 
-            parsed.get("attachments")
+            parsed["title"],
+            parsed["content"],
+            filename,
+            parsed.get("attachments"),
+            parsed.get("description", "")
         )
         
         if success:
