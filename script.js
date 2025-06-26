@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const finalContent = `Everyone asks...
 'How to Code?'
 
-But, no one ever asks...
+But, no one ever asks...<br class="mobile-br">
 <a href="Pages/aboutcode.html" class="red-link">'Who is Code?'👨‍💻</a>`;
 
     // Pre-calculate the height by temporarily showing the full content
@@ -86,7 +86,7 @@ But, no one ever asks...
         { text: "asks...", delay: 800 }, // Longer delay before the Who IS Code part
         
         // Line 5 with special styling
-        { text: "\n'Who ", delay: 500, isWhoLine: true },
+        { text: "<br class=\"mobile-br\">\n'Who ", delay: 500, isWhoLine: true },
         { text: "is ", delay: 400, isWhoLine: true },
         { text: "Code?'👨‍💻", delay: 400, isWhoLine: true, isLast: true }
     ];

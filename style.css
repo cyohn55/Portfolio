@@ -144,6 +144,17 @@ body {
     opacity: 1 !important;
 }
 
+/* Mobile line break */
+.mobile-br {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .mobile-br {
+        display: block;
+    }
+}
+
 /* Style for the intro section */
 .intro-text {
     margin-top: 1rem;
