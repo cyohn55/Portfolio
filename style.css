@@ -157,6 +157,10 @@ body {
     .mobile-br {
         display: block;
     }
+    /* Remove left padding on 'Be the first to ask!' for mobile */
+    #be-first-to-ask {
+        padding-left: 0 !important;
+    }
 }
 
 /* Style for the intro section */
