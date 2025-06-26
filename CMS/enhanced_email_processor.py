@@ -332,13 +332,21 @@ def process_enhanced_email_to_page(email_content: str) -> bool:
                 else:
                     actual_filename = sanitize_filename(page_identifier) + '.html'
                 
-                # Commit and push the deletion
-                if commit_delete_changes(actual_filename, page_identifier):
-                    print(f"✅ Successfully deleted '{page_identifier}' and pushed to GitHub!")
+                # Check if we're running in GitHub Actions
+                is_github_actions = os.getenv('GITHUB_ACTIONS') == 'true'
+                
+                if is_github_actions:
+                    # In GitHub Actions, let the workflow handle git operations
+                    print(f"✅ Successfully deleted '{page_identifier}' (GitHub Actions will handle git operations)")
                     return True
                 else:
-                    print(f"⚠️ Page deleted locally but failed to push to GitHub: {page_identifier}")
-                    return False
+                    # Local execution - handle git operations ourselves
+                    if commit_delete_changes(actual_filename, page_identifier):
+                        print(f"✅ Successfully deleted '{page_identifier}' and pushed to GitHub!")
+                        return True
+                    else:
+                        print(f"⚠️ Page deleted locally but failed to push to GitHub: {page_identifier}")
+                        return False
             else:
                 print(f"❌ Failed to delete page: {page_identifier}")
                 return False
@@ -424,14 +432,22 @@ def process_enhanced_email_to_page(email_content: str) -> bool:
             # Add research tile to home page
             add_enhanced_research_tile(parsed["title"], description, filename, tile_image)
             
-            # Commit changes
-            from simple_email_processor import commit_and_push_changes
-            if commit_and_push_changes(filename, parsed["title"], saved_files):
-                print(f"✅ Successfully created page '{parsed['title']}' and pushed to GitHub!")
+            # Check if we're running in GitHub Actions
+            is_github_actions = os.getenv('GITHUB_ACTIONS') == 'true'
+            
+            if is_github_actions:
+                # In GitHub Actions, let the workflow handle git operations
+                print(f"✅ Successfully created page '{parsed['title']}' (GitHub Actions will handle git operations)")
                 return True
             else:
-                print(f"⚠️ Page created but failed to push to GitHub: {parsed['title']}")
-                return False
+                # Local execution - handle git operations ourselves
+                from simple_email_processor import commit_and_push_changes
+                if commit_and_push_changes(filename, parsed["title"], saved_files):
+                    print(f"✅ Successfully created page '{parsed['title']}' and pushed to GitHub!")
+                    return True
+                else:
+                    print(f"⚠️ Page created but failed to push to GitHub: {parsed['title']}")
+                    return False
         else:
             return False
     

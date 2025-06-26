@@ -1392,13 +1392,21 @@ def process_email_to_page(email_content: str) -> bool:
                 else:
                     actual_filename = sanitize_filename(page_identifier) + '.html'
                 
-                # Commit and push the deletion
-                if commit_delete_changes(actual_filename, page_identifier):
-                    print(f"Successfully deleted '{page_identifier}' and pushed to GitHub!")
+                # Check if we're running in GitHub Actions
+                is_github_actions = os.getenv('GITHUB_ACTIONS') == 'true'
+                
+                if is_github_actions:
+                    # In GitHub Actions, let the workflow handle git operations
+                    print(f"✅ Successfully deleted '{page_identifier}' (GitHub Actions will handle git operations)")
                     return True
                 else:
-                    print(f"Page deleted locally but failed to push to GitHub: {page_identifier}")
-                    return False
+                    # Local execution - handle git operations ourselves
+                    if commit_delete_changes(actual_filename, page_identifier):
+                        print(f"Successfully deleted '{page_identifier}' and pushed to GitHub!")
+                        return True
+                    else:
+                        print(f"Page deleted locally but failed to push to GitHub: {page_identifier}")
+                        return False
             else:
                 print(f"Failed to delete page: {page_identifier}")
                 return False
@@ -1486,19 +1494,33 @@ def process_email_to_page(email_content: str) -> bool:
             add_research_tile(parsed["title"], description, filename, tile_image)
             print(f"✅ Research tile added to home page: {parsed['title']} - {description}")
             
-            # Commit and push to GitHub (including media files)
-            if commit_and_push_changes(filename, parsed["title"], saved_media_files):
-                print(f"Page '{parsed['title']}' created and pushed to GitHub successfully!")
+            # Check if we're running in GitHub Actions
+            is_github_actions = os.getenv('GITHUB_ACTIONS') == 'true'
+            
+            if is_github_actions:
+                # In GitHub Actions, let the workflow handle git operations
+                print(f"✅ Page '{parsed['title']}' created successfully (GitHub Actions will handle git operations)")
                 print(f"File: Pages/{filename}")
                 if saved_media_files:
                     print(f"Media files: {', '.join(os.path.basename(f) for f in saved_media_files)}")
                 if description:
                     print(f"Research tile added to home page with description: {description}")
-                print(f"Live at: https://cyohn55.github.io/Portfolio/Pages/{filename}")
+                print(f"Will be live at: https://cyohn55.github.io/Portfolio/Pages/{filename}")
                 return True
             else:
-                print(f"Page created but failed to push to GitHub: {parsed['title']}")
-                return False
+                # Local execution - handle git operations ourselves
+                if commit_and_push_changes(filename, parsed["title"], saved_media_files):
+                    print(f"Page '{parsed['title']}' created and pushed to GitHub successfully!")
+                    print(f"File: Pages/{filename}")
+                    if saved_media_files:
+                        print(f"Media files: {', '.join(os.path.basename(f) for f in saved_media_files)}")
+                    if description:
+                        print(f"Research tile added to home page with description: {description}")
+                    print(f"Live at: https://cyohn55.github.io/Portfolio/Pages/{filename}")
+                    return True
+                else:
+                    print(f"Page created but failed to push to GitHub: {parsed['title']}")
+                    return False
         else:
             return False
             
