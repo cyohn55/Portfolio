@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
 'How to Code?'
 
 But, no one ever asks...
-<a href="Pages/aboutcode.html" class="red-link">'Who IS Code?'</a>`;
+<a href="Pages/aboutcode.html" class="red-link">'Who is Code?'👨‍💻</a>`;
 
     // Pre-calculate the height by temporarily showing the full content
     function preCalculateHeight() {
@@ -87,8 +87,8 @@ But, no one ever asks...
         
         // Line 5 with special styling
         { text: "\n'Who ", delay: 500, isWhoLine: true },
-        { text: "IS ", delay: 400, isWhoLine: true },
-        { text: "Code?'", delay: 400, isWhoLine: true, isLast: true }
+        { text: "is ", delay: 400, isWhoLine: true },
+        { text: "Code?'👨‍💻", delay: 400, isWhoLine: true, isLast: true }
     ];
     
     let currentIndex = 0;
