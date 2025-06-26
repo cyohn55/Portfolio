@@ -145,7 +145,7 @@ body {
 }
 
 #be-first-to-ask {
-    padding-left: 110px;
+    padding-left: 130px;
 }
 
 /* Mobile line break */
@@ -718,7 +718,7 @@ section h2 {
 
     /* Ensure desktop padding for 'Be the first to ask!' is enforced */
     #be-first-to-ask {
-        padding-left: 110px !important;
+        padding-left: 130px !important;
     }
 }
 
