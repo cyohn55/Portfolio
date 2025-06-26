@@ -131,6 +131,19 @@ body {
 
 /* Cursor effect - REMOVED */
 
+/* Fade-in animation for "Be the first to ask!" */
+.fade-in-text {
+    text-align: center;
+    margin: 20px 0;
+    transition: opacity 2.5s ease-in-out;
+    font-style: italic;
+    color: #666;
+}
+
+.fade-in-text.show {
+    opacity: 1 !important;
+}
+
 /* Style for the intro section */
 .intro-text {
     margin-top: 1rem;

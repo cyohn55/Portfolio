@@ -125,6 +125,11 @@ But, no one ever asks...
             if (piece.isLast) {
                 setTimeout(() => {
                     typingText.classList.add('typing-done');
+                    // Trigger the fade-in for "Be the first to ask!" after typing is done
+                    const fadeInElement = document.getElementById('be-first-to-ask');
+                    if (fadeInElement) {
+                        fadeInElement.classList.add('show');
+                    }
                 }, piece.delay);
             } else {
                 currentIndex++;
