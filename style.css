@@ -133,10 +133,10 @@ body {
 
 /* Fade-in animation for "Be the first to ask!" */
 .fade-in-text {
-    text-align: center;
-    margin: 20px 0;
+    text-align: left;
+    margin: 10px 0 20px 0;
     transition: opacity 2.5s ease-in-out;
-    color: #666;
+    color: #000;
 }
 
 .fade-in-text.show {
