@@ -715,6 +715,11 @@ section h2 {
     #typing-text a.red-link {
         font-size: 5rem;
     }
+
+    /* Ensure desktop padding for 'Be the first to ask!' is enforced */
+    #be-first-to-ask {
+        padding-left: 30px !important;
+    }
 }
 
 /* ==========================================================================
