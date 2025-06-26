@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
 'How to Code?'
 
 But, no one ever asks...<br class="mobile-br">
-<a href="Pages/aboutcode.html" class="red-link">'Who IS Code?'👨‍💻</a>`;
+<a href="Pages/aboutcode.html" class="red-link">'Who <i>IS</i> <span class="red-text">Code</span>?'👨‍💻</a>`;
 
     // Pre-calculate the height by temporarily showing the full content
     function preCalculateHeight() {
@@ -87,8 +87,8 @@ But, no one ever asks...<br class="mobile-br">
         
         // Line 5 with special styling
         { text: "<br class=\"mobile-br\">\n'Who ", delay: 500, isWhoLine: true },
-        { text: "IS ", delay: 600, isWhoLine: true },
-        { text: "Code?'👨‍💻", delay: 400, isWhoLine: true, isLast: true }
+        { text: "<i>IS</i> ", delay: 600, isWhoLine: true },
+        { text: "<span class=\"red-text\">Code</span>?'👨‍💻", delay: 400, isWhoLine: true, isLast: true }
     ];
     
     let currentIndex = 0;

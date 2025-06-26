@@ -342,6 +342,10 @@ section h2 {
     text-decoration: none;
 }
 
+.red-text {
+    color: #ff4444;
+}
+
 /* Content Wrapper */
 .content {
     max-width: var(--max-content-width);
