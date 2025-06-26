@@ -197,8 +197,18 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
     """Enhanced tile creation that adds tiles to the top (newest first)"""
     try:
         index_path = "../index.html"
+        
+        # Check if we're in the right directory context
+        current_dir = os.getcwd()
+        print(f"DEBUG: Current working directory: {current_dir}")
+        print(f"DEBUG: Looking for index.html at: {os.path.abspath(index_path)}")
+        
         if not os.path.exists(index_path):
             print(f"⚠️  Warning: Index file not found at {index_path}")
+            print(f"⚠️  Absolute path checked: {os.path.abspath(index_path)}")
+            print(f"⚠️  Current directory contents: {os.listdir('.')}")
+            if os.path.exists("../"):
+                print(f"⚠️  Parent directory contents: {os.listdir('../')}")
             return False
         
         # Read current index.html
@@ -224,6 +234,8 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
         # Default image if none provided
         if not tile_image:
             tile_image = "images/python.jpg"  # Default fallback image
+        
+        print(f"DEBUG: Creating tile with image: {tile_image}")
         
         # Prepare new tile HTML with proper indentation
         tile_html = f'''            <div class="project">
@@ -259,10 +271,13 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
         else:
             print("DEBUG: Could not find project container div")
             print("❌ Could not find insertion point for tile")
+            print(f"DEBUG: Content preview (first 500 chars): {content[:500]}")
             return False
                 
     except Exception as e:
         print(f"❌ Error adding research tile: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def remove_research_tile(filename: str, title: str = None):

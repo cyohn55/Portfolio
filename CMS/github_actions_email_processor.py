@@ -192,10 +192,11 @@ class GitHubActionsEmailProcessor:
             with open(temp_file, 'w', encoding='utf-8') as f:
                 f.write(raw_email_msg.as_string())
             
-            # Call enhanced email processor
+            # Call enhanced email processor - ensure we're in the CMS directory
+            # This is critical for relative path resolution (../index.html, ../Pages/, etc.)
             result = subprocess.run([
                 sys.executable, 'enhanced_email_processor.py', temp_file
-            ], capture_output=True, text=True, cwd='.')
+            ], capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)))
             
             # Clean up temp file
             if os.path.exists(temp_file):
