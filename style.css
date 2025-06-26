@@ -157,6 +157,10 @@ body {
     .mobile-br {
         display: block;
     }
+    
+    #be-first-to-ask {
+        padding-left: 0;
+    }
 }
 
 /* Style for the intro section */
@@ -690,6 +694,10 @@ section h2 {
 @media (min-width: 769px) {
     .article-title {
         text-align: center;
+    }
+    
+    #typing-text {
+        font-size: 6rem;
     }
     
     .wrap-text-container img,
