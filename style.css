@@ -119,10 +119,10 @@ body {
 }
 
 #typing-text a.red-link {
-    color: #ff4444;
+    color: #000;
     text-decoration: none;
     transition: color 0.3s ease, text-shadow 0.3s ease;
-    font-style: italic;
+    font-style: normal;
 }
 
 #typing-text a.red-link:hover {
