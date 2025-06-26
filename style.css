@@ -144,6 +144,10 @@ body {
     opacity: 1 !important;
 }
 
+#be-first-to-ask {
+    padding-left: 10px;
+}
+
 /* Mobile line break */
 .mobile-br {
     display: none;
