@@ -22,30 +22,32 @@ import traceback
 import logging
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
+from template_engine import render as render_template
 
-# =============================================================================
-# CONFIGURATION CONSTANTS
-# =============================================================================
+# -----------------------------------------------------------------------------
+# Override with centralized config (allows env-based overrides and DRY setup)
+# -----------------------------------------------------------------------------
+try:
+    import config  # Local import when running from CMS directory
+except ModuleNotFoundError:
+    # Fallback to package-style import when executed via `python -m CMS.simple_email_processor`
+    from . import config  # type: ignore
 
-# Directory paths (relative to MCP directory)
-PAGES_DIR = "../Pages"
-IMAGES_DIR = "../images"
-INDEX_PATH = "../index.html"
+PAGES_DIR = config.PAGES_DIR
+IMAGES_DIR = config.IMAGES_DIR
+INDEX_PATH = config.INDEX_PATH
 
-# Default settings
-DEFAULT_IMAGE = "images/python.jpg"
-DEFAULT_DESCRIPTION_TEMPLATE = "Learn about {title} in Cody's portfolio"
-MAX_DESCRIPTION_LENGTH = 120
-MAX_TITLE_PREFIX_LENGTH = 20
+DEFAULT_IMAGE = config.DEFAULT_IMAGE
+DEFAULT_DESCRIPTION_TEMPLATE = config.DEFAULT_DESCRIPTION_TEMPLATE
+MAX_DESCRIPTION_LENGTH = config.MAX_DESCRIPTION_LENGTH
+MAX_TITLE_PREFIX_LENGTH = config.MAX_TITLE_PREFIX_LENGTH
 
-# File extensions
-SUPPORTED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg']
-SUPPORTED_VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.webm']
-SUPPORTED_AUDIO_EXTENSIONS = ['.mp3', '.wav', '.ogg']
+SUPPORTED_IMAGE_EXTENSIONS = config.SUPPORTED_IMAGE_EXTENSIONS
+SUPPORTED_VIDEO_EXTENSIONS = config.SUPPORTED_VIDEO_EXTENSIONS
+SUPPORTED_AUDIO_EXTENSIONS = config.SUPPORTED_AUDIO_EXTENSIONS
 
-# Git configuration
-GIT_COMMIT_AUTHOR = "Email-to-Portfolio System"
-GIT_COMMIT_EMAIL = "system@portfolio.local"
+GIT_COMMIT_AUTHOR = config.GIT_COMMIT_AUTHOR
+GIT_COMMIT_EMAIL = config.GIT_COMMIT_EMAIL
 
 # =============================================================================
 # PRE-COMPILED REGEX PATTERNS FOR PERFORMANCE
@@ -941,7 +943,7 @@ def create_html_page(title: str, content: str, filename: str, attachments: Optio
         nav_links = get_existing_nav_links()
         
         # Determine the best image for social media (first image from saved files or default)
-        page_image = "images/python.jpg"  # Default fallback
+        page_image = DEFAULT_IMAGE  # Default fallback
         if saved_media_files:
             # Use the first saved image file
             for file_path in saved_media_files:
@@ -976,71 +978,23 @@ def create_html_page(title: str, content: str, filename: str, attachments: Optio
             }
         }"""
         
-        # Generate HTML
-        html_template = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{html.escape(title)}</title>
-    <meta name="description" content="{html.escape(description)}">
-    
-    <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="../{page_image}">
-    <link rel="icon" type="image/png" sizes="32x32" href="../{page_image}">
-    <link rel="icon" type="image/png" sizes="16x16" href="../{page_image}">
-    <link rel="apple-touch-icon" href="../{page_image}">
-    
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://cyohn55.github.io/Portfolio/Pages/{filename}">
-    <meta property="og:title" content="{html.escape(title)}">
-    <meta property="og:description" content="{html.escape(description)}">
-    <meta property="og:image" content="https://cyohn55.github.io/Portfolio/{page_image}">
-    <meta property="og:site_name" content="Cody's Portfolio">
-    
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:url" content="https://cyohn55.github.io/Portfolio/Pages/{filename}">
-    <meta property="twitter:title" content="{html.escape(title)}">
-    <meta property="twitter:description" content="{html.escape(description)}">
-    <meta property="twitter:image" content="https://cyohn55.github.io/Portfolio/{page_image}">
-    
-    <!-- Link to CSS -->
-    <link rel="stylesheet" href="../style.css">
-    
-    <!-- Responsive Device Styling -->
-    <style>{responsive_css}
-    </style>
-</head>
-<body>
-    <header>
-        <h2>Code(Yohn's) Portfolio</h2>
-        <nav>
-            <ul>
-{nav_links}
-            </ul>
-        </nav>
-    </header>
-
-    <div class="content">
-        <!-- Written Section -->
-        <div class="wrap-text-container">
-            <h1 class="article-title">{html.escape(title)}</h1>
-            {content_html}
-            <p><em>Created: {datetime.now().strftime('%B %d, %Y')}</em></p>
-        </div>
-    </div>
-
-    <footer>
-        <p>&copy; 2025 Cody Yohn. All rights reserved.</p>
-    </footer>
-    <script src="../script.js"></script>
-</body>
-</html>"""
+        # ------------------------------------------------------------------
+        # 🆕 Prefer Jinja2 template rendering (overrides legacy string above)
+        # ------------------------------------------------------------------
+        html_template = render_template(
+            'page.html',
+            title=title,
+            description=description,
+            page_image=page_image,
+            filename=filename,
+            nav_links=nav_links,
+            content_html=content_html,
+            responsive_css=responsive_css,
+            created_at=datetime.now().strftime('%B %d, %Y')
+        )
         
         # Write to Pages directory
-        pages_dir = "../Pages"
+        pages_dir = PAGES_DIR
         if not os.path.exists(pages_dir):
             os.makedirs(pages_dir)
         
@@ -1118,7 +1072,7 @@ def add_research_tile(title: str, description: str, filename: str, tile_image: O
         
         # Set default image if none provided
         if not tile_image:
-            tile_image = "images/python.jpg"  # Default fallback image
+            tile_image = DEFAULT_IMAGE  # Default fallback image
         
         # Prepare new tile HTML
         tile_html = f'''            <div class="project">
@@ -1468,7 +1422,7 @@ def process_email_to_page(email_content: str) -> bool:
                 description = generate_description_from_content(parsed["content"], parsed["title"])
             
             # Find the first image in the email body order (not just first in attachments)
-            tile_image = None
+            tile_image = DEFAULT_IMAGE  # Default fallback image
             ordered_content = parsed.get("ordered_content", [])
             attachments = parsed.get("attachments", [])
             

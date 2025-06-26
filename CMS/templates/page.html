@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ title|e }}</title>
+    <meta name="description" content="{{ description|e }}" />
+
+    <!-- Favicon / Social image -->
+    <link rel="icon" href="../{{ page_image }}" type="image/png" />
+    <link rel="apple-touch-icon" href="../{{ page_image }}" />
+
+    <!-- Open Graph / Twitter cards -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://cyohn55.github.io/Portfolio/Pages/{{ filename }}" />
+    <meta property="og:title" content="{{ title|e }}" />
+    <meta property="og:description" content="{{ description|e }}" />
+    <meta property="og:image" content="https://cyohn55.github.io/Portfolio/{{ page_image }}" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://cyohn55.github.io/Portfolio/Pages/{{ filename }}" />
+    <meta name="twitter:title" content="{{ title|e }}" />
+    <meta name="twitter:description" content="{{ description|e }}" />
+    <meta name="twitter:image" content="https://cyohn55.github.io/Portfolio/{{ page_image }}" />
+
+    <link rel="stylesheet" href="../style.css" />
+    <style>{{ responsive_css }}</style>
+</head>
+<body>
+    <header>
+        <h2>Code(Yohn's) Portfolio</h2>
+        <nav>
+            <ul>
+{{ nav_links|safe }}
+            </ul>
+        </nav>
+    </header>
+
+    <div class="content">
+        <div class="wrap-text-container">
+            <h1 class="article-title">{{ title|e }}</h1>
+            {{ content_html|safe }}
+            <p><em>Created: {{ created_at }}</em></p>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2025 Cody Yohn. All rights reserved.</p>
+    </footer>
+
+    <script src="../script.js"></script>
+</body>
+</html> 
