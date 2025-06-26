@@ -706,6 +706,11 @@ section h2 {
         box-shadow: 0 2px 8px var(--shadow-light);
         object-fit: contain;
     }
+
+    /* Increase font size of 'Who IS Code?' link on desktop */
+    #typing-text a.red-link {
+        font-size: 5rem;
+    }
 }
 
 /* ==========================================================================
