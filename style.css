@@ -129,22 +129,7 @@ body {
     text-shadow: 0 0 8px rgba(255, 68, 68, 0.7);
 }
 
-/* Cursor effect */
-#typing-text::after {
-    content: '|';
-    animation: blink 1s step-end infinite;
-    margin-left: 2px;
-}
-
-#typing-text.typing-done::after {
-    content: '';
-    animation: none;
-}
-
-@keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0; }
-}
+/* Cursor effect - REMOVED */
 
 /* Style for the intro section */
 .intro-text {
