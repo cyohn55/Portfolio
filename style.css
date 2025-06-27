@@ -136,6 +136,8 @@ body {
     width: 100vw;
     margin-left: calc(-50vw + 50%);
     position: relative;
+    height: 400px;
+    max-height: 400px;
 }
 
 #typing-text > div > a {
