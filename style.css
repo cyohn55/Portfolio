@@ -735,8 +735,8 @@ section h2 {
     .centered-who a.red-link.line-who {
         text-align: center;
         line-height: 1.2;
-        white-space: nowrap; /* Keep on single line */
-        font-size: 10rem !important; /* Force the font size with !important */
+        white-space: normal;
+        font-size: 10rem !important;
     }
     #typing-text .line-but {
         font-size: 6rem;
@@ -774,7 +774,7 @@ section h2 {
     #typing-text a.red-link.line-who,
     .centered-who a.red-link.line-who {
         font-size: clamp(4.4rem, 20vw, 20rem) !important;
-        white-space: nowrap;
+        white-space: normal;
     }
 }
 
