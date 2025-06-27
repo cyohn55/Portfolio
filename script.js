@@ -65,40 +65,53 @@ But, no one asks...<br class="mobile-br">
     // The text is already cleared in preCalculateHeight
     // typingText.textContent = '';
     
-    // Break down the content into fade sequence
-    const fadeSequence = [
+    // Break down the content into typing + fade sequence
+    const typingFadeSequence = [
         {
-            content: "<span class=\"line-everyone\">Everyone asks...</span>",
-            fadeInDuration: 1000,
-            displayDuration: 2000,
-            fadeOutDuration: 1000
+            texts: [
+                { content: "<span class=\"line-everyone\">Everyone</span>", delay: 600 },
+                { content: "<span class=\"line-everyone\">Everyone asks...</span>", delay: 800 }
+            ],
+            fadeOutDuration: 1000,
+            pauseAfterFade: 500
         },
         {
-            content: "<span class=\"line-how\">'How to Code?'</span>",
-            fadeInDuration: 1000,
-            displayDuration: 2000,
-            fadeOutDuration: 1000
+            texts: [
+                { content: "<span class=\"line-how\">'How</span>", delay: 400 },
+                { content: "<span class=\"line-how\">'How to</span>", delay: 400 },
+                { content: "<span class=\"line-how\">'How to Code?'</span>", delay: 600 }
+            ],
+            fadeOutDuration: 1000,
+            pauseAfterFade: 500
         },
         {
-            content: "<span class=\"line-but\">But, no one asks...</span>",
-            fadeInDuration: 1000,
-            displayDuration: 2000,
-            fadeOutDuration: 1000
+            texts: [
+                { content: "<span class=\"line-but\">But,</span>", delay: 400 },
+                { content: "<span class=\"line-but\">But, no</span>", delay: 400 },
+                { content: "<span class=\"line-but\">But, no one</span>", delay: 400 },
+                { content: "<span class=\"line-but\">But, no one asks...</span>", delay: 800 }
+            ],
+            fadeOutDuration: 1000,
+            pauseAfterFade: 500
         },
         {
-            content: "<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who <i>IS</i> <span class=\"red-text\">Code</span>?'</a>",
-            fadeInDuration: 1000,
-            displayDuration: 3000, // Display longer for final text
+            texts: [
+                { content: "<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who</a>", delay: 500 },
+                { content: "<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who <i>IS</i></a>", delay: 600 },
+                { content: "<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who <i>IS</i> <span class=\"red-text\">Code</span>?'</a>", delay: 800 }
+            ],
             fadeOutDuration: 0, // Don't fade out the final text
+            pauseAfterFade: 0,
             isLast: true
         }
     ];
     
-    let currentIndex = 0;
+    let currentSequenceIndex = 0;
+    let currentTextIndex = 0;
     
-    function fadeNextText() {
-        // If we've finished all pieces, we're done
-        if (currentIndex >= fadeSequence.length) {
+    function typeAndFadeNext() {
+        // If we've finished all sequences, we're done
+        if (currentSequenceIndex >= typingFadeSequence.length) {
             typingText.classList.add('typing-done');
             
             // Trigger the fade-in for "Be the first to ask!" after animation is done
@@ -109,22 +122,18 @@ But, no one asks...<br class="mobile-br">
             return;
         }
         
-        const fadeItem = fadeSequence[currentIndex];
+        const sequence = typingFadeSequence[currentSequenceIndex];
         
-        // Set the content and start invisible
-        typingText.innerHTML = fadeItem.content;
-        typingText.style.opacity = '0';
-        typingText.style.transition = `opacity ${fadeItem.fadeInDuration}ms ease-in-out`;
-        
-        // Fade in
-        setTimeout(() => {
+        // If we're starting a new sequence, reset text index and make visible
+        if (currentTextIndex === 0) {
             typingText.style.opacity = '1';
-        }, 50); // Small delay to ensure transition is applied
+            typingText.style.transition = 'none'; // No transition for typing
+        }
         
-        // After fade in completes, wait for display duration
-        setTimeout(() => {
-            if (fadeItem.isLast) {
-                // For the last item, don't fade out and finish the animation
+        // If we've finished typing all texts in this sequence
+        if (currentTextIndex >= sequence.texts.length) {
+            if (sequence.isLast) {
+                // For the last sequence, don't fade out and finish the animation
                 typingText.classList.add('typing-done');
                 
                 // Trigger the fade-in for "Be the first to ask!"
@@ -133,21 +142,31 @@ But, no one asks...<br class="mobile-br">
                     fadeInElement.classList.add('show');
                 }
             } else {
-                // Fade out
-                typingText.style.transition = `opacity ${fadeItem.fadeOutDuration}ms ease-in-out`;
+                // Fade out the completed sequence
+                typingText.style.transition = `opacity ${sequence.fadeOutDuration}ms ease-in-out`;
                 typingText.style.opacity = '0';
                 
-                // After fade out completes, move to next item
+                // After fade out completes, move to next sequence
                 setTimeout(() => {
-                    currentIndex++;
-                    fadeNextText();
-                }, fadeItem.fadeOutDuration);
+                    currentSequenceIndex++;
+                    currentTextIndex = 0;
+                    setTimeout(typeAndFadeNext, sequence.pauseAfterFade);
+                }, sequence.fadeOutDuration);
             }
-        }, fadeItem.fadeInDuration + fadeItem.displayDuration);
+            return;
+        }
+        
+        // Type the current text
+        const currentText = sequence.texts[currentTextIndex];
+        typingText.innerHTML = currentText.content;
+        
+        // Move to next text in sequence
+        currentTextIndex++;
+        setTimeout(typeAndFadeNext, currentText.delay);
     }
     
-    // Start fade animation after a delay
-    setTimeout(fadeNextText, 400);
+    // Start typing animation after a delay
+    setTimeout(typeAndFadeNext, 400);
 });
 
 // Parallax effect for .parallax-3 section if it exists
