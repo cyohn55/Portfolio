@@ -762,18 +762,18 @@ section h2 {
 
     /* Fluid scaling for typing animation lines */
     #typing-text .line-everyone {
-        font-size: clamp(1.5rem, 3vw, 2rem) !important;
+        font-size: clamp(3rem, 6vw, 4rem) !important;
     }
     #typing-text .line-how {
-        font-size: clamp(1.8rem, 4.5vw, 4rem) !important;
+        font-size: clamp(3.6rem, 9vw, 8rem) !important;
     }
     #typing-text .line-but {
-        font-size: clamp(2rem, 6vw, 6rem) !important;
+        font-size: clamp(4rem, 12vw, 12rem) !important;
         white-space: nowrap;
     }
     #typing-text a.red-link.line-who,
     .centered-who a.red-link.line-who {
-        font-size: clamp(2.2rem, 10vw, 10rem) !important;
+        font-size: clamp(4.4rem, 20vw, 20rem) !important;
         white-space: nowrap;
     }
 }
