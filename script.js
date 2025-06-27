@@ -76,6 +76,7 @@ But, no one asks...<br class="mobile-br">
         { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no</span>", delay: 400 },
         { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one</span>", delay: 400 },
         { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one asks...</span>", delay: 1500, clearAfter: true },
+        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who</a></div>", delay: 600, isCentered: true },
         { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">is</a></div>", delay: 600, isCentered: true },
         { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\"><span class=\"red-text\">Code</span>?</a></div>", delay: 800, isCentered: true, isLast: true }
     ];
