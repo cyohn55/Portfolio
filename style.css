@@ -178,11 +178,6 @@ body {
     margin-top: 0;
 }
 
-/* Center intro heading */
-.intro-text h2 {
-    text-align: center;
-}
-
 /* ==========================================================================
    HEADER & NAVIGATION
    ========================================================================== */
@@ -759,6 +754,11 @@ section h2 {
     #be-first-to-ask {
         padding-left: 130px !important;
         padding-right: 30px !important;
+    }
+
+    /* Center intro heading on desktop */
+    .intro-text h2 {
+        text-align: center;
     }
 }
 
