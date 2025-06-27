@@ -150,6 +150,7 @@ body {
     text-align: center;
     padding: 0 30px !important; /* 30px left & right */
     margin-left: -90px; /* shift left 90px */
+    margin-top: 30px; /* add clearance below Code? */
 }
 
 /* Mobile line break */
@@ -715,7 +716,7 @@ section h2 {
 
     /* Desktop font sizes for animated heading lines */
     #typing-text a.red-link.line-who {
-        font-size: clamp(3rem, 9vw, 12rem);
+        font-size: clamp(4.5rem, 13.5vw, 18rem);
         white-space: normal;
     }
     
@@ -772,7 +773,7 @@ section h2 {
     }
     #typing-text a.red-link.line-who,
     .centered-who a.red-link.line-who {
-        font-size: clamp(3rem, 9vw, 12rem) !important;
+        font-size: clamp(4.5rem, 13.5vw, 18rem) !important;
         white-space: normal;
         max-width: 100%;
         line-height: 1.1;
