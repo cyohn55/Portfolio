@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Define exact sequence of content to be displayed
-    const finalContent = `Everyone asks...
+    const finalContent = `Everyone asks
 
 'How to Code?'
 
@@ -68,7 +68,7 @@ But, no one asks<br class="mobile-br">
     // Break down the content into typing sequence
     const typingSequence = [
         // Show each phrase centered, one at a time
-        { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Everyone asks...</span></div>", delay: 1000, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Everyone asks</span></div>", delay: 1000, isCentered: true },
         { content: "<div class=\"centered-who\"><span class=\"line-how\">'How to Code?'</span></div>", delay: 1000, isCentered: true },
         { content: "<div class=\"centered-who\"><span class=\"line-but\">But, no one asks</span></div>", delay: 1200, isCentered: true, clearAfter: true },
         // Then show Who / is / Code?
