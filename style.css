@@ -713,18 +713,18 @@ section h2 {
 
     /* Desktop font sizes for animated heading lines */
     #typing-text a.red-link.line-who {
-        font-size: 9rem;
+        font-size: 8rem;
         white-space: nowrap;
     }
     #typing-text .line-but {
-        font-size: 7rem;
+        font-size: 6rem;
         white-space: nowrap;
     }
     #typing-text .line-how {
-        font-size: 5rem;
+        font-size: 4rem;
     }
     #typing-text .line-everyone {
-        font-size: 3rem;
+        font-size: 2rem;
     }
 
     /* Ensure desktop padding for 'Be the first to ask!' is enforced */
