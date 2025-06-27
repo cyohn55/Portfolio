@@ -736,7 +736,7 @@ section h2 {
         text-align: center;
         line-height: 1.2;
         white-space: normal;
-        font-size: 10rem !important;
+        font-size: 9rem !important;
     }
     #typing-text .line-but {
         font-size: 6rem;
@@ -773,7 +773,7 @@ section h2 {
     }
     #typing-text a.red-link.line-who,
     .centered-who a.red-link.line-who {
-        font-size: clamp(4.4rem, 20vw, 20rem) !important;
+        font-size: clamp(3.4rem, 20vw, 19rem) !important;
         white-space: normal;
     }
 }
