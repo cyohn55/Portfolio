@@ -730,7 +730,9 @@ section h2 {
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        height: auto; /* let content dictate height to avoid overlap */
+        height: 280px; /* Fixed height to prevent overflow */
+        max-height: 280px; /* Ensure it doesn't exceed this height */
+        overflow: hidden; /* Prevent text from spilling out */
         line-height: 1.2;
         width: 100%;
         margin: 0 0 20px 0; /* add spacing below to separate from next element */
@@ -1010,6 +1012,8 @@ section h2 {
     /* Keep mobile container same height as typing container */
     .centered-who {
         height: 240px !important; /* Same as mobile typing container height */
+        max-height: 240px !important; /* Ensure it doesn't exceed this height */
+        overflow: hidden !important; /* Prevent text from spilling out on mobile */
     }
 }
 
