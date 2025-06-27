@@ -88,7 +88,7 @@ body {
 #typing-animation-container {
     position: relative;
     margin-top: 24px;
-    margin-bottom: 1.5rem;
+    margin-bottom: 4rem; /* Increased spacing to prevent overlap with intro text */
     height: 287.969px; /* Fixed height to prevent animation jitter */
     width: 100%;
     display: block;
@@ -967,7 +967,7 @@ section h2 {
     /* Adjust container height for mobile */
     #typing-animation-container {
         height: 240px; /* Fixed height for mobile to prevent jitter */
-        margin-bottom: 10px; /* Changed from default 1.5rem (~24px) to 10px */
+        margin-bottom: 3rem; /* Increased spacing to prevent overlap with intro text on mobile */
     }
     
     #typing-text {
