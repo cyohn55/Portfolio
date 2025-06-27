@@ -134,6 +134,7 @@ body {
 
 #typing-text > div > a {
     margin-bottom: 50px;
+    max-height: 400px;
 }
 
 /* Cursor effect - REMOVED */
