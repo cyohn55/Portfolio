@@ -103,6 +103,8 @@ body {
     min-height: 287.969px; /* Ensure space for all text */
     text-align: left;
     white-space: pre-line; /* This ensures \n characters create line breaks */
+    opacity: 0; /* Start invisible for fade animation */
+    transition: opacity 1000ms ease-in-out; /* Default transition */
 }
 
 /* Add more spacing between the lines but remove any margin that might cause extra space */
