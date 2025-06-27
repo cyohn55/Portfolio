@@ -148,6 +148,8 @@ body {
 
 #be-first-to-ask {
     text-align: center;
+    padding: 0 30px !important; /* 30px left & right */
+    margin-left: -50px; /* shift left */
 }
 
 /* Mobile line break */
@@ -162,6 +164,7 @@ body {
     /* Remove left padding on 'Be the first to ask!' for mobile */
     #be-first-to-ask {
         padding-left: 0 !important;
+        margin-left: 0 !important; /* reset shift */
     }
 }
 
