@@ -132,6 +132,12 @@ body {
     text-shadow: 0 0 8px rgba(255, 68, 68, 0.7);
 }
 
+#typing-text > div {
+    width: 100vw;
+    margin-left: calc(-50vw + 50%);
+    position: relative;
+}
+
 #typing-text > div > a {
     margin-bottom: 50px;
     max-height: 400px;
