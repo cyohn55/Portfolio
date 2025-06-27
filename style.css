@@ -779,7 +779,6 @@ section h2 {
     }
     .centered-who a.red-link.line-who .red-text {
         display: inline-block;
-        margin-top: 20px;
     }
     /* Enlarge only the word "Code?" on desktop */
     #typing-text a.red-link.line-who .red-text,
