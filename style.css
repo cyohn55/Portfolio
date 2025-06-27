@@ -730,12 +730,13 @@ section h2 {
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        height: 280px; /* Fixed height to prevent overflow */
-        max-height: 280px; /* Ensure it doesn't exceed this height */
+        height: 320px; /* Fixed height to prevent overflow */
+        max-height: 320px; /* Ensure it doesn't exceed this height */
+        width: 1200px; /* Fixed width for desktop */
+        max-width: 1200px; /* Ensure it doesn't exceed this width */
         overflow: hidden; /* Prevent text from spilling out */
         line-height: 1.2;
-        width: 100%;
-        margin: 0 0 20px 0; /* add spacing below to separate from next element */
+        margin: 0 auto 20px auto; /* center horizontally and add spacing below */
         padding: 0;
     }
     
