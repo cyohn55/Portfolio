@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 'How to Code?'
 
-But, no one ever asks...<br class="mobile-br">
+But, no one asks...<br class="mobile-br">
 <a href="Pages/aboutcode.html" class="red-link">'Who <i>IS</i> <span class="red-text">Code</span>?'</a>`;
 
     // Pre-calculate the height by temporarily showing the full content
@@ -79,11 +79,10 @@ But, no one ever asks...<br class="mobile-br">
         // Single blank line - slightly longer delay
         { text: "\n\n", delay: 800 },
         
-        // Line 4 - But, no one ever asks...
+        // Line 4 - But, no one asks...
         { text: "<span class=\"line-but\">But, ", delay: 400, isButLine: true },
         { text: "no ", delay: 300, isButLine: true },
         { text: "one ", delay: 400, isButLine: true },
-        { text: "ever ", delay: 400, isButLine: true },
         { text: "asks...</span>", delay: 800, isButLine: true }, // Longer delay before the Who IS Code part
         
         // Line 5 with special styling
