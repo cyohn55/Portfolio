@@ -87,6 +87,7 @@ body {
 
 #typing-animation-container {
     position: relative;
+    margin-top: 24px;
     margin-bottom: 1.5rem;
     min-height: 287.969px; /* Set to exact height needed for completed text */
     width: 100%;
