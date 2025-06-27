@@ -72,9 +72,9 @@ But, no one asks...<br class="mobile-br">
         { content: "<div class=\"centered-who\"><span class=\"line-how\">'How to Code?'</span></div>", delay: 1000, isCentered: true },
         { content: "<div class=\"centered-who\"><span class=\"line-but\">But, no one asks...</span></div>", delay: 1200, isCentered: true, clearAfter: true },
         // Then show Who / is / Code?
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who</a></div>", delay: 700, isCentered: true },
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">is</a></div>", delay: 700, isCentered: true },
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\"><span class=\"red-text\">Code</span>?</a></div>", delay: 900, isCentered: true, isLast: true }
+        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who</a></div>", delay: 600, isCentered: true },
+        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who is</a></div>", delay: 600, isCentered: true },
+        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who is <span class=\"red-text\">Code</span>?</a></div>", delay: 800, isCentered: true, isLast: true }
     ];
     
     let currentIndex = 0;
