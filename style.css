@@ -359,6 +359,11 @@ section h2 {
     color: #ff4444;
 }
 
+/* Override size for the specific "Code?" word nested inside any red-link anchor */
+a.red-link .red-text {
+    font-size: 15rem !important;
+}
+
 /* Content Wrapper */
 .content {
     max-width: var(--max-content-width);
@@ -779,7 +784,7 @@ section h2 {
     }
     .centered-who a.red-link.line-who .red-text {
         display: inline-block;
-        margin-top: 20px;
+        margin-top: 10px;
     }
     /* Enlarge only the word "Code?" on desktop */
     #typing-text a.red-link.line-who .red-text,
@@ -1121,5 +1126,6 @@ section h2 {
 
 .centered-who a.red-link.line-who .red-text {
     display: inline-block;
+    margin-top: 10px;
 }
 
