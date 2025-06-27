@@ -715,8 +715,8 @@ section h2 {
 
     /* Desktop font sizes for animated heading lines */
     #typing-text a.red-link.line-who {
-        font-size: 8rem;
-        white-space: nowrap;
+        font-size: clamp(2rem, 8vw, 8rem);
+        white-space: normal;
     }
     
     /* Centered "Who IS Code?" styling */
@@ -734,9 +734,8 @@ section h2 {
     
     .centered-who a.red-link.line-who {
         text-align: center;
-        line-height: 1.2;
+        line-height: 1.1;
         white-space: normal;
-        font-size: 8rem !important;
     }
     #typing-text .line-but {
         font-size: 6rem;
@@ -773,8 +772,9 @@ section h2 {
     }
     #typing-text a.red-link.line-who,
     .centered-who a.red-link.line-who {
-        font-size: clamp(2.4rem, 20vw, 18rem) !important;
+        font-size: clamp(2rem, 8vw, 8rem) !important;
         white-space: normal;
+        max-width: 100%;
     }
 }
 
