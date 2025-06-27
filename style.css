@@ -173,6 +173,10 @@ body {
     text-align: left;
 }
 
+#about > div.default-container > div.intro-text {
+    margin-top: 30px;
+}
+
 .intro-text h3 {
     margin-top: 0;
 }
