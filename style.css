@@ -738,14 +738,14 @@ section h2 {
         white-space: normal;
     }
     #typing-text .line-but {
-        font-size: 6rem;
+        font-size: 8rem !important;
         white-space: nowrap;
     }
     #typing-text .line-how {
-        font-size: 4rem;
+        font-size: 8rem !important;
     }
     #typing-text .line-everyone {
-        font-size: 2rem;
+        font-size: 8rem !important;
     }
 
     /* Ensure desktop padding for 'Be the first to ask!' is enforced */
@@ -761,13 +761,13 @@ section h2 {
 
     /* Fluid scaling for typing animation lines */
     #typing-text .line-everyone {
-        font-size: clamp(3rem, 6vw, 4rem) !important;
+        font-size: 8rem !important;
     }
     #typing-text .line-how {
-        font-size: clamp(3.6rem, 9vw, 8rem) !important;
+        font-size: 8rem !important;
     }
     #typing-text .line-but {
-        font-size: clamp(4rem, 12vw, 12rem) !important;
+        font-size: 8rem !important;
         white-space: nowrap;
     }
     #typing-text a.red-link.line-who,
