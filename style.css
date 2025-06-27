@@ -92,7 +92,6 @@ body {
     width: 100%;
     display: block;
     text-align: left;
-    overflow: hidden; /* Prevent content from overflowing */
 }
 
 #typing-text {
@@ -104,7 +103,7 @@ body {
     min-height: 287.969px; /* Ensure space for all text */
     text-align: left;
     white-space: pre-line; /* This ensures \n characters create line breaks */
-    opacity: 0; /* Start invisible for fade animation */
+    opacity: 1; /* Make visible by default */
     transition: opacity 1000ms ease-in-out; /* Default transition */
 }
 
@@ -729,11 +728,9 @@ section h2 {
         height: 100vh; /* Full viewport height for vertical centering */
         min-height: 400px; /* Minimum height fallback */
         line-height: 1.2;
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
     }
     
     .centered-who a.red-link.line-who {
