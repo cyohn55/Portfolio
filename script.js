@@ -75,10 +75,10 @@ But, no one asks...<br class="mobile-br">
         { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But,</span>", delay: 400 },
         { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no</span>", delay: 400 },
         { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one</span>", delay: 400 },
-        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one asks...</span>", delay: 800 },
-        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one asks...</span>\n\n<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who</a>", delay: 500 },
-        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one asks...</span>\n\n<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who <i>IS</i></a>", delay: 600 },
-        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one asks...</span>\n\n<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who <i>IS</i> <span class=\"red-text\">Code</span>?'</a>", delay: 800, isLast: true }
+        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one asks...</span>", delay: 1500, clearAfter: true },
+        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who</a></div>", delay: 600, isCentered: true },
+        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who<br><i>IS</i></a></div>", delay: 600, isCentered: true },
+        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who<br><i>IS</i><br><span class=\"red-text\">Code</span>?</a></div>", delay: 800, isCentered: true, isLast: true }
     ];
     
     let currentIndex = 0;
@@ -102,14 +102,29 @@ But, no one asks...<br class="mobile-br">
         typingText.style.opacity = '1';
         typingText.style.transition = 'none';
         
+        // Handle centered content differently
+        if (currentStep.isCentered) {
+            typingText.style.textAlign = 'center';
+        } else {
+            typingText.style.textAlign = 'left';
+        }
+        
         // Set the content
         typingText.innerHTML = currentStep.content.replace(/\n/g, '<br>');
         
         // Move to next step
         currentIndex++;
         
-        // If this is the last step, finish the animation
-        if (currentStep.isLast) {
+        // Handle clearing after this step
+        if (currentStep.clearAfter) {
+            setTimeout(() => {
+                // Clear the content
+                typingText.innerHTML = '';
+                // Continue to next step after a brief pause
+                setTimeout(typeNext, 500);
+            }, currentStep.delay);
+        } else if (currentStep.isLast) {
+            // If this is the last step, finish the animation
             setTimeout(() => {
                 typingText.classList.add('typing-done');
                 

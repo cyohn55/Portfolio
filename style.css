@@ -718,6 +718,22 @@ section h2 {
         font-size: 8rem;
         white-space: nowrap;
     }
+    
+    /* Centered "Who IS Code?" styling */
+    .centered-who {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        line-height: 1.2;
+    }
+    
+    .centered-who a.red-link.line-who {
+        text-align: center;
+        line-height: 1.2;
+        white-space: normal; /* Allow line breaks for centered version */
+    }
     #typing-text .line-but {
         font-size: 6rem;
         white-space: nowrap;
