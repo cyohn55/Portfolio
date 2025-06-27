@@ -67,18 +67,14 @@ But, no one asks...<br class="mobile-br">
     
     // Break down the content into typing sequence
     const typingSequence = [
-        { content: "<span class=\"line-everyone\">Everyone</span>", delay: 600 },
-        { content: "<span class=\"line-everyone\">Everyone asks...</span>", delay: 800 },
-        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How</span>", delay: 400 },
-        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to</span>", delay: 400 },
-        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>", delay: 600 },
-        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But,</span>", delay: 400 },
-        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no</span>", delay: 400 },
-        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one</span>", delay: 400 },
-        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one asks...</span>", delay: 1500, clearAfter: true },
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who</a></div>", delay: 600, isCentered: true },
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">is</a></div>", delay: 600, isCentered: true },
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\"><span class=\"red-text\">Code</span>?</a></div>", delay: 800, isCentered: true, isLast: true }
+        // Show each phrase centered, one at a time
+        { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Everyone asks...</span></div>", delay: 1000, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-how\">'How to Code?'</span></div>", delay: 1000, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, no one asks...</span></div>", delay: 1200, isCentered: true, clearAfter: true },
+        // Then show Who / is / Code?
+        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who</a></div>", delay: 700, isCentered: true },
+        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">is</a></div>", delay: 700, isCentered: true },
+        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\"><span class=\"red-text\">Code</span>?</a></div>", delay: 900, isCentered: true, isLast: true }
     ];
     
     let currentIndex = 0;
