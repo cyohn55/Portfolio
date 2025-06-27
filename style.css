@@ -132,6 +132,10 @@ body {
     text-shadow: 0 0 8px rgba(255, 68, 68, 0.7);
 }
 
+#typing-text > div > a {
+    margin-bottom: 20px;
+}
+
 /* Cursor effect - REMOVED */
 
 .fade-in-text {
