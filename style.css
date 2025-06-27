@@ -149,7 +149,7 @@ body {
 #be-first-to-ask {
     text-align: center;
     padding: 0 30px !important; /* 30px left & right */
-    margin-left: -50px; /* shift left */
+    margin-left: -15px; /* shift left 15px */
 }
 
 /* Mobile line break */
