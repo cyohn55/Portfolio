@@ -714,9 +714,11 @@ section h2 {
     /* Desktop font sizes for animated heading lines */
     #typing-text a.red-link.line-who {
         font-size: 7rem;
+        white-space: nowrap;
     }
     #typing-text .line-but {
         font-size: 6rem;
+        white-space: nowrap;
     }
     #typing-text .line-how {
         font-size: 5rem;
