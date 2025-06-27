@@ -147,7 +147,8 @@ body {
 }
 
 #be-first-to-ask {
-    padding-left: 130px;
+    padding-left: 0;
+    text-align: center;
 }
 
 /* Mobile line break */
