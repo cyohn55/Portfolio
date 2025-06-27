@@ -65,53 +65,27 @@ But, no one asks...<br class="mobile-br">
     // The text is already cleared in preCalculateHeight
     // typingText.textContent = '';
     
-    // Break down the content into typing + fade sequence
-    const typingFadeSequence = [
-        {
-            texts: [
-                { content: "<span class=\"line-everyone\">Everyone</span>", delay: 600 },
-                { content: "<span class=\"line-everyone\">Everyone asks...</span>", delay: 800 }
-            ],
-            fadeOutDuration: 1000,
-            pauseAfterFade: 500
-        },
-        {
-            texts: [
-                { content: "<span class=\"line-how\">'How</span>", delay: 400 },
-                { content: "<span class=\"line-how\">'How to</span>", delay: 400 },
-                { content: "<span class=\"line-how\">'How to Code?'</span>", delay: 600 }
-            ],
-            fadeOutDuration: 1000,
-            pauseAfterFade: 500
-        },
-        {
-            texts: [
-                { content: "<span class=\"line-but\">But,</span>", delay: 400 },
-                { content: "<span class=\"line-but\">But, no</span>", delay: 400 },
-                { content: "<span class=\"line-but\">But, no one</span>", delay: 400 },
-                { content: "<span class=\"line-but\">But, no one asks...</span>", delay: 800 }
-            ],
-            fadeOutDuration: 1000,
-            pauseAfterFade: 500
-        },
-        {
-            texts: [
-                { content: "<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who</a>", delay: 500 },
-                { content: "<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who <i>IS</i></a>", delay: 600 },
-                { content: "<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who <i>IS</i> <span class=\"red-text\">Code</span>?'</a>", delay: 800 }
-            ],
-            fadeOutDuration: 0, // Don't fade out the final text
-            pauseAfterFade: 0,
-            isLast: true
-        }
+    // Break down the content into typing sequence
+    const typingSequence = [
+        { content: "<span class=\"line-everyone\">Everyone</span>", delay: 600 },
+        { content: "<span class=\"line-everyone\">Everyone asks...</span>", delay: 800 },
+        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How</span>", delay: 400 },
+        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to</span>", delay: 400 },
+        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>", delay: 600 },
+        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But,</span>", delay: 400 },
+        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no</span>", delay: 400 },
+        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one</span>", delay: 400 },
+        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one asks...</span>", delay: 800 },
+        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one asks...</span>\n\n<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who</a>", delay: 500 },
+        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one asks...</span>\n\n<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who <i>IS</i></a>", delay: 600 },
+        { content: "<span class=\"line-everyone\">Everyone asks...</span>\n\n<span class=\"line-how\">'How to Code?'</span>\n\n<span class=\"line-but\">But, no one asks...</span>\n\n<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who <i>IS</i> <span class=\"red-text\">Code</span>?'</a>", delay: 800, isLast: true }
     ];
     
-    let currentSequenceIndex = 0;
-    let currentTextIndex = 0;
+    let currentIndex = 0;
     
-    function typeAndFadeNext() {
-        // If we've finished all sequences, we're done
-        if (currentSequenceIndex >= typingFadeSequence.length) {
+    function typeNext() {
+        // If we've finished all typing steps, we're done
+        if (currentIndex >= typingSequence.length) {
             typingText.classList.add('typing-done');
             
             // Trigger the fade-in for "Be the first to ask!" after animation is done
@@ -122,18 +96,21 @@ But, no one asks...<br class="mobile-br">
             return;
         }
         
-        const sequence = typingFadeSequence[currentSequenceIndex];
+        const currentStep = typingSequence[currentIndex];
         
-        // If we're starting a new sequence, reset text index and make visible
-        if (currentTextIndex === 0) {
-            typingText.style.opacity = '1';
-            typingText.style.transition = 'none'; // No transition for typing
-        }
+        // Ensure text is visible (no transitions)
+        typingText.style.opacity = '1';
+        typingText.style.transition = 'none';
         
-        // If we've finished typing all texts in this sequence
-        if (currentTextIndex >= sequence.texts.length) {
-            if (sequence.isLast) {
-                // For the last sequence, don't fade out and finish the animation
+        // Set the content
+        typingText.innerHTML = currentStep.content.replace(/\n/g, '<br>');
+        
+        // Move to next step
+        currentIndex++;
+        
+        // If this is the last step, finish the animation
+        if (currentStep.isLast) {
+            setTimeout(() => {
                 typingText.classList.add('typing-done');
                 
                 // Trigger the fade-in for "Be the first to ask!"
@@ -141,32 +118,14 @@ But, no one asks...<br class="mobile-br">
                 if (fadeInElement) {
                     fadeInElement.classList.add('show');
                 }
-            } else {
-                // Fade out the completed sequence
-                typingText.style.transition = `opacity ${sequence.fadeOutDuration}ms ease-in-out`;
-                typingText.style.opacity = '0';
-                
-                // After fade out completes, move to next sequence
-                setTimeout(() => {
-                    currentSequenceIndex++;
-                    currentTextIndex = 0;
-                    setTimeout(typeAndFadeNext, sequence.pauseAfterFade);
-                }, sequence.fadeOutDuration);
-            }
-            return;
+            }, currentStep.delay);
+        } else {
+            setTimeout(typeNext, currentStep.delay);
         }
-        
-        // Type the current text
-        const currentText = sequence.texts[currentTextIndex];
-        typingText.innerHTML = currentText.content;
-        
-        // Move to next text in sequence
-        currentTextIndex++;
-        setTimeout(typeAndFadeNext, currentText.delay);
     }
     
     // Start typing animation after a delay
-    setTimeout(typeAndFadeNext, 400);
+    setTimeout(typeNext, 400);
 });
 
 // Parallax effect for .parallax-3 section if it exists
