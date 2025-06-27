@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Define exact sequence of content to be displayed
     const finalContent = `Everyone asks...
+
 'How to Code?'
 
 But, no one ever asks...<br class="mobile-br">
@@ -70,8 +71,8 @@ But, no one ever asks...<br class="mobile-br">
         { text: "Everyone ", delay: 600 },
         { text: "asks...", delay: 800 },
         
-        // Line 2
-        { text: "\n'How ", delay: 300 },
+        // Double blank line before 'How to Code?'
+        { text: "\n\n'How ", delay: 300 },
         { text: "to ", delay: 300 },
         { text: "Code?'", delay: 400 },
         
