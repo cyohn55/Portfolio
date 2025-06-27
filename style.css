@@ -733,7 +733,7 @@ section h2 {
         text-align: center;
         line-height: 1.2;
         white-space: nowrap; /* Keep on single line */
-        font-size: 10rem;
+        font-size: 15rem;
     }
     #typing-text .line-but {
         font-size: 6rem;
