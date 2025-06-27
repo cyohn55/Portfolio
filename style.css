@@ -138,6 +138,11 @@ body {
     position: relative;
     height: 400px;
     max-height: 400px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 
 #typing-text > div > a {
