@@ -148,7 +148,6 @@ body {
 
 #be-first-to-ask {
     padding-left: 0;
-    padding-right: 30px;
     text-align: center;
 }
 
@@ -754,6 +753,7 @@ section h2 {
     /* Ensure desktop padding for 'Be the first to ask!' is enforced */
     #be-first-to-ask {
         padding-left: 130px !important;
+        padding-right: 30px !important;
     }
 }
 
