@@ -125,6 +125,25 @@ But, no one ever asks...<br class="mobile-br">
             if (piece.isLast) {
                 setTimeout(() => {
                     typingText.classList.add('typing-done');
+
+                    // Wrap individual lines for desktop sizing
+                    const lines = typingText.innerHTML.split('<br>');
+                    if (lines.length >= 4) {
+                        lines[0] = `<span class="line-everyone">${lines[0]}</span>`;
+                        lines[1] = `<span class="line-how">${lines[1]}</span>`;
+                        // Skip index 2 if it's an empty string for blank line
+                        if (lines[3]) {
+                            lines[3] = `<span class="line-but">${lines[3]}</span>`;
+                        }
+                    }
+                    typingText.innerHTML = lines.join('<br>');
+
+                    // Add class to the anchor (Who IS Code?) for clarity
+                    const whoAnchor = typingText.querySelector('a.red-link');
+                    if (whoAnchor) {
+                        whoAnchor.classList.add('line-who');
+                    }
+
                     // Trigger the fade-in for "Be the first to ask!" after typing is done
                     const fadeInElement = document.getElementById('be-first-to-ask');
                     if (fadeInElement) {

@@ -711,9 +711,18 @@ section h2 {
         object-fit: contain;
     }
 
-    /* Increase font size of 'Who IS Code?' link on desktop */
-    #typing-text a.red-link {
+    /* Desktop font sizes for animated heading lines */
+    #typing-text a.red-link.line-who {
+        font-size: 10rem;
+    }
+    #typing-text .line-but {
+        font-size: 7.5rem;
+    }
+    #typing-text .line-how {
         font-size: 5rem;
+    }
+    #typing-text .line-everyone {
+        font-size: 2.5rem;
     }
 
     /* Ensure desktop padding for 'Be the first to ask!' is enforced */
