@@ -725,10 +725,10 @@ section h2 {
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        height: 287.969px; /* Same height as the typing container */
+        height: auto; /* let content dictate height to avoid overlap */
         line-height: 1.2;
         width: 100%;
-        margin: 0;
+        margin: 0 0 20px 0; /* add spacing below to separate from next element */
         padding: 0;
     }
     
