@@ -114,9 +114,9 @@ But, no one ever asks...<br class="mobile-br">
             
             whoLineContent += piece.text;
             
-            // Format the entire text
+            // Format the entire text with line-who class applied immediately
             const beforeWho = currentText;
-            const formatted = beforeWho + `<a href="Pages/aboutcode.html" class="red-link">${whoLineContent}</a>`;
+            const formatted = beforeWho + `<a href="Pages/aboutcode.html" class="red-link line-who">${whoLineContent}</a>`;
             
             // Replace \n with <br> for HTML
             typingText.innerHTML = formatted.replace(/\n/g, '<br>');
@@ -137,12 +137,6 @@ But, no one ever asks...<br class="mobile-br">
                         }
                     }
                     typingText.innerHTML = lines.join('<br>');
-
-                    // Add class to the anchor (Who IS Code?) for clarity
-                    const whoAnchor = typingText.querySelector('a.red-link');
-                    if (whoAnchor) {
-                        whoAnchor.classList.add('line-who');
-                    }
 
                     // Trigger the fade-in for "Be the first to ask!" after typing is done
                     const fadeInElement = document.getElementById('be-first-to-ask');
