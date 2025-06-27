@@ -143,7 +143,7 @@ body {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    transform: translateX(100px);
+    transform: translateX(200px);
 }
 
 #typing-text > div > a {
