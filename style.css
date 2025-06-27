@@ -1085,3 +1085,10 @@ section h2 {
     }
 }
 
+/* Large emoji beneath Who is Code */
+.pleading-emoji{
+    font-size:12rem;
+    line-height:1;
+    display:block;
+}
+
