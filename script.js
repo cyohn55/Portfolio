@@ -83,12 +83,6 @@ But, no one asks<br class="mobile-br">
         // If we've finished all typing steps, we're done
         if (currentIndex >= typingSequence.length) {
             typingText.classList.add('typing-done');
-            
-            // Trigger the fade-in for "Be the first to ask!" after animation is done
-            const fadeInElement = document.getElementById('be-first-to-ask');
-            if (fadeInElement) {
-                fadeInElement.classList.add('show');
-            }
             return;
         }
         
@@ -123,12 +117,6 @@ But, no one asks<br class="mobile-br">
             // If this is the last step, finish the animation
             setTimeout(() => {
                 typingText.classList.add('typing-done');
-                
-                // Trigger the fade-in for "Be the first to ask!"
-                const fadeInElement = document.getElementById('be-first-to-ask');
-                if (fadeInElement) {
-                    fadeInElement.classList.add('show');
-                }
             }, currentStep.delay);
         } else {
             setTimeout(typeNext, currentStep.delay);

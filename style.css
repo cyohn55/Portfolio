@@ -134,7 +134,6 @@ body {
 
 /* Cursor effect - REMOVED */
 
-/* Fade-in animation for "Be the first to ask!" */
 .fade-in-text {
     text-align: left;
     margin: 0 0 20px 0;
@@ -147,11 +146,7 @@ body {
     opacity: 1 !important;
 }
 
-#be-first-to-ask {
-    text-align: center;
-    padding: 0 30px !important; /* 30px left & right */
-    margin-left: -90px; /* shift left 90px */
-}
+
 
 /* Mobile line break */
 .mobile-br {
@@ -162,11 +157,7 @@ body {
     .mobile-br {
         display: block;
     }
-    /* Remove left padding on 'Be the first to ask!' for mobile */
-    #be-first-to-ask {
-        padding-left: 0 !important;
-        margin-left: 0 !important; /* reset shift */
-    }
+
 }
 
 /* Style for the intro section */
@@ -749,11 +740,7 @@ section h2 {
         font-size: 8rem !important;
     }
 
-    /* Ensure desktop padding for 'Be the first to ask!' is enforced */
-    #be-first-to-ask {
-        padding-left: 130px !important;
-        padding-right: 30px !important;
-    }
+
 
     /* Center intro heading on desktop */
     .intro-text h2 {
