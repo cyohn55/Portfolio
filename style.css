@@ -137,6 +137,10 @@ body {
     max-height: 400px;
 }
 
+.centered-who a.red-link.line-who {
+    max-height: 290px;
+}
+
 /* Cursor effect - REMOVED */
 
 .fade-in-text {
