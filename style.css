@@ -97,7 +97,7 @@ body {
 #typing-text {
     display: block;
     margin: 0;
-    font-size: 3rem;
+    font-size: inherit; /* Remove base font-size to allow individual line control */
     line-height: 1.2;
     font-weight: bold;
     min-height: 287.969px; /* Ensure space for all text */
@@ -713,16 +713,16 @@ section h2 {
 
     /* Desktop font sizes for animated heading lines */
     #typing-text a.red-link.line-who {
-        font-size: 7.5rem;
+        font-size: 7rem;
     }
     #typing-text .line-but {
-        font-size: 5.625rem;
+        font-size: 6rem;
     }
     #typing-text .line-how {
-        font-size: 3.75rem;
+        font-size: 5rem;
     }
     #typing-text .line-everyone {
-        font-size: 1.875rem;
+        font-size: 4rem;
     }
 
     /* Ensure desktop padding for 'Be the first to ask!' is enforced */
@@ -921,10 +921,27 @@ section h2 {
     }
     
     #typing-text {
-        font-size: 2rem;
+        font-size: inherit; /* Don't override individual line sizes on mobile */
         line-height: 1.3;
         font-weight: 600;
         min-height: 240px; /* Match container height */
+    }
+    
+    /* Mobile-specific font sizes for typing animation */
+    #typing-text .line-everyone {
+        font-size: 1.5rem;
+    }
+    
+    #typing-text .line-how {
+        font-size: 1.8rem;
+    }
+    
+    #typing-text .line-but {
+        font-size: 2rem;
+    }
+    
+    #typing-text a.red-link.line-who {
+        font-size: 2.2rem;
     }
 }
 

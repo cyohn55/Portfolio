@@ -67,96 +67,67 @@ But, no one ever asks...<br class="mobile-br">
     
     // Break down the content into pieces for typing
     const typingSequence = [
-        // Line 1
-        { text: "Everyone ", delay: 600 },
-        { text: "asks...", delay: 800 },
+        // Line 1 - Everyone asks...
+        { text: "<span class=\"line-everyone\">Everyone ", delay: 600, isEveryoneLine: true },
+        { text: "asks...</span>", delay: 800, isEveryoneLine: true },
         
         // Double blank line before 'How to Code?'
-        { text: "\n\n'How ", delay: 300 },
-        { text: "to ", delay: 300 },
-        { text: "Code?'", delay: 400 },
+        { text: "\n\n<span class=\"line-how\">'How ", delay: 300, isHowLine: true },
+        { text: "to ", delay: 300, isHowLine: true },
+        { text: "Code?'</span>", delay: 400, isHowLine: true },
         
         // Single blank line - slightly longer delay
         { text: "\n\n", delay: 800 },
         
-        // Line 4
-        { text: "But, ", delay: 400 },
-        { text: "no ", delay: 300 },
-        { text: "one ", delay: 400 },
-        { text: "ever ", delay: 400 },
-        { text: "asks...", delay: 800 }, // Longer delay before the Who IS Code part
+        // Line 4 - But, no one ever asks...
+        { text: "<span class=\"line-but\">But, ", delay: 400, isButLine: true },
+        { text: "no ", delay: 300, isButLine: true },
+        { text: "one ", delay: 400, isButLine: true },
+        { text: "ever ", delay: 400, isButLine: true },
+        { text: "asks...</span>", delay: 800, isButLine: true }, // Longer delay before the Who IS Code part
         
         // Line 5 with special styling
-        { text: "<br class=\"mobile-br\">\n'Who ", delay: 500, isWhoLine: true },
+        { text: "<br class=\"mobile-br\">\n<a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">'Who ", delay: 500, isWhoLine: true },
         { text: "<i>IS</i> ", delay: 600, isWhoLine: true },
-        { text: "<span class=\"red-text\">Code</span>?'", delay: 400, isWhoLine: true, isLast: true }
+        { text: "<span class=\"red-text\">Code</span>?'</a>", delay: 400, isWhoLine: true, isLast: true }
     ];
     
     let currentIndex = 0;
     let currentText = '';
-    let whoLineStarted = false;
-    let whoLineContent = '';
     
     function typeNextPiece() {
         // If we've finished all pieces, we're done
         if (currentIndex >= typingSequence.length) {
             typingText.classList.add('typing-done');
+            
+            // Trigger the fade-in for "Be the first to ask!" after typing is done
+            const fadeInElement = document.getElementById('be-first-to-ask');
+            if (fadeInElement) {
+                fadeInElement.classList.add('show');
+            }
             return;
         }
         
         const piece = typingSequence[currentIndex];
         
-        // Handle the "Who IS Code?" line specially
-        if (piece.isWhoLine) {
-            if (!whoLineStarted) {
-                whoLineStarted = true;
-                whoLineContent = '';
-            }
-            
-            whoLineContent += piece.text;
-            
-            // Format the entire text with line-who class applied immediately
-            const beforeWho = currentText;
-            const formatted = beforeWho + `<a href="Pages/aboutcode.html" class="red-link line-who">${whoLineContent}</a>`;
-            
-            // Replace \n with <br> for HTML
-            typingText.innerHTML = formatted.replace(/\n/g, '<br>');
-            
-            // If this is the last piece, we're done
-            if (piece.isLast) {
-                setTimeout(() => {
-                    typingText.classList.add('typing-done');
-
-                    // Wrap individual lines for desktop sizing
-                    const lines = typingText.innerHTML.split('<br>');
-                    if (lines.length >= 4) {
-                        lines[0] = `<span class="line-everyone">${lines[0]}</span>`;
-                        lines[1] = `<span class="line-how">${lines[1]}</span>`;
-                        // Skip index 2 if it's an empty string for blank line
-                        if (lines[3]) {
-                            lines[3] = `<span class="line-but">${lines[3]}</span>`;
-                        }
-                    }
-                    typingText.innerHTML = lines.join('<br>');
-
-                    // Trigger the fade-in for "Be the first to ask!" after typing is done
-                    const fadeInElement = document.getElementById('be-first-to-ask');
-                    if (fadeInElement) {
-                        fadeInElement.classList.add('show');
-                    }
-                }, piece.delay);
-            } else {
-                currentIndex++;
-                setTimeout(typeNextPiece, piece.delay);
-            }
-        } 
-        else {
-            // Regular text
-            currentText += piece.text;
-            
-            // Replace \n with <br> for HTML
-            typingText.innerHTML = currentText.replace(/\n/g, '<br>');
-            
+        // Add text to current content
+        currentText += piece.text;
+        
+        // Replace \n with <br> for HTML
+        typingText.innerHTML = currentText.replace(/\n/g, '<br>');
+        
+        // If this is the last piece, finish up
+        if (piece.isLast) {
+            setTimeout(() => {
+                typingText.classList.add('typing-done');
+                
+                // Trigger the fade-in for "Be the first to ask!" after typing is done
+                const fadeInElement = document.getElementById('be-first-to-ask');
+                if (fadeInElement) {
+                    fadeInElement.classList.add('show');
+                }
+            }, piece.delay);
+        } else {
             currentIndex++;
             setTimeout(typeNextPiece, piece.delay);
         }
