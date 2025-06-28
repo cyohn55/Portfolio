@@ -135,7 +135,7 @@ body {
 #typing-text > div {
     width: 800px;
     max-width: 800px;
-    margin-left: calc(-50vw + 50%);
+    margin: 0 auto;
     position: relative;
     height: 400px;
     max-height: 400px;
@@ -144,7 +144,6 @@ body {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    transform: translateX(200px);
 }
 
 #typing-text > div > a {
