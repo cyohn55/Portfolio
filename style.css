@@ -3,6 +3,7 @@
    ========================================================================== */
 
 @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=OCRA&display=swap');
 
 :root {
     /* Colors */
@@ -1152,5 +1153,9 @@ section h2 {
 
 .centered-who a.red-link.line-who .red-text {
     display: inline-block;
+}
+
+.ocr-code {
+    font-family: 'OCRA', monospace;
 }
 
