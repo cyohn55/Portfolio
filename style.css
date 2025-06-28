@@ -2,6 +2,8 @@
    CSS CUSTOM PROPERTIES (VARIABLES)
    ========================================================================== */
 
+@import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap');
+
 :root {
     /* Colors */
     --primary-blue: #1468e6;
@@ -380,8 +382,8 @@ section h2 {
 
 .red-code {
     color: #ff4444;
-    font-family: "Brush Script MT", cursive;
-    font-style: italic;
+    font-family: 'Dancing Script', cursive;
+    font-style: normal;
 }
 
 .black-question {
