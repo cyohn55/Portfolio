@@ -65,22 +65,22 @@ But, no<br>one asks<br class="mobile-br">
     // The text is already cleared in preCalculateHeight
     // typingText.textContent = '';
     
-    // Break down the content into typing sequence - word by word
+    // Break down the content into typing sequence - word by word with phrase delays
     const typingSequence = [
         // Everyone asks - word by word
         { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Everyone</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Everyone asks</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Everyone asks</span></div>", delay: 1000, isCentered: true },
         
         // How to Code? - word by word
         { content: "<div class=\"centered-who\"><span class=\"line-how\">How</span></div>", delay: 400, isCentered: true },
         { content: "<div class=\"centered-who\"><span class=\"line-how\">How to</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-how\">How to Code?</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-how\">How to Code?</span></div>", delay: 1000, isCentered: true },
         
         // But, no<br>one asks - word by word with line break
         { content: "<div class=\"centered-who\"><span class=\"line-but\">But,</span></div>", delay: 400, isCentered: true },
         { content: "<div class=\"centered-who\"><span class=\"line-but\">But, no</span></div>", delay: 400, isCentered: true },
         { content: "<div class=\"centered-who\"><span class=\"line-but\">But, no<br>one</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, no<br>one asks</span></div>", delay: 400, isCentered: true, clearAfter: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, no<br>one asks</span></div>", delay: 1200, isCentered: true, clearAfter: true },
         
         // Then show Who / is / Code? (keep original timing)
         { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who</a></div>", delay: 600, isCentered: true },
