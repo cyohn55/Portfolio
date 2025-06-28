@@ -67,25 +67,25 @@ But, have<br>you asked<br class="mobile-br">
     
     // Break down the content into typing sequence - word by word with pre-defined line breaks
     const typingSequence = [
-        // Everyone asks - with final layout from start
-        { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Everyone<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Everyone<br>asks</span></div>", delay: 1500, isCentered: true },
+        // Everyone asks - with consistent transforms and line-heights
+        { content: "<div class=\"centered-who\" style=\"line-height: 1.2; transform: translateZ(0);\"><span class=\"line-everyone\" style=\"line-height: 1.2;\">Everyone<br>&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\" style=\"line-height: 1.2; transform: translateZ(0);\"><span class=\"line-everyone\" style=\"line-height: 1.2;\">Everyone<br>asks</span></div>", delay: 1500, isCentered: true },
         
-        // How to Code? - with final layout from start
-        { content: "<div class=\"centered-who\"><span class=\"line-how\">Can<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-how\">Can you<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-how\">Can you<br><span class=\"ocr-code\">CODE</span>?</span></div>", delay: 1500, isCentered: true },
+        // How to Code? - with consistent transforms and line-heights
+        { content: "<div class=\"centered-who\" style=\"line-height: 1.2; transform: translateZ(0);\"><span class=\"line-how\" style=\"line-height: 1.2;\">Can<br>&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\" style=\"line-height: 1.2; transform: translateZ(0);\"><span class=\"line-how\" style=\"line-height: 1.2;\">Can you<br>&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\" style=\"line-height: 1.2; transform: translateZ(0);\"><span class=\"line-how\" style=\"line-height: 1.2;\">Can you<br><span class=\"ocr-code\" style=\"line-height: 1.2; transform: translateZ(0);\">CODE</span>?</span></div>", delay: 1500, isCentered: true },
         
-        // But, no one asks - with final layout from start
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But,<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, have<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, have<br>you&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, have<br>you asked</span></div>", delay: 1500, isCentered: true, clearAfter: true },
+        // But, no one asks - with consistent transforms and line-heights
+        { content: "<div class=\"centered-who\" style=\"line-height: 1.2; transform: translateZ(0);\"><span class=\"line-but\" style=\"line-height: 1.2;\">But,<br>&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\" style=\"line-height: 1.2; transform: translateZ(0);\"><span class=\"line-but\" style=\"line-height: 1.2;\">But, have<br>&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\" style=\"line-height: 1.2; transform: translateZ(0);\"><span class=\"line-but\" style=\"line-height: 1.2;\">But, have<br>you&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\" style=\"line-height: 1.2; transform: translateZ(0);\"><span class=\"line-but\" style=\"line-height: 1.2;\">But, have<br>you asked</span></div>", delay: 1500, isCentered: true, clearAfter: true },
         
-        // Who is Code? - with final layout from start (keep original timing)
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who<br>&nbsp;</a></div>", delay: 600, isCentered: true },
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who&nbsp;<i>is</i><br>&nbsp;</a></div>", delay: 600, isCentered: true },
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who&nbsp;<i>is</i><br><span class=\"red-code\">Code</span><span class=\"black-question\">?</span></a></div>", delay: 800, isCentered: true, isLast: true, triggerBeFirstText: true }
+        // Who is Code? - with consistent transforms and line-heights (keep original timing)
+        { content: "<div class=\"centered-who\" style=\"line-height: 1.2; transform: translateZ(0);\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\" style=\"line-height: 1.2; transform: translateZ(0);\">Who<br>&nbsp;</a></div>", delay: 600, isCentered: true },
+        { content: "<div class=\"centered-who\" style=\"line-height: 1.2; transform: translateZ(0);\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\" style=\"line-height: 1.2; transform: translateZ(0);\">Who&nbsp;<i>is</i><br>&nbsp;</a></div>", delay: 600, isCentered: true },
+        { content: "<div class=\"centered-who\" style=\"line-height: 1.2; transform: translateZ(0);\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\" style=\"line-height: 1.2; transform: translateZ(0);\">Who&nbsp;<i>is</i><br><span class=\"red-code\">Code</span><span class=\"black-question\">?</span></a></div>", delay: 800, isCentered: true, isLast: true, triggerBeFirstText: true }
     ];
     
     let currentIndex = 0;
@@ -99,9 +99,12 @@ But, have<br>you asked<br class="mobile-br">
         
         const currentStep = typingSequence[currentIndex];
         
-        // Ensure text is visible (no transitions)
+        // Ensure text is visible with consistent styling to prevent jitter
         typingText.style.opacity = '1';
         typingText.style.transition = 'none';
+        typingText.style.transform = 'translateZ(0)'; // Force hardware acceleration
+        typingText.style.lineHeight = '1.2'; // Consistent line height
+        typingText.style.willChange = 'contents'; // Optimize for content changes
         
         // Handle centered content differently
         if (currentStep.isCentered) {
@@ -110,7 +113,7 @@ But, have<br>you asked<br class="mobile-br">
             typingText.style.textAlign = 'left';
         }
         
-        // Set the content
+        // Set the content with consistent styling
         typingText.innerHTML = currentStep.content.replace(/\n/g, '<br>');
         
         // Move to next step
@@ -119,7 +122,7 @@ But, have<br>you asked<br class="mobile-br">
         // Handle clearing after this step
         if (currentStep.clearAfter) {
             setTimeout(() => {
-                // Clear the content
+                // Clear the content smoothly
                 typingText.innerHTML = '';
                 // Continue to next step after a brief pause
                 setTimeout(typeNext, 500);
