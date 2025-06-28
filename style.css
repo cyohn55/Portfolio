@@ -1160,3 +1160,9 @@ section h2 {
     color: limegreen;
 }
 
+#about > .abilities-container {
+    width: 800px;
+    max-width: 100%; /* prevent overflow on small screens */
+    margin: 0 auto;
+}
+
