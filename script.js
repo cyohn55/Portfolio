@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Define exact sequence of content to be displayed
     const finalContent = `Everyone<br>asks
 
-How to<br>Code?
+How to<br><span class="ocr-code">Code</span>?
 
 But, no<br>one asks<br class="mobile-br">
 <a href="Pages/aboutcode.html" class="red-link">'Who&nbsp;<i>IS</i><br><span class="red-code">Code</span><span class="black-question">?</span>'</a>`;
@@ -74,7 +74,7 @@ But, no<br>one asks<br class="mobile-br">
         // How to Code? - with final layout from start
         { content: "<div class=\"centered-who\"><span class=\"line-how\">How<br>&nbsp;</span></div>", delay: 400, isCentered: true },
         { content: "<div class=\"centered-who\"><span class=\"line-how\">How to<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-how\">How to<br>Code?</span></div>", delay: 1500, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-how\">How to<br><span class=\"ocr-code\">Code</span>?</span></div>", delay: 1500, isCentered: true },
         
         // But, no one asks - with final layout from start
         { content: "<div class=\"centered-who\"><span class=\"line-but\">But,<br>&nbsp;</span></div>", delay: 400, isCentered: true },
