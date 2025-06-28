@@ -133,11 +133,9 @@ But, have<br>you asked<br class="mobile-br">
                 if (currentStep.triggerBeFirstText && window.innerWidth > 768) {
                     const beFirstText = document.getElementById('be-first-text');
                     if (beFirstText) {
-                        // Show the element and trigger fade-in
-                        beFirstText.style.display = 'block';
-                        setTimeout(() => {
-                            beFirstText.style.opacity = '1';
-                        }, 100); // Small delay to ensure display change takes effect
+                        // Make the element visible and trigger fade-in
+                        beFirstText.style.visibility = 'visible';
+                        beFirstText.style.opacity = '1';
                     }
                 }
             }, currentStep.delay);
