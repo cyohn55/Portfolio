@@ -3,7 +3,7 @@
    ========================================================================== */
 
 @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=OCRA&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=OCR+A+Extended&display=swap');
 
 :root {
     /* Colors */
@@ -1156,6 +1156,6 @@ section h2 {
 }
 
 .ocr-code {
-    font-family: 'OCRA', monospace;
+    font-family: 'OCR A Extended', monospace;
 }
 
