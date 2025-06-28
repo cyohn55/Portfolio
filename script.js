@@ -8,147 +8,137 @@ function scrollToTop() {
     });
 }
 
-// Simple word-by-word typing animation
+// Simple word-by-word typing animation - IMPROVED VERSION
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded');
     
     // Elements
-    const typingText = document.getElementById('typing-text');
     const typingContainer = document.getElementById('typing-animation-container');
-    const originalText = document.getElementById('fade-in');
+    const animationStage = document.getElementById('animation-stage');
     
-    if (!typingText) {
-        console.error('Typing text element not found!');
+    if (!animationStage) {
+        console.error('Animation stage element not found!');
         return;
     }
     
     // Check for reduced motion preference
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReducedMotion) {
-        // Just display the text normally
+        // Just display the final state
+        const finalStep = document.getElementById('step-who-3');
+        if (finalStep) {
+            finalStep.classList.add('active');
+            // Show "Be the first to ask!" text immediately on desktop
+            if (window.innerWidth > 768) {
+                const beFirstText = document.getElementById('be-first-text');
+                if (beFirstText) {
+                    beFirstText.style.display = 'block';
+                    beFirstText.style.opacity = '1';
+                }
+            }
+        }
         return;
     }
     
-    // Define exact sequence of content to be displayed
-    const finalContent = `Everyone<br>asks
-
-Can you<br><span class="ocr-code">CODE</span>?
-
-But, have<br>you asked<br class="mobile-br">
-<a href="Pages/aboutcode.html" class="red-link">'Who&nbsp;<i>IS</i><br><span class="red-code">Code</span><span class="black-question">?</span>'</a>`;
-
-    // Pre-calculate the height by temporarily showing the full content
-    function preCalculateHeight() {
-        // Temporarily modify the actual element to get the final rendered height
-        typingText.style.visibility = 'hidden'; // Hide it briefly
-        typingText.classList.add('typing-done'); // Apply final styles
-        typingText.innerHTML = finalContent.replace(/\n/g, '<br>');
-
-        const finalHeight = typingText.offsetHeight;
-        console.log("Calculated final height:", finalHeight);
+    // Animation sequence with step IDs and timing
+    const animationSequence = [
+        // Everyone asks sequence
+        { stepId: 'step-everyone-1', delay: 400 },
+        { stepId: 'step-everyone-2', delay: 1500 },
         
-        // Set the container height
-        if (finalHeight > 0) {
-            typingContainer.style.minHeight = `${finalHeight}px`;
-            typingText.style.minHeight = `${finalHeight}px`;
-        }
+        // Can you CODE? sequence
+        { stepId: 'step-code-1', delay: 400, clearPrevious: true },
+        { stepId: 'step-code-2', delay: 400 },
+        { stepId: 'step-code-3', delay: 1500 },
         
-        // Revert the changes
-        typingText.style.visibility = 'visible';
-        typingText.classList.remove('typing-done');
-        typingText.innerHTML = ''; // Clear it for typing
-    }
-    
-    // Run height calculation
-    preCalculateHeight();
-    
-    // The text is already cleared in preCalculateHeight
-    // typingText.textContent = '';
-    
-    // Break down the content into typing sequence - word by word with pre-defined line breaks
-    const typingSequence = [
-        // Everyone asks - with final layout from start
-        { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Everyone<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Everyone<br>asks</span></div>", delay: 1500, isCentered: true },
+        // But, have you asked sequence
+        { stepId: 'step-but-1', delay: 400, clearPrevious: true },
+        { stepId: 'step-but-2', delay: 400 },
+        { stepId: 'step-but-3', delay: 400 },
+        { stepId: 'step-but-4', delay: 1500 },
         
-        // How to Code? - with final layout from start
-        { content: "<div class=\"centered-who\"><span class=\"line-how\">Can<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-how\">Can you<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-how\">Can you<br><span class=\"ocr-code\">CODE</span>?</span></div>", delay: 1500, isCentered: true },
-        
-        // But, no one asks - with final layout from start
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But,<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, have<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, have<br>you&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, have<br>you asked</span></div>", delay: 1500, isCentered: true, clearAfter: true },
-        
-        // Who is Code? - with final layout from start (keep original timing)
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who<br>&nbsp;</a></div>", delay: 600, isCentered: true },
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who&nbsp;<i>is</i><br>&nbsp;</a></div>", delay: 600, isCentered: true },
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who&nbsp;<i>is</i><br><span class=\"red-code\">Code</span><span class=\"black-question\">?</span></a></div>", delay: 800, isCentered: true, isLast: true, triggerBeFirstText: true }
+        // Who is Code? sequence
+        { stepId: 'step-who-1', delay: 600, clearPrevious: true },
+        { stepId: 'step-who-2', delay: 600 },
+        { stepId: 'step-who-3', delay: 800, isLast: true, triggerBeFirstText: true }
     ];
     
     let currentIndex = 0;
+    let activeStep = null;
     
-    function typeNext() {
-        // If we've finished all typing steps, we're done
-        if (currentIndex >= typingSequence.length) {
-            typingText.classList.add('typing-done');
+    function showStep(stepId) {
+        const step = document.getElementById(stepId);
+        if (step) {
+            step.classList.add('active');
+            activeStep = step;
+        }
+    }
+    
+    function hideStep(stepId) {
+        const step = document.getElementById(stepId);
+        if (step) {
+            step.classList.remove('active');
+            step.classList.add('fade-out');
+            // Remove fade-out class after animation
+            setTimeout(() => {
+                step.classList.remove('fade-out');
+            }, 300);
+        }
+    }
+    
+    function clearAllSteps() {
+        const allSteps = document.querySelectorAll('.animation-step');
+        allSteps.forEach(step => {
+            step.classList.remove('active');
+        });
+        activeStep = null;
+    }
+    
+    function animateNext() {
+        if (currentIndex >= animationSequence.length) {
             return;
         }
         
-        const currentStep = typingSequence[currentIndex];
+        const currentAnimation = animationSequence[currentIndex];
         
-        // Ensure text is visible (no transitions)
-        typingText.style.opacity = '1';
-        typingText.style.transition = 'none';
-        
-        // Handle centered content differently
-        if (currentStep.isCentered) {
-            typingText.style.textAlign = 'center';
-        } else {
-            typingText.style.textAlign = 'left';
+        // Clear previous steps if specified
+        if (currentAnimation.clearPrevious) {
+            clearAllSteps();
         }
         
-        // Set the content
-        typingText.innerHTML = currentStep.content.replace(/\n/g, '<br>');
+        // Show current step
+        showStep(currentAnimation.stepId);
         
-        // Move to next step
-        currentIndex++;
-        
-        // Handle clearing after this step
-        if (currentStep.clearAfter) {
+        // Handle final step
+        if (currentAnimation.isLast) {
             setTimeout(() => {
-                // Clear the content
-                typingText.innerHTML = '';
-                // Continue to next step after a brief pause
-                setTimeout(typeNext, 500);
-            }, currentStep.delay);
-        } else if (currentStep.isLast) {
-            // If this is the last step, finish the animation
-            setTimeout(() => {
-                typingText.classList.add('typing-done');
-                
-                // Check if we should trigger the "Be the first to ask!" text (desktop only)
-                if (currentStep.triggerBeFirstText && window.innerWidth > 768) {
+                // Trigger "Be the first to ask!" text on desktop only
+                if (currentAnimation.triggerBeFirstText && window.innerWidth > 768) {
                     const beFirstText = document.getElementById('be-first-text');
                     if (beFirstText) {
-                        // Show the element and trigger fade-in
                         beFirstText.style.display = 'block';
                         setTimeout(() => {
                             beFirstText.style.opacity = '1';
-                        }, 100); // Small delay to ensure display change takes effect
+                        }, 100);
                     }
                 }
-            }, currentStep.delay);
+            }, currentAnimation.delay);
         } else {
-            setTimeout(typeNext, currentStep.delay);
+            // Move to next step after delay
+            setTimeout(() => {
+                currentIndex++;
+                animateNext();
+            }, currentAnimation.delay);
         }
+        
+        currentIndex++;
     }
     
     // Function to start the animation
     function startAnimation() {
-        setTimeout(typeNext, 400);
+        setTimeout(() => {
+            animateNext();
+        }, 400);
     }
     
     // Check if we're on desktop (not mobile)
@@ -170,18 +160,15 @@ But, have<br>you asked<br class="mobile-br">
                     }
                 });
             }, {
-                threshold: 0.1, // Trigger when 10% of the element is visible
-                rootMargin: '0px 0px -50px 0px' // Start slightly before element is fully visible
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
             });
             
-            // Start observing the intro text
             observer.observe(introText);
         } else {
-            // Fallback: start animation after delay if intro text not found
             startAnimation();
         }
     } else {
-        // On mobile, start animation immediately (as requested)
         startAnimation();
     }
 });
