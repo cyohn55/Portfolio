@@ -85,7 +85,7 @@ But, have<br>you asked<br class="mobile-br">
         // Who is Code? - with final layout from start (keep original timing)
         { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who<br>&nbsp;</a></div>", delay: 600, isCentered: true },
         { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who&nbsp;<i>is</i><br>&nbsp;</a></div>", delay: 600, isCentered: true },
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who&nbsp;<i>is</i><br><span class=\"red-code\">Code</span><span class=\"black-question\">?</span></a></div>", delay: 800, isCentered: true, isLast: true }
+        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who&nbsp;<i>is</i><br><span class=\"red-code\">Code</span><span class=\"black-question\">?</span></a></div>", delay: 800, isCentered: true, isLast: true, triggerBeFirstText: true }
     ];
     
     let currentIndex = 0;
@@ -128,6 +128,18 @@ But, have<br>you asked<br class="mobile-br">
             // If this is the last step, finish the animation
             setTimeout(() => {
                 typingText.classList.add('typing-done');
+                
+                // Check if we should trigger the "Be the first to ask!" text (desktop only)
+                if (currentStep.triggerBeFirstText && window.innerWidth > 768) {
+                    const beFirstText = document.getElementById('be-first-text');
+                    if (beFirstText) {
+                        // Show the element and trigger fade-in
+                        beFirstText.style.display = 'block';
+                        setTimeout(() => {
+                            beFirstText.style.opacity = '1';
+                        }, 100); // Small delay to ensure display change takes effect
+                    }
+                }
             }, currentStep.delay);
         } else {
             setTimeout(typeNext, currentStep.delay);
