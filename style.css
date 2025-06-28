@@ -756,7 +756,7 @@ section h2 {
     
     .centered-who a.red-link.line-who {
         text-align: center;
-        line-height: 1.1;
+        line-height: 0.95;
         white-space: normal;
     }
     #typing-text .line-but {
