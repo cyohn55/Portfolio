@@ -91,7 +91,7 @@ body {
 #typing-animation-container {
     position: relative;
     margin-top: 24px;
-    margin-bottom: 6rem; /* Increased to reserve space for "Be the first to ask!" text */
+    margin-bottom: 4rem; /* Increased spacing to prevent overlap with intro text */
     height: 287.969px; /* Fixed height to prevent animation jitter */
     width: 100%;
     display: block;
@@ -171,6 +171,8 @@ body {
 .fade-in-text.show {
     opacity: 1 !important;
 }
+
+
 
 /* Mobile line break */
 .mobile-br {
@@ -781,6 +783,8 @@ section h2 {
         font-size: 8rem !important;
     }
 
+
+
     /* Center intro heading on desktop */
     .intro-text h2 {
         text-align: center;
@@ -1002,7 +1006,7 @@ section h2 {
     /* Adjust container height for mobile */
     #typing-animation-container {
         height: 240px; /* Fixed height for mobile to prevent jitter */
-        margin-bottom: 4rem; /* Increased spacing to prevent overlap with intro text on mobile */
+        margin-bottom: 3rem; /* Increased spacing to prevent overlap with intro text on mobile */
     }
     
     #typing-text {
@@ -1160,55 +1164,5 @@ section h2 {
     width: 800px;
     max-width: 100%; /* prevent overflow on small screens */
     margin: 0 auto;
-}
-
-/* ==========================================================================
-   TYPING ANIMATION JITTER FIXES
-   ========================================================================== */
-
-/* Fix jitter by ensuring consistent line-heights and transforms */
-.centered-who {
-    line-height: 1.2 !important;
-    min-height: 120px; /* Reserve consistent height for all animation steps */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transform: translateZ(0); /* Force hardware acceleration */
-    will-change: contents; /* Optimize for content changes */
-}
-
-.centered-who span,
-.centered-who a {
-    line-height: 1.2 !important;
-    transform: translateZ(0); /* Force hardware acceleration */
-}
-
-/* Reserve space for "Be the first to ask!" text to prevent jumping */
-#typing-animation-container {
-    margin-bottom: 6rem; /* Increased to reserve space for "Be the first to ask!" text */
-}
-
-#be-first-text {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    margin-top: 20px; /* Position it below the animation */
-}
-
-/* Ensure consistent spacing for OCR code elements */
-.ocr-code {
-    line-height: 1.2 !important;
-    transform: translateZ(0);
-}
-
-/* Mobile adjustments */
-@media (max-width: 768px) {
-    .centered-who {
-        min-height: 100px;
-    }
-    
-    #typing-animation-container {
-        margin-bottom: 4rem;
-    }
 }
 
