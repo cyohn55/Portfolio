@@ -85,85 +85,18 @@ body {
 }
 
 /* ==========================================================================
-   TYPING ANIMATION - IMPROVED WITH FIXED HEIGHTS
+   TYPING ANIMATION
    ========================================================================== */
 
 #typing-animation-container {
     position: relative;
     margin-top: 24px;
-    margin-bottom: 4rem;
+    margin-bottom: 4rem; /* Increased spacing to prevent overlap with intro text */
+    height: 287.969px; /* Fixed height to prevent animation jitter */
     width: 100%;
     display: block;
     text-align: left;
 }
-
-#animation-stage {
-    position: relative;
-    width: 100%;
-    height: 300px; /* Fixed height to prevent layout shifts */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-}
-
-.animation-step {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    opacity: 0;
-    transition: opacity 300ms ease-in-out, transform 300ms ease-in-out;
-    width: 100%;
-    text-align: center;
-    pointer-events: none;
-}
-
-.animation-step.active {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.animation-step.fade-out {
-    opacity: 0;
-    transform: translate(-50%, -60%);
-}
-
-/* Ensure consistent spacing for animation steps */
-.animation-step span,
-.animation-step a {
-    display: inline-block;
-    line-height: 1.2;
-}
-
-/* Reserve space for "Be the first to ask!" text */
-#be-first-text {
-    min-height: 2.5rem; /* Reserve space to prevent jumping */
-}
-
-@media (min-width: 769px) {
-    #animation-stage {
-        height: 350px; /* Larger height for desktop */
-    }
-    
-    .animation-step {
-        font-size: inherit;
-    }
-}
-
-@media (max-width: 768px) {
-    #animation-stage {
-        height: 250px; /* Smaller height for mobile */
-    }
-    
-    .animation-step {
-        font-size: 1.5rem;
-    }
-}
-
-/* ==========================================================================
-   TYPING ANIMATION
-   ========================================================================== */
 
 #typing-text {
     display: block;
@@ -238,6 +171,8 @@ body {
 .fade-in-text.show {
     opacity: 1 !important;
 }
+
+
 
 /* Mobile line break */
 .mobile-br {
@@ -847,6 +782,8 @@ section h2 {
     #typing-text .line-everyone {
         font-size: 8rem !important;
     }
+
+
 
     /* Center intro heading on desktop */
     .intro-text h2 {
