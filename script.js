@@ -104,7 +104,7 @@ But, have<br>you asked<br class="mobile-br">
         typingText.style.transition = 'none';
         
         // Handle centered content differently
-        if (currentStep.isCentered && isDesktop) {
+        if (currentStep.isCentered) {
             typingText.style.textAlign = 'center';
         } else {
             typingText.style.textAlign = 'left';

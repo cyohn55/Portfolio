@@ -184,6 +184,661 @@ body {
         display: block;
     }
 
+}
+
+/* Style for the intro section */
+.intro-text {
+    margin-top: 1rem;
+    width: 100%;
+    display: block;
+    text-align: left;
+}
+
+#about > div.default-container > div.intro-text {
+    margin-top: 30px;
+}
+
+.intro-text h3 {
+    margin-top: 0;
+}
+
+/* ==========================================================================
+   HEADER & NAVIGATION
+   ========================================================================== */
+
+header {
+    background-color: var(--primary-blue);
+    color: var(--white);
+    text-align: center;
+    padding: 10px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60px;
+    z-index: 10;
+    margin-bottom: var(--header-overlap-desktop);
+    border-radius: 0 0 var(--border-radius-large) var(--border-radius-large);
+    box-shadow: 0 4px 20px var(--shadow-light);
+}
+
+h2 {
+    margin: 5px;
+}
+
+/* Home Icon */
+.home-icon {
+    position: absolute;
+    left: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 24px;
+    color: var(--white);
+    text-decoration: none;
+    transition: opacity var(--transition-normal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 59px;
+    width: 59px;
+}
+
+.home-icon:hover {
+    opacity: 0.8;
+    text-decoration: none;
+}
+
+/* House Silhouette Icon */
+.house-silhouette {
+    width: 30px;
+    height: 28px;
+    position: relative;
+    background-color: var(--white);
+    border-radius: var(--border-radius-tiny);
+    top: 8px;
+}
+
+.house-silhouette::before {
+    content: '';
+    position: absolute;
+    top: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 48px;
+    height: 29px;
+    background-color: var(--white);
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+/* Navigation */
+nav ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+nav ul li {
+    margin: 0 15px;
+}
+
+nav ul li a {
+    color: var(--white);
+    text-decoration: none;
+    font-weight: bold;
+    padding: 5px 10px;
+    transition: background-color var(--transition-normal), color var(--transition-normal);
+}
+
+nav ul li a:hover {
+    text-decoration: none;
+    background-color: var(--hover-overlay);
+    border-radius: var(--border-radius-small);
+}
+
+/* ==========================================================================
+   MAIN LAYOUT COMPONENTS
+   ========================================================================== */
+
+main {
+    padding: 20px;
+    position: relative;
+    z-index: 10;
+    margin-top: var(--header-overlap-desktop);
+    background-color: var(--white);
+    border-radius: var(--border-radius-large) var(--border-radius-large) 0 0;
+    box-shadow: 0 -4px 20px var(--shadow-light);
+}
+
+#carousel {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    padding-top: 56.25%; /* 16:9 Aspect Ratio */
+    background-color: var(--black);
+    z-index: 1;
+}
+
+#carousel video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+}
+
+footer {
+    width: 100%;
+    background-color: var(--primary-blue);
+    color: var(--white);
+    text-align: center;
+    padding: 15px 0;
+    margin-top: 20px;
+}
+
+/* ==========================================================================
+   CONTENT SECTIONS
+   ========================================================================== */
+
+section {
+    padding: 20px 10px 50px;
+    max-width: var(--max-section-width);
+    margin: auto;
+}
+
+section h1 {
+    font-size: 3rem;
+    margin: 0 0 10px 0;
+}
+
+section h2 {
+    text-align: left;
+    margin-bottom: 20px;
+}
+
+#about {
+    padding: 20px;
+}
+
+/* Red Link Styling */
+.red-link {
+    color: #000 !important;
+    text-decoration: none;
+    transition: color 0.3s ease, text-shadow 0.3s ease;
+}
+
+.red-link:hover {
+    color: #ff0000 !important;
+    text-shadow: 0 0 8px rgba(255, 68, 68, 0.6);
+    text-decoration: none;
+}
+
+.red-text {
+    color: #000;
+}
+
+.red-code {
+    color: #ff4444;
+    font-family: 'Dancing Script', cursive;
+    font-style: normal;
+}
+
+.black-question {
+    color: #000;
+}
+
+/* Content Wrapper */
+.content {
+    max-width: var(--max-content-width);
+    margin: 0 auto;
+    padding: 80px 20px 20px 20px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.page-container {
+    flex: none;
+}
+
+/* ==========================================================================
+   CONTAINER COMPONENTS
+   ========================================================================== */
+
+.abilities-container {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.abilities-container > div {
+    flex: 1 1 45%;
+    margin: 10px 0;
+}
+
+.default-container {
+    max-width: 800px;
+    margin: 0 auto; /* Center horizontally */
+    padding: 0;
+    display: flex;
+    flex-direction: column; /* Force vertical stacking */
+    align-items: stretch;
+    text-align: left;
+    height: 754.53px; /* Fixed height to prevent jittering when "Be the first to ask!" text appears */
+}
+
+.default-container > div {
+    flex: 1 1 45%;
+    margin: 10px;
+}
+
+/* Lists */
+.skills-list {
+    list-style-type: disc;
+    padding-left: 20px;
+}
+
+.achievements-list {
+    padding-left: 25px;
+}
+
+.no-margin-unordered-list {
+    margin: 0;
+    padding: 40px;
+    line-height: 16px;
+}
+
+/* ==========================================================================
+   CODE & TEXT CONTAINERS
+   ========================================================================== */
+
+.code-container {
+    background-color: var(--background-light);
+    padding: 0 15px 15px 15px;
+    border-radius: var(--border-radius-small);
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0 auto;
+    overflow-x: auto;
+    word-wrap: normal;
+}
+
+.code-container pre {
+    white-space: pre;
+    display: inline-block;
+    width: auto;
+    min-width: 100%;
+    margin: 0;
+    font-size: 10pt;
+}
+
+.wrap-text-container {
+    background-color: var(--background-light);
+    padding: 0 15px 15px 15px;
+    border-radius: var(--border-radius-small);
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0 auto;
+}
+
+.wrap-text-container pre {
+    white-space: pre-wrap;
+    margin: 0;
+    font-size: 12pt;
+    word-break: normal;
+    overflow-wrap: anywhere;
+}
+
+.article-title {
+    margin-bottom: 20px;
+}
+
+/* ==========================================================================
+   PARALLAX COMPONENTS
+   ========================================================================== */
+
+.parallax-1 {
+    width: 100%;
+    height: 600px;
+    background: url('https://media.geeksforgeeks.org/wp-content/uploads/20210402175040/back22.jpg');
+    background-size: cover;
+    background-attachment: fixed;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.parallax-1 h2 {
+    margin: auto;
+    position: relative;
+    left: 500px;
+    top: 300px;
+    width: 250px;
+    height: 32px;
+    padding: 10px;
+    background-color: var(--black);
+    color: var(--white);
+    text-align: center;
+    border-radius: var(--border-radius-small);
+}
+
+.parallax-2 {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 100vw;
+    position: relative;
+    min-height: 100vh;
+    background-image: url('images/forrestwallpaper.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    color: var(--white);
+    padding: 0 20px 67px 20px;
+    box-sizing: border-box;
+    margin: 0;
+}
+
+.parallax-2 h1 {
+    margin: 10px 0 10px 0;
+    padding: 10px 20px;
+    background-color: var(--shadow-medium);
+    color: var(--white);
+    text-align: center;
+    font-size: 2rem;
+    font-family: var(--font-secondary);
+    border-radius: 10px;
+    max-width: 90%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    align-self: center;
+}
+
+.parallax-2 ul {
+    list-style-type: disc;
+    padding: 20px 20px 20px 43px;
+    max-width: 90%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    background-color: var(--shadow-medium);
+    border-radius: 10px;
+    text-align: left;
+    margin: 10px 0 0 0;
+    align-self: center;
+}
+
+.parallax-2 ul li {
+    margin-bottom: 10px;
+    color: inherit;
+    word-break: break-word;
+    position: relative;
+    padding-left: 5px;
+}
+
+.para-1, .para-2 {
+    background-color: var(--black);
+    color: var(--white);
+    font-size: 17px;
+}
+
+.para-1 {
+    padding: 50px;
+}
+
+.para-2 {
+    text-align: center;
+    padding: 25px;
+    font-family: var(--font-secondary);
+}
+
+/* ==========================================================================
+   PROJECT COMPONENTS
+   ========================================================================== */
+
+#projects {
+    padding: 0;
+    margin: 0 auto;
+    width: 100%;
+    max-width: var(--max-section-width);
+    box-sizing: border-box;
+}
+
+#projects h2 {
+    text-align: center;
+    margin: 15px 0;
+}
+
+.project-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 20px;
+    margin: 0 auto;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.project {
+    background-color: var(--white);
+    padding: 20px;
+    box-shadow: 0 2px 5px var(--shadow-light);
+    border-radius: var(--border-radius-medium);
+    transition: transform var(--transition-fast);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.project:hover {
+    transform: translateY(-5px);
+}
+
+.project img {
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.project h3 {
+    margin: 15px 0 10px;
+    flex-shrink: 0;
+}
+
+.project p {
+    color: var(--text-medium);
+    flex-grow: 1;
+    margin-bottom: 10px;
+}
+
+.project a {
+    display: inline-block;
+    margin-top: auto;
+    color: var(--text-dark);
+    text-decoration: none;
+    font-weight: bold;
+    align-self: flex-start;
+    flex-shrink: 0;
+}
+
+.project a:hover {
+    color: var(--hover-tomato);
+}
+
+.project-container p:last-child {
+    margin: 20px auto 0;
+    padding: 0;
+}
+
+.loader {
+    text-align: center;
+    margin: 20px 0;
+    font-size: 1.2em;
+    color: var(--text-medium);
+}
+
+/* ==========================================================================
+   VIDEO COMPONENTS
+   ========================================================================== */
+
+.video-container {
+    position: relative;
+    padding-bottom: 56.25%;
+    height: 0;
+    overflow: hidden;
+    margin-bottom: 20px;
+    width: 100%;
+    max-width: 100%;
+}
+
+.video-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+/* ==========================================================================
+   IMAGE STYLES
+   ========================================================================== */
+
+.wrap-text-container img {
+    max-width: 50vw;
+    height: auto;
+    margin: 10px 0;
+    border-radius: var(--border-radius-medium);
+    box-shadow: 0 2px 8px var(--shadow-light);
+}
+
+/* ==========================================================================
+   RESPONSIVE DESIGN - LARGE SCREENS
+   ========================================================================== */
+
+@media (min-width: 1920px) {
+    #carousel {
+        padding-top: 50%;
+    }
+}
+
+@media (min-width: 769px) {
+    .article-title {
+        text-align: center;
+    }
+    
+    .wrap-text-container img,
+    .content img,
+    .wrap-text-container div img,
+    .content div img {
+        max-width: 80vw;
+        max-height: 80vh;
+        height: auto;
+        width: auto;
+        display: block;
+        margin: 20px auto;
+        border-radius: var(--border-radius-medium);
+        box-shadow: 0 2px 8px var(--shadow-light);
+        object-fit: contain;
+    }
+
+    /* Desktop font sizes for animated heading lines */
+    #typing-text a.red-link.line-who {
+        font-size: clamp(3rem, 9vw, 12rem);
+        white-space: normal;
+    }
+    
+    /* Centered "Who IS Code?" styling */
+    .centered-who {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 320px; /* Fixed height to prevent overflow */
+        max-height: 320px; /* Ensure it doesn't exceed this height */
+        width: 1200px; /* Fixed width for desktop */
+        max-width: 1200px; /* Ensure it doesn't exceed this width */
+        overflow: hidden; /* Prevent text from spilling out */
+        line-height: 1.2;
+        margin: 0 auto 20px auto; /* center horizontally and add spacing below */
+        padding: 0;
+    }
+    
+    .centered-who a.red-link.line-who {
+        text-align: center;
+        line-height: 0.95;
+        white-space: normal;
+    }
+    #typing-text .line-but {
+        font-size: 8rem !important;
+        white-space: nowrap;
+    }
+    #typing-text .line-how {
+        font-size: 8rem !important;
+    }
+    #typing-text .line-everyone {
+        font-size: 8rem !important;
+    }
+
+
+
+    /* Center intro heading on desktop */
+    .intro-text h2 {
+        text-align: center;
+    }
+
+    /* Fluid scaling for typing animation lines */
+    #typing-text .line-everyone {
+        font-size: 8rem !important;
+    }
+    #typing-text .line-how {
+        font-size: 8rem !important;
+    }
+    #typing-text .line-but {
+        font-size: 8rem !important;
+        white-space: nowrap;
+    }
+    #typing-text a.red-link.line-who,
+    .centered-who a.red-link.line-who {
+        font-size: clamp(3rem, 9vw, 12rem) !important;
+        white-space: normal;
+        max-width: 100%;
+        line-height: 1.1;
+    }
+    .centered-who a.red-link.line-who .red-text {
+        display: inline-block;
+    }
+    /* Enlarge only the word "Code?" on desktop */
+    #typing-text a.red-link.line-who .red-text,
+    .centered-who a.red-link.line-who .red-text {
+        font-size: 15rem !important;
+    }
+}
+
+/* ==========================================================================
+   RESPONSIVE DESIGN - TABLET
+   ========================================================================== */
+
+@media (max-width: 1024px) {
+    .parallax-2 h1 {
+        font-size: 1.8rem;
+    }
+
+    .parallax-2 ul {
+        padding: 15px 20px 15px 30px;
+        max-width: 100%;
+    }
+}
+
+/* ==========================================================================
+   RESPONSIVE DESIGN - MOBILE
+   ========================================================================== */
+
+@media (max-width: 768px) {
     header {
         margin-bottom: var(--header-margin-mobile);
         border-radius: 0 0 11px 11px;
@@ -356,7 +1011,6 @@ body {
     }
     
     #typing-text {
-        text-align: left !important; /* Ensure left alignment of typing text */
         font-size: inherit; /* Don't override individual line sizes on mobile */
         line-height: 1.3;
         font-weight: 600;
@@ -380,10 +1034,12 @@ body {
         font-size: 2.2rem;
     }
     
+    .centered-who a.red-link.line-who {
+        font-size: 2.2rem !important;
+    }
+    
+    /* Keep mobile container same height as typing container */
     .centered-who {
-        align-items: flex-start !important; /* Align items to the start */
-        justify-content: flex-start !important; /* Left-align flex content */
-        text-align: left !important; /* Ensure inner text is left-aligned */
         height: 240px !important; /* Same as mobile typing container height */
         max-height: 240px !important; /* Ensure it doesn't exceed this height */
         overflow: hidden !important; /* Prevent text from spilling out on mobile */
