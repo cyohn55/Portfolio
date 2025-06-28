@@ -380,6 +380,8 @@ section h2 {
 
 .red-code {
     color: #ff4444;
+    font-family: "Brush Script MT", cursive;
+    font-style: italic;
 }
 
 .black-question {
