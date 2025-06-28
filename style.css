@@ -427,6 +427,7 @@ section h2 {
     flex-direction: column; /* Force vertical stacking */
     align-items: stretch;
     text-align: left;
+    height: 754.53px; /* Fixed height to prevent jittering when "Be the first to ask!" text appears */
 }
 
 .default-container > div {
