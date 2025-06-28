@@ -134,8 +134,44 @@ But, no<br>one asks<br class="mobile-br">
         }
     }
     
-    // Start typing animation after a delay
-    setTimeout(typeNext, 400);
+    // Function to start the animation
+    function startAnimation() {
+        setTimeout(typeNext, 400);
+    }
+    
+    // Check if we're on desktop (not mobile)
+    const isDesktop = window.innerWidth > 768;
+    
+    if (isDesktop) {
+        // Wait for intro text to be visible before starting animation
+        const introText = document.querySelector('#about > div.default-container > div.intro-text');
+        
+        if (introText) {
+            // Create intersection observer
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        // Start animation when intro text is visible
+                        startAnimation();
+                        // Stop observing once animation starts
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, {
+                threshold: 0.1, // Trigger when 10% of the element is visible
+                rootMargin: '0px 0px -50px 0px' // Start slightly before element is fully visible
+            });
+            
+            // Start observing the intro text
+            observer.observe(introText);
+        } else {
+            // Fallback: start animation after delay if intro text not found
+            startAnimation();
+        }
+    } else {
+        // On mobile, start animation immediately (as requested)
+        startAnimation();
+    }
 });
 
 // Parallax effect for .parallax-3 section if it exists
