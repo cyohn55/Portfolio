@@ -378,6 +378,14 @@ section h2 {
     color: #000;
 }
 
+.red-code {
+    color: #ff4444;
+}
+
+.black-question {
+    color: #000;
+}
+
 /* Content Wrapper */
 .content {
     max-width: var(--max-content-width);

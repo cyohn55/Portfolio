@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', function() {
 How to<br>Code?
 
 But, no<br>one asks<br class="mobile-br">
-<a href="Pages/aboutcode.html" class="red-link">'Who&nbsp;<i>IS</i><br><span class="red-text">Code?</span>'</a>`;
+<a href="Pages/aboutcode.html" class="red-link">'Who&nbsp;<i>IS</i><br><span class="red-code">Code</span><span class="black-question">?</span>'</a>`;
 
     // Pre-calculate the height by temporarily showing the full content
     function preCalculateHeight() {
@@ -85,7 +85,7 @@ But, no<br>one asks<br class="mobile-br">
         // Who is Code? - with final layout from start (keep original timing)
         { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who<br>&nbsp;</a></div>", delay: 600, isCentered: true },
         { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who&nbsp;<i>is</i><br>&nbsp;</a></div>", delay: 600, isCentered: true },
-        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who&nbsp;<i>is</i><br><span class=\"red-text\">Code?</span></a></div>", delay: 800, isCentered: true, isLast: true }
+        { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who&nbsp;<i>is</i><br><span class=\"red-code\">Code</span><span class=\"black-question\">?</span></a></div>", delay: 800, isCentered: true, isLast: true }
     ];
     
     let currentIndex = 0;
