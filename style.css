@@ -201,31 +201,31 @@ body {
         text-align: left !important;
     }
 
-    /* Mobile-specific font sizes for typing animation - all set to 6rem */
+    /* Mobile-specific font sizes for typing animation - all set to 4rem */
     #typing-text .line-everyone {
-        font-size: 6rem !important;
+        font-size: 4rem !important;
     }
     
     #typing-text .line-how {
-        font-size: 6rem !important;
+        font-size: 4rem !important;
     }
     
     #typing-text .line-but {
-        font-size: 6rem !important;
+        font-size: 4rem !important;
     }
     
     #typing-text a.red-link.line-who {
-        font-size: 6rem !important;
+        font-size: 4rem !important;
     }
     
     .centered-who a.red-link.line-who {
-        font-size: 6rem !important;
+        font-size: 4rem !important;
     }
     
     /* Also update the "Code" text size */
     #typing-text a.red-link.line-who .red-text,
     .centered-who a.red-link.line-who .red-text {
-        font-size: 6rem !important;
+        font-size: 4rem !important;
     }
 }
 
