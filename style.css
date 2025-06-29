@@ -748,7 +748,7 @@ section h2 {
 
     /* Desktop font sizes for animated heading lines */
     #typing-text a.red-link.line-who {
-        font-size: clamp(3rem, 9vw, 12rem);
+        font-size: 8rem !important;
         white-space: normal;
     }
     
@@ -804,7 +804,7 @@ section h2 {
     }
     #typing-text a.red-link.line-who,
     .centered-who a.red-link.line-who {
-        font-size: clamp(3rem, 9vw, 12rem) !important;
+        font-size: 8rem !important;
         white-space: normal;
         max-width: 100%;
         line-height: 1.1;
@@ -815,7 +815,7 @@ section h2 {
     /* Enlarge only the word "Code?" on desktop */
     #typing-text a.red-link.line-who .red-text,
     .centered-who a.red-link.line-who .red-text {
-        font-size: 15rem !important;
+        font-size: 12rem !important; /* Fixed size instead of 15rem to better match other text */
     }
 }
 
