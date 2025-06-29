@@ -1238,7 +1238,7 @@ section h2 {
     }
     
     #about > div.default-container > div.intro-text {
-        margin-bottom: 30px; /* Add space after intro text */
+        margin-bottom: 10px; /* Add space after intro text */
     }
 }
 
