@@ -1228,9 +1228,10 @@ section h2 {
 
 /* Fix for mobile overlap when screen width is below 675px */
 @media (max-width: 675px) {
-    .default-container {
+    /* Adjust default container spacing for small screens */
+    #about > div.default-container {
         height: auto; /* Remove fixed height on smaller screens */
-        margin-bottom: 20px; /* Add space between containers */
+        margin-bottom: 0; /* Remove bottom margin */
     }
     
     #typing-animation-container {
