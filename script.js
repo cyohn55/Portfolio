@@ -261,8 +261,8 @@ function resetCamera() {
     const modelViewer = modal.querySelector('model-viewer');
     
     if (modelViewer) {
-        modelViewer.cameraOrbit = '0deg 75deg 2m';
-        modelViewer.fieldOfView = '30deg';
+        modelViewer.cameraOrbit = '45deg 75deg 5m';
+        modelViewer.fieldOfView = '45deg';
     }
 }
 

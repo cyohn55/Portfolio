@@ -1356,6 +1356,37 @@ section h2 {
     background: var(--primary-blue-dark);
 }
 
+/* Zoom Instructions */
+.zoom-instructions {
+    position: absolute;
+    top: 70px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    color: var(--white);
+    padding: 10px 15px;
+    border-radius: var(--border-radius-small);
+    font-size: 0.85rem;
+    z-index: 10;
+    max-width: 250px;
+    line-height: 1.4;
+}
+
+.zoom-instructions h4 {
+    margin: 0 0 8px 0;
+    font-size: 0.9rem;
+    color: #fff;
+}
+
+.zoom-instructions ul {
+    margin: 0;
+    padding-left: 15px;
+    list-style-type: disc;
+}
+
+.zoom-instructions li {
+    margin-bottom: 3px;
+}
+
 /* Progress Bar Styles */
 .progress-bar {
     position: absolute;
@@ -1397,6 +1428,19 @@ section h2 {
         margin: 1% auto;
         width: 95%;
         height: 95%;
+    }
+    
+    .zoom-instructions {
+        top: 60px;
+        left: 10px;
+        right: 10px;
+        max-width: none;
+        font-size: 0.8rem;
+        padding: 8px 12px;
+    }
+    
+    .zoom-instructions h4 {
+        font-size: 0.85rem;
     }
     
     .controls {
