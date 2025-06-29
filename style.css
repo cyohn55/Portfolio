@@ -200,6 +200,33 @@ body {
         justify-content: flex-start !important;
         text-align: left !important;
     }
+
+    /* Mobile-specific font sizes for typing animation - all set to 8rem */
+    #typing-text .line-everyone {
+        font-size: 8rem !important;
+    }
+    
+    #typing-text .line-how {
+        font-size: 8rem !important;
+    }
+    
+    #typing-text .line-but {
+        font-size: 8rem !important;
+    }
+    
+    #typing-text a.red-link.line-who {
+        font-size: 8rem !important;
+    }
+    
+    .centered-who a.red-link.line-who {
+        font-size: 8rem !important;
+    }
+    
+    /* Also update the "Code" text size */
+    #typing-text a.red-link.line-who .red-text,
+    .centered-who a.red-link.line-who .red-text {
+        font-size: 8rem !important;
+    }
 }
 
 /* Style for the intro section */
