@@ -295,6 +295,7 @@ const modelConfig = {
 function openModelsModal() {
     const modal = document.getElementById('modelsModal');
     const modelViewer = modal.querySelector('model-viewer');
+    const instructions = document.getElementById('zoomInstructions');
     
     modal.style.display = 'block';
     document.body.style.overflow = 'hidden'; // Prevent background scrolling
@@ -302,6 +303,11 @@ function openModelsModal() {
     // Set initial background for default model (dolphin)
     if (modelViewer && modelConfig[currentModel]) {
         modelViewer.style.background = modelConfig[currentModel].background;
+    }
+    
+    // Make sure instructions are visible when modal opens
+    if (instructions) {
+        instructions.style.display = 'block';
     }
     
     // Focus on model viewer for accessibility
@@ -389,6 +395,18 @@ function toggleAutoRotate() {
         // Update button text
         const button = event.target;
         button.textContent = autoRotateEnabled ? 'Stop Rotation' : 'Start Rotation';
+    }
+}
+
+// Toggle zoom instructions visibility
+function toggleInstructions() {
+    const instructions = document.getElementById('zoomInstructions');
+    if (instructions) {
+        if (instructions.style.display === 'none') {
+            instructions.style.display = 'block';
+        } else {
+            instructions.style.display = 'none';
+        }
     }
 }
 
