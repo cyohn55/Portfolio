@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 Can you<br><span class="ocr-code">CODE</span>?
 
-But, have<br>you asked<br class="mobile-br">
+But, you<br>need to ask<br class="mobile-br">
 <a href="Pages/aboutcode.html" class="red-link">'Who&nbsp;<i>IS</i><br><span class="red-code">Code</span><span class="black-question">?</span>'</a>`;
 
     // Pre-calculate the height by temporarily showing the full content
@@ -78,9 +78,9 @@ But, have<br>you asked<br class="mobile-br">
         
         // But, no one asks - with final layout from start
         { content: "<div class=\"centered-who\"><span class=\"line-but\">But,<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, have<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, have<br>you&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, have<br>you asked</span></div>", delay: 1500, isCentered: true, clearAfter: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, you<br>&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, you<br>need to&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, you<br>need to ask</span></div>", delay: 1500, isCentered: true, clearAfter: true },
         
         // Who is Code? - with final layout from start (keep original timing)
         { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who<br>&nbsp;</a></div>", delay: 600, isCentered: true },
