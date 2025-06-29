@@ -1447,6 +1447,11 @@ section h2 {
     overflow: hidden;
 }
 
+/* Hide progress bar in main model viewer to prevent obstruction */
+#mainModelViewer .progress-bar {
+    display: none !important;
+}
+
 .update-bar {
     height: 100%;
     background: var(--primary-blue);
