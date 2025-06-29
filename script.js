@@ -239,55 +239,55 @@ const modelConfig = {
         file: 'models/dolphin.glb',
         title: '🐬 Interactive 3D Dolphin Model',
         emoji: '🐬',
-        background: 'linear-gradient(135deg, #e6f3ff 0%, #b3d9ff 50%, #80c7ff 100%)' // Ocean blue tones
+        background: '#00bfff' // Vibrant cyan/blue
     },
     bee: {
         file: 'models/Bee.glb',
         title: '🐝 Interactive 3D Bee Model',
         emoji: '🐝',
-        background: 'linear-gradient(135deg, #f0e6ff 0%, #d9b3ff 50%, #c280ff 100%)' // Purple to complement yellow
+        background: '#b300ff' // Vibrant purple
     },
     bear: {
         file: 'models/Bear.glb',
         title: '🐻 Interactive 3D Bear Model',
         emoji: '🐻',
-        background: 'linear-gradient(135deg, #e6f2e6 0%, #b3d9b3 50%, #80c080 100%)' // Forest green tones
+        background: '#00ffd9' // Vibrant aqua
     },
     fox: {
         file: 'models/Fox.glb',
         title: '🦊 Interactive 3D Fox Model',
         emoji: '🦊',
-        background: 'linear-gradient(135deg, #fff2e6 0%, #ffe6b3 50%, #ffcc80 100%)' // Warm orange/cream tones
+        background: '#006cff' // Vibrant blue
     },
     frog: {
         file: 'models/Frog.glb',
         title: '🐸 Interactive 3D Frog Model',
         emoji: '🐸',
-        background: 'linear-gradient(135deg, #e6ffe6 0%, #b3ffb3 50%, #80ff80 100%)' // Fresh green tones
+        background: '#ff00ff' // Vibrant magenta
     },
     owl: {
         file: 'models/Owl.glb',
         title: '🦉 Interactive 3D Owl Model',
         emoji: '🦉',
-        background: 'linear-gradient(135deg, #f2f0e6 0%, #e6dab3 50%, #d9c480 100%)' // Earthy brown/beige tones
+        background: '#00e1ff' // Vibrant cyan
     },
     pig: {
         file: 'models/Pig.glb',
         title: '🐷 Interactive 3D Pig Model',
         emoji: '🐷',
-        background: 'linear-gradient(135deg, #ffe6f0 0%, #ffb3d9 50%, #ff80c2 100%)' // Pink complementary tones
+        background: '#00ff6a' // Vibrant green
     },
     turtle: {
         file: 'models/Turtle.glb',
         title: '🐢 Interactive 3D Turtle Model',
         emoji: '🐢',
-        background: 'linear-gradient(135deg, #e6f9f9 0%, #b3f0f0 50%, #80e6e6 100%)' // Aqua/teal tones
+        background: '#ff7b00' // Vibrant orange
     },
     cat: {
         file: 'models/cat.glb',
         title: '🐱 Interactive 3D Cat Model',
         emoji: '🐱',
-        background: 'linear-gradient(135deg, #f9f0e6 0%, #f0d9b3 50%, #e6c280 100%)' // Warm tan/cream tones
+        background: '#ffe600' // Vibrant yellow
     }
 };
 
