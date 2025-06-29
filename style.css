@@ -861,7 +861,7 @@ section h2 {
 .model-modal model-viewer {
     width: 100%;
     height: 100%;
-    background: linear-gradient(135deg, #e8f5e8 0%, #f0f8ff 50%, #fff8f0 100%);
+    /* Background is set dynamically per model in JavaScript */
 }
 
 .project-container p:last-child {

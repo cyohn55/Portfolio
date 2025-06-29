@@ -238,47 +238,56 @@ const modelConfig = {
     dolphin: {
         file: 'models/dolphin.glb',
         title: '🐬 Interactive 3D Dolphin Model',
-        emoji: '🐬'
+        emoji: '🐬',
+        background: 'linear-gradient(135deg, #e6f3ff 0%, #b3d9ff 50%, #80c7ff 100%)' // Ocean blue tones
     },
     bee: {
         file: 'models/Bee.glb',
         title: '🐝 Interactive 3D Bee Model',
-        emoji: '🐝'
+        emoji: '🐝',
+        background: 'linear-gradient(135deg, #f0e6ff 0%, #d9b3ff 50%, #c280ff 100%)' // Purple to complement yellow
     },
     bear: {
         file: 'models/Bear.glb',
         title: '🐻 Interactive 3D Bear Model',
-        emoji: '🐻'
+        emoji: '🐻',
+        background: 'linear-gradient(135deg, #e6f2e6 0%, #b3d9b3 50%, #80c080 100%)' // Forest green tones
     },
     fox: {
         file: 'models/Fox.glb',
         title: '🦊 Interactive 3D Fox Model',
-        emoji: '🦊'
+        emoji: '🦊',
+        background: 'linear-gradient(135deg, #fff2e6 0%, #ffe6b3 50%, #ffcc80 100%)' // Warm orange/cream tones
     },
     frog: {
         file: 'models/Frog.glb',
         title: '🐸 Interactive 3D Frog Model',
-        emoji: '🐸'
+        emoji: '🐸',
+        background: 'linear-gradient(135deg, #e6ffe6 0%, #b3ffb3 50%, #80ff80 100%)' // Fresh green tones
     },
     owl: {
         file: 'models/Owl.glb',
         title: '🦉 Interactive 3D Owl Model',
-        emoji: '🦉'
+        emoji: '🦉',
+        background: 'linear-gradient(135deg, #f2f0e6 0%, #e6dab3 50%, #d9c480 100%)' // Earthy brown/beige tones
     },
     pig: {
         file: 'models/Pig.glb',
         title: '🐷 Interactive 3D Pig Model',
-        emoji: '🐷'
+        emoji: '🐷',
+        background: 'linear-gradient(135deg, #ffe6f0 0%, #ffb3d9 50%, #ff80c2 100%)' // Pink complementary tones
     },
     turtle: {
         file: 'models/Turtle.glb',
         title: '🐢 Interactive 3D Turtle Model',
-        emoji: '🐢'
+        emoji: '🐢',
+        background: 'linear-gradient(135deg, #e6f9f9 0%, #b3f0f0 50%, #80e6e6 100%)' // Aqua/teal tones
     },
     cat: {
         file: 'models/cat.glb',
         title: '🐱 Interactive 3D Cat Model',
-        emoji: '🐱'
+        emoji: '🐱',
+        background: 'linear-gradient(135deg, #f9f0e6 0%, #f0d9b3 50%, #e6c280 100%)' // Warm tan/cream tones
     }
 };
 
@@ -289,6 +298,11 @@ function openModelsModal() {
     
     modal.style.display = 'block';
     document.body.style.overflow = 'hidden'; // Prevent background scrolling
+    
+    // Set initial background for default model (dolphin)
+    if (modelViewer && modelConfig[currentModel]) {
+        modelViewer.style.background = modelConfig[currentModel].background;
+    }
     
     // Focus on model viewer for accessibility
     setTimeout(() => {
@@ -323,6 +337,8 @@ function switchModel(modelType) {
     if (modelViewer) {
         modelViewer.src = modelConfig[modelType].file;
         modelViewer.alt = modelConfig[modelType].title;
+        // Update background color to complement the model
+        modelViewer.style.background = modelConfig[modelType].background;
     }
     
     // Update modal title
