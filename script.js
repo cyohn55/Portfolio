@@ -244,6 +244,41 @@ const modelConfig = {
         file: 'models/Bee.glb',
         title: '🐝 Interactive 3D Bee Model',
         emoji: '🐝'
+    },
+    bear: {
+        file: 'models/Bear.glb',
+        title: '🐻 Interactive 3D Bear Model',
+        emoji: '🐻'
+    },
+    fox: {
+        file: 'models/Fox.glb',
+        title: '🦊 Interactive 3D Fox Model',
+        emoji: '🦊'
+    },
+    frog: {
+        file: 'models/Frog.glb',
+        title: '🐸 Interactive 3D Frog Model',
+        emoji: '🐸'
+    },
+    owl: {
+        file: 'models/Owl.glb',
+        title: '🦉 Interactive 3D Owl Model',
+        emoji: '🦉'
+    },
+    pig: {
+        file: 'models/Pig.glb',
+        title: '🐷 Interactive 3D Pig Model',
+        emoji: '🐷'
+    },
+    turtle: {
+        file: 'models/Turtle.glb',
+        title: '🐢 Interactive 3D Turtle Model',
+        emoji: '🐢'
+    },
+    cat: {
+        file: 'models/cat.glb',
+        title: '🐱 Interactive 3D Cat Model',
+        emoji: '🐱'
     }
 };
 
