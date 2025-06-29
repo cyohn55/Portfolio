@@ -213,17 +213,17 @@ body {
     }
     
     #typing-text a.red-link.line-who {
-        font-size: 4rem !important;
+        font-size: 5rem !important;
     }
     
     .centered-who a.red-link.line-who {
-        font-size: 4rem !important;
+        font-size: 5rem !important;
     }
     
     /* Also update the "Code" text size */
     #typing-text a.red-link.line-who .red-text,
     .centered-who a.red-link.line-who .red-text {
-        font-size: 4rem !important;
+        font-size: 5rem !important;
     }
 
     /* Keep the container left-aligned but center the text within it */
