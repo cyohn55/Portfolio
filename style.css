@@ -1226,8 +1226,8 @@ section h2 {
     margin: 0 auto;
 }
 
-/* Fix for mobile overlap when screen width is below 611px */
-@media (max-width: 611px) {
+/* Fix for mobile overlap when screen width is below 675px */
+@media (max-width: 675px) {
     .default-container {
         height: auto; /* Remove fixed height on smaller screens */
         margin-bottom: 20px; /* Add space between containers */
