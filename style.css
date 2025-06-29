@@ -187,9 +187,14 @@ body {
         text-align: left !important;
     }
     
-    /* Left-align the "Be the first to ask!" text on mobile */
+    /* Center the "Be the first to ask!" text on mobile */
     #be-first-text {
-        text-align: left !important;
+        text-align: center !important;
+    }
+    
+    /* Center the intro heading text on mobile */
+    .intro-text h2 {
+        text-align: center !important;
     }
     
     /* Left-align the centered-who container on mobile */
