@@ -172,8 +172,6 @@ body {
     opacity: 1 !important;
 }
 
-
-
 /* Mobile line break */
 .mobile-br {
     display: none;
@@ -226,6 +224,26 @@ body {
     #typing-text a.red-link.line-who .red-text,
     .centered-who a.red-link.line-who .red-text {
         font-size: 4rem !important;
+    }
+
+    /* Keep the container left-aligned but center the text within it */
+    #typing-text {
+        text-align: left !important; /* Container remains left-aligned */
+    }
+    
+    /* Center the text phrases within their containers */
+    #typing-text .centered-who {
+        text-align: center !important; /* Text inside is centered */
+        align-items: center !important; /* Center flex items */
+        justify-content: center !important; /* Center flex content */
+        width: 100% !important; /* Full width of parent */
+    }
+    
+    /* Ensure the left-aligned container but centered content */
+    .centered-who {
+        width: 100% !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
     }
 }
 
@@ -826,8 +844,6 @@ section h2 {
     #typing-text .line-everyone {
         font-size: 8rem !important;
     }
-
-
 
     /* Center intro heading on desktop */
     .intro-text h2 {
