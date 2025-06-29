@@ -288,6 +288,18 @@ const modelConfig = {
         title: '🐱 Interactive 3D Cat Model',
         emoji: '🐱',
         background: '#ffe600' // Vibrant yellow
+    },
+    chicken: {
+        file: 'models/Chicken.glb',
+        title: '🐔 Interactive 3D Chicken Model',
+        emoji: '🐔',
+        background: '#ff1493' // Vibrant pink
+    },
+    yeti: {
+        file: 'models/Yetti.glb',
+        title: '👾 Interactive 3D Yeti Model',
+        emoji: '👾',
+        background: '#007fff' // Vibrant azure
     }
 };
 
