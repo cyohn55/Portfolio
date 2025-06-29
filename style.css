@@ -184,6 +184,22 @@ body {
         display: block;
     }
 
+    /* Left-align the typing animation on mobile */
+    #typing-text {
+        text-align: left !important;
+    }
+    
+    /* Left-align the "Be the first to ask!" text on mobile */
+    #be-first-text {
+        text-align: left !important;
+    }
+    
+    /* Left-align the centered-who container on mobile */
+    .centered-who {
+        align-items: flex-start !important;
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
 }
 
 /* Style for the intro section */

@@ -103,8 +103,8 @@ But, have<br>you asked<br class="mobile-br">
         typingText.style.opacity = '1';
         typingText.style.transition = 'none';
         
-        // Handle centered content differently
-        if (currentStep.isCentered) {
+        // Handle centered content differently based on device
+        if (currentStep.isCentered && window.innerWidth > 768) {
             typingText.style.textAlign = 'center';
         } else {
             typingText.style.textAlign = 'left';
