@@ -1226,3 +1226,19 @@ section h2 {
     margin: 0 auto;
 }
 
+/* Fix for mobile overlap when screen width is below 611px */
+@media (max-width: 611px) {
+    .default-container {
+        height: auto; /* Remove fixed height on smaller screens */
+        margin-bottom: 20px; /* Add space between containers */
+    }
+    
+    #typing-animation-container {
+        margin-bottom: 1rem; /* Reduce space between typing animation and intro text */
+    }
+    
+    #about > div.default-container > div.intro-text {
+        margin-bottom: 30px; /* Add space after intro text */
+    }
+}
+
