@@ -225,3 +225,100 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Removed commented-out carousel code (unused)
 
+// ==========================================================================
+// 3D MODEL MODAL FUNCTIONALITY
+// ==========================================================================
+
+// Global variable to track auto-rotate state
+let autoRotateEnabled = true;
+
+// Open dolphin model modal
+function openDolphinModal() {
+    const modal = document.getElementById('dolphinModal');
+    const modelViewer = modal.querySelector('model-viewer');
+    
+    modal.style.display = 'block';
+    document.body.style.overflow = 'hidden'; // Prevent background scrolling
+    
+    // Focus on model viewer for accessibility
+    setTimeout(() => {
+        if (modelViewer) {
+            modelViewer.focus();
+        }
+    }, 100);
+}
+
+// Close dolphin model modal
+function closeDolphinModal() {
+    const modal = document.getElementById('dolphinModal');
+    modal.style.display = 'none';
+    document.body.style.overflow = 'auto'; // Restore scrolling
+}
+
+// Reset camera to default position
+function resetCamera() {
+    const modal = document.getElementById('dolphinModal');
+    const modelViewer = modal.querySelector('model-viewer');
+    
+    if (modelViewer) {
+        modelViewer.cameraOrbit = '0deg 75deg 2m';
+        modelViewer.fieldOfView = '30deg';
+    }
+}
+
+// Toggle auto-rotate functionality
+function toggleAutoRotate() {
+    const modal = document.getElementById('dolphinModal');
+    const modelViewer = modal.querySelector('model-viewer');
+    
+    if (modelViewer) {
+        autoRotateEnabled = !autoRotateEnabled;
+        
+        if (autoRotateEnabled) {
+            modelViewer.setAttribute('auto-rotate', '');
+        } else {
+            modelViewer.removeAttribute('auto-rotate');
+        }
+        
+        // Update button text
+        const button = event.target;
+        button.textContent = autoRotateEnabled ? 'Stop Rotation' : 'Start Rotation';
+    }
+}
+
+// Close modal when clicking outside of it
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('dolphinModal');
+    
+    if (modal) {
+        modal.addEventListener('click', function(event) {
+            if (event.target === modal) {
+                closeDolphinModal();
+            }
+        });
+    }
+    
+    // Handle escape key to close modal
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            const modal = document.getElementById('dolphinModal');
+            if (modal && modal.style.display === 'block') {
+                closeDolphinModal();
+            }
+        }
+    });
+    
+    // Handle model loading events
+    const modelViewers = document.querySelectorAll('model-viewer');
+    modelViewers.forEach(viewer => {
+        viewer.addEventListener('load', function() {
+            console.log('3D model loaded successfully');
+        });
+        
+        viewer.addEventListener('error', function(event) {
+            console.error('Error loading 3D model:', event);
+            // You could show a fallback image or message here
+        });
+    });
+});
+
