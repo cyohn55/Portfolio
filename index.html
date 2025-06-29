@@ -147,7 +147,7 @@
                 <div class="model-preview">
                     <model-viewer 
                         src="models/dolphin.glb" 
-                        alt="3D Dolphin Model"
+                        alt="3D Models Collection"
                         auto-rotate 
                         camera-controls 
                         loading="lazy"
@@ -160,9 +160,9 @@
                         <div slot="progress-bar" style="display: none;"></div>
                     </model-viewer>
                 </div>
-                <h3>3D Dolphin Model</h3>
-                <p>Interactive 3D model created in Blender showcasing marine life animation and modeling skills.</p>
-                <a href="#" onclick="openDolphinModal(); return false;">View 3D Model</a>
+                <h3>3D Models Collection</h3>
+                <p>Interactive 3D models created in Blender showcasing animation and modeling skills. Switch between different models in the viewer.</p>
+                <a href="#" onclick="openModelsModal(); return false;">View 3D Models</a>
             </div>
 
               <!-- Project items -->
@@ -223,16 +223,25 @@
 </footer>
 
 <!-- 3D Model Modal -->
-<div id="dolphinModal" class="model-modal">
+<div id="modelsModal" class="model-modal">
     <div class="model-modal-content">
         <div class="model-modal-header">
-            <h3>🐬 Interactive 3D Dolphin Model</h3>
-            <button class="close-modal" onclick="closeDolphinModal()">&times;</button>
+            <h3 id="modelTitle">🐬 Interactive 3D Models</h3>
+            <button class="close-modal" onclick="closeModelsModal()">&times;</button>
+        </div>
+        <div class="model-switcher">
+            <button class="model-btn active" data-model="dolphin" onclick="switchModel('dolphin')">
+                🐬 Dolphin
+            </button>
+            <button class="model-btn" data-model="bee" onclick="switchModel('bee')">
+                🐝 Bee
+            </button>
         </div>
         <div class="model-modal-body">
             <model-viewer 
+                id="mainModelViewer"
                 src="models/dolphin.glb" 
-                alt="3D Dolphin Model - Full View"
+                alt="3D Model - Full View"
                 auto-rotate 
                 camera-controls 
                 touch-action="pan-y"

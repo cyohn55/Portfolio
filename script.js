@@ -229,12 +229,27 @@ document.addEventListener('DOMContentLoaded', () => {
 // 3D MODEL MODAL FUNCTIONALITY
 // ==========================================================================
 
-// Global variable to track auto-rotate state
+// Global variables
 let autoRotateEnabled = true;
+let currentModel = 'dolphin';
 
-// Open dolphin model modal
-function openDolphinModal() {
-    const modal = document.getElementById('dolphinModal');
+// Model configuration
+const modelConfig = {
+    dolphin: {
+        file: 'models/dolphin.glb',
+        title: '🐬 Interactive 3D Dolphin Model',
+        emoji: '🐬'
+    },
+    bee: {
+        file: 'models/Bee.glb',
+        title: '🐝 Interactive 3D Bee Model',
+        emoji: '🐝'
+    }
+};
+
+// Open models modal
+function openModelsModal() {
+    const modal = document.getElementById('modelsModal');
     const modelViewer = modal.querySelector('model-viewer');
     
     modal.style.display = 'block';
@@ -248,16 +263,56 @@ function openDolphinModal() {
     }, 100);
 }
 
-// Close dolphin model modal
-function closeDolphinModal() {
-    const modal = document.getElementById('dolphinModal');
+// Close models modal
+function closeModelsModal() {
+    const modal = document.getElementById('modelsModal');
     modal.style.display = 'none';
     document.body.style.overflow = 'auto'; // Restore scrolling
 }
 
+// Switch between different 3D models
+function switchModel(modelType) {
+    if (!modelConfig[modelType]) {
+        console.error('Unknown model type:', modelType);
+        return;
+    }
+    
+    const modal = document.getElementById('modelsModal');
+    const modelViewer = modal.querySelector('#mainModelViewer');
+    const modelTitle = modal.querySelector('#modelTitle');
+    
+    // Update current model
+    currentModel = modelType;
+    
+    // Update model source
+    if (modelViewer) {
+        modelViewer.src = modelConfig[modelType].file;
+        modelViewer.alt = modelConfig[modelType].title;
+    }
+    
+    // Update modal title
+    if (modelTitle) {
+        modelTitle.textContent = modelConfig[modelType].title;
+    }
+    
+    // Update button states
+    const buttons = modal.querySelectorAll('.model-btn');
+    buttons.forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('data-model') === modelType) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Reset camera position for new model
+    setTimeout(() => {
+        resetCamera();
+    }, 100);
+}
+
 // Reset camera to default position
 function resetCamera() {
-    const modal = document.getElementById('dolphinModal');
+    const modal = document.getElementById('modelsModal');
     const modelViewer = modal.querySelector('model-viewer');
     
     if (modelViewer) {
@@ -268,7 +323,7 @@ function resetCamera() {
 
 // Toggle auto-rotate functionality
 function toggleAutoRotate() {
-    const modal = document.getElementById('dolphinModal');
+    const modal = document.getElementById('modelsModal');
     const modelViewer = modal.querySelector('model-viewer');
     
     if (modelViewer) {
@@ -288,12 +343,12 @@ function toggleAutoRotate() {
 
 // Close modal when clicking outside of it
 document.addEventListener('DOMContentLoaded', function() {
-    const modal = document.getElementById('dolphinModal');
+    const modal = document.getElementById('modelsModal');
     
     if (modal) {
         modal.addEventListener('click', function(event) {
             if (event.target === modal) {
-                closeDolphinModal();
+                closeModelsModal();
             }
         });
     }
@@ -301,9 +356,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle escape key to close modal
     document.addEventListener('keydown', function(event) {
         if (event.key === 'Escape') {
-            const modal = document.getElementById('dolphinModal');
+            const modal = document.getElementById('modelsModal');
             if (modal && modal.style.display === 'block') {
-                closeDolphinModal();
+                closeModelsModal();
             }
         }
     });
