@@ -129,8 +129,8 @@ But, have<br>you asked<br class="mobile-br">
             setTimeout(() => {
                 typingText.classList.add('typing-done');
                 
-                // Check if we should trigger the "Be the first to ask!" text (desktop only)
-                if (currentStep.triggerBeFirstText && window.innerWidth > 768) {
+                // Check if we should trigger the "Be the first to ask!" text (both mobile and desktop)
+                if (currentStep.triggerBeFirstText) {
                     const beFirstText = document.getElementById('be-first-text');
                     if (beFirstText) {
                         // Make the element visible and trigger fade-in
