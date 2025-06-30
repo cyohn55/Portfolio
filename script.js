@@ -483,16 +483,7 @@ function toggleEmbeddedAutoRotate() {
     }
 }
 
-function toggleEmbeddedInstructions() {
-    const instructions = document.getElementById('embeddedZoomInstructions');
-    if (instructions) {
-        if (instructions.style.display === 'none') {
-            instructions.style.display = 'block';
-        } else {
-            instructions.style.display = 'none';
-        }
-    }
-}
+
 
 // Arrow navigation functions
 function nextModel() {
