@@ -235,7 +235,6 @@ let currentModel = 'dolphin';
 let currentModelIndex = 0;
 let autoCycleEnabled = true;
 let autoCycleTimer = null;
-let userInteracting = false;
 
 // Array of model keys for cycling
 const modelKeys = ['dolphin', 'bee', 'bear', 'fox', 'frog', 'owl', 'pig', 'turtle', 'cat', 'chicken', 'yeti'];
@@ -449,7 +448,7 @@ function switchEmbeddedModel(modelType) {
         modelViewer.src = modelConfig[modelType].file;
         modelViewer.alt = modelConfig[modelType].title;
         modelViewer.style.background = modelConfig[modelType].background;
-        modelViewer.setAttribute('rotation-per-second', '37.5deg');
+        modelViewer.setAttribute('rotation-per-second', '75deg');
     }
     
     // Reset camera position for new model
@@ -457,8 +456,8 @@ function switchEmbeddedModel(modelType) {
         resetEmbeddedCamera();
     }, 100);
     
-    // Restart auto-cycle timer if enabled and not user-initiated
-    if (autoCycleEnabled && !userInteracting) {
+    // Restart auto-cycle timer if enabled
+    if (autoCycleEnabled) {
         startAutoCycle();
     }
 }
@@ -488,7 +487,7 @@ function toggleEmbeddedAutoRotate() {
         } else {
             // Start rotation and auto-cycling
             modelViewer.setAttribute('auto-rotate', '');
-            modelViewer.setAttribute('rotation-per-second', '37.5deg');
+            modelViewer.setAttribute('rotation-per-second', '75deg');
             autoCycleEnabled = true;
             startAutoCycle();
             toggleButton.innerHTML = '&#9208;'; // Stop symbol
@@ -502,15 +501,15 @@ function toggleEmbeddedAutoRotate() {
 // Auto-cycle functions
 function startAutoCycle() {
     clearTimeout(autoCycleTimer);
-    if (autoCycleEnabled && !userInteracting) {
-        // One full rotation at 37.5deg/second = 360deg / 37.5deg = 9.6 seconds
+    if (autoCycleEnabled) {
+        // One full rotation at 75deg/second = 360deg / 75deg = 4.8 seconds
         autoCycleTimer = setTimeout(() => {
-            if (autoCycleEnabled && !userInteracting) {
+            if (autoCycleEnabled) {
                 currentModelIndex = (currentModelIndex + 1) % modelKeys.length;
                 const nextModelType = modelKeys[currentModelIndex];
                 switchEmbeddedModel(nextModelType);
             }
-        }, 9600); // 9.6 seconds for one full rotation
+        }, 4800); // 4.8 seconds for one full rotation
     }
 }
 
@@ -518,35 +517,19 @@ function stopAutoCycle() {
     clearTimeout(autoCycleTimer);
 }
 
-function pauseAutoCycle() {
-    userInteracting = true;
-    stopAutoCycle();
-}
 
-function resumeAutoCycle() {
-    userInteracting = false;
-    if (autoCycleEnabled) {
-        startAutoCycle();
-    }
-}
 
 // Arrow navigation functions
 function nextModel() {
-    pauseAutoCycle();
     currentModelIndex = (currentModelIndex + 1) % modelKeys.length;
     const nextModelType = modelKeys[currentModelIndex];
     switchEmbeddedModel(nextModelType);
-    // Resume auto-cycle after a delay
-    setTimeout(resumeAutoCycle, 3000);
 }
 
 function previousModel() {
-    pauseAutoCycle();
     currentModelIndex = (currentModelIndex - 1 + modelKeys.length) % modelKeys.length;
     const prevModelType = modelKeys[currentModelIndex];
     switchEmbeddedModel(prevModelType);
-    // Resume auto-cycle after a delay
-    setTimeout(resumeAutoCycle, 3000);
 }
 
 // Close modal when clicking outside of it
@@ -586,16 +569,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error loading 3D model:', event);
         });
         
-        // Pause auto-cycle when user interacts with embedded viewer
-        if (viewer.id === 'embeddedModelViewer') {
-            viewer.addEventListener('camera-change', pauseAutoCycle);
-            viewer.addEventListener('mousedown', pauseAutoCycle);
-            viewer.addEventListener('touchstart', pauseAutoCycle);
-            
-            // Resume auto-cycle after interaction ends
-            viewer.addEventListener('mouseup', () => setTimeout(resumeAutoCycle, 2000));
-            viewer.addEventListener('touchend', () => setTimeout(resumeAutoCycle, 2000));
-        }
+
     });
 });
 
