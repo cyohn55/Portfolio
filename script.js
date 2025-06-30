@@ -357,6 +357,8 @@ function switchModel(modelType) {
         modelViewer.alt = modelConfig[modelType].title;
         // Update background color to complement the model
         modelViewer.style.background = modelConfig[modelType].background;
+        // Ensure faster rotation speed
+        modelViewer.setAttribute('rotation-per-second', '37.5deg');
     }
     
     // Update modal title

@@ -148,7 +148,7 @@
                     <model-viewer 
                         src="models/dolphin.glb" 
                         alt="3D Models Collection"
-                        auto-rotate 
+                        auto-rotate rotation-per-second="37.5deg"
                         camera-controls 
                         loading="lazy"
                         reveal="interaction"
@@ -269,11 +269,10 @@
                 id="mainModelViewer"
                 src="models/dolphin.glb" 
                 alt="3D Model - Full View"
-                auto-rotate 
+                auto-rotate rotation-per-second="37.5deg"
                 camera-controls 
                 touch-action="pan-y"
                 auto-rotate-delay="1000"
-                rotation-per-second="30deg"
                 interaction-prompt="auto"
                 camera-orbit="45deg 75deg 20m"
                 field-of-view="45deg"
