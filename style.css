@@ -1478,28 +1478,69 @@ section h2 {
 
 /* Embedded 3D Models Section */
 .embedded-models-section {
-    background: var(--background-light);
-    padding: 60px 20px;
-    margin: 40px 0;
-}
-
-.embedded-models-section h2 {
-    text-align: center;
-    margin-bottom: 30px;
-    font-size: 2.5rem;
-    color: var(--text-dark);
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    position: relative;
+    left: 50%;
+    right: 50%;
+    margin-left: -50vw;
+    margin-right: -50vw;
 }
 
 .embedded-model-viewer {
-    max-width: 1200px;
-    margin: 20px auto 0;
-    border-radius: var(--border-radius-large);
-    overflow: hidden;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    width: 100%;
+    position: relative;
 }
 
 .embedded-model-viewer model-viewer {
-    border-radius: var(--border-radius-large);
+    width: 100%;
+    border-radius: 0;
+}
+
+/* Arrow Navigation Buttons */
+.model-nav-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    border: none;
+    font-size: 3rem;
+    padding: 20px 25px;
+    cursor: pointer;
+    z-index: 20;
+    transition: all var(--transition-normal);
+    border-radius: 0;
+}
+
+.model-nav-arrow:hover {
+    background: rgba(0, 0, 0, 0.9);
+    transform: translateY(-50%) scale(1.1);
+}
+
+.prev-model {
+    left: 20px;
+}
+
+.next-model {
+    right: 20px;
+}
+
+/* Mobile responsiveness for arrow buttons */
+@media (max-width: 768px) {
+    .model-nav-arrow {
+        font-size: 2rem;
+        padding: 15px 20px;
+    }
+    
+    .prev-model {
+        left: 10px;
+    }
+    
+    .next-model {
+        right: 10px;
+    }
 }
 
 /* Hide progress bar in embedded model viewer */

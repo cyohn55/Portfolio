@@ -232,6 +232,10 @@ document.addEventListener('DOMContentLoaded', () => {
 // Global variables
 let autoRotateEnabled = true;
 let currentModel = 'dolphin';
+let currentModelIndex = 0;
+
+// Array of model keys for cycling
+const modelKeys = ['dolphin', 'bee', 'bear', 'fox', 'frog', 'owl', 'pig', 'turtle', 'cat', 'chicken', 'yeti'];
 
 // Model configuration
 const modelConfig = {
@@ -433,8 +437,9 @@ function switchEmbeddedModel(modelType) {
     
     const modelViewer = document.getElementById('embeddedModelViewer');
     
-    // Update current model
+    // Update current model and index
     currentModel = modelType;
+    currentModelIndex = modelKeys.indexOf(modelType);
     
     // Update model source and background
     if (modelViewer) {
@@ -443,15 +448,6 @@ function switchEmbeddedModel(modelType) {
         modelViewer.style.background = modelConfig[modelType].background;
         modelViewer.setAttribute('rotation-per-second', '37.5deg');
     }
-    
-    // Update button states
-    const buttons = document.querySelectorAll('#embedded-3d-models .model-btn');
-    buttons.forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.getAttribute('data-model') === modelType) {
-            btn.classList.add('active');
-        }
-    });
     
     // Reset camera position for new model
     setTimeout(() => {
@@ -493,6 +489,19 @@ function toggleEmbeddedInstructions() {
             instructions.style.display = 'none';
         }
     }
+}
+
+// Arrow navigation functions
+function nextModel() {
+    currentModelIndex = (currentModelIndex + 1) % modelKeys.length;
+    const nextModelType = modelKeys[currentModelIndex];
+    switchEmbeddedModel(nextModelType);
+}
+
+function previousModel() {
+    currentModelIndex = (currentModelIndex - 1 + modelKeys.length) % modelKeys.length;
+    const prevModelType = modelKeys[currentModelIndex];
+    switchEmbeddedModel(prevModelType);
 }
 
 // Close modal when clicking outside of it

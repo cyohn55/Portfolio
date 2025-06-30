@@ -99,42 +99,6 @@
 
 <!-- Embedded 3D Model Viewer Section -->
 <section id="embedded-3d-models" class="embedded-models-section">
-    <h2>🎨 Interactive 3D Model Gallery</h2>
-    <div class="model-switcher">
-        <button class="model-btn active" data-model="dolphin" onclick="switchEmbeddedModel('dolphin')">
-            🐬 Dolphin
-        </button>
-        <button class="model-btn" data-model="bee" onclick="switchEmbeddedModel('bee')">
-            🐝 Bee
-        </button>
-        <button class="model-btn" data-model="bear" onclick="switchEmbeddedModel('bear')">
-            🐻 Bear
-        </button>
-        <button class="model-btn" data-model="fox" onclick="switchEmbeddedModel('fox')">
-            🦊 Fox
-        </button>
-        <button class="model-btn" data-model="frog" onclick="switchEmbeddedModel('frog')">
-            🐸 Frog
-        </button>
-        <button class="model-btn" data-model="owl" onclick="switchEmbeddedModel('owl')">
-            🦉 Owl
-        </button>
-        <button class="model-btn" data-model="pig" onclick="switchEmbeddedModel('pig')">
-            🐷 Pig
-        </button>
-        <button class="model-btn" data-model="turtle" onclick="switchEmbeddedModel('turtle')">
-            🐢 Turtle
-        </button>
-        <button class="model-btn" data-model="cat" onclick="switchEmbeddedModel('cat')">
-            🐱 Cat
-        </button>
-        <button class="model-btn" data-model="chicken" onclick="switchEmbeddedModel('chicken')">
-            🐔 Chicken
-        </button>
-        <button class="model-btn" data-model="yeti" onclick="switchEmbeddedModel('yeti')">
-            👾 Yeti
-        </button>
-    </div>
     <div class="embedded-model-viewer">
         <model-viewer 
             id="embeddedModelViewer"
@@ -176,6 +140,14 @@
                 <button onclick="resetEmbeddedCamera()">Reset View</button>
                 <button onclick="toggleEmbeddedAutoRotate()">Toggle Rotation</button>
             </div>
+            
+            <!-- Arrow Navigation -->
+            <button class="model-nav-arrow prev-model" onclick="previousModel()" aria-label="Previous model">
+                &#8249;
+            </button>
+            <button class="model-nav-arrow next-model" onclick="nextModel()" aria-label="Next model">
+                &#8250;
+            </button>
         </model-viewer>
     </div>
 </section>
