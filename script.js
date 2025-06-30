@@ -424,6 +424,77 @@ function toggleInstructions() {
     }
 }
 
+// Embedded model viewer functions
+function switchEmbeddedModel(modelType) {
+    if (!modelConfig[modelType]) {
+        console.error('Unknown model type:', modelType);
+        return;
+    }
+    
+    const modelViewer = document.getElementById('embeddedModelViewer');
+    
+    // Update current model
+    currentModel = modelType;
+    
+    // Update model source and background
+    if (modelViewer) {
+        modelViewer.src = modelConfig[modelType].file;
+        modelViewer.alt = modelConfig[modelType].title;
+        modelViewer.style.background = modelConfig[modelType].background;
+        modelViewer.setAttribute('rotation-per-second', '37.5deg');
+    }
+    
+    // Update button states
+    const buttons = document.querySelectorAll('#embedded-3d-models .model-btn');
+    buttons.forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('data-model') === modelType) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Reset camera position for new model
+    setTimeout(() => {
+        resetEmbeddedCamera();
+    }, 100);
+}
+
+function resetEmbeddedCamera() {
+    const modelViewer = document.getElementById('embeddedModelViewer');
+    if (modelViewer) {
+        modelViewer.cameraOrbit = '45deg 75deg 20m';
+        modelViewer.fieldOfView = '45deg';
+    }
+}
+
+function toggleEmbeddedAutoRotate() {
+    const modelViewer = document.getElementById('embeddedModelViewer');
+    if (modelViewer) {
+        const isRotating = modelViewer.hasAttribute('auto-rotate');
+        
+        if (isRotating) {
+            modelViewer.removeAttribute('auto-rotate');
+        } else {
+            modelViewer.setAttribute('auto-rotate', '');
+        }
+        
+        // Update button text
+        const button = event.target;
+        button.textContent = isRotating ? 'Start Rotation' : 'Stop Rotation';
+    }
+}
+
+function toggleEmbeddedInstructions() {
+    const instructions = document.getElementById('embeddedZoomInstructions');
+    if (instructions) {
+        if (instructions.style.display === 'none') {
+            instructions.style.display = 'block';
+        } else {
+            instructions.style.display = 'none';
+        }
+    }
+}
+
 // Close modal when clicking outside of it
 document.addEventListener('DOMContentLoaded', function() {
     const modal = document.getElementById('modelsModal');

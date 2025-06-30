@@ -97,6 +97,89 @@
     </section>
 </main>
 
+<!-- Embedded 3D Model Viewer Section -->
+<section id="embedded-3d-models" class="embedded-models-section">
+    <h2>🎨 Interactive 3D Model Gallery</h2>
+    <div class="model-switcher">
+        <button class="model-btn active" data-model="dolphin" onclick="switchEmbeddedModel('dolphin')">
+            🐬 Dolphin
+        </button>
+        <button class="model-btn" data-model="bee" onclick="switchEmbeddedModel('bee')">
+            🐝 Bee
+        </button>
+        <button class="model-btn" data-model="bear" onclick="switchEmbeddedModel('bear')">
+            🐻 Bear
+        </button>
+        <button class="model-btn" data-model="fox" onclick="switchEmbeddedModel('fox')">
+            🦊 Fox
+        </button>
+        <button class="model-btn" data-model="frog" onclick="switchEmbeddedModel('frog')">
+            🐸 Frog
+        </button>
+        <button class="model-btn" data-model="owl" onclick="switchEmbeddedModel('owl')">
+            🦉 Owl
+        </button>
+        <button class="model-btn" data-model="pig" onclick="switchEmbeddedModel('pig')">
+            🐷 Pig
+        </button>
+        <button class="model-btn" data-model="turtle" onclick="switchEmbeddedModel('turtle')">
+            🐢 Turtle
+        </button>
+        <button class="model-btn" data-model="cat" onclick="switchEmbeddedModel('cat')">
+            🐱 Cat
+        </button>
+        <button class="model-btn" data-model="chicken" onclick="switchEmbeddedModel('chicken')">
+            🐔 Chicken
+        </button>
+        <button class="model-btn" data-model="yeti" onclick="switchEmbeddedModel('yeti')">
+            👾 Yeti
+        </button>
+    </div>
+    <div class="embedded-model-viewer">
+        <model-viewer 
+            id="embeddedModelViewer"
+            src="models/dolphin.glb" 
+            alt="3D Model - Embedded View"
+            auto-rotate rotation-per-second="37.5deg"
+            camera-controls 
+            touch-action="pan-y"
+            auto-rotate-delay="1000"
+            interaction-prompt="auto"
+            camera-orbit="45deg 75deg 20m"
+            field-of-view="45deg"
+            min-camera-orbit="auto auto 2m"
+            max-camera-orbit="auto auto 24m"
+            min-field-of-view="25deg"
+            max-field-of-view="75deg"
+            style="width: 100%; height: 600px; background: #00bfff;">
+            
+            <div slot="progress-bar" class="progress-bar">
+                <div class="update-bar"></div>
+            </div>
+            
+            <button slot="ar-button" class="ar-button">
+                View in your space
+            </button>
+            
+            <div class="zoom-instructions" id="embeddedZoomInstructions">
+                <button class="close-instructions" onclick="toggleEmbeddedInstructions()" aria-label="Close instructions">&times;</button>
+                <h4>🎮 Controls:</h4>
+                <ul>
+                    <li><strong>Rotate:</strong> Click & drag</li>
+                    <li><strong>Zoom:</strong> Scroll wheel (2m-24m)</li>
+                    <li><strong>Pan:</strong> Right-click & drag</li>
+                    <li><strong>Mobile:</strong> Pinch to zoom</li>
+                </ul>
+            </div>
+            
+            <div class="controls">
+                <button onclick="resetEmbeddedCamera()">Reset View</button>
+                <button onclick="toggleEmbeddedAutoRotate()">Toggle Rotation</button>
+            </div>
+        </model-viewer>
+    </div>
+</section>
+
 <!-- Move .parallax-2 outside of <main> to prevent padding constraints -->
 <div class="parallax-2">
     <h1>Notable Achievements</h1>
