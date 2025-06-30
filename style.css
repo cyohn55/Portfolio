@@ -1486,16 +1486,21 @@ section h2 {
     right: 50%;
     margin-left: -50vw;
     margin-right: -50vw;
+    box-sizing: border-box;
 }
 
 .embedded-model-viewer {
-    width: 100%;
+    width: 100vw;
     position: relative;
+    margin: 0;
+    padding: 0;
 }
 
 .embedded-model-viewer model-viewer {
-    width: 100%;
+    width: 100vw;
     border-radius: 0;
+    margin: 0;
+    padding: 0;
 }
 
 /* Bottom Navigation */
