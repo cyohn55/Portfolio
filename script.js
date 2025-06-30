@@ -465,18 +465,21 @@ function resetEmbeddedCamera() {
 
 function toggleEmbeddedAutoRotate() {
     const modelViewer = document.getElementById('embeddedModelViewer');
-    if (modelViewer) {
+    const toggleButton = document.getElementById('rotationToggle');
+    
+    if (modelViewer && toggleButton) {
         const isRotating = modelViewer.hasAttribute('auto-rotate');
         
         if (isRotating) {
             modelViewer.removeAttribute('auto-rotate');
+            toggleButton.innerHTML = '&#9658;'; // Play symbol
+            toggleButton.setAttribute('aria-label', 'Start rotation');
         } else {
             modelViewer.setAttribute('auto-rotate', '');
+            modelViewer.setAttribute('rotation-per-second', '37.5deg');
+            toggleButton.innerHTML = '&#9208;'; // Stop symbol
+            toggleButton.setAttribute('aria-label', 'Stop rotation');
         }
-        
-        // Update button text
-        const button = event.target;
-        button.textContent = isRotating ? 'Start Rotation' : 'Stop Rotation';
     }
 }
 

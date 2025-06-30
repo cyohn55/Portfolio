@@ -1498,48 +1498,72 @@ section h2 {
     border-radius: 0;
 }
 
+/* Bottom Navigation */
+.bottom-navigation {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 20px;
+    z-index: 20;
+}
+
 /* Arrow Navigation Buttons */
 .model-nav-arrow {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
     background: rgba(0, 0, 0, 0.7);
     color: white;
     border: none;
-    font-size: 3rem;
-    padding: 20px 25px;
+    font-size: 2.5rem;
+    padding: 15px 20px;
     cursor: pointer;
-    z-index: 20;
     transition: all var(--transition-normal);
-    border-radius: 0;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .model-nav-arrow:hover {
     background: rgba(0, 0, 0, 0.9);
-    transform: translateY(-50%) scale(1.1);
+    transform: scale(1.1);
 }
 
-.prev-model {
-    left: 20px;
+/* Rotation Toggle Button */
+#rotationToggle {
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    border: none;
+    font-size: 1.5rem;
+    padding: 10px 15px;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    border-radius: 5px;
 }
 
-.next-model {
-    right: 20px;
+#rotationToggle:hover {
+    background: rgba(0, 0, 0, 0.9);
 }
 
-/* Mobile responsiveness for arrow buttons */
+/* Mobile responsiveness for navigation */
 @media (max-width: 768px) {
+    .bottom-navigation {
+        bottom: 15px;
+        gap: 15px;
+    }
+    
     .model-nav-arrow {
         font-size: 2rem;
-        padding: 15px 20px;
+        padding: 12px 15px;
+        width: 50px;
+        height: 50px;
     }
     
-    .prev-model {
-        left: 10px;
-    }
-    
-    .next-model {
-        right: 10px;
+    #rotationToggle {
+        font-size: 1.2rem;
+        padding: 8px 12px;
     }
 }
 

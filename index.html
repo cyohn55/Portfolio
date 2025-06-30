@@ -137,17 +137,18 @@
             </div>
             
             <div class="controls">
-                <button onclick="resetEmbeddedCamera()">Reset View</button>
-                <button onclick="toggleEmbeddedAutoRotate()">Toggle Rotation</button>
+                <button id="rotationToggle" onclick="toggleEmbeddedAutoRotate()">&#9208;</button>
             </div>
             
             <!-- Arrow Navigation -->
-            <button class="model-nav-arrow prev-model" onclick="previousModel()" aria-label="Previous model">
-                &#8249;
-            </button>
-            <button class="model-nav-arrow next-model" onclick="nextModel()" aria-label="Next model">
-                &#8250;
-            </button>
+            <div class="bottom-navigation">
+                <button class="model-nav-arrow prev-model" onclick="previousModel()" aria-label="Previous model">
+                    &#8249;
+                </button>
+                <button class="model-nav-arrow next-model" onclick="nextModel()" aria-label="Next model">
+                    &#8250;
+                </button>
+            </div>
         </model-viewer>
     </div>
 </section>
