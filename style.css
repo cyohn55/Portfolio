@@ -250,6 +250,12 @@ body {
         margin-left: 0 !important;
         margin-right: 0 !important;
     }
+
+    /* Prevent horizontal scrolling on mobile */
+    html, body {
+        overflow-x: hidden !important;
+        touch-action: pan-y; /* Allow only vertical panning */
+    }
 }
 
 /* Style for the intro section */
