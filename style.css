@@ -1548,7 +1548,7 @@ model-viewer .progress-bar {
     color: white;
     border: none;
     font-size: 2rem;
-    padding: 12px 15px;
+    padding: 0;
     cursor: pointer;
     transition: all var(--transition-normal);
     border-radius: 50%;
@@ -1557,6 +1557,8 @@ model-viewer .progress-bar {
     display: flex;
     align-items: center;
     justify-content: center;
+    line-height: 1;
+    text-align: center;
 }
 
 .model-nav-arrow:hover {
@@ -1570,7 +1572,7 @@ model-viewer .progress-bar {
     color: white;
     border: none;
     font-size: 1.5rem;
-    padding: 12px 15px;
+    padding: 0;
     cursor: pointer;
     transition: all var(--transition-normal);
     border-radius: 50%;
@@ -1579,6 +1581,8 @@ model-viewer .progress-bar {
     display: flex;
     align-items: center;
     justify-content: center;
+    line-height: 1;
+    text-align: center;
 }
 
 #rotationToggle:hover {
@@ -1594,14 +1598,14 @@ model-viewer .progress-bar {
     
     .model-nav-arrow {
         font-size: 1.8rem;
-        padding: 10px 12px;
+        padding: 0;
         width: 45px;
         height: 45px;
     }
     
     #rotationToggle {
         font-size: 1.2rem;
-        padding: 10px 12px;
+        padding: 0;
         width: 45px;
         height: 45px;
     }
