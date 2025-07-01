@@ -1601,13 +1601,19 @@ model-viewer .progress-bar {
     align-items: center;
     justify-content: center;
     line-height: 1;
-    text-indent: 4px;
-    padding-top: 2px;
+    text-indent: 0;
+    padding-top: 0;
 }
 
 #rotationToggle:hover {
     background: rgba(0, 0, 0, 0.9);
     transform: scale(1.1);
+}
+
+#rotationToggle[aria-label="Start rotation"] {
+    /* Play symbol should be 2px down and 2px to the right */
+    text-indent: 2px;
+    padding-top: 2px;
 }
 
 /* Mobile responsiveness for navigation */
@@ -1631,8 +1637,6 @@ model-viewer .progress-bar {
         height: 45px;
     }
 }
-
-
 
 /* AR Button */
 .ar-button {
