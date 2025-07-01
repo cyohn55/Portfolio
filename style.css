@@ -1533,7 +1533,7 @@ model-viewer .progress-bar {
 /* Bottom Navigation */
 .bottom-navigation {
     position: absolute;
-    bottom: 20px;
+    bottom: 80px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -1592,7 +1592,7 @@ model-viewer .progress-bar {
 /* Mobile responsiveness for navigation */
 @media (max-width: 768px) {
     .bottom-navigation {
-        bottom: 15px;
+        bottom: 60px;
         gap: 15px;
     }
     
