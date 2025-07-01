@@ -1476,6 +1476,33 @@ section h2 {
     display: none !important;
 }
 
+/* Hide all progress indicators in embedded model viewer */
+#embeddedModelViewer::part(default-progress-bar) {
+    display: none !important;
+}
+
+#embeddedModelViewer .progress-bar {
+    display: none !important;
+}
+
+/* Hide model-viewer's internal progress elements */
+model-viewer::part(default-progress-bar) {
+    display: none !important;
+}
+
+model-viewer .progress-bar {
+    display: none !important;
+}
+
+/* Force hide any progress elements that might appear during loading */
+.embedded-model-viewer model-viewer::part(default-progress-bar),
+.embedded-model-viewer model-viewer .progress-bar,
+.embedded-model-viewer ::slotted(.progress-bar) {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
 /* Embedded 3D Models Section */
 .embedded-models-section {
     margin: 0;
