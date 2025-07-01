@@ -30,11 +30,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Define exact sequence of content to be displayed
-    const finalContent = `Everyone<br>asks
+    const finalContent = `Good hiring managers<br>ask
 
 Can you<br><span class="ocr-code">CODE</span>?
 
-But, you<br>need to ask<br class="mobile-br">
+<i>Great</i> hiring managers<br>ask<br class="mobile-br">
 <a href="Pages/aboutcode.html" class="red-link">'Who&nbsp;<i>IS</i><br><span class="red-code">Code</span><span class="black-question">?</span>'</a>`;
 
     // Pre-calculate the height by temporarily showing the full content
@@ -68,8 +68,8 @@ But, you<br>need to ask<br class="mobile-br">
     // Break down the content into typing sequence - word by word with pre-defined line breaks
     const typingSequence = [
         // Everyone asks - with final layout from start
-        { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Everyone<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Everyone<br>asks</span></div>", delay: 1500, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Good hiring managers<br>&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-everyone\">Good hiring managers<br>ask</span></div>", delay: 1500, isCentered: true },
         
         // How to Code? - with final layout from start
         { content: "<div class=\"centered-who\"><span class=\"line-how\">Can<br>&nbsp;</span></div>", delay: 400, isCentered: true },
@@ -77,10 +77,10 @@ But, you<br>need to ask<br class="mobile-br">
         { content: "<div class=\"centered-who\"><span class=\"line-how\">Can you<br><span class=\"ocr-code\">CODE</span>?</span></div>", delay: 1500, isCentered: true },
         
         // But, no one asks - with final layout from start
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But,<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, you<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, you<br>need to&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\">But, you<br>need to ask</span></div>", delay: 1500, isCentered: true, clearAfter: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-but\"><i>Great</i><br>&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-but\"><i>Great</i> hiring managers<br>&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-but\"><i>Great</i> hiring managers<br>ask&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-but\"><i>Great</i> hiring managers<br>ask</span></div>", delay: 1500, isCentered: true, clearAfter: true },
         
         // Who is Code? - with final layout from start (keep original timing)
         { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who<br>&nbsp;</a></div>", delay: 600, isCentered: true },
