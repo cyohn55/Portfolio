@@ -975,14 +975,14 @@ section h2 {
         white-space: normal;
     }
     #typing-text .line-but {
-        font-size: 8rem !important;
+        font-size: 7.5rem !important;
         white-space: nowrap;
     }
     #typing-text .line-how {
         font-size: 8rem !important;
     }
     #typing-text .line-everyone {
-        font-size: 8rem !important;
+        font-size: 7.5rem !important;
     }
 
     /* Center intro heading on desktop */
@@ -992,13 +992,13 @@ section h2 {
 
     /* Fluid scaling for typing animation lines */
     #typing-text .line-everyone {
-        font-size: 8rem !important;
+        font-size: 7.5rem !important;
     }
     #typing-text .line-how {
         font-size: 8rem !important;
     }
     #typing-text .line-but {
-        font-size: 8rem !important;
+        font-size: 7.5rem !important;
         white-space: nowrap;
     }
     #typing-text a.red-link.line-who,

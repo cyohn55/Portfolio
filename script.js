@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 Can you<br><span class="ocr-code">CODE</span>?
 
-<i>Great</i> hiring managers<br>ask<br class="mobile-br">
+<i>Great</i> hiring<br>managers ask<br class="mobile-br">
 <a href="Pages/aboutcode.html" class="red-link">'Who&nbsp;<i>IS</i><br><span class="red-code">Code</span><span class="black-question">?</span>'</a>`;
 
     // Pre-calculate the height by temporarily showing the full content
@@ -77,10 +77,9 @@ Can you<br><span class="ocr-code">CODE</span>?
         { content: "<div class=\"centered-who\"><span class=\"line-how\">Can you<br><span class=\"ocr-code\">CODE</span>?</span></div>", delay: 1500, isCentered: true },
         
         // But, no one asks - with final layout from start
-        { content: "<div class=\"centered-who\"><span class=\"line-but\"><i>Great</i><br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\"><i>Great</i> hiring managers<br>&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\"><i>Great</i> hiring managers<br>ask&nbsp;</span></div>", delay: 400, isCentered: true },
-        { content: "<div class=\"centered-who\"><span class=\"line-but\"><i>Great</i> hiring managers<br>ask</span></div>", delay: 1500, isCentered: true, clearAfter: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-but\"><i>Great</i> hiring<br>&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-but\"><i>Great</i> hiring<br>managers&nbsp;</span></div>", delay: 400, isCentered: true },
+        { content: "<div class=\"centered-who\"><span class=\"line-but\"><i>Great</i> hiring<br>managers ask</span></div>", delay: 1500, isCentered: true, clearAfter: true },
         
         // Who is Code? - with final layout from start (keep original timing)
         { content: "<div class=\"centered-who\"><a href=\"Pages/aboutcode.html\" class=\"red-link line-who\">Who<br>&nbsp;</a></div>", delay: 600, isCentered: true },
