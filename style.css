@@ -1567,20 +1567,20 @@ model-viewer .progress-bar {
 
 /* Specific positioning for left arrow */
 .prev-model {
-    transform: translateY(-2px);
+    padding-bottom: 4px;
 }
 
 .prev-model:hover {
-    transform: translateY(-2px) scale(1.1);
+    transform: scale(1.1);
 }
 
 /* Specific positioning for right arrow */
 .next-model {
-    transform: translateY(-2px);
+    padding-bottom: 4px;
 }
 
 .next-model:hover {
-    transform: translateY(-2px) scale(1.1);
+    transform: scale(1.1);
 }
 
 /* Rotation Toggle Button */
@@ -1600,12 +1600,13 @@ model-viewer .progress-bar {
     justify-content: center;
     line-height: 1;
     text-align: center;
-    transform: translate(2px, 2px);
+    text-indent: 2px;
+    padding-top: 2px;
 }
 
 #rotationToggle:hover {
     background: rgba(0, 0, 0, 0.9);
-    transform: translate(2px, 2px) scale(1.1);
+    transform: scale(1.1);
 }
 
 /* Mobile responsiveness for navigation */
