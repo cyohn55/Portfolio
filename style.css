@@ -1568,19 +1568,21 @@ model-viewer .progress-bar {
 /* Specific positioning for left arrow */
 .prev-model {
     padding-bottom: 4px;
+    transform: translateX(-2px);
 }
 
 .prev-model:hover {
-    transform: scale(1.1);
+    transform: translateX(-2px) scale(1.1);
 }
 
 /* Specific positioning for right arrow */
 .next-model {
     padding-bottom: 4px;
+    transform: translateX(2px);
 }
 
 .next-model:hover {
-    transform: scale(1.1);
+    transform: translateX(2px) scale(1.1);
 }
 
 /* Rotation Toggle Button */
@@ -1599,8 +1601,7 @@ model-viewer .progress-bar {
     align-items: center;
     justify-content: center;
     line-height: 1;
-    text-align: center;
-    text-indent: 2px;
+    text-indent: 4px;
     padding-top: 2px;
 }
 
