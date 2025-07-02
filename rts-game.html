@@ -454,10 +454,33 @@
             gameState.selectedAnimals.forEach((animal, index) => {
                 const base = {
                     animal: animal,
+                    team: 'player',
                     x: 200 + (index * 150),
                     y: 200,
                     lastSpawn: 0,
                     spawnInterval: 15000, // 15 seconds
+                    size: 40
+                };
+                gameState.bases.push(base);
+            });
+
+            // Create enemy bases with 3 random remaining animals
+            const remainingAnimals = Object.keys(animalConfigs).filter(a => !gameState.selectedAnimals.includes(a));
+            // Shuffle simple
+            for (let i = remainingAnimals.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [remainingAnimals[i], remainingAnimals[j]] = [remainingAnimals[j], remainingAnimals[i]];
+            }
+            const enemyAnimals = remainingAnimals.slice(0, 3);
+
+            enemyAnimals.forEach((animal, index) => {
+                const base = {
+                    animal: animal,
+                    team: 'enemy',
+                    x: gameState.mapSize.width - (200 + (index * 150)),
+                    y: gameState.mapSize.height - 200,
+                    lastSpawn: 0,
+                    spawnInterval: 15000,
                     size: 40
                 };
                 gameState.bases.push(base);
@@ -620,6 +643,7 @@
             const maxY = Math.max(gameState.selectionStart.y, y);
 
             gameState.selectedUnits = gameState.units.filter(unit => 
+                unit.team === 'player' &&
                 unit.x >= minX && unit.x <= maxX && 
                 unit.y >= minY && unit.y <= maxY
             );
@@ -646,7 +670,7 @@
         }
 
         function selectAllUnitsOfType(animalType) {
-            gameState.selectedUnits = gameState.units.filter(unit => unit.animal === animalType);
+            gameState.selectedUnits = gameState.units.filter(unit => unit.animal === animalType && unit.team === 'player');
             updateSelectedCount();
             updateUnitSelectionVisuals();
 
@@ -716,6 +740,7 @@
             
             const unit = {
                 animal: base.animal,
+                team: base.team,
                 x: base.x + Math.cos(angle) * distance,
                 y: base.y + Math.sin(angle) * distance,
                 targetX: null,
@@ -763,6 +788,25 @@
                         unit.isMoving = false;
                         unit.targetX = null;
                         unit.targetY = null;
+                    }
+                }
+
+                if (unit.team === 'enemy' && !unit.isMoving) {
+                    // Simple AI: move toward nearest player base
+                    const playerBases = gameState.bases.filter(b => b.team === 'player');
+                    if (playerBases.length > 0) {
+                        let nearest = playerBases[0];
+                        let nearestDist = Math.hypot(nearest.x - unit.x, nearest.y - unit.y);
+                        playerBases.forEach(b => {
+                            const d = Math.hypot(b.x - unit.x, b.y - unit.y);
+                            if (d < nearestDist) {
+                                nearest = b;
+                                nearestDist = d;
+                            }
+                        });
+                        unit.targetX = nearest.x;
+                        unit.targetY = nearest.y;
+                        unit.isMoving = true;
                     }
                 }
             });
