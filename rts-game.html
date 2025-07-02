@@ -341,19 +341,6 @@
             modelsLoaded: false
         };
 
-        // --- Camera Helpers ---
-        function clampCamera() {
-            const canvas = document.getElementById('gameCanvas');
-            const maxX = Math.max(0, gameState.mapSize.width - canvas.width);
-            const maxY = Math.max(0, gameState.mapSize.height - canvas.height);
-            gameState.camera.x = Math.max(0, Math.min(gameState.camera.x, maxX));
-            gameState.camera.y = Math.max(0, Math.min(gameState.camera.y, maxY));
-        }
-
-        // Touch pan state
-        let isTouchPanning = false;
-        let lastPanCenter = null;
-
         // Animal configurations with 3D model paths
         const animalConfigs = {
             bear: { speed: 1, size: 40, model: 'models/Bear.glb', baseStyle: 'cave', emoji: '🐻' },
@@ -534,9 +521,6 @@
             canvas.addEventListener('touchmove', handleTouchMove);
             canvas.addEventListener('touchend', handleTouchEnd);
 
-            // Wheel / trackpad scroll for camera panning
-            canvas.addEventListener('wheel', handleWheel, { passive: false });
-
             // Window resize
             window.addEventListener('resize', () => {
                 canvas.width = window.innerWidth;
@@ -576,39 +560,18 @@
         }
 
         function handleTouchStart(e) {
-            if (e.touches.length === 2) {
-                // Begin panning
-                isTouchPanning = true;
-                lastPanCenter = {
-                    x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-                    y: (e.touches[0].clientY + e.touches[1].clientY) / 2
-                };
-            } else if (e.touches.length === 1) {
-                e.preventDefault();
-                const touch = e.touches[0];
-                const rect = e.target.getBoundingClientRect();
-                const x = touch.clientX - rect.left + gameState.camera.x;
-                const y = touch.clientY - rect.top + gameState.camera.y;
-                startSelection(x, y);
-            }
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = e.target.getBoundingClientRect();
+            const x = touch.clientX - rect.left + gameState.camera.x;
+            const y = touch.clientY - rect.top + gameState.camera.y;
+            
+            startSelection(x, y);
         }
 
         function handleTouchMove(e) {
-            if (isTouchPanning && e.touches.length === 2) {
-                e.preventDefault();
-                const center = {
-                    x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-                    y: (e.touches[0].clientY + e.touches[1].clientY) / 2
-                };
-                const dx = lastPanCenter.x - center.x;
-                const dy = lastPanCenter.y - center.y;
-                gameState.camera.x += dx;
-                gameState.camera.y += dy;
-                lastPanCenter = center;
-                clampCamera();
-                updateUnitModelPositions();
-            } else if (gameState.isSelecting && e.touches.length === 1) {
-                e.preventDefault();
+            e.preventDefault();
+            if (gameState.isSelecting && e.touches.length === 1) {
                 const touch = e.touches[0];
                 const rect = e.target.getBoundingClientRect();
                 const x = touch.clientX - rect.left + gameState.camera.x;
@@ -618,26 +581,16 @@
         }
 
         function handleTouchEnd(e) {
-            if (isTouchPanning && e.touches.length < 2) {
-                isTouchPanning = false;
-            }
-
-            if (gameState.isSelecting && e.changedTouches.length > 0) {
-                e.preventDefault();
-                const touch = e.changedTouches[0];
-                const rect = e.target.getBoundingClientRect();
-                const x = touch.clientX - rect.left + gameState.camera.x;
-                const y = touch.clientY - rect.top + gameState.camera.y;
-                finishSelection(x, y);
-            }
-        }
-
-        function handleWheel(e) {
             e.preventDefault();
-            gameState.camera.x += e.deltaX;
-            gameState.camera.y += e.deltaY;
-            clampCamera();
-            updateUnitModelPositions();
+            if (gameState.isSelecting) {
+                if (e.changedTouches.length > 0) {
+                    const touch = e.changedTouches[0];
+                    const rect = e.target.getBoundingClientRect();
+                    const x = touch.clientX - rect.left + gameState.camera.x;
+                    const y = touch.clientY - rect.top + gameState.camera.y;
+                    finishSelection(x, y);
+                }
+            }
         }
 
         function startSelection(x, y) {
