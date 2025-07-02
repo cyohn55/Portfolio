@@ -752,7 +752,9 @@
                             const angle = Math.atan2(dy, dx) * (180 / Math.PI);
                             const modelViewer = unit.modelElement.querySelector('model-viewer');
                             if (modelViewer) {
-                                modelViewer.cameraOrbit = `${angle + 90}deg 75deg 10m`;
+                                // Maintain proper camera distance and field of view while rotating
+                                modelViewer.cameraOrbit = `${angle + 90}deg 75deg 100m`;
+                                modelViewer.fieldOfView = '15deg';
                             }
                         }
                     } else {
@@ -769,14 +771,15 @@
         function updateUnitModelPositions() {
             gameState.units.forEach(unit => {
                 if (unit.modelElement) {
-                    const modelSize = unit.size * 2;
+                    const modelSize = unit.size * 3; // Keep consistent with creation size
                     const screenX = unit.x - gameState.camera.x - modelSize/2;
                     const screenY = unit.y - gameState.camera.y - modelSize/2;
                     
                     unit.modelElement.style.left = screenX + 'px';
                     unit.modelElement.style.top = screenY + 'px';
-                    unit.modelElement.style.width = modelSize + 'px';
-                    unit.modelElement.style.height = modelSize + 'px';
+                    // Don't resize - maintain original size to prevent clipping
+                    // unit.modelElement.style.width = modelSize + 'px';
+                    // unit.modelElement.style.height = modelSize + 'px';
                 }
             });
         }
