@@ -129,7 +129,6 @@
             width: 100vw;
             height: 100vh;
             display: none;
-            overflow: visible;
         }
 
         #gameCanvas {
@@ -150,29 +149,18 @@
             height: 100%;
             pointer-events: none;
             z-index: 5;
-            overflow: visible;
-            transform: translateZ(0);
         }
 
         .unit-model {
             position: absolute;
             pointer-events: none;
-            transition: none;
-            overflow: visible;
             z-index: 15;
-            transform: translateZ(0);
-            contain: none;
         }
 
         .unit-model model-viewer {
             width: 100%;
             height: 100%;
             --progress-bar-display: none;
-            overflow: visible;
-            transform: translateZ(0);
-            contain: none;
-            clip-path: none;
-            mask: none;
         }
 
         .unit-model.selected model-viewer {
@@ -680,23 +668,41 @@
             modelViewer.cameraControls = false;
             modelViewer.disableZoom = true;
             modelViewer.rotationPerSecond = '0deg';
-            modelViewer.style.width = (unit.size * 2) + 'px';
-            modelViewer.style.height = (unit.size * 2) + 'px';
+            modelViewer.style.width = (unit.size * 3) + 'px';
+            modelViewer.style.height = (unit.size * 3) + 'px';
             
-            // Set camera angle for better view
-            modelViewer.cameraOrbit = '45deg 75deg 8m';
-            modelViewer.fieldOfView = '25deg';
-            modelViewer.minCameraOrbit = 'auto auto 5m';
-            modelViewer.maxCameraOrbit = 'auto auto 12m';
+            // Fix camera and framing to prevent clipping
+            modelViewer.cameraOrbit = '0deg 90deg 50m';
+            modelViewer.fieldOfView = '10deg';
+            modelViewer.minCameraOrbit = 'auto auto auto';
+            modelViewer.maxCameraOrbit = 'auto auto auto';
+            modelViewer.setAttribute('camera-target', 'auto auto auto');
+            modelViewer.setAttribute('max-field-of-view', '45deg');
+            modelViewer.setAttribute('min-field-of-view', '5deg');
             
-            // Prevent clipping and ensure full visibility
-            modelViewer.style.overflow = 'visible';
-            modelViewer.style.contain = 'none';
-            modelViewer.style.clipPath = 'none';
-            modelViewer.style.mask = 'none';
-            modelViewer.style.transform = 'translateZ(0)';
-            modelViewer.setAttribute('bounds', 'tight');
-            modelViewer.setAttribute('disable-tap', '');
+            // Core model-viewer settings to prevent internal clipping
+            modelViewer.setAttribute('auto-rotate-delay', '0');
+            modelViewer.setAttribute('interaction-prompt', 'none');
+            modelViewer.setAttribute('loading', 'eager');
+            modelViewer.setAttribute('reveal', 'auto');
+            
+            // Wait for model to load then adjust framing
+            modelViewer.addEventListener('load', () => {
+                // Get the model's actual bounds and adjust camera accordingly
+                setTimeout(() => {
+                    try {
+                        const center = modelViewer.getCameraTarget();
+                        const bounds = modelViewer.getBoundingBoxCenter();
+                        // Set camera far enough to see entire model
+                        modelViewer.cameraOrbit = '0deg 75deg 100m';
+                        modelViewer.fieldOfView = '15deg';
+                    } catch (e) {
+                        // Fallback if bounds calculation fails
+                        modelViewer.cameraOrbit = '0deg 75deg 80m';
+                        modelViewer.fieldOfView = '20deg';
+                    }
+                }, 100);
+            });
             
             modelContainer.appendChild(modelViewer);
             document.getElementById('modelsContainer').appendChild(modelContainer);
