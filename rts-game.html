@@ -122,6 +122,7 @@
             width: 100vw;
             height: 100vh;
             display: none;
+            overflow: visible;
         }
 
         #gameCanvas {
@@ -129,6 +130,8 @@
             height: 100%;
             background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
             cursor: crosshair;
+            position: relative;
+            z-index: 1;
         }
 
         /* 3D Models Container */
@@ -139,19 +142,23 @@
             width: 100%;
             height: 100%;
             pointer-events: none;
-            z-index: 10;
+            z-index: 5;
+            overflow: visible;
         }
 
         .unit-model {
             position: absolute;
             pointer-events: none;
             transition: none;
+            overflow: visible;
+            z-index: 15;
         }
 
         .unit-model model-viewer {
             width: 100%;
             height: 100%;
             --progress-bar-display: none;
+            overflow: visible;
         }
 
         .unit-model.selected model-viewer {
@@ -659,12 +666,14 @@
             modelViewer.cameraControls = false;
             modelViewer.disableZoom = true;
             modelViewer.rotationPerSecond = '0deg';
-            modelViewer.style.width = unit.size + 'px';
-            modelViewer.style.height = unit.size + 'px';
+            modelViewer.style.width = (unit.size * 1.5) + 'px';
+            modelViewer.style.height = (unit.size * 1.5) + 'px';
             
             // Set camera angle for better view
-            modelViewer.cameraOrbit = '45deg 75deg 10m';
-            modelViewer.fieldOfView = '45deg';
+            modelViewer.cameraOrbit = '45deg 75deg 5m';
+            modelViewer.fieldOfView = '30deg';
+            modelViewer.minCameraOrbit = 'auto auto 3m';
+            modelViewer.maxCameraOrbit = 'auto auto 8m';
             
             modelContainer.appendChild(modelViewer);
             document.getElementById('modelsContainer').appendChild(modelContainer);
@@ -731,13 +740,14 @@
         function updateUnitModelPositions() {
             gameState.units.forEach(unit => {
                 if (unit.modelElement) {
-                    const screenX = unit.x - gameState.camera.x - unit.size/2;
-                    const screenY = unit.y - gameState.camera.y - unit.size/2;
+                    const modelSize = unit.size * 1.5;
+                    const screenX = unit.x - gameState.camera.x - modelSize/2;
+                    const screenY = unit.y - gameState.camera.y - modelSize/2;
                     
                     unit.modelElement.style.left = screenX + 'px';
                     unit.modelElement.style.top = screenY + 'px';
-                    unit.modelElement.style.width = unit.size + 'px';
-                    unit.modelElement.style.height = unit.size + 'px';
+                    unit.modelElement.style.width = modelSize + 'px';
+                    unit.modelElement.style.height = modelSize + 'px';
                 }
             });
         }
