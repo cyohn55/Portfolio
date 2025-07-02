@@ -747,14 +747,16 @@
                         unit.x += moveX;
                         unit.y += moveY;
                         
-                        // Rotate model to face movement direction
+                        // Rotate model to face movement direction (rotate the model, not the camera)
                         if (unit.modelElement) {
-                            const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+                            const angleRad = Math.atan2(dy, dx); // radians
+                            const angleDeg = (angleRad * 180 / Math.PI);
                             const modelViewer = unit.modelElement.querySelector('model-viewer');
                             if (modelViewer) {
-                                // Maintain proper camera distance and field of view while rotating
-                                modelViewer.cameraOrbit = `${angle + 90}deg 75deg 100m`;
-                                modelViewer.fieldOfView = '15deg';
+                                // Adjust yaw so that the model front aligns with motion direction.
+                                // Most GLB exports have the model facing the -Z axis; offset by +90 deg.
+                                const yaw = -(angleDeg - 90); // Negate for correct handedness & offset
+                                modelViewer.setAttribute('rotation', `0deg ${yaw.toFixed(2)}deg 0deg`);
                             }
                         }
                     } else {
