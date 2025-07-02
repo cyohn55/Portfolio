@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animal RTS - Choose Your Army</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            overflow: hidden;
+        }
+
+        /* Title Screen */
+        #titleScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        #titleScreen h1 {
+            color: white;
+            font-size: 3rem;
+            margin-bottom: 2rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #titleScreen p {
+            color: white;
+            font-size: 1.2rem;
+            margin-bottom: 3rem;
+            text-align: center;
+        }
+
+        .animal-selection {
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .animal-card {
+            background: rgba(255,255,255,0.1);
+            border: 3px solid transparent;
+            border-radius: 15px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            min-width: 150px;
+            text-align: center;
+        }
+
+        .animal-card:hover {
+            background: rgba(255,255,255,0.2);
+            transform: translateY(-5px);
+        }
+
+        .animal-card.selected {
+            border-color: #00ff88;
+            background: rgba(0,255,136,0.2);
+            box-shadow: 0 0 20px rgba(0,255,136,0.5);
+        }
+
+        .animal-card h3 {
+            color: white;
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .animal-card p {
+            color: rgba(255,255,255,0.8);
+            font-size: 0.9rem;
+            margin: 0;
+        }
+
+        .start-btn {
+            background: linear-gradient(45deg, #00ff88, #00cc6a);
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 10px;
+            color: white;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .start-btn.enabled {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .start-btn:hover.enabled {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0,255,136,0.4);
+        }
+
+        /* Game Screen */
+        #gameScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: none;
+        }
+
+        #gameCanvas {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            cursor: crosshair;
+        }
+
+        /* UI Elements */
+        .ui-panel {
+            position: absolute;
+            background: rgba(0,0,0,0.8);
+            border-radius: 10px;
+            padding: 1rem;
+            color: white;
+            backdrop-filter: blur(10px);
+        }
+
+        #resourcePanel {
+            top: 20px;
+            left: 20px;
+        }
+
+        #controlPanel {
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 1rem;
+        }
+
+        .animal-btn {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 10px;
+            padding: 0.5rem 1rem;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .animal-btn:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: rgba(255,255,255,0.5);
+        }
+
+        .animal-btn.active {
+            background: rgba(0,255,136,0.3);
+            border-color: #00ff88;
+        }
+
+        #selectionBox {
+            position: absolute;
+            border: 2px dashed #00ff88;
+            background: rgba(0,255,136,0.1);
+            pointer-events: none;
+            display: none;
+        }
+
+        /* Mini-map */
+        #miniMap {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 200px;
+            height: 150px;
+            background: rgba(0,0,0,0.7);
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 10px;
+        }
+    </style>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+</head>
+<body>
+    <!-- Title Screen -->
+    <div id="titleScreen">
+        <h1>🎮 Animal RTS</h1>
+        <p>Choose 3 animals to build your army and conquer the battlefield!</p>
+        
+        <div class="animal-selection">
+            <div class="animal-card" data-animal="bear">
+                <h3>🐻 Bear</h3>
+                <p>Strong & Durable<br>Slow but powerful units</p>
+            </div>
+            <div class="animal-card" data-animal="bee">
+                <h3>🐝 Bee</h3>
+                <p>Fast & Agile<br>Quick swarm attacks</p>
+            </div>
+            <div class="animal-card" data-animal="turtle">
+                <h3>🐢 Turtle</h3>
+                <p>Defensive<br>High armor, steady advance</p>
+            </div>
+            <div class="animal-card" data-animal="fox">
+                <h3>🦊 Fox</h3>
+                <p>Cunning & Quick<br>Hit and run tactics</p>
+            </div>
+            <div class="animal-card" data-animal="frog">
+                <h3>🐸 Frog</h3>
+                <p>Amphibious<br>Can cross water</p>
+            </div>
+            <div class="animal-card" data-animal="owl">
+                <h3>🦉 Owl</h3>
+                <p>Air Support<br>Flying reconnaissance</p>
+            </div>
+            <div class="animal-card" data-animal="pig">
+                <h3>🐷 Pig</h3>
+                <p>Resource Gatherer<br>Boosts economy</p>
+            </div>
+            <div class="animal-card" data-animal="cat">
+                <h3>🐱 Cat</h3>
+                <p>Stealth Hunter<br>Invisible attacks</p>
+            </div>
+            <div class="animal-card" data-animal="chicken">
+                <h3>🐔 Chicken</h3>
+                <p>Rapid Breeder<br>Fast unit production</p>
+            </div>
+            <div class="animal-card" data-animal="dolphin">
+                <h3>🐬 Dolphin</h3>
+                <p>Naval Unit<br>Controls waterways</p>
+            </div>
+        </div>
+        
+        <button class="start-btn" id="startBtn">Start Game</button>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="gameScreen">
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- UI Panels -->
+        <div id="resourcePanel" class="ui-panel">
+            <div>Population: <span id="population">0</span></div>
+            <div>Selected: <span id="selectedCount">0</span></div>
+        </div>
+
+        <div id="controlPanel" class="ui-panel">
+            <!-- Animal control buttons will be dynamically added here -->
+        </div>
+
+        <div id="miniMap" class="ui-panel">
+            <canvas id="miniMapCanvas" width="200" height="150"></canvas>
+        </div>
+
+        <div id="selectionBox"></div>
+    </div>
+
+    <script>
+        // Game State
+        let gameState = {
+            selectedAnimals: [],
+            units: [],
+            bases: [],
+            selectedUnits: [],
+            gameStarted: false,
+            population: 0,
+            lastSpawnTime: 0,
+            camera: { x: 0, y: 0 },
+            isSelecting: false,
+            selectionStart: { x: 0, y: 0 },
+            mapSize: { width: 2000, height: 1500 }
+        };
+
+        // Animal configurations
+        const animalConfigs = {
+            bear: { speed: 1, size: 20, color: '#8B4513', baseStyle: 'cave', emoji: '🐻' },
+            bee: { speed: 3, size: 8, color: '#FFD700', baseStyle: 'hive', emoji: '🐝' },
+            turtle: { speed: 0.5, size: 16, color: '#228B22', baseStyle: 'pond', emoji: '🐢' },
+            fox: { speed: 2.5, size: 12, color: '#FF4500', baseStyle: 'den', emoji: '🦊' },
+            frog: { speed: 2, size: 10, color: '#32CD32', baseStyle: 'lily', emoji: '🐸' },
+            owl: { speed: 2, size: 14, color: '#8B7355', baseStyle: 'tree', emoji: '🦉' },
+            pig: { speed: 1.5, size: 15, color: '#FFC0CB', baseStyle: 'pen', emoji: '🐷' },
+            cat: { speed: 2.2, size: 11, color: '#696969', baseStyle: 'house', emoji: '🐱' },
+            chicken: { speed: 1.8, size: 9, color: '#FFFFFF', baseStyle: 'coop', emoji: '🐔' },
+            dolphin: { speed: 2.5, size: 18, color: '#00BFFF', baseStyle: 'pool', emoji: '🐬' }
+        };
+
+        // Title Screen Logic
+        document.addEventListener('DOMContentLoaded', function() {
+            const animalCards = document.querySelectorAll('.animal-card');
+            const startBtn = document.getElementById('startBtn');
+
+            animalCards.forEach(card => {
+                card.addEventListener('click', function() {
+                    const animal = this.dataset.animal;
+                    
+                    if (this.classList.contains('selected')) {
+                        this.classList.remove('selected');
+                        gameState.selectedAnimals = gameState.selectedAnimals.filter(a => a !== animal);
+                    } else if (gameState.selectedAnimals.length < 3) {
+                        this.classList.add('selected');
+                        gameState.selectedAnimals.push(animal);
+                    }
+
+                    // Update start button
+                    if (gameState.selectedAnimals.length === 3) {
+                        startBtn.classList.add('enabled');
+                        startBtn.textContent = `Start with ${gameState.selectedAnimals.map(a => animalConfigs[a].emoji).join(' ')}`;
+                    } else {
+                        startBtn.classList.remove('enabled');
+                        startBtn.textContent = `Select ${3 - gameState.selectedAnimals.length} more animals`;
+                    }
+                });
+            });
+
+            startBtn.addEventListener('click', function() {
+                if (gameState.selectedAnimals.length === 3) {
+                    startGame();
+                }
+            });
+        });
+
+        function startGame() {
+            document.getElementById('titleScreen').style.display = 'none';
+            document.getElementById('gameScreen').style.display = 'block';
+            gameState.gameStarted = true;
+
+            initializeGame();
+            gameLoop();
+        }
+
+        function initializeGame() {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Set canvas size
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            // Create bases for selected animals
+            gameState.selectedAnimals.forEach((animal, index) => {
+                const base = {
+                    animal: animal,
+                    x: 200 + (index * 150),
+                    y: 200,
+                    lastSpawn: 0,
+                    spawnInterval: 5000, // 5 seconds
+                    size: 40
+                };
+                gameState.bases.push(base);
+            });
+
+            // Create control buttons
+            createControlButtons();
+
+            // Add event listeners
+            setupEventListeners();
+        }
+
+        function createControlButtons() {
+            const controlPanel = document.getElementById('controlPanel');
+            controlPanel.innerHTML = '';
+
+            gameState.selectedAnimals.forEach(animal => {
+                const btn = document.createElement('button');
+                btn.className = 'animal-btn';
+                btn.textContent = `Select All ${animalConfigs[animal].emoji}`;
+                btn.dataset.animal = animal;
+                btn.addEventListener('click', () => selectAllUnitsOfType(animal));
+                controlPanel.appendChild(btn);
+            });
+        }
+
+        function setupEventListeners() {
+            const canvas = document.getElementById('gameCanvas');
+
+            // Mouse events
+            canvas.addEventListener('mousedown', handleMouseDown);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mouseup', handleMouseUp);
+            canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+            // Touch events for mobile
+            canvas.addEventListener('touchstart', handleTouchStart);
+            canvas.addEventListener('touchmove', handleTouchMove);
+            canvas.addEventListener('touchend', handleTouchEnd);
+
+            // Window resize
+            window.addEventListener('resize', () => {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            });
+        }
+
+        function handleMouseDown(e) {
+            const rect = e.target.getBoundingClientRect();
+            const x = e.clientX - rect.left + gameState.camera.x;
+            const y = e.clientY - rect.top + gameState.camera.y;
+
+            if (e.button === 0) { // Left click
+                startSelection(x, y);
+            } else if (e.button === 2) { // Right click
+                moveSelectedUnits(x, y);
+            }
+        }
+
+        function handleMouseMove(e) {
+            if (gameState.isSelecting) {
+                const rect = e.target.getBoundingClientRect();
+                const x = e.clientX - rect.left + gameState.camera.x;
+                const y = e.clientY - rect.top + gameState.camera.y;
+                updateSelection(x, y);
+            }
+        }
+
+        function handleMouseUp(e) {
+            if (gameState.isSelecting) {
+                const rect = e.target.getBoundingClientRect();
+                const x = e.clientX - rect.left + gameState.camera.x;
+                const y = e.clientY - rect.top + gameState.camera.y;
+                finishSelection(x, y);
+            }
+        }
+
+        function handleTouchStart(e) {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = e.target.getBoundingClientRect();
+            const x = touch.clientX - rect.left + gameState.camera.x;
+            const y = touch.clientY - rect.top + gameState.camera.y;
+            
+            startSelection(x, y);
+        }
+
+        function handleTouchMove(e) {
+            e.preventDefault();
+            if (gameState.isSelecting && e.touches.length === 1) {
+                const touch = e.touches[0];
+                const rect = e.target.getBoundingClientRect();
+                const x = touch.clientX - rect.left + gameState.camera.x;
+                const y = touch.clientY - rect.top + gameState.camera.y;
+                updateSelection(x, y);
+            }
+        }
+
+        function handleTouchEnd(e) {
+            e.preventDefault();
+            if (gameState.isSelecting) {
+                if (e.changedTouches.length > 0) {
+                    const touch = e.changedTouches[0];
+                    const rect = e.target.getBoundingClientRect();
+                    const x = touch.clientX - rect.left + gameState.camera.x;
+                    const y = touch.clientY - rect.top + gameState.camera.y;
+                    finishSelection(x, y);
+                }
+            }
+        }
+
+        function startSelection(x, y) {
+            // Check if clicking on a unit first
+            const clickedUnit = gameState.units.find(unit => {
+                const dx = unit.x - x;
+                const dy = unit.y - y;
+                return Math.sqrt(dx * dx + dy * dy) < unit.size;
+            });
+
+            if (clickedUnit) {
+                // Single unit selection
+                gameState.selectedUnits = [clickedUnit];
+                updateSelectedCount();
+            } else {
+                // Start box selection
+                gameState.isSelecting = true;
+                gameState.selectionStart = { x, y };
+                gameState.selectedUnits = [];
+                updateSelectedCount();
+            }
+        }
+
+        function updateSelection(x, y) {
+            const selectionBox = document.getElementById('selectionBox');
+            const canvas = document.getElementById('gameCanvas');
+            
+            const startX = Math.min(gameState.selectionStart.x - gameState.camera.x, x - gameState.camera.x);
+            const startY = Math.min(gameState.selectionStart.y - gameState.camera.y, y - gameState.camera.y);
+            const width = Math.abs(x - gameState.selectionStart.x);
+            const height = Math.abs(y - gameState.selectionStart.y);
+
+            selectionBox.style.left = startX + 'px';
+            selectionBox.style.top = startY + 'px';
+            selectionBox.style.width = width + 'px';
+            selectionBox.style.height = height + 'px';
+            selectionBox.style.display = 'block';
+        }
+
+        function finishSelection(x, y) {
+            gameState.isSelecting = false;
+            document.getElementById('selectionBox').style.display = 'none';
+
+            // Find units within selection box
+            const minX = Math.min(gameState.selectionStart.x, x);
+            const maxX = Math.max(gameState.selectionStart.x, x);
+            const minY = Math.min(gameState.selectionStart.y, y);
+            const maxY = Math.max(gameState.selectionStart.y, y);
+
+            gameState.selectedUnits = gameState.units.filter(unit => 
+                unit.x >= minX && unit.x <= maxX && 
+                unit.y >= minY && unit.y <= maxY
+            );
+
+            updateSelectedCount();
+        }
+
+        function moveSelectedUnits(x, y) {
+            if (gameState.selectedUnits.length > 0) {
+                // Create formation around target point
+                const formationRadius = Math.sqrt(gameState.selectedUnits.length) * 20;
+                
+                gameState.selectedUnits.forEach((unit, index) => {
+                    const angle = (index / gameState.selectedUnits.length) * Math.PI * 2;
+                    const offsetX = Math.cos(angle) * formationRadius;
+                    const offsetY = Math.sin(angle) * formationRadius;
+                    
+                    unit.targetX = x + offsetX;
+                    unit.targetY = y + offsetY;
+                    unit.isMoving = true;
+                });
+            }
+        }
+
+        function selectAllUnitsOfType(animalType) {
+            gameState.selectedUnits = gameState.units.filter(unit => unit.animal === animalType);
+            updateSelectedCount();
+
+            // Visual feedback
+            const buttons = document.querySelectorAll('.animal-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`[data-animal="${animalType}"]`).classList.add('active');
+        }
+
+        function spawnUnit(base) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = base.size + 20;
+            
+            const unit = {
+                animal: base.animal,
+                x: base.x + Math.cos(angle) * distance,
+                y: base.y + Math.sin(angle) * distance,
+                targetX: null,
+                targetY: null,
+                isMoving: false,
+                size: animalConfigs[base.animal].size,
+                speed: animalConfigs[base.animal].speed,
+                color: animalConfigs[base.animal].color,
+                id: Date.now() + Math.random()
+            };
+
+            gameState.units.push(unit);
+            gameState.population++;
+        }
+
+        function updateUnits(deltaTime) {
+            gameState.units.forEach(unit => {
+                if (unit.isMoving && unit.targetX !== null && unit.targetY !== null) {
+                    const dx = unit.targetX - unit.x;
+                    const dy = unit.targetY - unit.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance > 5) {
+                        const moveX = (dx / distance) * unit.speed;
+                        const moveY = (dy / distance) * unit.speed;
+                        unit.x += moveX;
+                        unit.y += moveY;
+                    } else {
+                        unit.isMoving = false;
+                        unit.targetX = null;
+                        unit.targetY = null;
+                    }
+                }
+            });
+        }
+
+        function updateSelectedCount() {
+            document.getElementById('selectedCount').textContent = gameState.selectedUnits.length;
+            document.getElementById('population').textContent = gameState.population;
+        }
+
+        function render() {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Save context for camera transform
+            ctx.save();
+            ctx.translate(-gameState.camera.x, -gameState.camera.y);
+
+            // Draw bases
+            gameState.bases.forEach(base => {
+                const config = animalConfigs[base.animal];
+                
+                // Base structure
+                ctx.fillStyle = config.color;
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 3;
+                
+                // Different base shapes based on animal
+                if (config.baseStyle === 'hive') {
+                    drawHexagon(ctx, base.x, base.y, base.size);
+                } else if (config.baseStyle === 'pond') {
+                    ctx.beginPath();
+                    ctx.arc(base.x, base.y, base.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                } else {
+                    ctx.fillRect(base.x - base.size/2, base.y - base.size/2, base.size, base.size);
+                    ctx.strokeRect(base.x - base.size/2, base.y - base.size/2, base.size, base.size);
+                }
+
+                // Base emoji
+                ctx.font = '24px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#fff';
+                ctx.fillText(config.emoji, base.x, base.y + 8);
+            });
+
+            // Draw units
+            gameState.units.forEach(unit => {
+                const config = animalConfigs[unit.animal];
+                
+                // Unit body
+                ctx.fillStyle = unit.color;
+                ctx.strokeStyle = gameState.selectedUnits.includes(unit) ? '#00ff88' : '#000';
+                ctx.lineWidth = gameState.selectedUnits.includes(unit) ? 3 : 1;
+                
+                ctx.beginPath();
+                ctx.arc(unit.x, unit.y, unit.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Unit emoji
+                ctx.font = '16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#000';
+                ctx.fillText(config.emoji, unit.x, unit.y + 5);
+
+                // Movement target indicator
+                if (unit.isMoving && unit.targetX && unit.targetY) {
+                    ctx.strokeStyle = '#00ff88';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    ctx.moveTo(unit.x, unit.y);
+                    ctx.lineTo(unit.targetX, unit.targetY);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+            });
+
+            ctx.restore();
+
+            // Draw mini-map
+            renderMiniMap();
+        }
+
+        function drawHexagon(ctx, x, y, size) {
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const angle = (i * Math.PI) / 3;
+                const px = x + Math.cos(angle) * size;
+                const py = y + Math.sin(angle) * size;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        function renderMiniMap() {
+            const miniCanvas = document.getElementById('miniMapCanvas');
+            const miniCtx = miniCanvas.getContext('2d');
+            
+            // Clear mini-map
+            miniCtx.clearRect(0, 0, miniCanvas.width, miniCanvas.height);
+            
+            const scaleX = miniCanvas.width / gameState.mapSize.width;
+            const scaleY = miniCanvas.height / gameState.mapSize.height;
+
+            // Draw bases on mini-map
+            gameState.bases.forEach(base => {
+                miniCtx.fillStyle = animalConfigs[base.animal].color;
+                miniCtx.fillRect(
+                    base.x * scaleX - 2, 
+                    base.y * scaleY - 2, 
+                    4, 4
+                );
+            });
+
+            // Draw units on mini-map
+            gameState.units.forEach(unit => {
+                miniCtx.fillStyle = gameState.selectedUnits.includes(unit) ? '#00ff88' : unit.color;
+                miniCtx.fillRect(
+                    unit.x * scaleX - 1, 
+                    unit.y * scaleY - 1, 
+                    2, 2
+                );
+            });
+
+            // Draw camera view
+            const cameraX = gameState.camera.x * scaleX;
+            const cameraY = gameState.camera.y * scaleY;
+            const cameraW = window.innerWidth * scaleX;
+            const cameraH = window.innerHeight * scaleY;
+            
+            miniCtx.strokeStyle = '#fff';
+            miniCtx.lineWidth = 1;
+            miniCtx.strokeRect(cameraX, cameraY, cameraW, cameraH);
+        }
+
+        function gameLoop() {
+            if (!gameState.gameStarted) return;
+
+            const currentTime = Date.now();
+            const deltaTime = currentTime - (gameState.lastTime || currentTime);
+            gameState.lastTime = currentTime;
+
+            // Spawn units from bases
+            gameState.bases.forEach(base => {
+                if (currentTime - base.lastSpawn > base.spawnInterval) {
+                    spawnUnit(base);
+                    base.lastSpawn = currentTime;
+                }
+            });
+
+            // Update units
+            updateUnits(deltaTime);
+
+            // Render
+            render();
+
+            // Continue game loop
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html> 
