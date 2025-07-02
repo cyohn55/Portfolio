@@ -50,6 +50,9 @@
             display: flex;
             gap: 2rem;
             margin-bottom: 2rem;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 800px;
         }
 
         .animal-card {
@@ -60,7 +63,7 @@
             cursor: pointer;
             transition: all 0.3s ease;
             backdrop-filter: blur(10px);
-            min-width: 150px;
+            min-width: 120px;
             text-align: center;
         }
 
@@ -77,13 +80,13 @@
 
         .animal-card h3 {
             color: white;
-            font-size: 1.5rem;
+            font-size: 1.2rem;
             margin-bottom: 0.5rem;
         }
 
         .animal-card p {
             color: rgba(255,255,255,0.8);
-            font-size: 0.9rem;
+            font-size: 0.8rem;
             margin: 0;
         }
 
@@ -128,6 +131,33 @@
             cursor: crosshair;
         }
 
+        /* 3D Models Container */
+        #modelsContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .unit-model {
+            position: absolute;
+            pointer-events: none;
+            transition: none;
+        }
+
+        .unit-model model-viewer {
+            width: 100%;
+            height: 100%;
+            --progress-bar-display: none;
+        }
+
+        .unit-model.selected model-viewer {
+            filter: drop-shadow(0 0 10px #00ff88);
+        }
+
         /* UI Elements */
         .ui-panel {
             position: absolute;
@@ -136,6 +166,7 @@
             padding: 1rem;
             color: white;
             backdrop-filter: blur(10px);
+            z-index: 100;
         }
 
         #resourcePanel {
@@ -178,6 +209,7 @@
             background: rgba(0,255,136,0.1);
             pointer-events: none;
             display: none;
+            z-index: 50;
         }
 
         /* Mini-map */
@@ -190,6 +222,17 @@
             background: rgba(0,0,0,0.7);
             border: 2px solid rgba(255,255,255,0.3);
             border-radius: 10px;
+        }
+
+        /* Loading indicator */
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 1.5rem;
+            z-index: 1001;
         }
     </style>
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
@@ -250,6 +293,9 @@
     <div id="gameScreen">
         <canvas id="gameCanvas"></canvas>
         
+        <!-- 3D Models Container -->
+        <div id="modelsContainer"></div>
+        
         <!-- UI Panels -->
         <div id="resourcePanel" class="ui-panel">
             <div>Population: <span id="population">0</span></div>
@@ -267,6 +313,8 @@
         <div id="selectionBox"></div>
     </div>
 
+    <div class="loading" id="loadingIndicator" style="display: none;">Loading 3D Models...</div>
+
     <script>
         // Game State
         let gameState = {
@@ -280,21 +328,22 @@
             camera: { x: 0, y: 0 },
             isSelecting: false,
             selectionStart: { x: 0, y: 0 },
-            mapSize: { width: 2000, height: 1500 }
+            mapSize: { width: 2000, height: 1500 },
+            modelsLoaded: false
         };
 
-        // Animal configurations
+        // Animal configurations with 3D model paths
         const animalConfigs = {
-            bear: { speed: 1, size: 20, color: '#8B4513', baseStyle: 'cave', emoji: '🐻' },
-            bee: { speed: 3, size: 8, color: '#FFD700', baseStyle: 'hive', emoji: '🐝' },
-            turtle: { speed: 0.5, size: 16, color: '#228B22', baseStyle: 'pond', emoji: '🐢' },
-            fox: { speed: 2.5, size: 12, color: '#FF4500', baseStyle: 'den', emoji: '🦊' },
-            frog: { speed: 2, size: 10, color: '#32CD32', baseStyle: 'lily', emoji: '🐸' },
-            owl: { speed: 2, size: 14, color: '#8B7355', baseStyle: 'tree', emoji: '🦉' },
-            pig: { speed: 1.5, size: 15, color: '#FFC0CB', baseStyle: 'pen', emoji: '🐷' },
-            cat: { speed: 2.2, size: 11, color: '#696969', baseStyle: 'house', emoji: '🐱' },
-            chicken: { speed: 1.8, size: 9, color: '#FFFFFF', baseStyle: 'coop', emoji: '🐔' },
-            dolphin: { speed: 2.5, size: 18, color: '#00BFFF', baseStyle: 'pool', emoji: '🐬' }
+            bear: { speed: 1, size: 40, model: 'models/Bear.glb', baseStyle: 'cave', emoji: '🐻' },
+            bee: { speed: 3, size: 20, model: 'models/Bee.glb', baseStyle: 'hive', emoji: '🐝' },
+            turtle: { speed: 0.5, size: 35, model: 'models/Turtle.glb', baseStyle: 'pond', emoji: '🐢' },
+            fox: { speed: 2.5, size: 25, model: 'models/Fox.glb', baseStyle: 'den', emoji: '🦊' },
+            frog: { speed: 2, size: 22, model: 'models/Frog.glb', baseStyle: 'lily', emoji: '🐸' },
+            owl: { speed: 2, size: 30, model: 'models/Owl.glb', baseStyle: 'tree', emoji: '🦉' },
+            pig: { speed: 1.5, size: 28, model: 'models/Pig.glb', baseStyle: 'pen', emoji: '🐷' },
+            cat: { speed: 2.2, size: 24, model: 'models/cat.glb', baseStyle: 'house', emoji: '🐱' },
+            chicken: { speed: 1.8, size: 20, model: 'models/Chicken.glb', baseStyle: 'coop', emoji: '🐔' },
+            dolphin: { speed: 2.5, size: 38, model: 'models/dolphin.glb', baseStyle: 'pool', emoji: '🐬' }
         };
 
         // Title Screen Logic
@@ -335,10 +384,53 @@
         function startGame() {
             document.getElementById('titleScreen').style.display = 'none';
             document.getElementById('gameScreen').style.display = 'block';
+            document.getElementById('loadingIndicator').style.display = 'block';
             gameState.gameStarted = true;
 
-            initializeGame();
-            gameLoop();
+            // Preload models then initialize game
+            preloadModels().then(() => {
+                document.getElementById('loadingIndicator').style.display = 'none';
+                initializeGame();
+                gameLoop();
+            });
+        }
+
+        async function preloadModels() {
+            const modelsToLoad = gameState.selectedAnimals.map(animal => animalConfigs[animal].model);
+            
+            // Create invisible model-viewers to preload
+            const preloadContainer = document.createElement('div');
+            preloadContainer.style.position = 'absolute';
+            preloadContainer.style.top = '-1000px';
+            preloadContainer.style.left = '-1000px';
+            document.body.appendChild(preloadContainer);
+
+            const loadPromises = modelsToLoad.map(modelPath => {
+                return new Promise((resolve, reject) => {
+                    const modelViewer = document.createElement('model-viewer');
+                    modelViewer.src = modelPath;
+                    modelViewer.style.width = '1px';
+                    modelViewer.style.height = '1px';
+                    
+                    modelViewer.addEventListener('load', () => {
+                        resolve();
+                    });
+                    
+                    modelViewer.addEventListener('error', () => {
+                        console.warn(`Failed to load model: ${modelPath}`);
+                        resolve(); // Continue even if model fails to load
+                    });
+                    
+                    preloadContainer.appendChild(modelViewer);
+                    
+                    // Timeout fallback
+                    setTimeout(() => resolve(), 3000);
+                });
+            });
+
+            await Promise.all(loadPromises);
+            document.body.removeChild(preloadContainer);
+            gameState.modelsLoaded = true;
         }
 
         function initializeGame() {
@@ -401,6 +493,7 @@
             window.addEventListener('resize', () => {
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight;
+                updateUnitModelPositions();
             });
         }
 
@@ -480,12 +573,14 @@
                 // Single unit selection
                 gameState.selectedUnits = [clickedUnit];
                 updateSelectedCount();
+                updateUnitSelectionVisuals();
             } else {
                 // Start box selection
                 gameState.isSelecting = true;
                 gameState.selectionStart = { x, y };
                 gameState.selectedUnits = [];
                 updateSelectedCount();
+                updateUnitSelectionVisuals();
             }
         }
 
@@ -521,6 +616,7 @@
             );
 
             updateSelectedCount();
+            updateUnitSelectionVisuals();
         }
 
         function moveSelectedUnits(x, y) {
@@ -543,6 +639,7 @@
         function selectAllUnitsOfType(animalType) {
             gameState.selectedUnits = gameState.units.filter(unit => unit.animal === animalType);
             updateSelectedCount();
+            updateUnitSelectionVisuals();
 
             // Visual feedback
             const buttons = document.querySelectorAll('.animal-btn');
@@ -550,9 +647,34 @@
             document.querySelector(`[data-animal="${animalType}"]`).classList.add('active');
         }
 
+        function createUnitModel(unit) {
+            const modelContainer = document.createElement('div');
+            modelContainer.className = 'unit-model';
+            modelContainer.id = `unit-${unit.id}`;
+            
+            const modelViewer = document.createElement('model-viewer');
+            modelViewer.src = animalConfigs[unit.animal].model;
+            modelViewer.alt = `${unit.animal} unit`;
+            modelViewer.autoRotate = false;
+            modelViewer.cameraControls = false;
+            modelViewer.disableZoom = true;
+            modelViewer.rotationPerSecond = '0deg';
+            modelViewer.style.width = unit.size + 'px';
+            modelViewer.style.height = unit.size + 'px';
+            
+            // Set camera angle for better view
+            modelViewer.cameraOrbit = '45deg 75deg 10m';
+            modelViewer.fieldOfView = '45deg';
+            
+            modelContainer.appendChild(modelViewer);
+            document.getElementById('modelsContainer').appendChild(modelContainer);
+            
+            return modelContainer;
+        }
+
         function spawnUnit(base) {
             const angle = Math.random() * Math.PI * 2;
-            const distance = base.size + 20;
+            const distance = base.size + 30;
             
             const unit = {
                 animal: base.animal,
@@ -563,10 +685,13 @@
                 isMoving: false,
                 size: animalConfigs[base.animal].size,
                 speed: animalConfigs[base.animal].speed,
-                color: animalConfigs[base.animal].color,
-                id: Date.now() + Math.random()
+                id: Date.now() + Math.random(),
+                modelElement: null
             };
 
+            // Create 3D model for the unit
+            unit.modelElement = createUnitModel(unit);
+            
             gameState.units.push(unit);
             gameState.population++;
         }
@@ -583,10 +708,47 @@
                         const moveY = (dy / distance) * unit.speed;
                         unit.x += moveX;
                         unit.y += moveY;
+                        
+                        // Rotate model to face movement direction
+                        if (unit.modelElement) {
+                            const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+                            const modelViewer = unit.modelElement.querySelector('model-viewer');
+                            if (modelViewer) {
+                                modelViewer.cameraOrbit = `${angle + 90}deg 75deg 10m`;
+                            }
+                        }
                     } else {
                         unit.isMoving = false;
                         unit.targetX = null;
                         unit.targetY = null;
+                    }
+                }
+            });
+            
+            updateUnitModelPositions();
+        }
+
+        function updateUnitModelPositions() {
+            gameState.units.forEach(unit => {
+                if (unit.modelElement) {
+                    const screenX = unit.x - gameState.camera.x - unit.size/2;
+                    const screenY = unit.y - gameState.camera.y - unit.size/2;
+                    
+                    unit.modelElement.style.left = screenX + 'px';
+                    unit.modelElement.style.top = screenY + 'px';
+                    unit.modelElement.style.width = unit.size + 'px';
+                    unit.modelElement.style.height = unit.size + 'px';
+                }
+            });
+        }
+
+        function updateUnitSelectionVisuals() {
+            gameState.units.forEach(unit => {
+                if (unit.modelElement) {
+                    if (gameState.selectedUnits.includes(unit)) {
+                        unit.modelElement.classList.add('selected');
+                    } else {
+                        unit.modelElement.classList.remove('selected');
                     }
                 }
             });
@@ -613,7 +775,7 @@
                 const config = animalConfigs[base.animal];
                 
                 // Base structure
-                ctx.fillStyle = config.color;
+                ctx.fillStyle = '#4a4a4a';
                 ctx.strokeStyle = '#000';
                 ctx.lineWidth = 3;
                 
@@ -637,27 +799,8 @@
                 ctx.fillText(config.emoji, base.x, base.y + 8);
             });
 
-            // Draw units
-            gameState.units.forEach(unit => {
-                const config = animalConfigs[unit.animal];
-                
-                // Unit body
-                ctx.fillStyle = unit.color;
-                ctx.strokeStyle = gameState.selectedUnits.includes(unit) ? '#00ff88' : '#000';
-                ctx.lineWidth = gameState.selectedUnits.includes(unit) ? 3 : 1;
-                
-                ctx.beginPath();
-                ctx.arc(unit.x, unit.y, unit.size, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.stroke();
-
-                // Unit emoji
-                ctx.font = '16px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillStyle = '#000';
-                ctx.fillText(config.emoji, unit.x, unit.y + 5);
-
-                // Movement target indicator
+            // Draw movement target indicators for selected units
+            gameState.selectedUnits.forEach(unit => {
                 if (unit.isMoving && unit.targetX && unit.targetY) {
                     ctx.strokeStyle = '#00ff88';
                     ctx.lineWidth = 2;
@@ -667,6 +810,12 @@
                     ctx.lineTo(unit.targetX, unit.targetY);
                     ctx.stroke();
                     ctx.setLineDash([]);
+                    
+                    // Target marker
+                    ctx.fillStyle = '#00ff88';
+                    ctx.beginPath();
+                    ctx.arc(unit.targetX, unit.targetY, 5, 0, Math.PI * 2);
+                    ctx.fill();
                 }
             });
 
@@ -702,7 +851,7 @@
 
             // Draw bases on mini-map
             gameState.bases.forEach(base => {
-                miniCtx.fillStyle = animalConfigs[base.animal].color;
+                miniCtx.fillStyle = '#4a4a4a';
                 miniCtx.fillRect(
                     base.x * scaleX - 2, 
                     base.y * scaleY - 2, 
@@ -712,7 +861,7 @@
 
             // Draw units on mini-map
             gameState.units.forEach(unit => {
-                miniCtx.fillStyle = gameState.selectedUnits.includes(unit) ? '#00ff88' : unit.color;
+                miniCtx.fillStyle = gameState.selectedUnits.includes(unit) ? '#00ff88' : '#ffffff';
                 miniCtx.fillRect(
                     unit.x * scaleX - 1, 
                     unit.y * scaleY - 1, 
