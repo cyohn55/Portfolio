@@ -338,7 +338,8 @@
             isSelecting: false,
             selectionStart: { x: 0, y: 0 },
             mapSize: { width: 2000, height: 1500 },
-            modelsLoaded: false
+            modelsLoaded: false,
+            tiles: []
         };
 
         // Animal configurations with 3D model paths
@@ -354,6 +355,123 @@
             chicken: { speed: 1.8, size: 20, model: 'models/Chicken.glb', baseStyle: 'coop', emoji: '🐔' },
             dolphin: { speed: 2.5, size: 38, model: 'models/dolphin.glb', baseStyle: 'pool', emoji: '🐬' }
         };
+
+        const HEX_SIZE = 40;
+        const SQRT3 = Math.sqrt(3);
+        const TileType = {
+            mountain: 'mountain',
+            lake: 'lake',
+            river: 'river',
+            ocean: 'ocean',
+            farmland: 'farmland',
+            wetland: 'wetland',
+            plain: 'plain'
+        };
+
+        // Color palette for quick rendering
+        const tileColors = {
+            [TileType.mountain]: '#7d7d7d',
+            [TileType.lake]:     '#3ca0ff',
+            [TileType.river]:    '#3cb6ff',
+            [TileType.ocean]:    '#2c79ff',
+            [TileType.farmland]: '#d7c07c',
+            [TileType.wetland]:  '#55c06b',
+            [TileType.plain]:    '#88c464'
+        };
+
+        // Axial -> pixel helper
+        function axialToPixel(q,r){
+            const x = HEX_SIZE * 1.5 * q;
+            const y = HEX_SIZE * SQRT3 * (r + q/2);
+            return {x,y};
+        }
+        // Draw filled hexagon
+        function drawHex(ctx, cx, cy, size, fillStyle){
+            ctx.beginPath();
+            for(let i=0;i<6;i++){
+                const angle = Math.PI/3 * i + Math.PI/6;
+                const px = cx + Math.cos(angle)*size;
+                const py = cy + Math.sin(angle)*size;
+                if(i===0) ctx.moveTo(px,py);
+                else ctx.lineTo(px,py);
+            }
+            ctx.closePath();
+            ctx.fillStyle = fillStyle;
+            ctx.fill();
+        }
+
+        // Creates procedural map and stores in gameState.tiles as array of {q,r,type,x,y}
+        function createHexMap(){
+            const tiles = [];
+            // Determine bounds to cover mapSize
+            const qMax = Math.ceil(gameState.mapSize.width / (HEX_SIZE*1.5));
+            const rMax = Math.ceil(gameState.mapSize.height / (HEX_SIZE*SQRT3));
+            for(let q= -1; q<=qMax; q++){
+                for(let r= -1; r<=rMax; r++){
+                    const pos = axialToPixel(q,r);
+                    if(pos.x<0 || pos.y<0 || pos.x>gameState.mapSize.width || pos.y>gameState.mapSize.height) continue;
+                    // Simple random generation placeholder
+                    let type = TileType.plain;
+                    const rand = Math.random();
+                    if(rand<0.07) type = TileType.mountain;
+                    else if(rand<0.12) type = TileType.lake;
+                    else if(rand<0.17) type = TileType.farmland;
+                    else if(rand<0.23) type = TileType.wetland;
+                    tiles.push({q,r,type,x:pos.x,y:pos.y});
+                }
+            }
+            // Post-process lakes into river/ocean clusters (simple)
+            // Count size by grouping nearby lakes (Manhattan distance 1)
+            const visited = new Set();
+            const key = (q,r)=>q+','+r;
+            tiles.forEach(t=>{
+                if(t.type!==TileType.lake || visited.has(key(t.q,t.r))) return;
+                // BFS cluster
+                const cluster=[]; const stack=[t];
+                while(stack.length){
+                    const cur=stack.pop();
+                    const curKey=key(cur.q,cur.r);
+                    if(visited.has(curKey)) continue;
+                    visited.add(curKey); cluster.push(cur);
+                    // neighbor axial dirs
+                    const dirs=[[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+                    dirs.forEach(([dq,dr])=>{
+                        const neighborKey=key(cur.q+dq,cur.r+dr);
+                        const n=tiles.find(tt=>key(tt.q,tt.r)===neighborKey);
+                        if(n && n.type===TileType.lake) stack.push(n);
+                    });
+                }
+                // classify
+                if(cluster.length>=10) cluster.forEach(c=>c.type=TileType.ocean);
+                else if(cluster.length>=2) cluster.forEach(c=>c.type=TileType.river);
+            });
+            gameState.tiles = tiles;
+        }
+
+        function getTileAt(px,py){
+            // naive search; optimise later
+            let closest=null; let minDist=Infinity;
+            for(const t of gameState.tiles){
+                const dx = t.x - px; const dy = t.y - py; const dist=Math.hypot(dx,dy);
+                if(dist<HEX_SIZE && dist<minDist){closest=t; minDist=dist;}
+            }
+            return closest ? closest.type : TileType.plain;
+        }
+
+        function canTraverse(animal,tileType){
+            switch(tileType){
+                case TileType.mountain: return (animal==='bee'||animal==='owl');
+                case TileType.lake: return (animal==='frog'||animal==='turtle'||animal==='dolphin');
+                case TileType.river: return (animal==='dolphin');
+                case TileType.ocean: return (animal==='dolphin');
+                default: return true; // farmland, wetland, plain
+            }
+        }
+
+        function getSpeedFactor(animal,tileType){
+            if(tileType===TileType.wetland && (animal==='frog'||animal==='turtle')) return 1.5;
+            return 1;
+        }
 
         // Title Screen Logic
         document.addEventListener('DOMContentLoaded', function() {
@@ -449,6 +567,9 @@
             // Set canvas size
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+
+            // Generate terrain
+            createHexMap();
 
             // Create bases for selected animals
             gameState.selectedAnimals.forEach((animal, index) => {
@@ -767,8 +888,23 @@
                     const distance = Math.sqrt(dx * dx + dy * dy);
 
                     if (distance > 5) {
-                        const moveX = (dx / distance) * unit.speed;
-                        const moveY = (dy / distance) * unit.speed;
+                        // Terrain-aware movement
+                        const currentTile = getTileAt(unit.x, unit.y);
+                        const speedFactor = getSpeedFactor(unit.animal, currentTile);
+                        const effectiveSpeed = unit.speed * speedFactor;
+
+                        const moveX = (dx / distance) * effectiveSpeed;
+                        const moveY = (dy / distance) * effectiveSpeed;
+
+                        // Check next tile traversability
+                        const nextTile = getTileAt(unit.x + moveX, unit.y + moveY);
+                        if(!canTraverse(unit.animal, nextTile)) {
+                            unit.isMoving = false;
+                            unit.targetX = null;
+                            unit.targetY = null;
+                            return; // skip position update
+                        }
+
                         unit.x += moveX;
                         unit.y += moveY;
                         
@@ -858,6 +994,11 @@
             ctx.save();
             ctx.translate(-gameState.camera.x, -gameState.camera.y);
 
+            // Draw terrain tiles
+            gameState.tiles.forEach(tile=>{
+                drawHex(ctx, tile.x, tile.y, HEX_SIZE, tileColors[tile.type]);
+            });
+
             // Draw bases
             gameState.bases.forEach(base => {
                 const config = animalConfigs[base.animal];
@@ -936,6 +1077,14 @@
             
             const scaleX = miniCanvas.width / gameState.mapSize.width;
             const scaleY = miniCanvas.height / gameState.mapSize.height;
+
+            // Draw terrain tiles
+            gameState.tiles.forEach(tile=>{
+                miniCtx.fillStyle = tileColors[tile.type];
+                const mx = tile.x * scaleX;
+                const my = tile.y * scaleY;
+                miniCtx.fillRect(mx-2, my-2, 4, 4);
+            });
 
             // Draw bases on mini-map
             gameState.bases.forEach(base => {
