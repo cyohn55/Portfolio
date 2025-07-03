@@ -167,6 +167,18 @@
             filter: drop-shadow(0 0 10px #00ff88);
         }
 
+        .mountain-model {
+            position: absolute;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .mountain-model model-viewer {
+            width: 100%;
+            height: 100%;
+            --progress-bar-display: none;
+        }
+
         /* UI Elements */
         .ui-panel {
             position: absolute;
@@ -338,7 +350,8 @@
             isSelecting: false,
             selectionStart: { x: 0, y: 0 },
             mapSize: { width: 2000, height: 1500 },
-            modelsLoaded: false
+            modelsLoaded: false,
+            mountains: []
         };
 
         // Animal configurations with 3D model paths
@@ -354,6 +367,97 @@
             chicken: { speed: 1.8, size: 20, model: 'models/Chicken.glb', baseStyle: 'coop', emoji: '🐔' },
             dolphin: { speed: 2.5, size: 38, model: 'models/dolphin.glb', baseStyle: 'pool', emoji: '🐬' }
         };
+
+        // Mountain terrain system
+        function generateMountains() {
+            const mountains = [];
+            const numMountains = 15; // Number of mountains to scatter
+            const mountainSize = 80; // Collision radius
+            
+            for (let i = 0; i < numMountains; i++) {
+                let attempts = 0;
+                let validPosition = false;
+                let x, y;
+                
+                // Try to find a valid position (not too close to bases or other mountains)
+                while (!validPosition && attempts < 50) {
+                    x = Math.random() * (gameState.mapSize.width - 200) + 100;
+                    y = Math.random() * (gameState.mapSize.height - 200) + 100;
+                    
+                    validPosition = true;
+                    
+                    // Check distance from player bases (avoid blocking spawn areas)
+                    if (x < 400 && y < 400) validPosition = false;
+                    if (x > gameState.mapSize.width - 400 && y > gameState.mapSize.height - 400) validPosition = false;
+                    
+                    // Check distance from other mountains
+                    for (const mountain of mountains) {
+                        const dist = Math.hypot(mountain.x - x, mountain.y - y);
+                        if (dist < mountainSize * 2) {
+                            validPosition = false;
+                            break;
+                        }
+                    }
+                    
+                    attempts++;
+                }
+                
+                if (validPosition) {
+                    mountains.push({
+                        x: x,
+                        y: y,
+                        size: mountainSize,
+                        modelElement: null
+                    });
+                }
+            }
+            
+            gameState.mountains = mountains;
+        }
+
+        // Check if position collides with any mountain
+        function isCollidingWithMountain(x, y, unitSize = 20) {
+            for (const mountain of gameState.mountains) {
+                const dist = Math.hypot(mountain.x - x, mountain.y - y);
+                if (dist < mountain.size + unitSize) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Create 3D mountain model
+        function createMountainModel(mountain) {
+            const modelContainer = document.createElement('div');
+            modelContainer.className = 'mountain-model';
+            modelContainer.id = `mountain-${mountain.x}-${mountain.y}`;
+            
+            const modelViewer = document.createElement('model-viewer');
+            modelViewer.src = 'models/Bear.glb'; // Using bear model as mountain placeholder
+            modelViewer.alt = 'Mountain terrain';
+            modelViewer.autoRotate = false;
+            modelViewer.cameraControls = false;
+            modelViewer.disableZoom = true;
+            modelViewer.rotationPerSecond = '0deg';
+            modelViewer.style.width = '120px';
+            modelViewer.style.height = '120px';
+            
+            // Mountain-specific settings
+            modelViewer.cameraOrbit = '0deg 75deg 100m';
+            modelViewer.fieldOfView = '15deg';
+            modelViewer.setAttribute('auto-rotate-delay', '0');
+            modelViewer.setAttribute('interaction-prompt', 'none');
+            modelViewer.setAttribute('loading', 'eager');
+            modelViewer.setAttribute('reveal', 'auto');
+            
+            // Make it look more mountain-like (darker, larger)
+            modelViewer.style.filter = 'brightness(0.6) contrast(1.2)';
+            
+            modelContainer.appendChild(modelViewer);
+            document.getElementById('modelsContainer').appendChild(modelContainer);
+            
+            return modelContainer;
+        }
 
         // Title Screen Logic
         document.addEventListener('DOMContentLoaded', function() {
@@ -449,6 +553,12 @@
             // Set canvas size
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+
+            // Generate mountains and create 3D models
+            generateMountains();
+            gameState.mountains.forEach(mountain => {
+                mountain.modelElement = createMountainModel(mountain);
+            });
 
             // Create bases for selected animals
             gameState.selectedAnimals.forEach((animal, index) => {
@@ -769,6 +879,15 @@
                     if (distance > 5) {
                         const moveX = (dx / distance) * unit.speed;
                         const moveY = (dy / distance) * unit.speed;
+                        
+                        // Check mountain collision
+                        if (isCollidingWithMountain(unit.x + moveX, unit.y + moveY, unit.size)) {
+                            unit.isMoving = false;
+                            unit.targetX = null;
+                            unit.targetY = null;
+                            return;
+                        }
+                        
                         unit.x += moveX;
                         unit.y += moveY;
                         
@@ -826,6 +945,17 @@
                     // Don't resize - maintain original size to prevent clipping
                     // unit.modelElement.style.width = modelSize + 'px';
                     // unit.modelElement.style.height = modelSize + 'px';
+                }
+            });
+            
+            // Update mountain model positions
+            gameState.mountains.forEach(mountain => {
+                if (mountain.modelElement) {
+                    const screenX = mountain.x - gameState.camera.x - 60; // Center 120px model
+                    const screenY = mountain.y - gameState.camera.y - 60;
+                    
+                    mountain.modelElement.style.left = screenX + 'px';
+                    mountain.modelElement.style.top = screenY + 'px';
                 }
             });
         }
@@ -954,6 +1084,16 @@
                     unit.x * scaleX - 1, 
                     unit.y * scaleY - 1, 
                     2, 2
+                );
+            });
+
+            // Draw mountains on mini-map
+            gameState.mountains.forEach(mountain => {
+                miniCtx.fillStyle = '#7d7d7d';
+                miniCtx.fillRect(
+                    mountain.x * scaleX - 2,
+                    mountain.y * scaleY - 2,
+                    4, 4
                 );
             });
 
