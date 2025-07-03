@@ -172,12 +172,15 @@
             position: absolute;
             pointer-events: none;
             z-index: 10;
+            will-change: transform;
+            transform: translateZ(0);
         }
 
         .tree-model model-viewer {
             width: 100%;
             height: 100%;
             --progress-bar-display: none;
+            will-change: transform;
         }
 
         /* UI Elements */
@@ -352,7 +355,8 @@
             selectionStart: { x: 0, y: 0 },
             mapSize: { width: 2000, height: 1500 },
             modelsLoaded: false,
-            trees: []
+            trees: [],
+            treePool: []
         };
 
         // Animal configurations with 3D model paths
@@ -372,7 +376,7 @@
         // Pine tree system
         function generateTrees() {
             const trees = [];
-            const numTrees = 300; // Hundreds of trees
+            const numTrees = 500; // Can handle more with optimization
             
             for (let i = 0; i < numTrees; i++) {
                 const x = Math.random() * gameState.mapSize.width;
@@ -389,17 +393,23 @@
                     size: size,
                     sizeMultiplier: sizeMultiplier,
                     id: `tree_${i}`,
-                    modelElement: null
+                    modelElement: null,
+                    isVisible: false,
+                    needsUpdate: true
                 });
             }
             
             gameState.trees = trees;
+            gameState.treePool = []; // Pool of reusable tree elements
         }
 
         function createTreeModel(tree) {
             const modelContainer = document.createElement('div');
             modelContainer.className = 'tree-model';
             modelContainer.id = tree.id;
+            modelContainer.style.position = 'absolute';
+            modelContainer.style.pointerEvents = 'none';
+            modelContainer.style.zIndex = '10';
             
             const modelViewer = document.createElement('model-viewer');
             modelViewer.src = 'models/PineTree.glb';
@@ -428,16 +438,71 @@
             modelViewer.setAttribute('rotation', `0deg ${randomRotation}deg 0deg`);
             
             modelContainer.appendChild(modelViewer);
-            document.getElementById('modelsContainer').appendChild(modelContainer);
             
             return modelContainer;
         }
 
-        function initializeTrees() {
+        // Viewport culling - only render trees that are visible
+        function getVisibleTrees() {
+            const canvas = document.getElementById('gameCanvas');
+            const viewportPadding = 100; // Extra padding for smooth transitions
+            
+            const viewLeft = gameState.camera.x - viewportPadding;
+            const viewRight = gameState.camera.x + canvas.width + viewportPadding;
+            const viewTop = gameState.camera.y - viewportPadding;
+            const viewBottom = gameState.camera.y + canvas.height + viewportPadding;
+            
+            return gameState.trees.filter(tree => 
+                tree.x >= viewLeft && tree.x <= viewRight &&
+                tree.y >= viewTop && tree.y <= viewBottom
+            );
+        }
+
+        // Optimized tree rendering with viewport culling
+        function updateTreeVisibility() {
+            const visibleTrees = getVisibleTrees();
+            const modelsContainer = document.getElementById('modelsContainer');
+            
+            // Hide trees that are no longer visible
             gameState.trees.forEach(tree => {
-                tree.modelElement = createTreeModel(tree);
-                updateTreePosition(tree);
+                if (tree.isVisible && !visibleTrees.includes(tree)) {
+                    if (tree.modelElement && tree.modelElement.parentNode) {
+                        tree.modelElement.style.display = 'none';
+                        // Move to pool for reuse instead of destroying
+                        gameState.treePool.push(tree.modelElement);
+                        modelsContainer.removeChild(tree.modelElement);
+                    }
+                    tree.isVisible = false;
+                    tree.modelElement = null;
+                }
             });
+            
+            // Show trees that came into view
+            visibleTrees.forEach(tree => {
+                if (!tree.isVisible) {
+                    // Reuse pooled element or create new one
+                    if (gameState.treePool.length > 0) {
+                        tree.modelElement = gameState.treePool.pop();
+                        tree.modelElement.style.display = 'block';
+                    } else {
+                        tree.modelElement = createTreeModel(tree);
+                    }
+                    modelsContainer.appendChild(tree.modelElement);
+                    tree.isVisible = true;
+                    tree.needsUpdate = true;
+                }
+                
+                // Update position if needed
+                if (tree.needsUpdate) {
+                    updateTreePosition(tree);
+                    tree.needsUpdate = false;
+                }
+            });
+        }
+
+        function initializeTrees() {
+            // Initialize with viewport culling instead of all trees
+            updateTreeVisibility();
         }
 
         function updateTreePosition(tree) {
@@ -447,16 +512,42 @@
                 
                 tree.modelElement.style.left = screenX + 'px';
                 tree.modelElement.style.top = screenY + 'px';
-                tree.modelElement.style.position = 'absolute';
-                tree.modelElement.style.pointerEvents = 'none';
-                tree.modelElement.style.zIndex = '10';
             }
         }
 
+        // Optimized position updates with reduced frequency
+        let lastCameraX = 0;
+        let lastCameraY = 0;
+        const cameraThreshold = 20; // Only update when camera moves significantly
+        let treeUpdateScheduled = false;
+
         function updateTreePositions() {
-            gameState.trees.forEach(tree => {
-                updateTreePosition(tree);
-            });
+            if (treeUpdateScheduled) return;
+            
+            const deltaX = Math.abs(gameState.camera.x - lastCameraX);
+            const deltaY = Math.abs(gameState.camera.y - lastCameraY);
+            
+            // Only update if camera moved significantly
+            if (deltaX > cameraThreshold || deltaY > cameraThreshold) {
+                treeUpdateScheduled = true;
+                requestAnimationFrame(() => {
+                    updateTreeVisibility();
+                    lastCameraX = gameState.camera.x;
+                    lastCameraY = gameState.camera.y;
+                    treeUpdateScheduled = false;
+                });
+            } else {
+                // Just update positions of visible trees
+                treeUpdateScheduled = true;
+                requestAnimationFrame(() => {
+                    gameState.trees.forEach(tree => {
+                        if (tree.isVisible) {
+                            updateTreePosition(tree);
+                        }
+                    });
+                    treeUpdateScheduled = false;
+                });
+            }
         }
 
         // Title Screen Logic
