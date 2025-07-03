@@ -167,13 +167,14 @@
             filter: drop-shadow(0 0 10px #00ff88);
         }
 
-        .mountain-model {
+        /* Tree styling */
+        .tree-model {
             position: absolute;
             pointer-events: none;
             z-index: 10;
         }
 
-        .mountain-model model-viewer {
+        .tree-model model-viewer {
             width: 100%;
             height: 100%;
             --progress-bar-display: none;
@@ -351,7 +352,7 @@
             selectionStart: { x: 0, y: 0 },
             mapSize: { width: 2000, height: 1500 },
             modelsLoaded: false,
-            mountains: []
+            trees: []
         };
 
         // Animal configurations with 3D model paths
@@ -368,95 +369,94 @@
             dolphin: { speed: 2.5, size: 38, model: 'models/dolphin.glb', baseStyle: 'pool', emoji: '🐬' }
         };
 
-        // Mountain terrain system
-        function generateMountains() {
-            const mountains = [];
-            const numMountains = 15; // Number of mountains to scatter
-            const mountainSize = 80; // Collision radius
+        // Pine tree system
+        function generateTrees() {
+            const trees = [];
+            const numTrees = 300; // Hundreds of trees
             
-            for (let i = 0; i < numMountains; i++) {
-                let attempts = 0;
-                let validPosition = false;
-                let x, y;
+            for (let i = 0; i < numTrees; i++) {
+                const x = Math.random() * gameState.mapSize.width;
+                const y = Math.random() * gameState.mapSize.height;
                 
-                // Try to find a valid position (not too close to bases or other mountains)
-                while (!validPosition && attempts < 50) {
-                    x = Math.random() * (gameState.mapSize.width - 200) + 100;
-                    y = Math.random() * (gameState.mapSize.height - 200) + 100;
-                    
-                    validPosition = true;
-                    
-                    // Check distance from player bases (avoid blocking spawn areas)
-                    if (x < 400 && y < 400) validPosition = false;
-                    if (x > gameState.mapSize.width - 400 && y > gameState.mapSize.height - 400) validPosition = false;
-                    
-                    // Check distance from other mountains
-                    for (const mountain of mountains) {
-                        const dist = Math.hypot(mountain.x - x, mountain.y - y);
-                        if (dist < mountainSize * 2) {
-                            validPosition = false;
-                            break;
-                        }
-                    }
-                    
-                    attempts++;
-                }
+                // Random size variation (0.5x to 2.0x original size)
+                const sizeMultiplier = 0.5 + Math.random() * 1.5;
+                const baseSize = 25; // Base tree size
+                const size = baseSize * sizeMultiplier;
                 
-                if (validPosition) {
-                    mountains.push({
-                        x: x,
-                        y: y,
-                        size: mountainSize,
-                        modelElement: null
-                    });
-                }
+                trees.push({
+                    x: x,
+                    y: y,
+                    size: size,
+                    sizeMultiplier: sizeMultiplier,
+                    id: `tree_${i}`,
+                    modelElement: null
+                });
             }
             
-            gameState.mountains = mountains;
+            gameState.trees = trees;
         }
 
-        // Check if position collides with any mountain
-        function isCollidingWithMountain(x, y, unitSize = 20) {
-            for (const mountain of gameState.mountains) {
-                const dist = Math.hypot(mountain.x - x, mountain.y - y);
-                if (dist < mountain.size + unitSize) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // Create 3D mountain model
-        function createMountainModel(mountain) {
+        function createTreeModel(tree) {
             const modelContainer = document.createElement('div');
-            modelContainer.className = 'mountain-model';
-            modelContainer.id = `mountain-${mountain.x}-${mountain.y}`;
+            modelContainer.className = 'tree-model';
+            modelContainer.id = tree.id;
             
             const modelViewer = document.createElement('model-viewer');
-            modelViewer.src = 'models/Mountain.glb'; // Using actual mountain model
-            modelViewer.alt = 'Mountain terrain';
+            modelViewer.src = 'models/PineTree.glb';
+            modelViewer.alt = 'Pine Tree';
             modelViewer.autoRotate = false;
             modelViewer.cameraControls = false;
             modelViewer.disableZoom = true;
             modelViewer.rotationPerSecond = '0deg';
-            modelViewer.style.width = '120px';
-            modelViewer.style.height = '120px';
+            modelViewer.style.width = tree.size + 'px';
+            modelViewer.style.height = tree.size + 'px';
             
-            // Mountain-specific settings
+            // Set up camera for trees
             modelViewer.cameraOrbit = '0deg 75deg 100m';
             modelViewer.fieldOfView = '15deg';
+            modelViewer.minCameraOrbit = 'auto auto auto';
+            modelViewer.maxCameraOrbit = 'auto auto auto';
+            
+            // Core model-viewer settings
             modelViewer.setAttribute('auto-rotate-delay', '0');
             modelViewer.setAttribute('interaction-prompt', 'none');
-            modelViewer.setAttribute('loading', 'eager');
+            modelViewer.setAttribute('loading', 'lazy');
             modelViewer.setAttribute('reveal', 'auto');
             
-            // Make it look more mountain-like (darker, larger)
-            modelViewer.style.filter = 'brightness(0.6) contrast(1.2)';
+            // Random rotation for natural look
+            const randomRotation = Math.random() * 360;
+            modelViewer.setAttribute('rotation', `0deg ${randomRotation}deg 0deg`);
             
             modelContainer.appendChild(modelViewer);
             document.getElementById('modelsContainer').appendChild(modelContainer);
             
             return modelContainer;
+        }
+
+        function initializeTrees() {
+            gameState.trees.forEach(tree => {
+                tree.modelElement = createTreeModel(tree);
+                updateTreePosition(tree);
+            });
+        }
+
+        function updateTreePosition(tree) {
+            if (tree.modelElement) {
+                const screenX = tree.x - gameState.camera.x - tree.size/2;
+                const screenY = tree.y - gameState.camera.y - tree.size/2;
+                
+                tree.modelElement.style.left = screenX + 'px';
+                tree.modelElement.style.top = screenY + 'px';
+                tree.modelElement.style.position = 'absolute';
+                tree.modelElement.style.pointerEvents = 'none';
+                tree.modelElement.style.zIndex = '10';
+            }
+        }
+
+        function updateTreePositions() {
+            gameState.trees.forEach(tree => {
+                updateTreePosition(tree);
+            });
         }
 
         // Title Screen Logic
@@ -504,12 +504,15 @@
             preloadModels().then(() => {
                 document.getElementById('loadingIndicator').style.display = 'none';
                 initializeGame();
+                initializeTrees();
                 gameLoop();
             });
         }
 
         async function preloadModels() {
             const modelsToLoad = gameState.selectedAnimals.map(animal => animalConfigs[animal].model);
+            // Add pine tree to preload list
+            modelsToLoad.push('models/PineTree.glb');
             
             // Create invisible model-viewers to preload
             const preloadContainer = document.createElement('div');
@@ -554,11 +557,8 @@
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
 
-            // Generate mountains and create 3D models
-            generateMountains();
-            gameState.mountains.forEach(mountain => {
-                mountain.modelElement = createMountainModel(mountain);
-            });
+            // Generate and initialize trees
+            generateTrees();
 
             // Create bases for selected animals
             gameState.selectedAnimals.forEach((animal, index) => {
@@ -879,15 +879,6 @@
                     if (distance > 5) {
                         const moveX = (dx / distance) * unit.speed;
                         const moveY = (dy / distance) * unit.speed;
-                        
-                        // Check mountain collision
-                        if (isCollidingWithMountain(unit.x + moveX, unit.y + moveY, unit.size)) {
-                            unit.isMoving = false;
-                            unit.targetX = null;
-                            unit.targetY = null;
-                            return;
-                        }
-                        
                         unit.x += moveX;
                         unit.y += moveY;
                         
@@ -948,16 +939,8 @@
                 }
             });
             
-            // Update mountain model positions
-            gameState.mountains.forEach(mountain => {
-                if (mountain.modelElement) {
-                    const screenX = mountain.x - gameState.camera.x - 60; // Center 120px model
-                    const screenY = mountain.y - gameState.camera.y - 60;
-                    
-                    mountain.modelElement.style.left = screenX + 'px';
-                    mountain.modelElement.style.top = screenY + 'px';
-                }
-            });
+            // Update tree positions with camera movement
+            updateTreePositions();
         }
 
         function updateUnitSelectionVisuals() {
@@ -1084,16 +1067,6 @@
                     unit.x * scaleX - 1, 
                     unit.y * scaleY - 1, 
                     2, 2
-                );
-            });
-
-            // Draw mountains on mini-map
-            gameState.mountains.forEach(mountain => {
-                miniCtx.fillStyle = '#7d7d7d';
-                miniCtx.fillRect(
-                    mountain.x * scaleX - 2,
-                    mountain.y * scaleY - 2,
-                    4, 4
                 );
             });
 
