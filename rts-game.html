@@ -307,7 +307,7 @@
         
         <!-- UI Panels -->
         <div id="resourcePanel" class="ui-panel">
-            <div>Population: <span id="population">0</span>/<span id="populationCap">100</span></div>
+            <div>Population: <span id="population">0</span></div>
             <div>Selected: <span id="selectedCount">0</span></div>
         </div>
 
@@ -338,9 +338,7 @@
             isSelecting: false,
             selectionStart: { x: 0, y: 0 },
             mapSize: { width: 2000, height: 1500 },
-            modelsLoaded: false,
-            tiles: [],
-            populationCap: 100
+            modelsLoaded: false
         };
 
         // Animal configurations with 3D model paths
@@ -356,210 +354,6 @@
             chicken: { speed: 1.8, size: 20, model: 'models/Chicken.glb', baseStyle: 'coop', emoji: '🐔' },
             dolphin: { speed: 2.5, size: 38, model: 'models/dolphin.glb', baseStyle: 'pool', emoji: '🐬' }
         };
-
-        // Hex tile system with proper offset rows
-        const HEX_SIZE = 30;
-        const HEX_WIDTH = HEX_SIZE * 2;
-        const HEX_HEIGHT = Math.sqrt(3) * HEX_SIZE;
-        
-        const TileType = {
-            mountain: 'mountain',
-            lake: 'lake', 
-            river: 'river',
-            ocean: 'ocean',
-            farmland: 'farmland',
-            wetland: 'wetland',
-            plain: 'plain'
-        };
-
-        const tileColors = {
-            [TileType.mountain]: '#7d7d7d',
-            [TileType.lake]: '#3ca0ff',
-            [TileType.river]: '#3cb6ff', 
-            [TileType.ocean]: '#2c79ff',
-            [TileType.farmland]: '#d7c07c',
-            [TileType.wetland]: '#55c06b',
-            [TileType.plain]: '#88c464'
-        };
-
-        // Convert hex grid coordinates to pixel position (offset rows)
-        function hexToPixel(col, row) {
-            const x = col * HEX_WIDTH * 0.75;
-            const y = row * HEX_HEIGHT + (col % 2) * (HEX_HEIGHT / 2);
-            return { x, y };
-        }
-
-        // Find hex tile at pixel coordinates
-        function pixelToHex(x, y) {
-            // Approximate grid position
-            const col = Math.round(x / (HEX_WIDTH * 0.75));
-            const row = Math.round((y - (col % 2) * (HEX_HEIGHT / 2)) / HEX_HEIGHT);
-            return { col, row };
-        }
-
-        // Draw hexagon at position
-        function drawHex(ctx, x, y, size, fillStyle) {
-            ctx.beginPath();
-            for (let i = 0; i < 6; i++) {
-                const angle = (Math.PI / 3) * i;
-                const hx = x + Math.cos(angle) * size;
-                const hy = y + Math.sin(angle) * size;
-                if (i === 0) ctx.moveTo(hx, hy);
-                else ctx.lineTo(hx, hy);
-            }
-            ctx.closePath();
-            ctx.fillStyle = fillStyle;
-            ctx.fill();
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
-        }
-
-        // Generate procedural hex map
-        function createHexMap() {
-            const tiles = [];
-            const cols = Math.ceil(gameState.mapSize.width / (HEX_WIDTH * 0.75)) + 2;
-            const rows = Math.ceil(gameState.mapSize.height / HEX_HEIGHT) + 2;
-            
-            // First pass: generate base terrain
-            for (let col = 0; col < cols; col++) {
-                for (let row = 0; row < rows; row++) {
-                    const pos = hexToPixel(col, row);
-                    if (pos.x < -HEX_SIZE || pos.y < -HEX_SIZE || 
-                        pos.x > gameState.mapSize.width + HEX_SIZE || 
-                        pos.y > gameState.mapSize.height + HEX_SIZE) continue;
-                    
-                    let type = TileType.plain;
-                    const rand = Math.random();
-                    
-                    if (rand < 0.08) type = TileType.mountain;
-                    else if (rand < 0.15) type = TileType.lake;
-                    else if (rand < 0.20) type = TileType.farmland; 
-                    else if (rand < 0.28) type = TileType.wetland;
-                    
-                    tiles.push({
-                        col, row, type,
-                        x: pos.x, y: pos.y,
-                        assigned: false, // for farmland assignment
-                        farmer: null
-                    });
-                }
-            }
-            
-            // Second pass: convert lake clusters to rivers/oceans
-            processLakeClusters(tiles);
-            
-            gameState.tiles = tiles;
-        }
-
-        // Convert connected lakes into rivers (2-9) or oceans (10+)
-        function processLakeClusters(tiles) {
-            const visited = new Set();
-            const getKey = (col, row) => `${col},${row}`;
-            
-            tiles.forEach(tile => {
-                if (tile.type !== TileType.lake || visited.has(getKey(tile.col, tile.row))) return;
-                
-                // Find connected lake cluster using BFS
-                const cluster = [];
-                const queue = [tile];
-                
-                while (queue.length > 0) {
-                    const current = queue.shift();
-                    const key = getKey(current.col, current.row);
-                    
-                    if (visited.has(key)) continue;
-                    visited.add(key);
-                    cluster.push(current);
-                    
-                    // Check 6 hex neighbors (offset grid)
-                    const neighbors = getHexNeighbors(current.col, current.row);
-                    neighbors.forEach(({col, row}) => {
-                        const neighbor = tiles.find(t => t.col === col && t.row === row);
-                        if (neighbor && neighbor.type === TileType.lake && !visited.has(getKey(col, row))) {
-                            queue.push(neighbor);
-                        }
-                    });
-                }
-                
-                // Classify cluster by size
-                if (cluster.length >= 10) {
-                    cluster.forEach(t => t.type = TileType.ocean);
-                } else if (cluster.length >= 2) {
-                    cluster.forEach(t => t.type = TileType.river);
-                }
-            });
-        }
-
-        // Get 6 neighboring hex coordinates (accounting for offset rows)
-        function getHexNeighbors(col, row) {
-            const isEvenCol = col % 2 === 0;
-            const neighbors = [];
-            
-            if (isEvenCol) {
-                neighbors.push(
-                    {col: col - 1, row: row - 1}, // top-left
-                    {col: col, row: row - 1},     // top
-                    {col: col + 1, row: row - 1}, // top-right
-                    {col: col + 1, row: row},     // bottom-right
-                    {col: col, row: row + 1},     // bottom
-                    {col: col - 1, row: row}      // bottom-left
-                );
-            } else {
-                neighbors.push(
-                    {col: col - 1, row: row},     // top-left
-                    {col: col, row: row - 1},     // top
-                    {col: col + 1, row: row},     // top-right
-                    {col: col + 1, row: row + 1}, // bottom-right
-                    {col: col, row: row + 1},     // bottom
-                    {col: col - 1, row: row + 1}  // bottom-left
-                );
-            }
-            
-            return neighbors;
-        }
-
-        // Get tile at pixel coordinates
-        function getTileAt(x, y) {
-            if (!gameState.tiles) return TileType.plain;
-            
-            let closest = null;
-            let minDist = Infinity;
-            
-            gameState.tiles.forEach(tile => {
-                const dist = Math.hypot(tile.x - x, tile.y - y);
-                if (dist < HEX_SIZE && dist < minDist) {
-                    closest = tile;
-                    minDist = dist;
-                }
-            });
-            
-            return closest ? closest.type : TileType.plain;
-        }
-
-        // Check if animal can traverse tile type
-        function canTraverse(animal, tileType) {
-            switch (tileType) {
-                case TileType.mountain:
-                    return animal === 'bee' || animal === 'owl';
-                case TileType.lake:
-                    return animal === 'frog' || animal === 'turtle' || animal === 'dolphin';
-                case TileType.river:
-                    return animal === 'dolphin';
-                case TileType.ocean:
-                    return animal === 'dolphin';
-                default:
-                    return true; // farmland, wetland, plain
-            }
-        }
-
-        // Get speed multiplier for animal on tile type
-        function getSpeedMultiplier(animal, tileType) {
-            if (tileType === TileType.wetland && (animal === 'frog' || animal === 'turtle')) {
-                return 1.5;
-            }
-            return 1.0;
-        }
 
         // Title Screen Logic
         document.addEventListener('DOMContentLoaded', function() {
@@ -656,9 +450,6 @@
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
 
-            // Generate hex terrain map
-            createHexMap();
-
             // Create bases for selected animals
             gameState.selectedAnimals.forEach((animal, index) => {
                 const base = {
@@ -746,28 +537,6 @@
             if (e.button === 0) { // Left click
                 startSelection(x, y);
             } else if (e.button === 2) { // Right click
-                // Check if right-clicking on farmland with single unit selected
-                if (gameState.selectedUnits.length === 1) {
-                    const clickedTile = gameState.tiles?.find(tile => 
-                        Math.hypot(tile.x - x, tile.y - y) < HEX_SIZE
-                    );
-                    
-                    if (clickedTile && clickedTile.type === TileType.farmland && !clickedTile.assigned) {
-                        // Assign unit to farm this tile
-                        const unit = gameState.selectedUnits[0];
-                        clickedTile.assigned = true;
-                        clickedTile.farmer = unit;
-                        unit.farming = true;
-                        unit.farmTile = clickedTile;
-                        unit.targetX = clickedTile.x;
-                        unit.targetY = clickedTile.y;
-                        unit.isMoving = true;
-                        gameState.populationCap += 3;
-                        updateSelectedCount();
-                        return;
-                    }
-                }
-                
                 moveSelectedUnits(x, y);
             }
         }
@@ -885,15 +654,11 @@
 
         function moveSelectedUnits(x, y) {
             if (gameState.selectedUnits.length > 0) {
-                // Filter out farming units - they can't be moved
-                const movableUnits = gameState.selectedUnits.filter(unit => !unit.farming);
-                if (movableUnits.length === 0) return;
-                
                 // Create formation around target point
-                const formationRadius = Math.sqrt(movableUnits.length) * 20;
+                const formationRadius = Math.sqrt(gameState.selectedUnits.length) * 20;
                 
-                movableUnits.forEach((unit, index) => {
-                    const angle = (index / movableUnits.length) * Math.PI * 2;
+                gameState.selectedUnits.forEach((unit, index) => {
+                    const angle = (index / gameState.selectedUnits.length) * Math.PI * 2;
                     const offsetX = Math.cos(angle) * formationRadius;
                     const offsetY = Math.sin(angle) * formationRadius;
                     
@@ -984,9 +749,7 @@
                 size: animalConfigs[base.animal].size,
                 speed: animalConfigs[base.animal].speed,
                 id: Date.now() + Math.random(),
-                modelElement: null,
-                farming: false,
-                farmTile: null
+                modelElement: null
             };
 
             // Create 3D model for the unit
@@ -1004,23 +767,8 @@
                     const distance = Math.sqrt(dx * dx + dy * dy);
 
                     if (distance > 5) {
-                        // Check current tile for speed bonus
-                        const currentTile = getTileAt(unit.x, unit.y);
-                        const speedMultiplier = getSpeedMultiplier(unit.animal, currentTile);
-                        const effectiveSpeed = unit.speed * speedMultiplier;
-                        
-                        const moveX = (dx / distance) * effectiveSpeed;
-                        const moveY = (dy / distance) * effectiveSpeed;
-                        
-                        // Check if next position is traversable
-                        const nextTile = getTileAt(unit.x + moveX, unit.y + moveY);
-                        if (!canTraverse(unit.animal, nextTile)) {
-                            unit.isMoving = false;
-                            unit.targetX = null;
-                            unit.targetY = null;
-                            return;
-                        }
-                        
+                        const moveX = (dx / distance) * unit.speed;
+                        const moveY = (dy / distance) * unit.speed;
                         unit.x += moveX;
                         unit.y += moveY;
                         
@@ -1097,7 +845,6 @@
         function updateSelectedCount() {
             document.getElementById('selectedCount').textContent = gameState.selectedUnits.length;
             document.getElementById('population').textContent = gameState.population;
-            document.getElementById('populationCap').textContent = gameState.populationCap;
         }
 
         function render() {
@@ -1160,21 +907,6 @@
                 }
             });
 
-            // Draw hex terrain tiles
-            if (gameState.tiles) {
-                gameState.tiles.forEach(tile => {
-                    drawHex(ctx, tile.x, tile.y, HEX_SIZE, tileColors[tile.type]);
-                    
-                    // Draw assignment indicator for farmland
-                    if (tile.type === TileType.farmland && tile.assigned) {
-                        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                        ctx.font = '20px Arial';
-                        ctx.textAlign = 'center';
-                        ctx.fillText('��', tile.x, tile.y + 5);
-                    }
-                });
-            }
-
             ctx.restore();
 
             // Draw mini-map
@@ -1224,16 +956,6 @@
                     2, 2
                 );
             });
-
-            // Draw terrain on mini-map
-            if (gameState.tiles) {
-                gameState.tiles.forEach(tile => {
-                    miniCtx.fillStyle = tileColors[tile.type];
-                    const mx = tile.x * scaleX;
-                    const my = tile.y * scaleY;
-                    miniCtx.fillRect(mx - 1, my - 1, 2, 2);
-                });
-            }
 
             // Draw camera view
             const cameraX = gameState.camera.x * scaleX;
