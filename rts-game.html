@@ -410,42 +410,6 @@
             NPC:    'enemy'   // retains previous naming for compatibility
         });
 
-        // Example CSV string (can be replaced or loaded dynamically later)
-        const DEFAULT_CSV_MAP = `m,m,r,w,w,b,f,b,f,f,f,f,b,m
-m,r,r,w,f,f,f,f,l,f,f,m,w,f
-r,r,w,w,f,f,f,m,m,f,f,f,f
-m,m,r,w,w,f,f,f,f,f,f,f,l,m
-m,r,r,w,f,f,f,f,l,f,f,m,w,f
-r,r,e,w,f,f,f,e,m,f,f,e,f`;
-
-        // Parse CSV map into tile objects
-        function parseCSVMap(csvString) {
-            const tiles = [];
-            const rows = csvString.trim().split('\n');
-            rows.forEach((rowStr, rowIdx) => {
-                const cols = rowStr.trim().split(',');
-                cols.forEach((char, colIdx) => {
-                    const type = TILE_CHAR[char.trim()] || TileType.PLAIN;
-                    const pos = hexToPixel(colIdx, rowIdx);
-                    tiles.push({
-                        col: colIdx,
-                        row: rowIdx,
-                        type: type,
-                        x: pos.x,
-                        y: pos.y,
-                        assigned: false,
-                        farmer: null
-                    });
-                });
-            });
-            return tiles;
-        }
-
-        // Convenience wrapper to set gameState.tiles from CSV string
-        function loadMapFromCSV(csvString){
-            gameState.tiles = parseCSVMap(csvString);
-        }
-
         // Pine tree system
         function generateTrees() {
             const trees = [];
@@ -721,47 +685,38 @@ r,r,e,w,f,f,f,e,m,f,f,e,f`;
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
 
-            // Load map from CSV
-            loadMapFromCSV(DEFAULT_CSV_MAP);
-
-            // Optionally still generate trees for ambience
+            // Generate and initialize trees
             generateTrees();
 
-            // --- Create bases according to tiles ---
-            const playerBaseTiles = gameState.tiles.filter(t => t.type === TileType.PLAYER_BASE);
-            const enemyBaseTiles  = gameState.tiles.filter(t => t.type === TileType.ENEMY_BASE);
-
-            if (playerBaseTiles.length !== 3 || enemyBaseTiles.length !== 3) {
-                console.warn('CSV map must contain exactly 3 player (b) and 3 enemy (e) bases. Falling back to old placement.');
-            }
-
-            // Assign selected animals to player bases in order
-            playerBaseTiles.forEach((tile, idx) => {
-                const animal = gameState.selectedAnimals[idx % gameState.selectedAnimals.length];
+            // Create bases for selected animals
+            gameState.selectedAnimals.forEach((animal, index) => {
                 const base = {
                     animal: animal,
-                    team: Teams.PLAYER,
-                    x: tile.x,
-                    y: tile.y,
+                    team: 'player',
+                    x: 200 + (index * 150),
+                    y: 200,
                     lastSpawn: 0,
-                    spawnInterval: 15000,
+                    spawnInterval: 15000, // 15 seconds
                     size: 40
                 };
                 gameState.bases.push(base);
             });
 
-            // Choose 3 random animals not selected by player for NPC bases
+            // Create enemy bases with 3 random remaining animals
             const remainingAnimals = Object.keys(animalConfigs).filter(a => !gameState.selectedAnimals.includes(a));
-            while (remainingAnimals.length < 3) remainingAnimals.push(gameState.selectedAnimals[Math.floor(Math.random()*3)]);
-            for (let i=remainingAnimals.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [remainingAnimals[i],remainingAnimals[j]]=[remainingAnimals[j],remainingAnimals[i]]; }
+            // Shuffle simple
+            for (let i = remainingAnimals.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [remainingAnimals[i], remainingAnimals[j]] = [remainingAnimals[j], remainingAnimals[i]];
+            }
+            const enemyAnimals = remainingAnimals.slice(0, 3);
 
-            enemyBaseTiles.forEach((tile, idx) => {
-                const animal = remainingAnimals[idx];
+            enemyAnimals.forEach((animal, index) => {
                 const base = {
                     animal: animal,
-                    team: Teams.NPC,
-                    x: tile.x,
-                    y: tile.y,
+                    team: 'enemy',
+                    x: gameState.mapSize.width - (200 + (index * 150)),
+                    y: gameState.mapSize.height - 200,
                     lastSpawn: 0,
                     spawnInterval: 15000,
                     size: 40
