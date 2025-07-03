@@ -373,6 +373,43 @@
             dolphin: { speed: 2.5, size: 38, model: 'models/dolphin.glb', baseStyle: 'pool', emoji: '🐬' }
         };
 
+        /* --------------------
+           Phase 0 – Ground-rules & Tile Legend (two-player map)
+        ---------------------*/
+
+        // Single source of truth for every terrain / base tile
+        const TileType = Object.freeze({
+            PLAYER_BASE:   'playerBase',   // b – will be bound to chosen animals later
+            ENEMY_BASE:    'enemyBase',    // e – NPC bases
+            MOUNTAIN:      'mountain',     // m
+            LAKE:          'lake',         // l (clusters post-processed → river/ocean)
+            RIVER:         'river',        // r
+            OCEAN:         'ocean',        // o
+            FARMLAND:      'farmland',     // f
+            WETLAND:       'wetland',      // w
+            PLAIN:         'plain'         // p (default)
+        });
+
+        // Mapping from CSV character to TileType for quick parsing (Phase 1 will use this)
+        const TILE_CHAR = Object.freeze({
+            'b': TileType.PLAYER_BASE,
+            'e': TileType.ENEMY_BASE,
+            'm': TileType.MOUNTAIN,
+            'l': TileType.LAKE,
+            'r': TileType.RIVER,
+            'o': TileType.OCEAN,
+            'f': TileType.FARMLAND,
+            'w': TileType.WETLAND,
+            'p': TileType.PLAIN,
+            '':  TileType.PLAIN
+        });
+
+        // Two-team setup: human player vs single NPC (AI)
+        const Teams = Object.freeze({
+            PLAYER: 'player',
+            NPC:    'enemy'   // retains previous naming for compatibility
+        });
+
         // Pine tree system
         function generateTrees() {
             const trees = [];
