@@ -442,33 +442,13 @@
             modelViewer.style.width = '120px';
             modelViewer.style.height = '120px';
             
-            // Mountain-specific settings - use same successful settings as units
-            modelViewer.cameraOrbit = '0deg 90deg 50m';
-            modelViewer.fieldOfView = '10deg';
-            modelViewer.minCameraOrbit = 'auto auto auto';
-            modelViewer.maxCameraOrbit = 'auto auto auto';
-            modelViewer.setAttribute('camera-target', 'auto auto auto');
-            modelViewer.setAttribute('max-field-of-view', '45deg');
-            modelViewer.setAttribute('min-field-of-view', '5deg');
+            // Mountain-specific settings
+            modelViewer.cameraOrbit = '0deg 75deg 100m';
+            modelViewer.fieldOfView = '15deg';
             modelViewer.setAttribute('auto-rotate-delay', '0');
             modelViewer.setAttribute('interaction-prompt', 'none');
             modelViewer.setAttribute('loading', 'eager');
             modelViewer.setAttribute('reveal', 'auto');
-            
-            // Wait for model to load then adjust framing like units
-            modelViewer.addEventListener('load', () => {
-                setTimeout(() => {
-                    try {
-                        const center = modelViewer.getCameraTarget();
-                        const bounds = modelViewer.getBoundingBoxCenter();
-                        modelViewer.cameraOrbit = '0deg 75deg 100m';
-                        modelViewer.fieldOfView = '15deg';
-                    } catch (e) {
-                        modelViewer.cameraOrbit = '0deg 75deg 80m';
-                        modelViewer.fieldOfView = '20deg';
-                    }
-                }, 100);
-            });
             
             // Make it look more mountain-like (darker, larger)
             modelViewer.style.filter = 'brightness(0.6) contrast(1.2)';
