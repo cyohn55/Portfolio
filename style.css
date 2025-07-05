@@ -1205,7 +1205,7 @@ section h2 {
     
     /* Adjust container height for mobile */
     #typing-animation-container {
-        height: 240px; /* Fixed height for mobile to prevent jitter */
+        height: 300px; /* Fixed height for mobile to prevent jitter - increased by 60px */
         margin-bottom: 3rem; /* Increased spacing to prevent overlap with intro text on mobile */
     }
     
@@ -1213,7 +1213,7 @@ section h2 {
         font-size: inherit; /* Don't override individual line sizes on mobile */
         line-height: 1.3;
         font-weight: 600;
-        height: 240px; /* Fixed height to match container */
+        height: 300px; /* Fixed height to match container - increased by 60px */
     }
     
     /* Mobile-specific font sizes for typing animation */
@@ -1239,8 +1239,8 @@ section h2 {
     
     /* Keep mobile container same height as typing container */
     .centered-who {
-        height: 240px !important; /* Same as mobile typing container height */
-        max-height: 240px !important; /* Ensure it doesn't exceed this height */
+        height: 300px !important; /* Same as mobile typing container height - increased by 60px */
+        max-height: 300px !important; /* Ensure it doesn't exceed this height - increased by 60px */
         overflow: hidden !important; /* Prevent text from spilling out on mobile */
     }
 }
