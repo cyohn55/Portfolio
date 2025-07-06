@@ -627,15 +627,15 @@ function generateHexGrid(rows = 8, cols = 10) {
             tile.setAttribute('interaction-prompt', 'none');
             tile.setAttribute('touch-action', 'pan-y');
             tile.setAttribute('loading', 'lazy');
-            // Perfect top-down view (looking straight down) - pulled back 3x
-            tile.setAttribute('camera-orbit', '0deg 0deg 45m');
+            // Perfect top-down view (looking straight down) - pulled back 195m
+            tile.setAttribute('camera-orbit', '0deg 0deg 195m');
             tile.setAttribute('field-of-view', '20deg');
             // Disable all rotation and movement
             tile.removeAttribute('auto-rotate');
             tile.setAttribute('disable-zoom', '');
             tile.setAttribute('disable-pan', '');
-            tile.setAttribute('min-camera-orbit', '0deg 0deg 45m');
-            tile.setAttribute('max-camera-orbit', '0deg 0deg 45m');
+            tile.setAttribute('min-camera-orbit', '0deg 0deg 195m');
+            tile.setAttribute('max-camera-orbit', '0deg 0deg 195m');
 
             rowEl.appendChild(tile);
         }
