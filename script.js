@@ -577,12 +577,12 @@ document.addEventListener('DOMContentLoaded', function() {
    HEX-GRID GENERATION (Mountain / Forest / Hill / FarmLand)
    ===================================================================== */
 
-// Configuration for hex-tile GLB models
+// Configuration for hex-tile GLB models with scaling adjustments
 const hexTileModels = [
-    { file: 'models/Mountain.glb', alt: 'Mountain Tile' },
-    { file: 'models/Forest.glb', alt: 'Forest Tile' },
-    { file: 'models/Hill.glb', alt: 'Hill Tile' },
-    { file: 'models/FarmLand.glb', alt: 'Farm Land Tile' }
+    { file: 'models/Mountain.glb', alt: 'Mountain Tile', scale: '1.5 1.5 1.5' },
+    { file: 'models/Forest.glb', alt: 'Forest Tile', scale: '1 1 1' },
+    { file: 'models/Hill.glb', alt: 'Hill Tile', scale: '1 1 1' },
+    { file: 'models/FarmLand.glb', alt: 'Farm Land Tile', scale: '1 1 1' }
 ];
 
 function getRandomHexTile() {
@@ -618,11 +618,14 @@ function generateHexGrid(rows = 8, cols = 10) {
         const colsForRow = (r % 2 === 1) ? cols - 1 : cols;
 
         for (let c = 0; c < colsForRow; c++) {
-            const { file, alt } = getRandomHexTile();
+            const { file, alt, scale } = getRandomHexTile();
             const tile = document.createElement('model-viewer');
             tile.classList.add('hex-tile');
             tile.setAttribute('src', file);
             tile.setAttribute('alt', alt);
+            if (scale) {
+                tile.setAttribute('scale', scale);
+            }
             tile.setAttribute('camera-controls', '');
             tile.setAttribute('interaction-prompt', 'none');
             tile.setAttribute('touch-action', 'pan-y');
