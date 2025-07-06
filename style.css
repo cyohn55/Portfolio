@@ -38,6 +38,8 @@
     /* Transitions */
     --transition-fast: 0.2s;
     --transition-normal: 0.3s;
+    /* Hex grid */
+    --hex-tile-size: 200px;
 }
 
 /* ==========================================================================
@@ -1749,6 +1751,46 @@ model-viewer .progress-bar {
     
     .project-3d .model-preview {
         height: 160px;
+    }
+}
+
+/* ==========================================================================
+   HEX GRID STYLES
+   ========================================================================== */
+
+#hex-grid-section {
+    padding: 60px 20px;
+    text-align: center;
+}
+
+#hex-grid {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start; /* Important for offset rows */
+    margin: 0 auto;
+    max-width: calc(var(--hex-tile-size) * 8);
+}
+
+.hex-row {
+    display: flex;
+}
+
+.hex-row.offset-row {
+    margin-left: calc(var(--hex-tile-size) / 2);
+}
+
+.hex-tile {
+    width: var(--hex-tile-size);
+    height: var(--hex-tile-size);
+    background: transparent;
+    --progress-bar-display: none; /* Hide default progress bar */
+    margin: 0;
+    padding: 0;
+}
+
+@media (max-width: 768px) {
+    :root {
+        --hex-tile-size: 120px;
     }
 }
 

@@ -572,3 +572,68 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+
+/* =====================================================================
+   PROCEDURAL HEX-GRID GENERATION (FarmLand / Forest / Hill / Mountain)
+   ===================================================================== */
+
+// Configuration for hex-tile GLB models
+const hexTileModels = [
+    { file: 'models/FarmLand.glb', alt: 'Farm Land Tile' },
+    { file: 'models/Forest.glb',  alt: 'Forest Tile' },
+    { file: 'models/Hill.glb',    alt: 'Hill Tile' },
+    { file: 'models/Mountain.glb',alt: 'Mountain Tile' }
+];
+
+function getRandomHexTile() {
+    return hexTileModels[Math.floor(Math.random() * hexTileModels.length)];
+}
+
+/**
+ * Generates a hex-grid inside #hex-grid.
+ * Each odd row is horizontally offset by half a tile so the hexes interlock.
+ * @param {number} rows – number of rows
+ * @param {number} cols – number of columns per row (even rows have this many; odd rows visually have one less due to offset)
+ */
+function generateHexGrid(rows = 6, cols = 7) {
+    const container = document.getElementById('hex-grid');
+    if (!container) {
+        console.warn('Hex grid container (#hex-grid) not found.');
+        return;
+    }
+
+    // Clear any existing tiles
+    container.innerHTML = '';
+
+    for (let r = 0; r < rows; r++) {
+        const rowEl = document.createElement('div');
+        rowEl.classList.add('hex-row');
+        if (r % 2 === 1) {
+            rowEl.classList.add('offset-row');
+        }
+
+        for (let c = 0; c < cols; c++) {
+            const { file, alt } = getRandomHexTile();
+            const tile = document.createElement('model-viewer');
+            tile.classList.add('hex-tile');
+            tile.setAttribute('src', file);
+            tile.setAttribute('alt', alt);
+            tile.setAttribute('camera-controls', '');
+            tile.setAttribute('interaction-prompt', 'none');
+            tile.setAttribute('touch-action', 'pan-y');
+            tile.setAttribute('loading', 'lazy');
+            // Disable auto-rotate for performance
+            // tile.setAttribute('auto-rotate', '');
+
+            rowEl.appendChild(tile);
+        }
+
+        container.appendChild(rowEl);
+    }
+}
+
+// Kick off hex-grid generation after DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    generateHexGrid();
+});
+
