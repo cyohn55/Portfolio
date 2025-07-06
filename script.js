@@ -589,54 +589,6 @@ function getRandomHexTile() {
     return hexTileModels[Math.floor(Math.random() * hexTileModels.length)];
 }
 
-// Test function to create simple divs instead of model-viewers
-function generateTestHexGrid(rows = 8, cols = 10) {
-    const container = document.getElementById('hex-grid');
-    if (!container) {
-        console.warn('Hex grid container (#hex-grid) not found.');
-        return;
-    }
-
-    console.log('Generating TEST hex grid with colored divs');
-    
-    // Clear any existing tiles
-    container.innerHTML = '';
-
-    const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12']; // Red, Blue, Green, Orange
-
-    for (let r = 0; r < rows; r++) {
-        const rowEl = document.createElement('div');
-        rowEl.classList.add('hex-row');
-        
-        // Offset every other row by half a tile width for proper hex interlocking
-        if (r % 2 === 1) {
-            rowEl.classList.add('offset-row');
-        }
-
-        // Adjust column count for offset rows to maintain visual balance
-        const colsForRow = (r % 2 === 1) ? cols - 1 : cols;
-
-        for (let c = 0; c < colsForRow; c++) {
-            const tile = document.createElement('div');
-            tile.classList.add('hex-tile');
-            tile.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-            tile.style.display = 'flex';
-            tile.style.alignItems = 'center';
-            tile.style.justifyContent = 'center';
-            tile.style.color = 'white';
-            tile.style.fontWeight = 'bold';
-            tile.style.fontSize = '14px';
-            tile.textContent = `${r},${c}`;
-
-            rowEl.appendChild(tile);
-        }
-
-        container.appendChild(rowEl);
-    }
-    
-    console.log('Test hex grid generation completed');
-}
-
 /**
  * Generates a hex-grid inside #hex-grid.
  * Each odd row is horizontally offset by half a tile so the hexes interlock.
@@ -650,8 +602,6 @@ function generateHexGrid(rows = 8, cols = 10) {
         return;
     }
 
-    console.log('Generating hex grid with', rows, 'rows and', cols, 'columns');
-    
     // Clear any existing tiles
     container.innerHTML = '';
 
@@ -686,57 +636,15 @@ function generateHexGrid(rows = 8, cols = 10) {
             const randomRotation = Math.random() * 360;
             tile.setAttribute('rotation', `0deg ${randomRotation}deg 0deg`);
 
-            // Add error handling for model loading
-            tile.addEventListener('load', () => {
-                console.log('Model loaded successfully:', file);
-            });
-            
-            tile.addEventListener('error', (e) => {
-                console.error('Error loading model:', file, e);
-                // Fallback: create a colored div if model fails to load
-                const fallbackDiv = document.createElement('div');
-                fallbackDiv.style.width = 'var(--hex-tile-size)';
-                fallbackDiv.style.height = 'var(--hex-tile-size)';
-                fallbackDiv.style.backgroundColor = '#4a90e2';
-                fallbackDiv.style.borderRadius = '8px';
-                fallbackDiv.style.display = 'flex';
-                fallbackDiv.style.alignItems = 'center';
-                fallbackDiv.style.justifyContent = 'center';
-                fallbackDiv.style.color = 'white';
-                fallbackDiv.style.fontSize = '12px';
-                fallbackDiv.textContent = alt;
-                tile.parentNode.replaceChild(fallbackDiv, tile);
-            });
-
             rowEl.appendChild(tile);
         }
 
         container.appendChild(rowEl);
     }
-    
-    console.log('Hex grid generation completed. Total tiles created:', container.querySelectorAll('.hex-tile, div').length);
 }
 
 // Kick off hex-grid generation after DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM Content Loaded - Starting hex grid generation');
-    // Try test grid first to verify layout works
-    generateTestHexGrid();
-    
-    // After 3 seconds, switch to actual models
-    setTimeout(() => {
-        console.log('Switching to actual GLB models');
-        generateHexGrid();
-    }, 3000);
-});
-
-// Also try to generate on window load as a fallback
-window.addEventListener('load', () => {
-    console.log('Window loaded - Checking if hex grid exists');
-    const hexGrid = document.getElementById('hex-grid');
-    if (hexGrid && hexGrid.children.length === 0) {
-        console.log('Hex grid is empty, generating test grid');
-        generateTestHexGrid();
-    }
+    generateHexGrid();
 });
 
