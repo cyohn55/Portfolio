@@ -1761,22 +1761,33 @@ model-viewer .progress-bar {
 #hex-grid-section {
     padding: 60px 20px;
     text-align: center;
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+}
+
+#hex-grid-section h2 {
+    color: white;
+    margin-bottom: 40px;
+    font-size: 2.5rem;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
 }
 
 #hex-grid {
     display: flex;
     flex-direction: column;
-    align-items: flex-start; /* Important for offset rows */
+    align-items: center; /* Center the grid */
     margin: 0 auto;
-    max-width: calc(var(--hex-tile-size) * 8);
+    max-width: calc(var(--hex-tile-size) * 10);
+    gap: -10px; /* Negative gap to create interlocking effect */
 }
 
 .hex-row {
     display: flex;
+    gap: 2px; /* Small gap between tiles in the same row */
+    margin-bottom: -15px; /* Overlap rows for better hex interlocking */
 }
 
 .hex-row.offset-row {
-    margin-left: calc(var(--hex-tile-size) / 2);
+    margin-left: calc(var(--hex-tile-size) / 2); /* Offset every other row */
 }
 
 .hex-tile {
@@ -1786,11 +1797,57 @@ model-viewer .progress-bar {
     --progress-bar-display: none; /* Hide default progress bar */
     margin: 0;
     padding: 0;
+    border-radius: 8px;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    cursor: pointer;
+}
+
+.hex-tile:hover {
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+    z-index: 10;
+}
+
+/* Responsive design */
+@media (max-width: 1024px) {
+    :root {
+        --hex-tile-size: 100px;
+    }
+    
+    #hex-grid {
+        max-width: calc(var(--hex-tile-size) * 8);
+    }
 }
 
 @media (max-width: 768px) {
     :root {
-        --hex-tile-size: 120px;
+        --hex-tile-size: 80px;
+    }
+    
+    #hex-grid-section {
+        padding: 40px 15px;
+    }
+    
+    #hex-grid-section h2 {
+        font-size: 2rem;
+    }
+    
+    #hex-grid {
+        max-width: calc(var(--hex-tile-size) * 6);
+    }
+}
+
+@media (max-width: 480px) {
+    :root {
+        --hex-tile-size: 60px;
+    }
+    
+    #hex-grid-section h2 {
+        font-size: 1.5rem;
+    }
+    
+    #hex-grid {
+        max-width: calc(var(--hex-tile-size) * 5);
     }
 }
 

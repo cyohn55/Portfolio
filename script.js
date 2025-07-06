@@ -574,15 +574,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 /* =====================================================================
-   PROCEDURAL HEX-GRID GENERATION (FarmLand / Forest / Hill / Mountain)
+   HEX-GRID GENERATION (Mountain / Forest / Hill / FarmLand)
    ===================================================================== */
 
 // Configuration for hex-tile GLB models
 const hexTileModels = [
-    { file: 'models/FarmLand.glb', alt: 'Farm Land Tile' },
-    { file: 'models/Forest.glb',  alt: 'Forest Tile' },
-    { file: 'models/Hill.glb',    alt: 'Hill Tile' },
-    { file: 'models/Mountain.glb',alt: 'Mountain Tile' }
+    { file: 'models/Mountain.glb', alt: 'Mountain Tile' },
+    { file: 'models/Forest.glb', alt: 'Forest Tile' },
+    { file: 'models/Hill.glb', alt: 'Hill Tile' },
+    { file: 'models/FarmLand.glb', alt: 'Farm Land Tile' }
 ];
 
 function getRandomHexTile() {
@@ -593,9 +593,9 @@ function getRandomHexTile() {
  * Generates a hex-grid inside #hex-grid.
  * Each odd row is horizontally offset by half a tile so the hexes interlock.
  * @param {number} rows – number of rows
- * @param {number} cols – number of columns per row (even rows have this many; odd rows visually have one less due to offset)
+ * @param {number} cols – number of columns per row
  */
-function generateHexGrid(rows = 6, cols = 7) {
+function generateHexGrid(rows = 8, cols = 10) {
     const container = document.getElementById('hex-grid');
     if (!container) {
         console.warn('Hex grid container (#hex-grid) not found.');
@@ -608,11 +608,16 @@ function generateHexGrid(rows = 6, cols = 7) {
     for (let r = 0; r < rows; r++) {
         const rowEl = document.createElement('div');
         rowEl.classList.add('hex-row');
+        
+        // Offset every other row by half a tile width for proper hex interlocking
         if (r % 2 === 1) {
             rowEl.classList.add('offset-row');
         }
 
-        for (let c = 0; c < cols; c++) {
+        // Adjust column count for offset rows to maintain visual balance
+        const colsForRow = (r % 2 === 1) ? cols - 1 : cols;
+
+        for (let c = 0; c < colsForRow; c++) {
             const { file, alt } = getRandomHexTile();
             const tile = document.createElement('model-viewer');
             tile.classList.add('hex-tile');
@@ -622,8 +627,14 @@ function generateHexGrid(rows = 6, cols = 7) {
             tile.setAttribute('interaction-prompt', 'none');
             tile.setAttribute('touch-action', 'pan-y');
             tile.setAttribute('loading', 'lazy');
-            // Disable auto-rotate for performance
-            // tile.setAttribute('auto-rotate', '');
+            tile.setAttribute('camera-orbit', '45deg 75deg 15m');
+            tile.setAttribute('field-of-view', '30deg');
+            tile.setAttribute('min-camera-orbit', 'auto auto 10m');
+            tile.setAttribute('max-camera-orbit', 'auto auto 20m');
+            
+            // Add subtle random rotation for natural variation
+            const randomRotation = Math.random() * 360;
+            tile.setAttribute('rotation', `0deg ${randomRotation}deg 0deg`);
 
             rowEl.appendChild(tile);
         }
