@@ -627,12 +627,15 @@ function generateHexGrid(rows = 8, cols = 10) {
             tile.setAttribute('interaction-prompt', 'none');
             tile.setAttribute('touch-action', 'pan-y');
             tile.setAttribute('loading', 'lazy');
-            // Top-down view for hex tiles
-            tile.setAttribute('camera-orbit', '0deg 90deg 15m');
+            // Perfect top-down view (looking straight down)
+            tile.setAttribute('camera-orbit', '0deg 0deg 15m');
             tile.setAttribute('field-of-view', '20deg');
-            tile.setAttribute('auto-rotate', 'false');
-            tile.setAttribute('min-camera-orbit', 'auto auto auto');
-            tile.setAttribute('max-camera-orbit', 'auto auto auto');
+            // Disable all rotation and movement
+            tile.removeAttribute('auto-rotate');
+            tile.setAttribute('disable-zoom', '');
+            tile.setAttribute('disable-pan', '');
+            tile.setAttribute('min-camera-orbit', '0deg 0deg 15m');
+            tile.setAttribute('max-camera-orbit', '0deg 0deg 15m');
 
             rowEl.appendChild(tile);
         }
