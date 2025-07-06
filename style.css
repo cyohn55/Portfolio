@@ -1790,6 +1790,10 @@ model-viewer .progress-bar {
     margin-left: calc(var(--hex-tile-size) * 0.375); /* Offset by 3/8 of tile width for true hex interlocking */
 }
 
+.hex-row.offset-row .hex-tile {
+    transform: rotate(90deg); /* Rotate every other row by 90 degrees */
+}
+
 .hex-tile {
     width: var(--hex-tile-size);
     height: var(--hex-tile-size);
@@ -1807,6 +1811,10 @@ model-viewer .progress-bar {
     transform: translateY(-5px) scale(1.02);
     box-shadow: 0 10px 20px rgba(0,0,0,0.3);
     z-index: 10;
+}
+
+.hex-row.offset-row .hex-tile:hover {
+    transform: rotate(90deg) translateY(-5px) scale(1.02);
 }
 
 /* Responsive design */
