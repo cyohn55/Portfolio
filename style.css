@@ -1777,13 +1777,13 @@ model-viewer .progress-bar {
     align-items: center; /* Center the grid */
     margin: 0 auto;
     max-width: calc(var(--hex-tile-size) * 10);
-    gap: -10px; /* Negative gap to create interlocking effect */
+    gap: 2px; /* Small gap between rows */
 }
 
 .hex-row {
     display: flex;
-    gap: 0; /* No gap for true interlocking */
-    margin-bottom: calc(var(--hex-tile-size) * -0.25); /* Proper vertical overlap for hex interlocking */
+    gap: 2px; /* Small gap between tiles in the same row */
+    margin-bottom: 0; /* No overlap between rows */
 }
 
 .hex-row.offset-row {
