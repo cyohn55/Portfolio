@@ -1782,12 +1782,12 @@ model-viewer .progress-bar {
 
 .hex-row {
     display: flex;
-    gap: 2px; /* Small gap between tiles in the same row */
-    margin-bottom: -15px; /* Overlap rows for better hex interlocking */
+    gap: 0; /* No gap for true interlocking */
+    margin-bottom: calc(var(--hex-tile-size) * -0.25); /* Proper vertical overlap for hex interlocking */
 }
 
 .hex-row.offset-row {
-    margin-left: calc(var(--hex-tile-size) / 2); /* Offset every other row */
+    margin-left: calc(var(--hex-tile-size) * 0.5); /* Offset by half tile width for proper hex interlocking */
 }
 
 .hex-row.offset-row .hex-tile {
