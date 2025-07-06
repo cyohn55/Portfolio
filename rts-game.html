@@ -511,6 +511,9 @@
                     // Perfect top-down view (looking straight down) - pulled back 195m
                     tile.setAttribute('camera-orbit', '0deg 0deg 195m');
                     tile.setAttribute('field-of-view', '20deg');
+                    // Ensure all models have identical orientation
+                    tile.setAttribute('rotation', '0deg 0deg 0deg');
+                    tile.setAttribute('orientation', '0deg 0deg 0deg');
                     // Disable all rotation and movement
                     tile.removeAttribute('auto-rotate');
                     tile.setAttribute('disable-zoom', '');
