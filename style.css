@@ -1777,17 +1777,17 @@ model-viewer .progress-bar {
     align-items: center; /* Center the grid */
     margin: 0 auto;
     max-width: calc(var(--hex-tile-size) * 10);
-    gap: calc(var(--hex-tile-size) * -0.25); /* Negative gap for interlocking */
+    gap: -10px; /* Negative gap to create interlocking effect */
 }
 
 .hex-row {
     display: flex;
-    gap: calc(var(--hex-tile-size) * -0.25); /* Negative gap for horizontal interlocking */
-    margin-bottom: calc(var(--hex-tile-size) * -0.25); /* Overlap rows for vertical interlocking */
+    gap: 2px; /* Small gap between tiles in the same row */
+    margin-bottom: -15px; /* Overlap rows for better hex interlocking */
 }
 
 .hex-row.offset-row {
-    margin-left: calc(var(--hex-tile-size) * 0.375); /* Offset by 3/8 of tile width for true hex interlocking */
+    margin-left: calc(var(--hex-tile-size) / 2); /* Offset every other row */
 }
 
 .hex-row.offset-row .hex-tile {
