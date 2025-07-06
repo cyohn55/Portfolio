@@ -199,9 +199,7 @@
             margin-left: calc(var(--hex-tile-size) * 0.5);
         }
 
-        .hex-row.offset-row .hex-tile {
-            transform: rotate(90deg);
-        }
+        /* Removed rotation - all tiles maintain same orientation */
 
         .hex-tile {
             width: var(--hex-tile-size);
@@ -228,7 +226,7 @@
         }
 
         .hex-row.offset-row .hex-tile:hover {
-            transform: rotate(90deg) scale(1.05);
+            transform: scale(1.05);
         }
 
         .hex-tile model-viewer {
