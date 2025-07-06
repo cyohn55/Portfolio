@@ -206,8 +206,9 @@
             --progress-bar-display: none;
             margin: 0;
             padding: 0;
-            border-radius: 6px;
             transition: transform 0.2s ease;
+            /* Create hexagonal shape using clip-path */
+            clip-path: polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%);
         }
 
         .hex-tile:hover {
@@ -488,13 +489,12 @@
                     tile.setAttribute('camera-controls', 'false');
                     tile.setAttribute('interaction-prompt', 'none');
                     tile.setAttribute('loading', 'lazy');
-                    tile.setAttribute('camera-orbit', '45deg 75deg 12m');
-                    tile.setAttribute('field-of-view', '25deg');
+                    // Top-down view for hex tiles
+                    tile.setAttribute('camera-orbit', '0deg 90deg 15m');
+                    tile.setAttribute('field-of-view', '20deg');
                     tile.setAttribute('auto-rotate', 'false');
-                    
-                    // Add subtle random rotation for natural variation
-                    const randomRotation = Math.random() * 360;
-                    tile.setAttribute('rotation', `0deg ${randomRotation}deg 0deg`);
+                    tile.setAttribute('min-camera-orbit', 'auto auto auto');
+                    tile.setAttribute('max-camera-orbit', 'auto auto auto');
 
                     rowEl.appendChild(tile);
                 }

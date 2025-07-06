@@ -627,14 +627,12 @@ function generateHexGrid(rows = 8, cols = 10) {
             tile.setAttribute('interaction-prompt', 'none');
             tile.setAttribute('touch-action', 'pan-y');
             tile.setAttribute('loading', 'lazy');
-            tile.setAttribute('camera-orbit', '45deg 75deg 15m');
-            tile.setAttribute('field-of-view', '30deg');
-            tile.setAttribute('min-camera-orbit', 'auto auto 10m');
-            tile.setAttribute('max-camera-orbit', 'auto auto 20m');
-            
-            // Add subtle random rotation for natural variation
-            const randomRotation = Math.random() * 360;
-            tile.setAttribute('rotation', `0deg ${randomRotation}deg 0deg`);
+            // Top-down view for hex tiles
+            tile.setAttribute('camera-orbit', '0deg 90deg 15m');
+            tile.setAttribute('field-of-view', '20deg');
+            tile.setAttribute('auto-rotate', 'false');
+            tile.setAttribute('min-camera-orbit', 'auto auto auto');
+            tile.setAttribute('max-camera-orbit', 'auto auto auto');
 
             rowEl.appendChild(tile);
         }

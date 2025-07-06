@@ -1797,9 +1797,10 @@ model-viewer .progress-bar {
     --progress-bar-display: none; /* Hide default progress bar */
     margin: 0;
     padding: 0;
-    border-radius: 8px;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
     cursor: pointer;
+    /* Create hexagonal shape using clip-path */
+    clip-path: polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%);
 }
 
 .hex-tile:hover {
