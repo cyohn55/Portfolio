@@ -167,7 +167,53 @@
             filter: drop-shadow(0 0 10px #00ff88);
         }
 
-        /* Hex grid terrain styling - no trees */
+        /* Hex Grid Terrain System */
+        #hexGridContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 2;
+            opacity: 0.8;
+        }
+
+        #hex-grid {
+            position: absolute;
+            top: 50px;
+            left: 50px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            --hex-tile-size: 80px;
+        }
+
+        .hex-row {
+            display: flex;
+            gap: 2px;
+            margin-bottom: -10px;
+        }
+
+        .hex-row.offset-row {
+            margin-left: calc(var(--hex-tile-size) / 2);
+        }
+
+        .hex-tile {
+            width: var(--hex-tile-size);
+            height: var(--hex-tile-size);
+            background: transparent;
+            --progress-bar-display: none;
+            margin: 0;
+            padding: 0;
+            border-radius: 6px;
+            transition: transform 0.2s ease;
+        }
+
+        .hex-tile:hover {
+            transform: scale(1.05);
+            z-index: 10;
+        }
 
         /* UI Elements */
         .ui-panel {
@@ -307,6 +353,11 @@
         <!-- 3D Models Container -->
         <div id="modelsContainer"></div>
         
+        <!-- Hex Grid Terrain Container -->
+        <div id="hexGridContainer">
+            <div id="hex-grid"></div>
+        </div>
+        
         <!-- UI Panels -->
         <div id="resourcePanel" class="ui-panel">
             <div>Population: <span id="population">0</span></div>
@@ -394,7 +445,63 @@
             NPC:    'enemy'   // retains previous naming for compatibility
         });
 
-        // Hex grid terrain system - no procedural trees
+        // Hex grid terrain system
+        const hexTileModels = [
+            { file: 'models/Mountain.glb', alt: 'Mountain Tile' },
+            { file: 'models/Forest.glb', alt: 'Forest Tile' },
+            { file: 'models/Hill.glb', alt: 'Hill Tile' },
+            { file: 'models/FarmLand.glb', alt: 'Farm Land Tile' }
+        ];
+
+        function getRandomHexTile() {
+            return hexTileModels[Math.floor(Math.random() * hexTileModels.length)];
+        }
+
+        function generateHexGrid(rows = 15, cols = 20) {
+            const container = document.getElementById('hex-grid');
+            if (!container) {
+                console.warn('Hex grid container (#hex-grid) not found.');
+                return;
+            }
+
+            // Clear any existing tiles
+            container.innerHTML = '';
+
+            for (let r = 0; r < rows; r++) {
+                const rowEl = document.createElement('div');
+                rowEl.classList.add('hex-row');
+                
+                // Offset every other row by half a tile width for proper hex interlocking
+                if (r % 2 === 1) {
+                    rowEl.classList.add('offset-row');
+                }
+
+                // Adjust column count for offset rows to maintain visual balance
+                const colsForRow = (r % 2 === 1) ? cols - 1 : cols;
+
+                for (let c = 0; c < colsForRow; c++) {
+                    const { file, alt } = getRandomHexTile();
+                    const tile = document.createElement('model-viewer');
+                    tile.classList.add('hex-tile');
+                    tile.setAttribute('src', file);
+                    tile.setAttribute('alt', alt);
+                    tile.setAttribute('camera-controls', 'false');
+                    tile.setAttribute('interaction-prompt', 'none');
+                    tile.setAttribute('loading', 'lazy');
+                    tile.setAttribute('camera-orbit', '45deg 75deg 12m');
+                    tile.setAttribute('field-of-view', '25deg');
+                    tile.setAttribute('auto-rotate', 'false');
+                    
+                    // Add subtle random rotation for natural variation
+                    const randomRotation = Math.random() * 360;
+                    tile.setAttribute('rotation', `0deg ${randomRotation}deg 0deg`);
+
+                    rowEl.appendChild(tile);
+                }
+
+                container.appendChild(rowEl);
+            }
+        }
 
         // Title Screen Logic
         document.addEventListener('DOMContentLoaded', function() {
@@ -493,7 +600,8 @@
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
 
-            // Hex grid terrain - no procedural trees
+            // Generate hex grid terrain
+            generateHexGrid();
 
             // Create bases for selected animals
             gameState.selectedAnimals.forEach((animal, index) => {
