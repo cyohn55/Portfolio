@@ -191,12 +191,12 @@
 
         .hex-row {
             display: flex;
-            gap: 2px;
-            margin-bottom: -10px;
+            gap: calc(var(--hex-tile-size) * -0.25);
+            margin-bottom: calc(var(--hex-tile-size) * -0.25);
         }
 
         .hex-row.offset-row {
-            margin-left: calc(var(--hex-tile-size) / 2);
+            margin-left: calc(var(--hex-tile-size) * 0.375);
         }
 
         .hex-tile {
