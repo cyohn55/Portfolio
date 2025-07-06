@@ -489,15 +489,15 @@
                     tile.setAttribute('camera-controls', '');
                     tile.setAttribute('interaction-prompt', 'none');
                     tile.setAttribute('loading', 'lazy');
-                    // Perfect top-down view (looking straight down)
-                    tile.setAttribute('camera-orbit', '0deg 0deg 15m');
+                    // Perfect top-down view (looking straight down) - pulled back 3x
+                    tile.setAttribute('camera-orbit', '0deg 0deg 45m');
                     tile.setAttribute('field-of-view', '20deg');
                     // Disable all rotation and movement
                     tile.removeAttribute('auto-rotate');
                     tile.setAttribute('disable-zoom', '');
                     tile.setAttribute('disable-pan', '');
-                    tile.setAttribute('min-camera-orbit', '0deg 0deg 15m');
-                    tile.setAttribute('max-camera-orbit', '0deg 0deg 15m');
+                    tile.setAttribute('min-camera-orbit', '0deg 0deg 45m');
+                    tile.setAttribute('max-camera-orbit', '0deg 0deg 45m');
 
                     rowEl.appendChild(tile);
                 }
