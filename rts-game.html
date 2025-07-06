@@ -206,10 +206,17 @@
         .hex-tile {
             width: var(--hex-tile-size);
             height: var(--hex-tile-size);
+            min-width: var(--hex-tile-size);
+            min-height: var(--hex-tile-size);
+            max-width: var(--hex-tile-size);
+            max-height: var(--hex-tile-size);
             background: transparent;
             --progress-bar-display: none;
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+            flex-shrink: 0;
+            flex-grow: 0;
             transition: transform 0.2s ease;
             /* Create hexagonal shape using clip-path */
             clip-path: polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%);
@@ -222,6 +229,12 @@
 
         .hex-row.offset-row .hex-tile:hover {
             transform: rotate(90deg) scale(1.05);
+        }
+
+        .hex-tile model-viewer {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
         }
 
         /* UI Elements */
