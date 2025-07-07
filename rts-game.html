@@ -458,7 +458,7 @@
             return hexTileModels[Math.floor(Math.random() * hexTileModels.length)];
         }
 
-        function generateHexGrid(rows = 30, cols = 40) {
+        function generateHexGrid(rows = 20, cols = 25) {
             const container = document.getElementById('hex-grid');
             if (!container) {
                 console.warn('Hex grid container (#hex-grid) not found.');
@@ -484,9 +484,10 @@
                     tile.setAttribute('camera-controls', '');
                     tile.setAttribute('interaction-prompt', 'none');
                     tile.setAttribute('loading', 'lazy');
-                    // Individual tiles: top-down view (0 degrees) - pulled back 150m
-                    tile.setAttribute('camera-orbit', '0deg 0deg 150m');
-                    tile.setAttribute('field-of-view', '20deg');
+                    tile.setAttribute('reveal', 'manual'); // Manual loading control
+                    // Individual tiles: top-down view (0 degrees) - optimized distance
+                    tile.setAttribute('camera-orbit', '0deg 0deg 100m');
+                    tile.setAttribute('field-of-view', '15deg');
                     // Ensure all models have identical orientation
                     tile.setAttribute('rotation', '0deg 0deg 0deg');
                     tile.setAttribute('orientation', '0deg 0deg 0deg');
@@ -494,8 +495,8 @@
                     tile.removeAttribute('auto-rotate');
                     tile.setAttribute('disable-zoom', '');
                     tile.setAttribute('disable-pan', '');
-                    tile.setAttribute('min-camera-orbit', '0deg 0deg 150m');
-                    tile.setAttribute('max-camera-orbit', '0deg 0deg 150m');
+                    tile.setAttribute('min-camera-orbit', '0deg 0deg 100m');
+                    tile.setAttribute('max-camera-orbit', '0deg 0deg 100m');
 
                     // Calculate position using canvas script logic
                     let xPos, yPos;
@@ -514,10 +515,47 @@
                     tile.style.top = yPos + 'px';
                     tile.style.width = '40px';  // Larger than hexWidth to create visual overlap
                     tile.style.height = '40px'; // Larger than hexHeight to create visual overlap
+                    tile.style.display = 'none'; // Initially hidden for performance
                     
                     container.appendChild(tile);
                 }
             }
+        }
+
+        // Performance optimization: Viewport culling for hex tiles
+        function optimizeHexGridPerformance() {
+            const tiles = document.querySelectorAll('.hex-tile');
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            tiles.forEach(tile => {
+                const rect = tile.getBoundingClientRect();
+                const isVisible = (
+                    rect.right >= 0 &&
+                    rect.left <= viewportWidth &&
+                    rect.bottom >= 0 &&
+                    rect.top <= viewportHeight
+                );
+                
+                if (isVisible && !tile.hasAttribute('data-loaded')) {
+                    // Load visible tiles
+                    tile.style.display = 'block';
+                    tile.setAttribute('data-loaded', 'true');
+                } else if (!isVisible && tile.hasAttribute('data-loaded')) {
+                    // Hide distant tiles to save performance
+                    tile.style.display = 'none';
+                }
+            });
+        }
+
+        // Throttled performance optimization
+        let optimizationTimeout;
+        function throttledOptimization() {
+            if (optimizationTimeout) return;
+            optimizationTimeout = setTimeout(() => {
+                optimizeHexGridPerformance();
+                optimizationTimeout = null;
+            }, 100); // Run optimization every 100ms max
         }
 
         // Title Screen Logic
@@ -619,6 +657,13 @@
 
             // Generate hex grid terrain
             generateHexGrid();
+            
+            // Initialize performance optimization
+            optimizeHexGridPerformance();
+            
+            // Add scroll/resize listeners for viewport culling
+            window.addEventListener('scroll', throttledOptimization);
+            window.addEventListener('resize', throttledOptimization);
 
             // Create bases for selected animals
             gameState.selectedAnimals.forEach((animal, index) => {
