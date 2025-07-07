@@ -700,7 +700,6 @@ section h2 {
     padding: 20px;
     box-shadow: 0 4px 6px var(--shadow-light);
     transition: transform var(--transition-normal), box-shadow var(--transition-normal);
-    position: relative;
 }
 
 .project:hover {
@@ -728,9 +727,7 @@ section h2 {
 }
 
 .project a {
-    position: absolute;
-    bottom: 20px;
-    left: 20px;
+    display: inline-block;
     background-color: var(--primary-blue);
     color: var(--white);
     padding: 10px 20px;
