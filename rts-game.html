@@ -186,13 +186,16 @@
             width: 100%;
             height: 100%;
             --hex-tile-size: 60px;
+            /* StarCraft-style 30-degree viewing angle for the entire hex grid */
+            transform: perspective(2000px) rotateX(30deg);
+            transform-origin: center top;
         }
 
         /* Removed rotation - all tiles maintain same orientation */
 
         .hex-tile {
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: transparent;
+            border: none;
             --progress-bar-display: none;
             margin: 0;
             padding: 0;
@@ -465,10 +468,10 @@
             // Clear any existing tiles
             container.innerHTML = '';
 
-            // Adapt canvas script logic for 3D model positioning
-            const hexWidth = 70;  // From canvas script hexagon width
-            const hexHeight = 80; // From canvas script hexagon height
-            const hexOffset = 40; // Half height for interlocking
+            // Adapt canvas script logic for 3D model positioning - reduced gaps
+            const hexWidth = 45;  // Reduced from 70px to minimize gaps
+            const hexHeight = 50; // Reduced from 80px to minimize gaps  
+            const hexOffset = 25; // Half height for interlocking
 
             for (let i = 0; i < cols; i++) { // i represents columns (x-axis)
                 for (let j = 0; j < rows; j++) { // j represents rows (y-axis)
@@ -481,8 +484,8 @@
                     tile.setAttribute('camera-controls', '');
                     tile.setAttribute('interaction-prompt', 'none');
                     tile.setAttribute('loading', 'lazy');
-                    // StarCraft-style 30-degree elevation angle - pulled back 195m
-                    tile.setAttribute('camera-orbit', '0deg 30deg 195m');
+                    // Individual tiles: top-down view (0 degrees) - pulled back 150m
+                    tile.setAttribute('camera-orbit', '0deg 0deg 150m');
                     tile.setAttribute('field-of-view', '20deg');
                     // Ensure all models have identical orientation
                     tile.setAttribute('rotation', '0deg 0deg 0deg');
@@ -491,8 +494,8 @@
                     tile.removeAttribute('auto-rotate');
                     tile.setAttribute('disable-zoom', '');
                     tile.setAttribute('disable-pan', '');
-                    tile.setAttribute('min-camera-orbit', '0deg 30deg 195m');
-                    tile.setAttribute('max-camera-orbit', '0deg 30deg 195m');
+                    tile.setAttribute('min-camera-orbit', '0deg 0deg 150m');
+                    tile.setAttribute('max-camera-orbit', '0deg 0deg 150m');
 
                     // Calculate position using canvas script logic
                     let xPos, yPos;
@@ -505,12 +508,12 @@
                         yPos = j * hexHeight + hexOffset; // Add offset for interlocking
                     }
 
-                    // Apply positioning via CSS transform
+                    // Apply positioning and sizing to match hexagonal container exactly
                     tile.style.position = 'absolute';
                     tile.style.left = xPos + 'px';
                     tile.style.top = yPos + 'px';
-                    tile.style.width = '60px';  // Our current tile size
-                    tile.style.height = '60px';
+                    tile.style.width = '45px';  // Match hexWidth for exact container fit
+                    tile.style.height = '50px'; // Match hexHeight for exact container fit
                     
                     container.appendChild(tile);
                 }
