@@ -505,6 +505,54 @@
             return true;
         }
 
+        // Convert screen coordinates to hex grid coordinates with proper offset handling
+        function screenToHex(screenX, screenY) {
+            const hexX = Math.floor(screenX / 90);
+            let hexY = Math.floor(screenY / 120);
+            
+            // Adjust for hex offset on odd columns
+            if (hexX % 2 === 1) {
+                hexY = Math.floor((screenY - 60) / 120);
+            }
+            
+            return { x: hexX, y: hexY };
+        }
+
+        // Convert hex coordinates to screen coordinates (center of tile)
+        function hexToScreen(hexX, hexY) {
+            let screenX = hexX * 90 + 45; // Center of tile
+            let screenY = hexY * 120 + 60; // Center of tile
+            
+            // Adjust for hex offset on odd columns
+            if (hexX % 2 === 1) {
+                screenY += 60; // Add half hex height offset
+            }
+            
+            return { x: screenX, y: screenY };
+        }
+
+        // Check if a position (in screen coordinates) is within the bounds of a traversable hex tile
+        function isPositionTraversable(screenX, screenY, animalType) {
+            const hex = screenToHex(screenX, screenY);
+            
+            // Check if the hex tile itself is traversable
+            if (!isTileTraversable(hex.x, hex.y, animalType)) {
+                return false;
+            }
+            
+            // Additional check: ensure the position is well within the tile boundaries
+            // to prevent edge-walking between tiles
+            const tileCenter = hexToScreen(hex.x, hex.y);
+            const distanceFromCenter = Math.sqrt(
+                Math.pow(screenX - tileCenter.x, 2) + 
+                Math.pow(screenY - tileCenter.y, 2)
+            );
+            
+            // Only allow movement within 70% of the tile radius to prevent edge-walking
+            const maxAllowedRadius = 30; // ~70% of 45px (half tile width) for better separation
+            return distanceFromCenter <= maxAllowedRadius;
+        }
+
         // Get tile type at position (for gameplay logic)
         function getTileAt(x, y) {
             if (!gameMap || x < 0 || y < 0 || x >= gameMap.length || y >= gameMap[0].length) {
@@ -1139,23 +1187,62 @@
             return path;
         }
 
+        // Snap unit to the center of its current valid tile if it's in an invalid position
+        function snapUnitToValidPosition(unit) {
+            if (!isPositionTraversable(unit.x, unit.y, unit.animal)) {
+                const currentHex = screenToHex(unit.x, unit.y);
+                
+                // Try current tile center first
+                if (isTileTraversable(currentHex.x, currentHex.y, unit.animal)) {
+                    const centerPos = hexToScreen(currentHex.x, currentHex.y);
+                    unit.x = centerPos.x;
+                    unit.y = centerPos.y;
+                    console.log(`📍 Snapped ${unit.animal} to tile center (${currentHex.x}, ${currentHex.y})`);
+                    return true;
+                }
+                
+                // If current tile is not traversable, find nearest valid tile
+                const nearestTraversable = findNearestTraversableTile(currentHex.x, currentHex.y, unit.animal);
+                if (nearestTraversable) {
+                    const centerPos = hexToScreen(nearestTraversable.x, nearestTraversable.y);
+                    unit.x = centerPos.x;
+                    unit.y = centerPos.y;
+                    console.log(`📍 Moved ${unit.animal} to nearest valid tile (${nearestTraversable.x}, ${nearestTraversable.y})`);
+                    return true;
+                }
+                
+                console.warn(`⚠️ Could not find valid position for ${unit.animal}!`);
+                return false;
+            }
+            return true;
+        }
+
         // Enhanced unit movement with A* pathfinding
         function setUnitPath(unit, targetX, targetY) {
-            // Convert screen coordinates to hex coordinates
-            const startHexX = Math.floor(unit.x / 90);
-            let startHexY = Math.floor(unit.y / 120);
-            if (startHexX % 2 === 1) {
-                startHexY = Math.floor((unit.y - 60) / 120);
+            // Ensure unit is in a valid position before pathfinding
+            if (!snapUnitToValidPosition(unit)) {
+                console.warn(`Cannot set path for ${unit.animal} - invalid starting position`);
+                return;
             }
             
-            const goalHexX = Math.floor(targetX / 90);
-            let goalHexY = Math.floor(targetY / 120);
-            if (goalHexX % 2 === 1) {
-                goalHexY = Math.floor((targetY - 60) / 120);
+            // Convert screen coordinates to hex coordinates
+            const startHex = screenToHex(unit.x, unit.y);
+            const goalHex = screenToHex(targetX, targetY);
+            
+            // Ensure goal is traversable, otherwise find nearest traversable tile
+            let finalGoalHex = goalHex;
+            if (!isTileTraversable(goalHex.x, goalHex.y, unit.animal)) {
+                const nearestTraversable = findNearestTraversableTile(goalHex.x, goalHex.y, unit.animal);
+                if (nearestTraversable) {
+                    finalGoalHex = nearestTraversable;
+                } else {
+                    console.log(`🚫 No valid destination found for ${unit.animal}`);
+                    return;
+                }
             }
             
             // Find path using A*
-            const path = findPathAStar(startHexX, startHexY, goalHexX, goalHexY, unit.animal);
+            const path = findPathAStar(startHex.x, startHex.y, finalGoalHex.x, finalGoalHex.y, unit.animal);
             
             if (path && path.length > 1) {
                 unit.path = path.slice(1); // Remove starting position
@@ -1165,12 +1252,13 @@
                 unit.targetY = null;
                 console.log(`🗺️ ${unit.animal} found path with ${path.length} steps`);
             } else {
-                // Fallback to direct movement
-                unit.targetX = targetX;
-                unit.targetY = targetY;
+                // Fallback: move to nearest valid tile center
+                const centerPos = hexToScreen(finalGoalHex.x, finalGoalHex.y);
+                unit.targetX = centerPos.x;
+                unit.targetY = centerPos.y;
                 unit.isMoving = true;
                 unit.path = null;
-                console.log(`⚠️ ${unit.animal} using direct movement (no A* path found)`);
+                console.log(`⚠️ ${unit.animal} using direct movement to nearest valid tile`);
             }
         }
 
@@ -1189,15 +1277,8 @@
             for (const alt of alternatives) {
                 const testX = unit.x + alt.x;
                 const testY = unit.y + alt.y;
-                const hexX = Math.floor(testX / 90);
-                let hexY = Math.floor(testY / 120);
                 
-                // Adjust for hex offset on odd columns
-                if (hexX % 2 === 1) {
-                    hexY = Math.floor((testY - 60) / 120);
-                }
-                
-                if (isTileTraversable(hexX, hexY, unit.animal)) {
+                if (isPositionTraversable(testX, testY, unit.animal)) {
                     return alt;
                 }
             }
@@ -1315,8 +1396,39 @@
                             const moveX = (dx / distance) * unit.speed;
                             const moveY = (dy / distance) * unit.speed;
                             
-                            unit.x += moveX;
-                            unit.y += moveY;
+                            // Calculate next position
+                            const nextX = unit.x + moveX;
+                            const nextY = unit.y + moveY;
+                            
+                            // Check if the next position is traversable with edge detection
+                            if (isPositionTraversable(nextX, nextY, unit.animal)) {
+                                unit.x = nextX;
+                                unit.y = nextY;
+                            } else {
+                                // Try smaller movement steps to find valid position
+                                let validMove = false;
+                                for (let scale = 0.5; scale >= 0.1; scale -= 0.1) {
+                                    const testX = unit.x + (moveX * scale);
+                                    const testY = unit.y + (moveY * scale);
+                                    
+                                    if (isPositionTraversable(testX, testY, unit.animal)) {
+                                        unit.x = testX;
+                                        unit.y = testY;
+                                        validMove = true;
+                                        break;
+                                    }
+                                }
+                                
+                                if (!validMove) {
+                                    // Cannot move closer to this waypoint, move to next one
+                                    unit.pathIndex++;
+                                    if (unit.pathIndex >= unit.path.length) {
+                                        unit.isMoving = false;
+                                        unit.path = null;
+                                        unit.pathIndex = 0;
+                                    }
+                                }
+                            }
                             
                             // Rotate model to face movement direction
                             if (unit.modelElement) {
@@ -1353,31 +1465,32 @@
                             const nextX = unit.x + moveX;
                             const nextY = unit.y + moveY;
                             
-                            // Convert next position to hex grid coordinates (accounting for hex offset)
-                            const hexX = Math.floor(nextX / 90);
-                            let hexY = Math.floor(nextY / 120);
-                            
-                            // Adjust for hex offset on odd columns
-                            if (hexX % 2 === 1) {
-                                hexY = Math.floor((nextY - 60) / 120); // Subtract half hex height offset
-                            }
-                            
-                            // Check if the next position is traversable
-                            if (isTileTraversable(hexX, hexY, unit.animal)) {
+                            // Check if the next position is traversable with edge detection
+                            if (isPositionTraversable(nextX, nextY, unit.animal)) {
                                 // Move to the next position
                                 unit.x = nextX;
                                 unit.y = nextY;
                             } else {
-                                // Try to navigate around the obstacle
-                                const alternativeMove = findAlternativeMove(unit, moveX, moveY);
-                                if (alternativeMove) {
-                                    unit.x += alternativeMove.x;
-                                    unit.y += alternativeMove.y;
-                                } else {
-                                    // Stop movement if no alternative route found
-                                    const tile = getTileAt(hexX, hexY);
+                                // Try smaller movement steps to find valid position
+                                let validMove = false;
+                                for (let scale = 0.5; scale >= 0.1; scale -= 0.1) {
+                                    const testX = unit.x + (moveX * scale);
+                                    const testY = unit.y + (moveY * scale);
+                                    
+                                    if (isPositionTraversable(testX, testY, unit.animal)) {
+                                        unit.x = testX;
+                                        unit.y = testY;
+                                        validMove = true;
+                                        break;
+                                    }
+                                }
+                                
+                                if (!validMove) {
+                                    // Stop movement if no valid position found
+                                    const hex = screenToHex(nextX, nextY);
+                                    const tile = getTileAt(hex.x, hex.y);
                                     const terrainType = tile ? tile.terrainType : 'unknown';
-                                    console.log(`🚫 ${unit.animal} blocked by ${terrainType} at (${hexX}, ${hexY}) - no alternative route found`);
+                                    console.log(`🚫 ${unit.animal} blocked by ${terrainType} at (${hex.x}, ${hex.y}) - cannot find valid position`);
                                     unit.isMoving = false;
                                     unit.targetX = null;
                                     unit.targetY = null;
@@ -1402,6 +1515,11 @@
                             unit.targetY = null;
                         }
                     }
+                }
+
+                // Periodic position validation - ensure units stay in valid positions
+                if (!unit.isMoving && !isPositionTraversable(unit.x, unit.y, unit.animal)) {
+                    snapUnitToValidPosition(unit);
                 }
 
                 if (unit.team === 'enemy' && !unit.isMoving) {
