@@ -249,36 +249,6 @@
             transform-style: preserve-3d;
         }
 
-        .terrain-plane {
-            transform-style: preserve-3d;
-            backface-visibility: visible;
-        }
-
-        .base-plane {
-            opacity: 0.8;
-        }
-
-        /* Enhanced 3D terrain colors with gradients */
-        .tile-3d-container.mountain .terrain-plane {
-            background: linear-gradient(45deg, #666666, #888888) !important;
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
-        }
-
-        .tile-3d-container.hill .terrain-plane {
-            background: linear-gradient(45deg, #8B7355, #A0845C) !important;
-            box-shadow: inset 0 0 8px rgba(0,0,0,0.2);
-        }
-
-        .tile-3d-container.forest .terrain-plane {
-            background: linear-gradient(45deg, #228B22, #32CD32) !important;
-            box-shadow: inset 0 0 6px rgba(0,0,0,0.2);
-        }
-
-        .tile-3d-container.farmland .terrain-plane {
-            background: linear-gradient(45deg, #8B4513, #A0522D) !important;
-            box-shadow: inset 0 0 4px rgba(0,0,0,0.1);
-        }
-
         /* UI Elements */
         .ui-panel {
             position: absolute;
@@ -1190,21 +1160,7 @@
             tileContainer.style.height = devSettings.grid.tileHeight + 'px';
             tileContainer.style.transformStyle = 'preserve-3d';
             
-            // Create single base terrain plane with visual depth
-            const basePlane = document.createElement('div');
-            basePlane.classList.add('terrain-plane', 'base-plane');
-            basePlane.style.position = 'absolute';
-            basePlane.style.width = '100%';
-            basePlane.style.height = '100%';
-            basePlane.style.background = getTerrainColor(tileData.terrainType);
-            basePlane.style.transform = 'rotateX(90deg) translateZ(0px)';
-            basePlane.style.border = '1px solid rgba(255,255,255,0.1)';
-            
-            // Add visual depth with box-shadow based on terrain height
-            const shadowIntensity = Math.min(terrainHeight / 10, 8); // Max 8 layers of shadow
-            basePlane.style.boxShadow = `0 0 ${shadowIntensity * 2}px rgba(0,0,0,0.3)`;
-            
-            // Create the model viewer positioned at terrain height
+            // Create the model viewer - no base plane needed since GLB models provide terrain
             const tile = document.createElement('model-viewer');
             tile.classList.add('hex-tile', tileData.terrainType);
             tile.setAttribute('src', tileData.file);
@@ -1241,7 +1197,6 @@
                 tile.title = `${tileData.terrainType} (All animals can pass)`;
             }
             
-            tileContainer.appendChild(basePlane);
             tileContainer.appendChild(tile);
             container.appendChild(tileContainer);
             
@@ -1249,16 +1204,7 @@
             tile.dismissPoster();
         }
 
-        // Get terrain colors for 3D layers
-        function getTerrainColor(terrainType) {
-            const terrainColors = {
-                'mountain': '#666666',  // Gray rock
-                'hill': '#8B7355',      // Brown earth
-                'forest': '#228B22',    // Green vegetation  
-                'farmland': '#8B4513'   // Brown soil
-            };
-            return terrainColors[terrainType] || '#654321';
-        }
+
 
         // Get height values for different terrain types to create 3D depth
         function getTerrainHeight(terrainType) {
