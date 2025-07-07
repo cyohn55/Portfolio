@@ -214,19 +214,17 @@
             z-index: 10;
         }
 
-        .interactive-tile {
-            z-index: 2 !important;
-            pointer-events: auto;
+        /* Static tile styling */
+        .hex-tile.static-tile {
+            cursor: not-allowed;
         }
 
-        .interactive-tile:hover {
-            transform: scale(1.1);
-            z-index: 15;
+        .hex-tile.static-tile:hover {
+            transform: scale(1.02); /* Less dramatic scaling for static tiles */
         }
 
-        #staticTerrainCanvas {
-            pointer-events: none;
-            z-index: 1;
+        .hex-tile.dynamic-tile {
+            cursor: pointer;
         }
 
         .hex-tile model-viewer {
@@ -473,93 +471,84 @@
             { file: 'models/FarmLand.glb', alt: 'Farm Land Tile' }
         ];
 
+        // Game map cache to avoid regeneration
+        let gameMap = null;
+        let staticTileCache = new Map(); // Cache for converted static images
+
+        // Helper function to check if a tile is traversable
+        function isTileTraversable(x, y) {
+            if (!gameMap || x < 0 || y < 0 || x >= gameMap.length || y >= gameMap[0].length) {
+                return false; // Out of bounds
+            }
+            return gameMap[x][y].isTraversable;
+        }
+
+        // Get tile type at position (for gameplay logic)
+        function getTileAt(x, y) {
+            if (!gameMap || x < 0 || y < 0 || x >= gameMap.length || y >= gameMap[0].length) {
+                return null;
+            }
+            return gameMap[x][y];
+        }
+
         function getRandomHexTile() {
             return hexTileModels[Math.floor(Math.random() * hexTileModels.length)];
         }
 
-        // Static Map Generation - Procedurally generate terrain layout once
-        let staticMapData = null;
-        let staticMapCanvas = null;
-
-        function generateStaticMap(rows = 24, cols = 32) {
-            // Generate procedural terrain layout
-            staticMapData = generateProceduralTerrain(rows, cols);
+        // Generate a static map layout once
+        function generateMapLayout(rows = 16, cols = 20) {
+            if (gameMap) return gameMap; // Return cached map if exists
             
-            // Create static background canvas
-            createStaticBackground(rows, cols);
-            
-            // Create interactive 3D overlay for key areas only
-            createInteractiveOverlay(rows, cols);
-        }
-
-        function generateProceduralTerrain(rows, cols) {
-            const terrain = [];
-            const terrainTypes = [
-                { name: 'Mountain', file: 'models/Mountain.glb', color: '#A0A0A0', probability: 0.15 },
-                { name: 'Forest', file: 'models/Forest.glb', color: '#4A7C3B', probability: 0.35 },
-                { name: 'Hill', file: 'models/Hill.glb', color: '#7CB342', probability: 0.35 },
-                { name: 'FarmLand', file: 'models/FarmLand.glb', color: '#F4A460', probability: 0.15 }
-            ];
-
-            // Generate coherent terrain using Perlin-like noise simulation
+            gameMap = [];
             for (let i = 0; i < cols; i++) {
-                terrain[i] = [];
+                gameMap[i] = [];
                 for (let j = 0; j < rows; j++) {
-                    // Create terrain clusters for more realistic generation
-                    const clusterSeed = Math.sin(i * 0.1) * Math.cos(j * 0.1) + 
-                                       Math.sin(i * 0.05) * Math.cos(j * 0.05) * 0.5;
-                    const noise = (Math.random() - 0.5) * 0.3;
-                    const terrainValue = clusterSeed + noise;
-
-                    let selectedTerrain;
-                    if (terrainValue > 0.4) selectedTerrain = terrainTypes[0]; // Mountain
-                    else if (terrainValue > 0.1) selectedTerrain = terrainTypes[1]; // Forest
-                    else if (terrainValue > -0.2) selectedTerrain = terrainTypes[2]; // Hill
-                    else selectedTerrain = terrainTypes[3]; // FarmLand
-
-                    terrain[i][j] = {
-                        type: selectedTerrain.name,
-                        file: selectedTerrain.file,
-                        color: selectedTerrain.color,
+                    const tileData = getRandomHexTile();
+                    gameMap[i][j] = {
+                        ...tileData,
                         x: i,
-                        y: j
+                        y: j,
+                        isTraversable: tileData.file.includes('FarmLand') || tileData.file.includes('Forest'),
+                        isStatic: tileData.file.includes('Mountain') || tileData.file.includes('Hill')
                     };
                 }
             }
-
-            return terrain;
+            return gameMap;
         }
 
-        function createStaticBackground(rows, cols) {
+        function generateHexGrid(rows = 16, cols = 20) {
             const container = document.getElementById('hex-grid');
-            if (!container) return;
+            if (!container) {
+                console.warn('Hex grid container (#hex-grid) not found.');
+                return;
+            }
 
-            // Create canvas for static background
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
+            // Clear any existing tiles
+            container.innerHTML = '';
+
+            // Generate or use cached map layout
+            const mapLayout = generateMapLayout(rows, cols);
             
-            // Calculate canvas size
+            // Count different tile types for performance info
+            let staticCount = 0, dynamicCount = 0;
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    if (mapLayout[i][j].isStatic) staticCount++;
+                    else dynamicCount++;
+                }
+            }
+            console.log(`Generating map: ${staticCount} static tiles (CSS), ${dynamicCount} dynamic tiles (3D models)`);
+
+            // Overlapping containers to eliminate visual gaps between hexagonal models
             const hexWidth = 30;
             const hexHeight = 40;
             const hexOffset = 20;
-            
-            canvas.width = cols * hexWidth + 100;
-            canvas.height = rows * hexHeight + hexOffset + 100;
-            canvas.style.position = 'absolute';
-            canvas.style.top = '0';
-            canvas.style.left = '0';
-            canvas.style.zIndex = '1';
-            canvas.id = 'staticTerrainCanvas';
 
-            // Clear canvas with a subtle background
-            ctx.fillStyle = '#1a1a1a';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Draw hexagonal tiles on canvas
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
-                    const terrainData = staticMapData[i][j];
+                    const tileData = mapLayout[i][j];
                     
+                    // Calculate position
                     let xPos, yPos;
                     if (i % 2 === 0) {
                         xPos = i * hexWidth;
@@ -569,148 +558,123 @@
                         yPos = j * hexHeight + hexOffset;
                     }
 
-                    drawHexagon(ctx, xPos + 20, yPos + 20, 18, terrainData.color);
+                    if (tileData.isStatic) {
+                        // For static tiles (Mountain/Hill), use cached HTML if available
+                        const cacheKey = `${tileData.file}_${xPos}_${yPos}`;
+                        
+                        if (staticTileCache.has(cacheKey)) {
+                            // Use cached static HTML
+                            const tempDiv = document.createElement('div');
+                            tempDiv.innerHTML = staticTileCache.get(cacheKey);
+                            const cachedElement = tempDiv.firstChild;
+                            container.appendChild(cachedElement);
+                        } else {
+                            // Create new static tile and cache it
+                            createAndCacheStaticTile(tileData, xPos, yPos, container, cacheKey);
+                        }
+                    } else {
+                        // For traversable tiles (FarmLand/Forest), keep as 3D models
+                        createDynamicTile(tileData, xPos, yPos, container);
+                    }
                 }
             }
-
-            container.appendChild(canvas);
-            staticMapCanvas = canvas;
         }
 
-        function drawHexagon(ctx, x, y, size, color) {
-            ctx.beginPath();
-            for (let i = 0; i < 6; i++) {
-                const angle = (Math.PI / 3) * i;
-                const xPos = x + size * Math.cos(angle);
-                const yPos = y + size * Math.sin(angle);
-                if (i === 0) ctx.moveTo(xPos, yPos);
-                else ctx.lineTo(xPos, yPos);
+        function createAndCacheStaticTile(tileData, xPos, yPos, container, cacheKey) {
+            // For static tiles (Mountain/Hill), create CSS-based visual representation
+            // This eliminates 3D overhead while maintaining visual consistency
+            
+            const staticDiv = document.createElement('div');
+            staticDiv.classList.add('hex-tile', 'static-tile');
+            staticDiv.style.position = 'absolute';
+            staticDiv.style.left = xPos + 'px';
+            staticDiv.style.top = yPos + 'px';
+            staticDiv.style.width = '40px';
+            staticDiv.style.height = '40px';
+            
+            // Create visual representation based on tile type
+            if (tileData.file.includes('Mountain')) {
+                staticDiv.style.background = 'linear-gradient(135deg, #8B7355 0%, #6B5B47 50%, #4A4338 100%)';
+                staticDiv.style.boxShadow = 'inset 2px 2px 4px rgba(255,255,255,0.3), inset -2px -2px 4px rgba(0,0,0,0.3)';
+                staticDiv.title = 'Mountain (Non-traversable)';
+            } else if (tileData.file.includes('Hill')) {
+                staticDiv.style.background = 'linear-gradient(135deg, #9CAF88 0%, #7A8A6B 50%, #5A6B4A 100%)';
+                staticDiv.style.boxShadow = 'inset 1px 1px 3px rgba(255,255,255,0.4), inset -1px -1px 3px rgba(0,0,0,0.2)';
+                staticDiv.title = 'Hill (Non-traversable)';
             }
-            ctx.closePath();
             
-            // Create gradient for better visual appeal
-            const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
-            gradient.addColorStop(0, color);
-            gradient.addColorStop(1, adjustColorBrightness(color, -20));
+            // Add some texture pattern
+            const texturePattern = document.createElement('div');
+            texturePattern.style.position = 'absolute';
+            texturePattern.style.top = '0';
+            texturePattern.style.left = '0';
+            texturePattern.style.width = '100%';
+            texturePattern.style.height = '100%';
+            texturePattern.style.opacity = '0.3';
+            texturePattern.style.background = `
+                radial-gradient(circle at 20% 30%, rgba(255,255,255,0.3) 1px, transparent 1px),
+                radial-gradient(circle at 70% 60%, rgba(0,0,0,0.2) 1px, transparent 1px),
+                radial-gradient(circle at 40% 80%, rgba(255,255,255,0.2) 1px, transparent 1px)
+            `;
+            texturePattern.style.backgroundSize = '8px 8px, 12px 12px, 6px 6px';
+            staticDiv.appendChild(texturePattern);
             
-            // Fill with gradient
-            ctx.fillStyle = gradient;
-            ctx.fill();
+            container.appendChild(staticDiv);
             
-            // Add distinct border
-            ctx.strokeStyle = '#2A2A2A';
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-            
-            // Add inner highlight
-            ctx.beginPath();
-            for (let i = 0; i < 6; i++) {
-                const angle = (Math.PI / 3) * i;
-                const innerSize = size * 0.8;
-                const xPos = x + innerSize * Math.cos(angle);
-                const yPos = y + innerSize * Math.sin(angle);
-                if (i === 0) ctx.moveTo(xPos, yPos);
-                else ctx.lineTo(xPos, yPos);
-            }
-            ctx.closePath();
-            ctx.strokeStyle = adjustColorBrightness(color, 40);
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
+            // Cache this visual representation
+            staticTileCache.set(cacheKey, staticDiv.outerHTML);
         }
 
-        function adjustColorBrightness(color, amount) {
-            const usePound = color[0] === '#';
-            const col = usePound ? color.slice(1) : color;
-            const num = parseInt(col, 16);
-            let r = (num >> 16) + amount;
-            let g = (num >> 8 & 0x00FF) + amount;
-            let b = (num & 0x0000FF) + amount;
-            r = r > 255 ? 255 : r < 0 ? 0 : r;
-            g = g > 255 ? 255 : g < 0 ? 0 : g;
-            b = b > 255 ? 255 : b < 0 ? 0 : b;
-            return (usePound ? '#' : '') + (r << 16 | g << 8 | b).toString(16).padStart(6, '0');
+        function createDynamicTile(tileData, xPos, yPos, container) {
+            const tile = document.createElement('model-viewer');
+            tile.classList.add('hex-tile', 'dynamic-tile');
+            tile.setAttribute('src', tileData.file);
+            tile.setAttribute('alt', tileData.alt);
+            tile.setAttribute('interaction-prompt', 'none');
+            tile.setAttribute('loading', 'lazy');
+            tile.setAttribute('reveal', 'manual');
+            tile.setAttribute('camera-orbit', '0deg 0deg 150m');
+            tile.setAttribute('field-of-view', '20deg');
+            tile.setAttribute('rotation', '0deg 0deg 0deg');
+            tile.setAttribute('disable-zoom', '');
+            tile.setAttribute('disable-pan', '');
+            tile.setAttribute('min-camera-orbit', '0deg 0deg 150m');
+            tile.setAttribute('max-camera-orbit', '0deg 0deg 150m');
+            
+            tile.style.position = 'absolute';
+            tile.style.left = xPos + 'px';
+            tile.style.top = yPos + 'px';
+            tile.style.width = '40px';
+            tile.style.height = '40px';
+            
+            container.appendChild(tile);
+            
+            // Load immediately for traversable tiles (fewer of them)
+            tile.dismissPoster();
         }
 
-        function createInteractiveOverlay(rows, cols) {
-            const container = document.getElementById('hex-grid');
-            
-            // Create 3D models only for strategic areas (bases, resources, special terrain)
-            const interactiveAreas = generateInteractiveAreas(rows, cols);
-            
-            interactiveAreas.forEach(area => {
-                const terrainData = staticMapData[area.x][area.y];
-                const tile = document.createElement('model-viewer');
-                tile.classList.add('hex-tile', 'interactive-tile');
-                tile.setAttribute('src', terrainData.file);
-                tile.setAttribute('alt', terrainData.type);
-                
-                // Optimized settings for interactive tiles
-                tile.setAttribute('interaction-prompt', 'none');
-                tile.setAttribute('loading', 'eager');
-                tile.setAttribute('camera-orbit', '0deg 0deg 150m');
-                tile.setAttribute('field-of-view', '20deg');
-                tile.setAttribute('disable-zoom', '');
-                tile.setAttribute('disable-pan', '');
-
-                // Position calculation
-                const hexWidth = 30;
-                const hexHeight = 40;
-                const hexOffset = 20;
-                
-                let xPos, yPos;
-                if (area.x % 2 === 0) {
-                    xPos = area.x * hexWidth;
-                    yPos = area.y * hexHeight;
-                } else {
-                    xPos = area.x * hexWidth;
-                    yPos = area.y * hexHeight + hexOffset;
-                }
-
-                tile.style.position = 'absolute';
-                tile.style.left = xPos + 'px';
-                tile.style.top = yPos + 'px';
-                tile.style.width = '40px';
-                tile.style.height = '40px';
-                tile.style.zIndex = '2';
-                
-                container.appendChild(tile);
-            });
-        }
-
-        function generateInteractiveAreas(rows, cols) {
-            const areas = [];
-            
-            // Add strategic areas: base locations, resource nodes, chokepoints
-            // Player base area (bottom-left)
-            for (let i = 0; i < 4; i++) {
-                for (let j = 0; j < 3; j++) {
-                    areas.push({ x: i + 2, y: j + 2, type: 'base' });
-                }
-            }
-            
-            // Enemy base area (top-right)
-            for (let i = cols - 6; i < cols - 2; i++) {
-                for (let j = rows - 5; j < rows - 2; j++) {
-                    areas.push({ x: i, y: j, type: 'base' });
-                }
-            }
-            
-            // Resource nodes scattered across map
-            for (let i = 0; i < 15; i++) {
-                areas.push({
-                    x: Math.floor(Math.random() * cols),
-                    y: Math.floor(Math.random() * rows),
-                    type: 'resource'
-                });
-            }
-            
-            return areas;
-        }
-
-        // Legacy function - no longer needed with static generation
+        // Performance: Progressive loading with Intersection Observer
         function setupProgressiveLoading() {
-            // Static generation approach doesn't need progressive loading
-            console.log('Using static terrain generation - progressive loading disabled');
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const tile = entry.target;
+                        if (tile.hasAttribute('reveal')) {
+                            tile.dismissPoster();
+                            observer.unobserve(tile);
+                        }
+                    }
+                });
+            }, {
+                rootMargin: '100px' // Load tiles 100px before they come into view
+            });
+
+            // Observe all hex tiles for progressive loading
+            document.querySelectorAll('.hex-tile').forEach(tile => {
+                if (tile.hasAttribute('reveal')) {
+                    observer.observe(tile);
+                }
+            });
         }
 
         // Title Screen Logic
@@ -810,8 +774,11 @@
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
 
-            // Generate static terrain map
-            generateStaticMap();
+            // Generate hex grid terrain
+            generateHexGrid();
+            
+            // Setup progressive loading for better performance
+            setTimeout(() => setupProgressiveLoading(), 100);
 
             // Create bases for selected animals
             gameState.selectedAnimals.forEach((animal, index) => {
