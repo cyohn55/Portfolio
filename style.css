@@ -1782,7 +1782,7 @@ model-viewer .progress-bar {
 
 .hex-row {
     display: flex;
-    gap: 25px; /* 25px horizontal spacing between columns */
+    gap: 20px; /* 20px horizontal spacing between columns */
     margin-bottom: 0; /* No additional margin between rows */
 }
 
