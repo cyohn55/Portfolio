@@ -462,7 +462,38 @@
             return hexTileModels[Math.floor(Math.random() * hexTileModels.length)];
         }
 
-        function generateHexGrid(rows = 24, cols = 32) {
+        // Model pooling for performance optimization
+        const modelPool = {
+            Mountain: [],
+            Forest: [],
+            Hill: [],
+            FarmLand: []
+        };
+
+        function getPooledModel(terrainType) {
+            const pool = modelPool[terrainType];
+            if (pool.length > 0) {
+                return pool.pop(); // Reuse existing model
+            }
+            return null; // Create new if none available
+        }
+
+        function returnToPool(model, terrainType) {
+            model.style.display = 'none';
+            model.style.left = '-1000px';
+            modelPool[terrainType].push(model);
+        }
+
+        // Extract terrain type from model file
+        function getTerrainType(file) {
+            if (file.includes('Mountain')) return 'Mountain';
+            if (file.includes('Forest')) return 'Forest';
+            if (file.includes('Hill')) return 'Hill';
+            if (file.includes('FarmLand')) return 'FarmLand';
+            return 'Forest'; // Default fallback
+        }
+
+        function generateHexGrid(rows = 6, cols = 8) {
             const container = document.getElementById('hex-grid');
             if (!container) {
                 console.warn('Hex grid container (#hex-grid) not found.');
@@ -481,27 +512,66 @@
                 for (let j = 0; j < rows; j++) { // j represents rows (y-axis)
                     
                     const { file, alt } = getRandomHexTile();
-                    const tile = document.createElement('model-viewer');
+                    const terrainType = getTerrainType(file);
+                    
+                    // Try to reuse a pooled model first
+                    let tile = getPooledModel(terrainType);
+                    if (!tile) {
+                        // Create new model if none in pool
+                        tile = document.createElement('model-viewer');
+                        tile.setAttribute('src', file);
+                        tile.setAttribute('alt', alt);
+                    } else {
+                        // Reset pooled model
+                        tile.style.display = 'block';
+                    }
+                    
                     tile.classList.add('hex-tile');
-                    tile.setAttribute('src', file);
-                    tile.setAttribute('alt', alt);
+                    tile.dataset.terrain = terrainType;
                     // Performance optimizations
                     tile.setAttribute('interaction-prompt', 'none');
                     tile.setAttribute('loading', 'lazy');
                     tile.setAttribute('reveal', 'manual'); // Prevent auto-loading
                     tile.setAttribute('preload', ''); // Preload for faster display
-                    // Individual tiles: top-down view (0 degrees) - pulled back 150m
+                    
+                    // Enhanced progressive loading with viewport culling
+                    const distance = Math.sqrt(i*i + j*j); // Distance from origin
+                    const centerX = cols / 2;
+                    const centerY = rows / 2;
+                    const distanceFromCenter = Math.sqrt((i - centerX)**2 + (j - centerY)**2);
+                    
+                    if (distanceFromCenter > 3) {
+                        tile.setAttribute('loading', 'lazy');
+                        tile.style.display = 'none'; // Hide distant tiles initially
+                        tile.dataset.priority = 'low';
+                        tile.dataset.culled = 'true';
+                    } else {
+                        tile.dataset.priority = 'high';
+                        tile.dataset.culled = 'false';
+                    }
+                    
+                    // Store position for later viewport culling
+                    tile.dataset.gridX = i;
+                    tile.dataset.gridY = j;
+                    // Optimized 3D settings for performance
                     tile.setAttribute('camera-orbit', '0deg 0deg 150m');
                     tile.setAttribute('field-of-view', '20deg');
-                    // Ensure all models have identical orientation
                     tile.setAttribute('rotation', '0deg 0deg 0deg');
                     tile.setAttribute('orientation', '0deg 0deg 0deg');
-                    // Disable all rotation and movement
+                    
+                    // Performance optimizations for 3D models
                     tile.removeAttribute('auto-rotate');
                     tile.setAttribute('disable-zoom', '');
                     tile.setAttribute('disable-pan', '');
                     tile.setAttribute('min-camera-orbit', '0deg 0deg 150m');
                     tile.setAttribute('max-camera-orbit', '0deg 0deg 150m');
+                    
+                    // Reduce model quality for better performance
+                    tile.setAttribute('environment-image', 'none');
+                    tile.setAttribute('shadow-intensity', '0');
+                    tile.setAttribute('tone-mapping', 'none');
+                    tile.setAttribute('ar', 'false');
+                    tile.setAttribute('poster', ''); // No poster for faster loading
 
                     // Calculate position using canvas script logic
                     let xPos, yPos;
@@ -524,35 +594,127 @@
                     container.appendChild(tile);
                     
                     // Optimize: Only reveal tiles that are likely to be visible initially
-                    if (i < 8 && j < 6) { // Only load first few tiles immediately
-                        tile.dismissPoster();
+                    if (tile.dataset.priority === 'high' && !tile.dataset.culled) {
+                        setTimeout(() => tile.dismissPoster(), Math.random() * 500); // Stagger loading
                     }
                 }
             }
+            
+            // Add expandable grid button for more terrain
+            addExpandButton(rows, cols);
         }
 
-        // Performance: Progressive loading with Intersection Observer
+        // Dynamic grid expansion system
+        function addExpandButton(currentRows, currentCols) {
+            // Remove existing button if any
+            const existingBtn = document.querySelector('.expand-grid-btn');
+            if (existingBtn) existingBtn.remove();
+            
+            const expandBtn = document.createElement('button');
+            expandBtn.textContent = `🌍 Expand Map (${currentRows}×${currentCols} → ${Math.floor(currentRows * 1.4)}×${Math.floor(currentCols * 1.4)})`;
+            expandBtn.className = 'expand-grid-btn';
+            expandBtn.style.cssText = `
+                position: absolute;
+                bottom: 120px;
+                right: 20px;
+                z-index: 200;
+                background: linear-gradient(45deg, #00ff88, #00cc6a);
+                border: none;
+                padding: 12px 18px;
+                border-radius: 8px;
+                color: white;
+                cursor: pointer;
+                font-weight: bold;
+                font-size: 14px;
+                box-shadow: 0 4px 12px rgba(0,255,136,0.3);
+                transition: all 0.3s ease;
+            `;
+            
+            expandBtn.addEventListener('mouseenter', () => {
+                expandBtn.style.transform = 'scale(1.05)';
+                expandBtn.style.boxShadow = '0 6px 16px rgba(0,255,136,0.4)';
+            });
+            
+            expandBtn.addEventListener('mouseleave', () => {
+                expandBtn.style.transform = 'scale(1)';
+                expandBtn.style.boxShadow = '0 4px 12px rgba(0,255,136,0.3)';
+            });
+            
+            expandBtn.addEventListener('click', () => {
+                const newRows = Math.floor(currentRows * 1.4);
+                const newCols = Math.floor(currentCols * 1.4);
+                expandGrid(newRows, newCols);
+                expandBtn.remove();
+            });
+            
+            document.getElementById('hexGridContainer').appendChild(expandBtn);
+        }
+
+        // Efficient grid expansion that reuses existing models
+        function expandGrid(newRows, newCols) {
+            const container = document.getElementById('hex-grid');
+            const existingTiles = container.querySelectorAll('.hex-tile');
+            
+            // Mark existing tiles for potential pooling if they're far from center
+            existingTiles.forEach(tile => {
+                const x = parseInt(tile.dataset.gridX);
+                const y = parseInt(tile.dataset.gridY);
+                const distanceFromCenter = Math.sqrt((x - newCols/2)**2 + (y - newRows/2)**2);
+                
+                if (distanceFromCenter > newCols * 0.6) {
+                    const terrainType = tile.dataset.terrain;
+                    returnToPool(tile, terrainType);
+                    tile.remove();
+                }
+            });
+            
+            // Generate new tiles for expanded area
+            generateHexGrid(newRows, newCols);
+        }
+
+        // Enhanced performance monitoring and loading
+        let loadedTileCount = 0;
+        let totalTileCount = 0;
+
         function setupProgressiveLoading() {
+            const tiles = document.querySelectorAll('.hex-tile');
+            totalTileCount = tiles.length;
+            
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
-                    if (entry.isIntersecting) {
+                    if (entry.isIntersecting && entry.target.dataset.culled === 'true') {
                         const tile = entry.target;
-                        if (tile.hasAttribute('reveal')) {
-                            tile.dismissPoster();
+                        
+                        // Show and load the tile with performance throttling
+                        if (loadedTileCount < totalTileCount * 0.7) { // Limit concurrent loading
+                            tile.style.display = 'block';
+                            tile.dataset.culled = 'false';
+                            
+                            setTimeout(() => {
+                                if (tile.hasAttribute('reveal')) {
+                                    tile.dismissPoster();
+                                    loadedTileCount++;
+                                }
+                            }, Math.random() * 1000); // Stagger loading to prevent lag spikes
+                            
                             observer.unobserve(tile);
                         }
                     }
                 });
             }, {
-                rootMargin: '100px' // Load tiles 100px before they come into view
+                rootMargin: '150px', // Increased buffer for smoother experience
+                threshold: 0.1
             });
 
-            // Observe all hex tiles for progressive loading
-            document.querySelectorAll('.hex-tile').forEach(tile => {
-                if (tile.hasAttribute('reveal')) {
+            // Observe only culled tiles
+            tiles.forEach(tile => {
+                if (tile.dataset.culled === 'true') {
                     observer.observe(tile);
                 }
             });
+            
+            // Performance monitoring
+            console.log(`🎮 Grid initialized: ${totalTileCount} tiles, ${Math.round(totalTileCount * 0.3)} visible`);
         }
 
         // Title Screen Logic
