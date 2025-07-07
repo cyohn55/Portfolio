@@ -258,10 +258,6 @@
             opacity: 0.8;
         }
 
-        .height-layer {
-            pointer-events: none;
-        }
-
         /* Enhanced 3D terrain colors with gradients */
         .tile-3d-container.mountain .terrain-plane {
             background: linear-gradient(45deg, #666666, #888888) !important;
@@ -1179,7 +1175,7 @@
         }
 
         function createTerrainTile(tileData, xPos, yPos, container) {
-            // Create a 3D container for each tile
+            // Create a simplified 3D container for each tile
             const tileContainer = document.createElement('div');
             tileContainer.classList.add('tile-3d-container', tileData.terrainType);
             
@@ -1194,7 +1190,7 @@
             tileContainer.style.height = devSettings.grid.tileHeight + 'px';
             tileContainer.style.transformStyle = 'preserve-3d';
             
-            // Create base ground plane
+            // Create single base terrain plane with visual depth
             const basePlane = document.createElement('div');
             basePlane.classList.add('terrain-plane', 'base-plane');
             basePlane.style.position = 'absolute';
@@ -1204,21 +1200,11 @@
             basePlane.style.transform = 'rotateX(90deg) translateZ(0px)';
             basePlane.style.border = '1px solid rgba(255,255,255,0.1)';
             
-            // Create height layers for 3D effect
-            for (let layer = 1; layer <= Math.ceil(terrainHeight / 10); layer++) {
-                const heightLayer = document.createElement('div');
-                heightLayer.classList.add('terrain-plane', 'height-layer');
-                heightLayer.style.position = 'absolute';
-                heightLayer.style.width = '100%';
-                heightLayer.style.height = '100%';
-                heightLayer.style.background = getTerrainColor(tileData.terrainType);
-                heightLayer.style.opacity = Math.max(0.1, 1 - (layer * 0.1));
-                heightLayer.style.transform = `rotateX(90deg) translateZ(${layer * 10}px)`;
-                heightLayer.style.border = '1px solid rgba(255,255,255,0.05)';
-                tileContainer.appendChild(heightLayer);
-            }
+            // Add visual depth with box-shadow based on terrain height
+            const shadowIntensity = Math.min(terrainHeight / 10, 8); // Max 8 layers of shadow
+            basePlane.style.boxShadow = `0 0 ${shadowIntensity * 2}px rgba(0,0,0,0.3)`;
             
-            // Create the model viewer on top
+            // Create the model viewer positioned at terrain height
             const tile = document.createElement('model-viewer');
             tile.classList.add('hex-tile', tileData.terrainType);
             tile.setAttribute('src', tileData.file);
@@ -1237,7 +1223,7 @@
             tile.setAttribute('min-camera-orbit', orbit);
             tile.setAttribute('max-camera-orbit', orbit);
             
-            // Position model viewer on top of the terrain
+            // Position model viewer at terrain height
             tile.style.position = 'absolute';
             tile.style.width = '100%';
             tile.style.height = '100%';
