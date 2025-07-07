@@ -462,7 +462,7 @@
             return hexTileModels[Math.floor(Math.random() * hexTileModels.length)];
         }
 
-        function generateHexGrid(rows = 12, cols = 16) {
+        function generateHexGrid(rows = 24, cols = 32) {
             const container = document.getElementById('hex-grid');
             if (!container) {
                 console.warn('Hex grid container (#hex-grid) not found.');
