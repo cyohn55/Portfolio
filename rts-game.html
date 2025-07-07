@@ -521,13 +521,23 @@
             <h4 style="margin: 0 0 8px 0; color: #ffaa00;">📹 Camera Controls</h4>
             <div class="dev-control">
                 <label>Global Camera X:</label>
-                <input type="range" id="globalCameraX" min="-1000" max="1000" value="0">
+                <input type="range" id="globalCameraX" min="-2000" max="2000" value="0">
                 <span class="value" id="globalCameraXValue">0</span>
             </div>
             <div class="dev-control">
                 <label>Global Camera Y:</label>
-                <input type="range" id="globalCameraY" min="-1000" max="1000" value="0">
+                <input type="range" id="globalCameraY" min="-2000" max="2000" value="0">
                 <span class="value" id="globalCameraYValue">0</span>
+            </div>
+            <div class="dev-control">
+                <label>Global Zoom:</label>
+                <input type="range" id="globalCameraZoom" min="0.1" max="3" step="0.1" value="1">
+                <span class="value" id="globalCameraZoomValue">1x</span>
+            </div>
+            <div class="dev-control">
+                <label>Global Rotation:</label>
+                <input type="range" id="globalCameraRotation" min="-180" max="180" value="0">
+                <span class="value" id="globalCameraRotationValue">0°</span>
             </div>
             <div class="dev-control">
                 <label>Tile Camera Orbit:</label>
@@ -573,6 +583,16 @@
                 <label>Hex Offset:</label>
                 <input type="range" id="hexOffset" min="10" max="100" value="60">
                 <span class="value" id="hexOffsetValue">60px</span>
+            </div>
+            <div class="dev-control">
+                <label>Column Gap:</label>
+                <input type="range" id="columnGap" min="-50" max="50" value="0">
+                <span class="value" id="columnGapValue">0px</span>
+            </div>
+            <div class="dev-control">
+                <label>Row Gap:</label>
+                <input type="range" id="rowGap" min="-50" max="50" value="0">
+                <span class="value" id="rowGapValue">0px</span>
             </div>
             <div class="dev-control">
                 <button onclick="regenerateGrid()">🔄 Regenerate Grid</button>
@@ -670,9 +690,13 @@
 
         // Development Settings
         let devSettings = {
-            globalCamera: { x: 0, y: 0 },
+            globalCamera: { x: 0, y: 0, zoom: 1, rotation: 0 },
             tileCamera: { orbit: 0, elevation: 75, distance: 100 },
-            grid: { cols: 12, rows: 16, tileWidth: 90, tileHeight: 120, hexOffset: 60 },
+            grid: { 
+                cols: 12, rows: 16, 
+                tileWidth: 90, tileHeight: 120, 
+                columnGap: 0, rowGap: 0, hexOffset: 60 
+            },
             units: { speedMultiplier: 1, sizeMultiplier: 1, spawnInterval: 15 },
             population: { maxPerTeam: 99, maxPerAnimal: 33, enableDeathSim: true },
             debug: { showCollision: false, showPath: false, showGrid: false }
@@ -764,12 +788,15 @@
 
         // Convert screen coordinates to hex grid coordinates with proper offset handling
         function screenToHex(x, y) {
-            const hexX = Math.floor(x / devSettings.grid.tileWidth);
-            let hexY = Math.floor(y / devSettings.grid.tileHeight);
+            const hexWidth = devSettings.grid.tileWidth + devSettings.grid.columnGap;
+            const hexHeight = devSettings.grid.tileHeight + devSettings.grid.rowGap;
+            
+            const hexX = Math.floor(x / hexWidth);
+            let hexY = Math.floor(y / hexHeight);
             
             // Adjust for hex offset on odd columns
             if (hexX % 2 === 1) {
-                hexY = Math.floor((y - devSettings.grid.hexOffset) / devSettings.grid.tileHeight);
+                hexY = Math.floor((y - devSettings.grid.hexOffset) / hexHeight);
             }
             
             return { x: hexX, y: hexY };
@@ -777,8 +804,11 @@
 
         // Convert hex coordinates to screen coordinates (center of tile)
         function hexToScreen(hexX, hexY) {
-            let screenX = hexX * devSettings.grid.tileWidth + devSettings.grid.tileWidth / 2; // Center of tile
-            let screenY = hexY * devSettings.grid.tileHeight + devSettings.grid.tileHeight / 2; // Center of tile
+            const hexWidth = devSettings.grid.tileWidth + devSettings.grid.columnGap;
+            const hexHeight = devSettings.grid.tileHeight + devSettings.grid.rowGap;
+            
+            let screenX = hexX * hexWidth + devSettings.grid.tileWidth / 2; // Center of tile
+            let screenY = hexY * hexHeight + devSettings.grid.tileHeight / 2; // Center of tile
             
             // Adjust for hex offset on odd columns
             if (hexX % 2 === 1) {
@@ -1030,16 +1060,16 @@
             console.log(`Generated map terrain: ${mountainCount} Mountains, ${hillCount} Hills, ${farmlandCount} Farmland, ${forestCount} Forest`);
             console.log(`Traversability: Mountains/Hills block ground animals, all terrain allows flying animals (Owl/Bee)`);
 
-            // Overlapping containers to eliminate visual gaps between hexagonal models
-            const hexWidth = devSettings.grid.tileWidth;
-            const hexHeight = devSettings.grid.tileHeight;
+            // Hex grid positioning with adjustable column/row gaps
+            const hexWidth = devSettings.grid.tileWidth + devSettings.grid.columnGap;
+            const hexHeight = devSettings.grid.tileHeight + devSettings.grid.rowGap;
             const hexOffset = devSettings.grid.hexOffset;
 
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
                     const tileData = mapLayout[i][j];
                     
-                    // Calculate position
+                    // Calculate position with adjustable gaps
                     let xPos, yPos;
                     if (i % 2 === 0) {
                         xPos = i * hexWidth;
@@ -1073,9 +1103,9 @@
             tile.setAttribute('min-camera-orbit', orbit);
             tile.setAttribute('max-camera-orbit', orbit);
             
-            // Store tile coordinates for traversability checking
-            tile.dataset.hexX = Math.floor(xPos / 90);
-            tile.dataset.hexY = Math.floor(yPos / 120);
+            // Store tile coordinates for traversability checking  
+            tile.dataset.hexX = Math.floor(xPos / (devSettings.grid.tileWidth + devSettings.grid.columnGap));
+            tile.dataset.hexY = Math.floor(yPos / (devSettings.grid.tileHeight + devSettings.grid.rowGap));
             
             // Add traversability info for visual feedback
             if (tileData.terrainType === 'mountain' || tileData.terrainType === 'hill') {
@@ -1978,6 +2008,8 @@
         function setupCameraControls() {
             const globalCameraX = document.getElementById('globalCameraX');
             const globalCameraY = document.getElementById('globalCameraY');
+            const globalCameraZoom = document.getElementById('globalCameraZoom');
+            const globalCameraRotation = document.getElementById('globalCameraRotation');
             const tileCameraOrbit = document.getElementById('tileCameraOrbit');
             const tileCameraElevation = document.getElementById('tileCameraElevation');
             const tileCameraDistance = document.getElementById('tileCameraDistance');
@@ -1993,6 +2025,18 @@
                 devSettings.globalCamera.y = parseInt(e.target.value);
                 gameState.camera.y = devSettings.globalCamera.y;
                 document.getElementById('globalCameraYValue').textContent = e.target.value;
+                updateGlobalCameraPosition();
+            });
+
+            globalCameraZoom.addEventListener('input', (e) => {
+                devSettings.globalCamera.zoom = parseFloat(e.target.value);
+                document.getElementById('globalCameraZoomValue').textContent = e.target.value + 'x';
+                updateGlobalCameraPosition();
+            });
+
+            globalCameraRotation.addEventListener('input', (e) => {
+                devSettings.globalCamera.rotation = parseInt(e.target.value);
+                document.getElementById('globalCameraRotationValue').textContent = e.target.value + '°';
                 updateGlobalCameraPosition();
             });
 
@@ -2021,6 +2065,8 @@
             const tileWidth = document.getElementById('tileWidth');
             const tileHeight = document.getElementById('tileHeight');
             const hexOffset = document.getElementById('hexOffset');
+            const columnGap = document.getElementById('columnGap');
+            const rowGap = document.getElementById('rowGap');
 
             gridCols.addEventListener('input', (e) => {
                 devSettings.grid.cols = parseInt(e.target.value);
@@ -2053,6 +2099,19 @@
             hexOffset.addEventListener('input', (e) => {
                 devSettings.grid.hexOffset = parseInt(e.target.value);
                 document.getElementById('hexOffsetValue').textContent = e.target.value + 'px';
+                regenerateGrid();
+            });
+
+            columnGap.addEventListener('input', (e) => {
+                devSettings.grid.columnGap = parseInt(e.target.value);
+                document.getElementById('columnGapValue').textContent = e.target.value + 'px';
+                regenerateGrid();
+            });
+
+            rowGap.addEventListener('input', (e) => {
+                devSettings.grid.rowGap = parseInt(e.target.value);
+                document.getElementById('rowGapValue').textContent = e.target.value + 'px';
+                regenerateGrid();
             });
         }
 
@@ -2136,12 +2195,26 @@
         }
 
         function updateGlobalCameraPosition() {
-            console.log(`🌍 Updating global camera: (${gameState.camera.x}, ${gameState.camera.y})`);
+            console.log(`🌍 Updating global camera: (${gameState.camera.x}, ${gameState.camera.y}) zoom: ${devSettings.globalCamera.zoom} rotation: ${devSettings.globalCamera.rotation}°`);
             
-            // Update hex grid container position
+            // Update hex grid container with position, zoom, and rotation
             const hexGrid = document.getElementById('hex-grid');
             if (hexGrid) {
-                hexGrid.style.transform = `translate(${-gameState.camera.x}px, ${-gameState.camera.y}px)`;
+                hexGrid.style.transform = `
+                    translate(${-gameState.camera.x}px, ${-gameState.camera.y}px) 
+                    scale(${devSettings.globalCamera.zoom}) 
+                    rotate(${devSettings.globalCamera.rotation}deg)
+                `;
+            }
+            
+            // Update game screen view angle
+            const gameScreen = document.getElementById('gameScreen');
+            if (gameScreen) {
+                gameScreen.style.transform = `
+                    scale(${devSettings.globalCamera.zoom}) 
+                    rotate(${devSettings.globalCamera.rotation}deg)
+                `;
+                gameScreen.style.transformOrigin = 'center center';
             }
             
             // Update unit positions immediately
@@ -2216,9 +2289,13 @@
             
             // Reset dev settings to defaults
             devSettings = {
-                globalCamera: { x: 0, y: 0 },
+                globalCamera: { x: 0, y: 0, zoom: 1, rotation: 0 },
                 tileCamera: { orbit: 0, elevation: 75, distance: 100 },
-                grid: { cols: 12, rows: 16, tileWidth: 90, tileHeight: 120, hexOffset: 60 },
+                grid: { 
+                    cols: 12, rows: 16, 
+                    tileWidth: 90, tileHeight: 120, 
+                    columnGap: 0, rowGap: 0, hexOffset: 60 
+                },
                 units: { speedMultiplier: 1, sizeMultiplier: 1, spawnInterval: 15 },
                 population: { maxPerTeam: 99, maxPerAnimal: 33, enableDeathSim: true },
                 debug: { showCollision: false, showPath: false, showGrid: false }
@@ -2232,11 +2309,18 @@
 
         function updateDevPanelUI() {
             // Update all slider values to match current settings
+            
+            // Global Camera Controls
             document.getElementById('globalCameraX').value = devSettings.globalCamera.x;
             document.getElementById('globalCameraXValue').textContent = devSettings.globalCamera.x;
             document.getElementById('globalCameraY').value = devSettings.globalCamera.y;
             document.getElementById('globalCameraYValue').textContent = devSettings.globalCamera.y;
+            document.getElementById('globalCameraZoom').value = devSettings.globalCamera.zoom;
+            document.getElementById('globalCameraZoomValue').textContent = devSettings.globalCamera.zoom + 'x';
+            document.getElementById('globalCameraRotation').value = devSettings.globalCamera.rotation;
+            document.getElementById('globalCameraRotationValue').textContent = devSettings.globalCamera.rotation + '°';
             
+            // Tile Camera Controls
             document.getElementById('tileCameraOrbit').value = devSettings.tileCamera.orbit;
             document.getElementById('tileCameraOrbitValue').textContent = devSettings.tileCamera.orbit + '°';
             document.getElementById('tileCameraElevation').value = devSettings.tileCamera.elevation;
@@ -2244,16 +2328,46 @@
             document.getElementById('tileCameraDistance').value = devSettings.tileCamera.distance;
             document.getElementById('tileCameraDistanceValue').textContent = devSettings.tileCamera.distance + 'm';
             
+            // Grid Controls
             document.getElementById('gridCols').value = devSettings.grid.cols;
             document.getElementById('gridColsValue').textContent = devSettings.grid.cols;
             document.getElementById('gridRows').value = devSettings.grid.rows;
             document.getElementById('gridRowsValue').textContent = devSettings.grid.rows;
+            document.getElementById('tileWidth').value = devSettings.grid.tileWidth;
+            document.getElementById('tileWidthValue').textContent = devSettings.grid.tileWidth + 'px';
+            document.getElementById('tileHeight').value = devSettings.grid.tileHeight;
+            document.getElementById('tileHeightValue').textContent = devSettings.grid.tileHeight + 'px';
+            document.getElementById('hexOffset').value = devSettings.grid.hexOffset;
+            document.getElementById('hexOffsetValue').textContent = devSettings.grid.hexOffset + 'px';
+            document.getElementById('columnGap').value = devSettings.grid.columnGap;
+            document.getElementById('columnGapValue').textContent = devSettings.grid.columnGap + 'px';
+            document.getElementById('rowGap').value = devSettings.grid.rowGap;
+            document.getElementById('rowGapValue').textContent = devSettings.grid.rowGap + 'px';
             
+            // Unit Controls
+            document.getElementById('unitSpeedMultiplier').value = devSettings.units.speedMultiplier;
+            document.getElementById('unitSpeedMultiplierValue').textContent = devSettings.units.speedMultiplier + 'x';
+            document.getElementById('unitSizeMultiplier').value = devSettings.units.sizeMultiplier;
+            document.getElementById('unitSizeMultiplierValue').textContent = devSettings.units.sizeMultiplier + 'x';
+            document.getElementById('spawnInterval').value = devSettings.units.spawnInterval;
+            document.getElementById('spawnIntervalValue').textContent = devSettings.units.spawnInterval + 's';
+            
+            // Population Controls
             document.getElementById('maxPerTeam').value = devSettings.population.maxPerTeam;
             document.getElementById('maxPerTeamValue').textContent = devSettings.population.maxPerTeam;
             document.getElementById('maxPerAnimal').value = devSettings.population.maxPerAnimal;
             document.getElementById('maxPerAnimalValue').textContent = devSettings.population.maxPerAnimal;
             document.getElementById('enableDeathSim').checked = devSettings.population.enableDeathSim;
+            
+            // Debug Controls
+            document.getElementById('showCollisionDebug').checked = devSettings.debug.showCollision;
+            document.getElementById('showPathDebug').checked = devSettings.debug.showPath;
+            document.getElementById('showGridDebug').checked = devSettings.debug.showGrid;
+            
+            // Update camera and game state
+            gameState.camera.x = devSettings.globalCamera.x;
+            gameState.camera.y = devSettings.globalCamera.y;
+            updateGlobalCameraPosition();
         }
 
         function render() {
