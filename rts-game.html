@@ -469,9 +469,9 @@
             container.innerHTML = '';
 
             // Overlapping containers to eliminate visual gaps between hexagonal models
-            const hexWidth = 35;  // Reduced overlap by additional 5px horizontally
-            const hexHeight = 40; // Reduced overlap by additional 5px vertically  
-            const hexOffset = 20; // Adjusted for new height (roughly half)
+            const hexWidth = 40;  // Set to 40px for uniform spacing
+            const hexHeight = 40; // Set to 40px for uniform spacing  
+            const hexOffset = 20; // Half height for interlocking
 
             for (let i = 0; i < cols; i++) { // i represents columns (x-axis)
                 for (let j = 0; j < rows; j++) { // j represents rows (y-axis)
