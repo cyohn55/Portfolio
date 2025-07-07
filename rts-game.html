@@ -318,6 +318,115 @@
             font-size: 1.5rem;
             z-index: 1001;
         }
+
+        /* Development Control Panel */
+        #devPanel {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            z-index: 1001;
+            width: 320px;
+            max-height: 90vh;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            transition: transform 0.3s ease;
+            border: 2px solid #00ff88;
+        }
+
+        #devPanel.collapsed {
+            transform: translateX(305px);
+        }
+
+        #devPanel h3 {
+            margin: 0 0 10px 0;
+            color: #00ff88;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .dev-section {
+            margin-bottom: 15px;
+            border: 1px solid #333;
+            padding: 8px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.05);
+        }
+
+        .dev-control {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 5px 0;
+            padding: 2px 0;
+        }
+
+        .dev-control label {
+            flex: 1;
+            font-size: 11px;
+            min-width: 80px;
+        }
+
+        .dev-control input[type="range"] {
+            flex: 1;
+            margin: 0 8px;
+            min-width: 80px;
+        }
+
+        .dev-control .value {
+            width: 50px;
+            text-align: right;
+            font-size: 10px;
+            color: #00ff88;
+            font-weight: bold;
+        }
+
+        .dev-control input[type="checkbox"] {
+            margin-left: 8px;
+            transform: scale(1.2);
+        }
+
+        .dev-control button {
+            padding: 4px 8px;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+            margin-left: 4px;
+        }
+
+        .dev-control button:hover {
+            background: #555;
+            border-color: #00ff88;
+        }
+
+        #devToggle {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            background: #00ff88;
+            color: black;
+            border: none;
+            border-radius: 50%;
+            width: 35px;
+            height: 35px;
+            cursor: pointer;
+            z-index: 1002;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        #devToggle:hover {
+            background: #00cc66;
+            transform: scale(1.1);
+        }
     </style>
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
 </head>
@@ -402,6 +511,139 @@
         <div id="selectionBox"></div>
     </div>
 
+    <!-- Development Control Panel -->
+    <button id="devToggle">⚙</button>
+    <div id="devPanel" class="collapsed">
+        <h3>🛠 Development Controls</h3>
+        
+        <!-- Camera Controls -->
+        <div class="dev-section">
+            <h4 style="margin: 0 0 8px 0; color: #ffaa00;">📹 Camera Controls</h4>
+            <div class="dev-control">
+                <label>Global Camera X:</label>
+                <input type="range" id="globalCameraX" min="-1000" max="1000" value="0">
+                <span class="value" id="globalCameraXValue">0</span>
+            </div>
+            <div class="dev-control">
+                <label>Global Camera Y:</label>
+                <input type="range" id="globalCameraY" min="-1000" max="1000" value="0">
+                <span class="value" id="globalCameraYValue">0</span>
+            </div>
+            <div class="dev-control">
+                <label>Tile Camera Orbit:</label>
+                <input type="range" id="tileCameraOrbit" min="0" max="360" value="0">
+                <span class="value" id="tileCameraOrbitValue">0°</span>
+            </div>
+            <div class="dev-control">
+                <label>Tile Camera Elevation:</label>
+                <input type="range" id="tileCameraElevation" min="0" max="90" value="75">
+                <span class="value" id="tileCameraElevationValue">75°</span>
+            </div>
+            <div class="dev-control">
+                <label>Tile Camera Distance:</label>
+                <input type="range" id="tileCameraDistance" min="10" max="200" value="100">
+                <span class="value" id="tileCameraDistanceValue">100m</span>
+            </div>
+        </div>
+
+        <!-- Grid Controls -->
+        <div class="dev-section">
+            <h4 style="margin: 0 0 8px 0; color: #ffaa00;">🗺 Grid Controls</h4>
+            <div class="dev-control">
+                <label>Grid Columns:</label>
+                <input type="range" id="gridCols" min="5" max="25" value="12">
+                <span class="value" id="gridColsValue">12</span>
+            </div>
+            <div class="dev-control">
+                <label>Grid Rows:</label>
+                <input type="range" id="gridRows" min="5" max="25" value="16">
+                <span class="value" id="gridRowsValue">16</span>
+            </div>
+            <div class="dev-control">
+                <label>Tile Width:</label>
+                <input type="range" id="tileWidth" min="30" max="150" value="90">
+                <span class="value" id="tileWidthValue">90px</span>
+            </div>
+            <div class="dev-control">
+                <label>Tile Height:</label>
+                <input type="range" id="tileHeight" min="40" max="200" value="120">
+                <span class="value" id="tileHeightValue">120px</span>
+            </div>
+            <div class="dev-control">
+                <label>Hex Offset:</label>
+                <input type="range" id="hexOffset" min="10" max="100" value="60">
+                <span class="value" id="hexOffsetValue">60px</span>
+            </div>
+            <div class="dev-control">
+                <button onclick="regenerateGrid()">🔄 Regenerate Grid</button>
+            </div>
+        </div>
+
+        <!-- Unit Controls -->
+        <div class="dev-section">
+            <h4 style="margin: 0 0 8px 0; color: #ffaa00;">🐾 Unit Controls</h4>
+            <div class="dev-control">
+                <label>Unit Speed Multiplier:</label>
+                <input type="range" id="unitSpeedMultiplier" min="0.1" max="5" step="0.1" value="1">
+                <span class="value" id="unitSpeedMultiplierValue">1.0x</span>
+            </div>
+            <div class="dev-control">
+                <label>Unit Size Multiplier:</label>
+                <input type="range" id="unitSizeMultiplier" min="0.5" max="3" step="0.1" value="1">
+                <span class="value" id="unitSizeMultiplierValue">1.0x</span>
+            </div>
+            <div class="dev-control">
+                <label>Spawn Interval (sec):</label>
+                <input type="range" id="spawnInterval" min="1" max="60" value="15">
+                <span class="value" id="spawnIntervalValue">15s</span>
+            </div>
+            <div class="dev-control">
+                <button onclick="clearAllUnits()">🗑 Clear Units</button>
+                <button onclick="spawnTestUnits()">➕ Spawn Test</button>
+            </div>
+        </div>
+
+        <!-- Population Controls -->
+        <div class="dev-section">
+            <h4 style="margin: 0 0 8px 0; color: #ffaa00;">📊 Population Controls</h4>
+            <div class="dev-control">
+                <label>Max Per Team:</label>
+                <input type="range" id="maxPerTeam" min="10" max="200" value="99">
+                <span class="value" id="maxPerTeamValue">99</span>
+            </div>
+            <div class="dev-control">
+                <label>Max Per Animal:</label>
+                <input type="range" id="maxPerAnimal" min="5" max="50" value="33">
+                <span class="value" id="maxPerAnimalValue">33</span>
+            </div>
+            <div class="dev-control">
+                <label>Enable Death Sim:</label>
+                <input type="checkbox" id="enableDeathSim" checked>
+            </div>
+        </div>
+
+        <!-- Debug Controls -->
+        <div class="dev-section">
+            <h4 style="margin: 0 0 8px 0; color: #ffaa00;">🐛 Debug Controls</h4>
+            <div class="dev-control">
+                <label>Show Collision Debug:</label>
+                <input type="checkbox" id="showCollisionDebug">
+            </div>
+            <div class="dev-control">
+                <label>Show Path Debug:</label>
+                <input type="checkbox" id="showPathDebug">
+            </div>
+            <div class="dev-control">
+                <label>Show Grid Debug:</label>
+                <input type="checkbox" id="showGridDebug">
+            </div>
+            <div class="dev-control">
+                <button onclick="exportSettings()">💾 Export</button>
+                <button onclick="resetSettings()">🔄 Reset</button>
+            </div>
+        </div>
+    </div>
+
     <div class="loading" id="loadingIndicator" style="display: none;">Loading 3D Models...</div>
 
     <script>
@@ -424,6 +666,16 @@
             maxUnitsPerAnimalType: 33,
             populationByTeam: { player: 0, enemy: 0 },
             populationByAnimal: {}
+        };
+
+        // Development Settings
+        let devSettings = {
+            globalCamera: { x: 0, y: 0 },
+            tileCamera: { orbit: 0, elevation: 75, distance: 100 },
+            grid: { cols: 12, rows: 16, tileWidth: 90, tileHeight: 120, hexOffset: 60 },
+            units: { speedMultiplier: 1, sizeMultiplier: 1, spawnInterval: 15 },
+            population: { maxPerTeam: 99, maxPerAnimal: 33, enableDeathSim: true },
+            debug: { showCollision: false, showPath: false, showGrid: false }
         };
 
         // Animal configurations with 3D model paths
@@ -512,12 +764,12 @@
 
         // Convert screen coordinates to hex grid coordinates with proper offset handling
         function screenToHex(x, y) {
-            const hexX = Math.floor(x / 90);
-            let hexY = Math.floor(y / 120);
+            const hexX = Math.floor(x / devSettings.grid.tileWidth);
+            let hexY = Math.floor(y / devSettings.grid.tileHeight);
             
             // Adjust for hex offset on odd columns
             if (hexX % 2 === 1) {
-                hexY = Math.floor((y - 60) / 120);
+                hexY = Math.floor((y - devSettings.grid.hexOffset) / devSettings.grid.tileHeight);
             }
             
             return { x: hexX, y: hexY };
@@ -525,12 +777,12 @@
 
         // Convert hex coordinates to screen coordinates (center of tile)
         function hexToScreen(hexX, hexY) {
-            let screenX = hexX * 90 + 45; // Center of tile
-            let screenY = hexY * 120 + 60; // Center of tile
+            let screenX = hexX * devSettings.grid.tileWidth + devSettings.grid.tileWidth / 2; // Center of tile
+            let screenY = hexY * devSettings.grid.tileHeight + devSettings.grid.tileHeight / 2; // Center of tile
             
             // Adjust for hex offset on odd columns
             if (hexX % 2 === 1) {
-                screenY += 60;
+                screenY += devSettings.grid.hexOffset;
             }
             
             return { x: screenX, y: screenY };
@@ -779,9 +1031,9 @@
             console.log(`Traversability: Mountains/Hills block ground animals, all terrain allows flying animals (Owl/Bee)`);
 
             // Overlapping containers to eliminate visual gaps between hexagonal models
-            const hexWidth = 90;  // Tripled from 30
-            const hexHeight = 120; // Tripled from 40
-            const hexOffset = 60;  // Tripled from 20
+            const hexWidth = devSettings.grid.tileWidth;
+            const hexHeight = devSettings.grid.tileHeight;
+            const hexOffset = devSettings.grid.hexOffset;
 
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
@@ -1013,6 +1265,9 @@
 
             // Add event listeners
             setupEventListeners();
+            
+            // Initialize development panel
+            initDevPanel();
         }
 
         function createControlButtons() {
@@ -1536,8 +1791,8 @@
                         const distance = Math.sqrt(dx * dx + dy * dy);
 
                         if (distance > 10) { // Increased threshold for more precise movement
-                            const moveX = (dx / distance) * unit.speed;
-                            const moveY = (dy / distance) * unit.speed;
+                            const moveX = (dx / distance) * unit.speed * devSettings.units.speedMultiplier;
+                            const moveY = (dy / distance) * unit.speed * devSettings.units.speedMultiplier;
                             
                             // Calculate next position
                             const nextX = unit.x + moveX;
@@ -1581,8 +1836,8 @@
                         const distance = Math.sqrt(dx * dx + dy * dy);
 
                         if (distance > 10) { // Increased threshold for consistency
-                            const moveX = (dx / distance) * unit.speed;
-                            const moveY = (dy / distance) * unit.speed;
+                            const moveX = (dx / distance) * unit.speed * devSettings.units.speedMultiplier;
+                            const moveY = (dy / distance) * unit.speed * devSettings.units.speedMultiplier;
                             
                             // Calculate next position
                             const nextX = unit.x + moveX;
@@ -1696,6 +1951,273 @@
                     }
                 }
             });
+        }
+
+        // ===== DEVELOPMENT PANEL FUNCTIONS =====
+        
+        function initDevPanel() {
+            // Toggle button functionality
+            document.getElementById('devToggle').addEventListener('click', () => {
+                const panel = document.getElementById('devPanel');
+                panel.classList.toggle('collapsed');
+            });
+
+            // Setup all control listeners
+            setupCameraControls();
+            setupGridControls();
+            setupUnitControls();
+            setupPopulationControls();
+            setupDebugControls();
+        }
+
+        function setupCameraControls() {
+            const globalCameraX = document.getElementById('globalCameraX');
+            const globalCameraY = document.getElementById('globalCameraY');
+            const tileCameraOrbit = document.getElementById('tileCameraOrbit');
+            const tileCameraElevation = document.getElementById('tileCameraElevation');
+            const tileCameraDistance = document.getElementById('tileCameraDistance');
+
+            globalCameraX.addEventListener('input', (e) => {
+                devSettings.globalCamera.x = parseInt(e.target.value);
+                gameState.camera.x = devSettings.globalCamera.x;
+                document.getElementById('globalCameraXValue').textContent = e.target.value;
+            });
+
+            globalCameraY.addEventListener('input', (e) => {
+                devSettings.globalCamera.y = parseInt(e.target.value);
+                gameState.camera.y = devSettings.globalCamera.y;
+                document.getElementById('globalCameraYValue').textContent = e.target.value;
+            });
+
+            tileCameraOrbit.addEventListener('input', (e) => {
+                devSettings.tileCamera.orbit = parseInt(e.target.value);
+                updateAllTileCameras();
+                document.getElementById('tileCameraOrbitValue').textContent = e.target.value + '°';
+            });
+
+            tileCameraElevation.addEventListener('input', (e) => {
+                devSettings.tileCamera.elevation = parseInt(e.target.value);
+                updateAllTileCameras();
+                document.getElementById('tileCameraElevationValue').textContent = e.target.value + '°';
+            });
+
+            tileCameraDistance.addEventListener('input', (e) => {
+                devSettings.tileCamera.distance = parseInt(e.target.value);
+                updateAllTileCameras();
+                document.getElementById('tileCameraDistanceValue').textContent = e.target.value + 'm';
+            });
+        }
+
+        function setupGridControls() {
+            const gridCols = document.getElementById('gridCols');
+            const gridRows = document.getElementById('gridRows');
+            const tileWidth = document.getElementById('tileWidth');
+            const tileHeight = document.getElementById('tileHeight');
+            const hexOffset = document.getElementById('hexOffset');
+
+            gridCols.addEventListener('input', (e) => {
+                devSettings.grid.cols = parseInt(e.target.value);
+                document.getElementById('gridColsValue').textContent = e.target.value;
+            });
+
+            gridRows.addEventListener('input', (e) => {
+                devSettings.grid.rows = parseInt(e.target.value);
+                document.getElementById('gridRowsValue').textContent = e.target.value;
+            });
+
+            tileWidth.addEventListener('input', (e) => {
+                devSettings.grid.tileWidth = parseInt(e.target.value);
+                document.getElementById('tileWidthValue').textContent = e.target.value + 'px';
+            });
+
+            tileHeight.addEventListener('input', (e) => {
+                devSettings.grid.tileHeight = parseInt(e.target.value);
+                document.getElementById('tileHeightValue').textContent = e.target.value + 'px';
+            });
+
+            hexOffset.addEventListener('input', (e) => {
+                devSettings.grid.hexOffset = parseInt(e.target.value);
+                document.getElementById('hexOffsetValue').textContent = e.target.value + 'px';
+            });
+        }
+
+        function setupUnitControls() {
+            const unitSpeedMultiplier = document.getElementById('unitSpeedMultiplier');
+            const unitSizeMultiplier = document.getElementById('unitSizeMultiplier');
+            const spawnInterval = document.getElementById('spawnInterval');
+
+            unitSpeedMultiplier.addEventListener('input', (e) => {
+                devSettings.units.speedMultiplier = parseFloat(e.target.value);
+                document.getElementById('unitSpeedMultiplierValue').textContent = e.target.value + 'x';
+            });
+
+            unitSizeMultiplier.addEventListener('input', (e) => {
+                devSettings.units.sizeMultiplier = parseFloat(e.target.value);
+                document.getElementById('unitSizeMultiplierValue').textContent = e.target.value + 'x';
+                updateAllUnitSizes();
+            });
+
+            spawnInterval.addEventListener('input', (e) => {
+                devSettings.units.spawnInterval = parseInt(e.target.value);
+                gameState.bases.forEach(base => base.spawnInterval = devSettings.units.spawnInterval * 1000);
+                document.getElementById('spawnIntervalValue').textContent = e.target.value + 's';
+            });
+        }
+
+        function setupPopulationControls() {
+            const maxPerTeam = document.getElementById('maxPerTeam');
+            const maxPerAnimal = document.getElementById('maxPerAnimal');
+            const enableDeathSim = document.getElementById('enableDeathSim');
+
+            maxPerTeam.addEventListener('input', (e) => {
+                devSettings.population.maxPerTeam = parseInt(e.target.value);
+                gameState.maxPopulationPerTeam = devSettings.population.maxPerTeam;
+                document.getElementById('maxPerTeamValue').textContent = e.target.value;
+            });
+
+            maxPerAnimal.addEventListener('input', (e) => {
+                devSettings.population.maxPerAnimal = parseInt(e.target.value);
+                gameState.maxUnitsPerAnimalType = devSettings.population.maxPerAnimal;
+                document.getElementById('maxPerAnimalValue').textContent = e.target.value;
+            });
+
+            enableDeathSim.addEventListener('change', (e) => {
+                devSettings.population.enableDeathSim = e.target.checked;
+            });
+        }
+
+        function setupDebugControls() {
+            const showCollisionDebug = document.getElementById('showCollisionDebug');
+            const showPathDebug = document.getElementById('showPathDebug');
+            const showGridDebug = document.getElementById('showGridDebug');
+
+            showCollisionDebug.addEventListener('change', (e) => {
+                devSettings.debug.showCollision = e.target.checked;
+            });
+
+            showPathDebug.addEventListener('change', (e) => {
+                devSettings.debug.showPath = e.target.checked;
+            });
+
+            showGridDebug.addEventListener('change', (e) => {
+                devSettings.debug.showGrid = e.target.checked;
+            });
+        }
+
+        // Development helper functions
+        function updateAllTileCameras() {
+            document.querySelectorAll('#hex-grid model-viewer').forEach(modelViewer => {
+                const orbit = `${devSettings.tileCamera.orbit}deg ${devSettings.tileCamera.elevation}deg ${devSettings.tileCamera.distance}m`;
+                modelViewer.setAttribute('camera-orbit', orbit);
+            });
+        }
+
+        function updateAllUnitSizes() {
+            gameState.units.forEach(unit => {
+                if (unit.modelElement) {
+                    const newSize = animalConfigs[unit.animal].size * devSettings.units.sizeMultiplier * 3;
+                    const modelViewer = unit.modelElement.querySelector('model-viewer');
+                    if (modelViewer) {
+                        modelViewer.style.width = newSize + 'px';
+                        modelViewer.style.height = newSize + 'px';
+                    }
+                }
+            });
+        }
+
+        function regenerateGrid() {
+            console.log('🔄 Regenerating grid with new settings...');
+            
+            // Clear existing grid
+            gameMap = null;
+            const container = document.getElementById('hex-grid');
+            if (container) {
+                container.innerHTML = '';
+            }
+            
+            // Regenerate with new settings
+            generateHexGrid(devSettings.grid.rows, devSettings.grid.cols);
+            console.log(`✅ Grid regenerated: ${devSettings.grid.cols}x${devSettings.grid.rows}`);
+        }
+
+        function clearAllUnits() {
+            console.log('🗑 Clearing all units...');
+            gameState.units.forEach(unit => {
+                if (unit.modelElement && unit.modelElement.parentNode) {
+                    unit.modelElement.parentNode.removeChild(unit.modelElement);
+                }
+            });
+            gameState.units = [];
+            initializePopulationTracking();
+            console.log('✅ All units cleared');
+        }
+
+        function spawnTestUnits() {
+            console.log('➕ Spawning test units...');
+            const testAnimals = ['bear', 'bee', 'frog'];
+            testAnimals.forEach((animal, index) => {
+                if (gameState.bases.length > index) {
+                    spawnUnit(gameState.bases[index]);
+                }
+            });
+        }
+
+        function exportSettings() {
+            const settings = JSON.stringify(devSettings, null, 2);
+            console.log('💾 Current Development Settings:');
+            console.log(settings);
+            
+            // Copy to clipboard if possible
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(settings).then(() => {
+                    console.log('✅ Settings copied to clipboard');
+                });
+            }
+        }
+
+        function resetSettings() {
+            console.log('🔄 Resetting to default settings...');
+            
+            // Reset dev settings to defaults
+            devSettings = {
+                globalCamera: { x: 0, y: 0 },
+                tileCamera: { orbit: 0, elevation: 75, distance: 100 },
+                grid: { cols: 12, rows: 16, tileWidth: 90, tileHeight: 120, hexOffset: 60 },
+                units: { speedMultiplier: 1, sizeMultiplier: 1, spawnInterval: 15 },
+                population: { maxPerTeam: 99, maxPerAnimal: 33, enableDeathSim: true },
+                debug: { showCollision: false, showPath: false, showGrid: false }
+            };
+            
+            // Update UI elements
+            updateDevPanelUI();
+            
+            console.log('✅ Settings reset to defaults');
+        }
+
+        function updateDevPanelUI() {
+            // Update all slider values to match current settings
+            document.getElementById('globalCameraX').value = devSettings.globalCamera.x;
+            document.getElementById('globalCameraXValue').textContent = devSettings.globalCamera.x;
+            document.getElementById('globalCameraY').value = devSettings.globalCamera.y;
+            document.getElementById('globalCameraYValue').textContent = devSettings.globalCamera.y;
+            
+            document.getElementById('tileCameraOrbit').value = devSettings.tileCamera.orbit;
+            document.getElementById('tileCameraOrbitValue').textContent = devSettings.tileCamera.orbit + '°';
+            document.getElementById('tileCameraElevation').value = devSettings.tileCamera.elevation;
+            document.getElementById('tileCameraElevationValue').textContent = devSettings.tileCamera.elevation + '°';
+            document.getElementById('tileCameraDistance').value = devSettings.tileCamera.distance;
+            document.getElementById('tileCameraDistanceValue').textContent = devSettings.tileCamera.distance + 'm';
+            
+            document.getElementById('gridCols').value = devSettings.grid.cols;
+            document.getElementById('gridColsValue').textContent = devSettings.grid.cols;
+            document.getElementById('gridRows').value = devSettings.grid.rows;
+            document.getElementById('gridRowsValue').textContent = devSettings.grid.rows;
+            
+            document.getElementById('maxPerTeam').value = devSettings.population.maxPerTeam;
+            document.getElementById('maxPerTeamValue').textContent = devSettings.population.maxPerTeam;
+            document.getElementById('maxPerAnimal').value = devSettings.population.maxPerAnimal;
+            document.getElementById('maxPerAnimalValue').textContent = devSettings.population.maxPerAnimal;
+            document.getElementById('enableDeathSim').checked = devSettings.population.enableDeathSim;
         }
 
         function render() {
@@ -1831,7 +2353,7 @@
 
             // Simulate unit deaths (temporary - for testing population management)
             // Remove this section when implementing actual combat
-            if (Math.random() < 0.001 && gameState.units.length > 6) { // 0.1% chance per frame if more than 6 units
+            if (devSettings.population.enableDeathSim && Math.random() < 0.001 && gameState.units.length > 6) { // 0.1% chance per frame if more than 6 units
                 const randomUnit = gameState.units[Math.floor(Math.random() * gameState.units.length)];
                 console.log(`⚔️ Simulated death: ${randomUnit.animal} (${randomUnit.team})`);
                 removeUnit(randomUnit);
