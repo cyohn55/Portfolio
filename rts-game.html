@@ -553,25 +553,42 @@
             };
         }
 
-        // Check if a unit position would collide with hex tile boundaries
-        function checkHexCollision(unitX, unitY, animalType) {
-            const hex = screenToHex(unitX, unitY);
+        // Check if a unit's 3D model would collide with non-traversable hex tile edges
+        function checkHexCollision(unitX, unitY, animalType, unitSize = 15) {
+            // Flying animals don't collide with terrain
+            if (animalType === 'owl' || animalType === 'bee') {
+                return false;
+            }
             
-            // Get all adjacent hexes using proper hex grid neighbors
-            const neighborsToCheck = getNeighbors(hex.x, hex.y);
-            neighborsToCheck.push([hex.x, hex.y]); // Include current hex
+            const currentHex = screenToHex(unitX, unitY);
             
-            for (const [tileX, tileY] of neighborsToCheck) {
-                if (!isTileTraversable(tileX, tileY, animalType)) {
-                    const bounds = getHexBounds(tileX, tileY);
+            // Check current hex - if it's non-traversable, that's a collision
+            if (!isTileTraversable(currentHex.x, currentHex.y, animalType)) {
+                return true;
+            }
+            
+            // Check if unit model edges would overlap with adjacent non-traversable tiles
+            const hexSize = 60; // Half of tile size (120/2)
+            const unitRadius = unitSize; // Animal model radius
+            
+            // Get all neighboring hexes
+            const neighbors = getNeighbors(currentHex.x, currentHex.y);
+            
+            for (const [neighborX, neighborY] of neighbors) {
+                if (!isTileTraversable(neighborX, neighborY, animalType)) {
+                    const neighborCenter = hexToScreen(neighborX, neighborY);
+                    
+                    // Calculate distance between unit center and tile center
                     const distance = Math.sqrt(
-                        Math.pow(unitX - bounds.centerX, 2) + 
-                        Math.pow(unitY - bounds.centerY, 2)
+                        Math.pow(unitX - neighborCenter.x, 2) + 
+                        Math.pow(unitY - neighborCenter.y, 2)
                     );
                     
-                    // Check if unit is too close to the hex center (collision)
-                    // Use 70% of hex radius for tighter boundary control
-                    if (distance < bounds.size * 0.7) {
+                    // Collision occurs when unit edge + tile edge overlap
+                    // Distance must be greater than (hexSize + unitRadius) to avoid collision
+                    const minSafeDistance = hexSize + unitRadius;
+                    
+                    if (distance < minSafeDistance) {
                         return true;
                     }
                 }
@@ -580,35 +597,47 @@
             return false;
         }
 
-        // Keep units constrained to the center areas of traversable hexes
-        function constrainUnitToHex(unitX, unitY, animalType) {
-            const hex = screenToHex(unitX, unitY);
+        // Handle collision response by recalculating path around obstacles
+        function handleCollisionResponse(unit, blockedX, blockedY) {
+            console.log(`🚫 ${unit.animal} collision detected - recalculating path around obstacle`);
             
-            // If current hex is not traversable, try to move to nearest traversable hex
-            if (!isTileTraversable(hex.x, hex.y, animalType)) {
-                const nearestTraversable = findNearestTraversableTile(hex.x, hex.y, animalType);
-                if (nearestTraversable) {
-                    const centerPos = hexToScreen(nearestTraversable.x, nearestTraversable.y);
-                    return { x: centerPos.x, y: centerPos.y };
-                }
+            // Get current position and final destination
+            const currentHex = screenToHex(unit.x, unit.y);
+            let finalDestination;
+            
+            if (unit.path && unit.path.length > 0) {
+                // Use the final destination from current path
+                finalDestination = unit.path[unit.path.length - 1];
+            } else if (unit.targetX !== null && unit.targetY !== null) {
+                // Use the direct target
+                finalDestination = screenToHex(unit.targetX, unit.targetY);
+            } else {
+                // No destination available - stop movement
+                unit.isMoving = false;
+                return false;
             }
             
-            // Keep unit closer to hex center to prevent edge-walking
-            const centerPos = hexToScreen(hex.x, hex.y);
-            const dx = unitX - centerPos.x;
-            const dy = unitY - centerPos.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            const maxDistanceFromCenter = 45; // 75% of hex radius (60 * 0.75)
+            // Recalculate A* path from current position to final destination
+            const newPath = findPathAStar(currentHex.x, currentHex.y, finalDestination.x, finalDestination.y, unit.animal);
             
-            if (distance > maxDistanceFromCenter) {
-                const ratio = maxDistanceFromCenter / distance;
-                return {
-                    x: centerPos.x + dx * ratio,
-                    y: centerPos.y + dy * ratio
-                };
+            if (newPath && newPath.length > 1) {
+                // Set new path, skipping current position
+                unit.path = newPath.slice(1);
+                unit.pathIndex = 0;
+                unit.targetX = null;
+                unit.targetY = null;
+                console.log(`✅ ${unit.animal} found alternative path with ${newPath.length} steps`);
+                return true;
+            } else {
+                // No alternative path found - stop movement
+                console.log(`❌ ${unit.animal} no alternative path available - stopping`);
+                unit.isMoving = false;
+                unit.path = null;
+                unit.pathIndex = 0;
+                unit.targetX = null;
+                unit.targetY = null;
+                return false;
             }
-            
-            return { x: unitX, y: unitY };
         }
             
         // Get tile type at position (for gameplay logic)
@@ -1181,7 +1210,7 @@
                         continue;
                     }
                     
-                    const gCost = currentNode.gCost + getMovementCost(currentNode.x, currentNode.y, nx, ny);
+                    const gCost = currentNode.gCost + getMovementCost(currentNode.x, currentNode.y, nx, ny, animalType);
                     const hCost = heuristic(nx, ny, goalX, goalY);
                     const neighborNode = new AStarNode(nx, ny, gCost, hCost, currentNode);
                     
@@ -1199,15 +1228,44 @@
         }
 
         function heuristic(x1, y1, x2, y2) {
-            // Manhattan distance for hex grid
-            const dx = Math.abs(x2 - x1);
-            const dy = Math.abs(y2 - y1);
-            return dx + dy;
+            // Improved hex grid distance calculation
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            
+            // For hex grids, we need to account for the offset pattern
+            let distance;
+            if (Math.sign(dx) === Math.sign(dy)) {
+                distance = Math.abs(dx + dy);
+            } else {
+                distance = Math.max(Math.abs(dx), Math.abs(dy));
+            }
+            
+            return distance;
         }
 
-        function getMovementCost(x1, y1, x2, y2) {
-            // Basic movement cost - can be enhanced with terrain-specific costs
-            return 1;
+        function getMovementCost(x1, y1, x2, y2, animalType) {
+            // Base movement cost
+            let cost = 1;
+            
+            // Diagonal movement costs slightly more (for hex grids this is minimal)
+            const dx = Math.abs(x2 - x1);
+            const dy = Math.abs(y2 - y1);
+            if (dx > 0 && dy > 0) {
+                cost *= 1.1; // Slight diagonal penalty
+            }
+            
+            // Check destination tile for terrain-specific costs
+            const tile = getTileAt(x2, y2);
+            if (tile) {
+                // Add terrain preferences to encourage optimal routing
+                if (tile.terrainType === 'forest') {
+                    cost *= 1.2; // Forest is slightly harder to traverse
+                } else if (tile.terrainType === 'farmland') {
+                    cost *= 0.9; // Farmland is easier to traverse
+                }
+            }
+            
+            return cost;
         }
 
         function getNeighbors(x, y) {
@@ -1287,8 +1345,8 @@
                 const testX = unit.x + alt.x;
                 const testY = unit.y + alt.y;
                 
-                // Use new hex boundary collision detection
-                if (!checkHexCollision(testX, testY, unit.animal)) {
+                // Use proper collision detection with unit size
+                if (!checkHexCollision(testX, testY, unit.animal, unit.size)) {
                     return alt;
                 }
             }
@@ -1409,12 +1467,11 @@
                             const nextX = unit.x + moveX;
                             const nextY = unit.y + moveY;
                             
-                            // Check for hex boundary collision at the new position
-                            if (!checkHexCollision(nextX, nextY, unit.animal)) {
-                                // Apply position constraints to keep unit centered
-                                const constrainedPos = constrainUnitToHex(nextX, nextY, unit.animal);
-                                unit.x = constrainedPos.x;
-                                unit.y = constrainedPos.y;
+                            // Check for collision using actual unit size
+                            if (!checkHexCollision(nextX, nextY, unit.animal, unit.size)) {
+                                // Move to the next position
+                                unit.x = nextX;
+                                unit.y = nextY;
                                 
                                 // Rotate model to face movement direction
                                 if (unit.modelElement) {
@@ -1427,23 +1484,8 @@
                                     }
                                 }
                             } else {
-                                // Collision detected - try to find alternative path or stop
-                                console.log(`🚫 ${unit.animal} collision detected at (${Math.round(nextX)}, ${Math.round(nextY)}) - recalculating path`);
-                                
-                                // Recalculate path from current position
-                                const currentHex = screenToHex(unit.x, unit.y);
-                                const finalTarget = unit.path[unit.path.length - 1];
-                                const newPath = findPathAStar(currentHex.x, currentHex.y, finalTarget.x, finalTarget.y, unit.animal);
-                                
-                                if (newPath && newPath.length > 1) {
-                                    unit.path = newPath.slice(1);
-                                    unit.pathIndex = 0;
-                                } else {
-                                    // No path available - stop movement
-                                    unit.isMoving = false;
-                                    unit.path = null;
-                                    unit.pathIndex = 0;
-                                }
+                                // Collision detected - recalculate path around obstacle
+                                handleCollisionResponse(unit, nextX, nextY);
                             }
                         } else {
                             // Reached current waypoint, move to next
@@ -1470,12 +1512,11 @@
                             const nextX = unit.x + moveX;
                             const nextY = unit.y + moveY;
                             
-                            // Check for hex boundary collision at the new position
-                            if (!checkHexCollision(nextX, nextY, unit.animal)) {
-                                // Apply position constraints to keep unit centered
-                                const constrainedPos = constrainUnitToHex(nextX, nextY, unit.animal);
-                                unit.x = constrainedPos.x;
-                                unit.y = constrainedPos.y;
+                            // Check for collision using actual unit size
+                            if (!checkHexCollision(nextX, nextY, unit.animal, unit.size)) {
+                                // Move to the next position
+                                unit.x = nextX;
+                                unit.y = nextY;
                                 
                                 // Rotate model to face movement direction
                                 if (unit.modelElement) {
@@ -1488,9 +1529,8 @@
                                     }
                                 }
                             } else {
-                                // Collision detected - stop movement and try to find A* path
-                                console.log(`🚫 ${unit.animal} collision in legacy movement - switching to A* pathfinding`);
-                                setUnitPath(unit, unit.targetX, unit.targetY);
+                                // Collision detected - recalculate path around obstacle
+                                handleCollisionResponse(unit, nextX, nextY);
                             }
                         } else {
                             unit.isMoving = false;
