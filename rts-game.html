@@ -214,16 +214,25 @@
             z-index: 10;
         }
 
-        /* Static tile styling */
-        .hex-tile.static-tile {
+        /* Static tile styling - now all tiles are 3D models */
+        .hex-tile.mountain {
+            filter: brightness(0.9); /* Slightly darker for visual distinction */
+        }
+
+        .hex-tile.hill {
+            filter: brightness(0.95); /* Slightly darker for visual distinction */
+        }
+
+        .hex-tile:hover {
+            filter: brightness(1.1) saturate(1.2); /* Highlight on hover */
+        }
+
+        /* Visual feedback for terrain traversability */
+        .hex-tile.non-traversable {
             cursor: not-allowed;
         }
 
-        .hex-tile.static-tile:hover {
-            transform: scale(1.02); /* Less dramatic scaling for static tiles */
-        }
-
-        .hex-tile.dynamic-tile {
+        .hex-tile.traversable {
             cursor: pointer;
         }
 
@@ -473,14 +482,27 @@
 
         // Game map cache to avoid regeneration
         let gameMap = null;
-        let staticTileCache = new Map(); // Cache for converted static images
 
-        // Helper function to check if a tile is traversable
-        function isTileTraversable(x, y) {
+        // Helper function to check if a tile is traversable by a specific animal
+        function isTileTraversable(x, y, animalType = null) {
             if (!gameMap || x < 0 || y < 0 || x >= gameMap.length || y >= gameMap[0].length) {
                 return false; // Out of bounds
             }
-            return gameMap[x][y].isTraversable;
+            
+            const tile = gameMap[x][y];
+            
+            // Flying animals (Owl and Bee) can traverse all terrain including Mountains/Hills
+            if (animalType === 'owl' || animalType === 'bee') {
+                return true;
+            }
+            
+            // Ground animals cannot traverse Mountains or Hills
+            if (tile.file.includes('Mountain') || tile.file.includes('Hill')) {
+                return false;
+            }
+            
+            // All other terrain (FarmLand, Forest) is traversable by ground animals
+            return true;
         }
 
         // Get tile type at position (for gameplay logic)
@@ -508,8 +530,11 @@
                         ...tileData,
                         x: i,
                         y: j,
-                        isTraversable: tileData.file.includes('FarmLand') || tileData.file.includes('Forest'),
-                        isStatic: tileData.file.includes('Mountain') || tileData.file.includes('Hill')
+                        // Keep terrain type for traversal logic, but render all as 3D models for visibility
+                        terrainType: tileData.file.includes('Mountain') ? 'mountain' : 
+                                   tileData.file.includes('Hill') ? 'hill' :
+                                   tileData.file.includes('FarmLand') ? 'farmland' : 'forest',
+                        isStatic: false // All tiles render as 3D models for visibility
                     };
                 }
             }
@@ -529,15 +554,20 @@
             // Generate or use cached map layout
             const mapLayout = generateMapLayout(rows, cols);
             
-            // Count different tile types for performance info
-            let staticCount = 0, dynamicCount = 0;
+            // Count different terrain types for info
+            let mountainCount = 0, hillCount = 0, farmlandCount = 0, forestCount = 0;
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
-                    if (mapLayout[i][j].isStatic) staticCount++;
-                    else dynamicCount++;
+                    switch(mapLayout[i][j].terrainType) {
+                        case 'mountain': mountainCount++; break;
+                        case 'hill': hillCount++; break;
+                        case 'farmland': farmlandCount++; break;
+                        case 'forest': forestCount++; break;
+                    }
                 }
             }
-            console.log(`Generating map: ${staticCount} static tiles (CSS), ${dynamicCount} dynamic tiles (3D models)`);
+            console.log(`Generated map terrain: ${mountainCount} Mountains, ${hillCount} Hills, ${farmlandCount} Farmland, ${forestCount} Forest`);
+            console.log(`Traversability: Mountains/Hills block ground animals, all terrain allows flying animals (Owl/Bee)`);
 
             // Overlapping containers to eliminate visual gaps between hexagonal models
             const hexWidth = 30;
@@ -558,76 +588,15 @@
                         yPos = j * hexHeight + hexOffset;
                     }
 
-                    if (tileData.isStatic) {
-                        // For static tiles (Mountain/Hill), use cached HTML if available
-                        const cacheKey = `${tileData.file}_${xPos}_${yPos}`;
-                        
-                        if (staticTileCache.has(cacheKey)) {
-                            // Use cached static HTML
-                            const tempDiv = document.createElement('div');
-                            tempDiv.innerHTML = staticTileCache.get(cacheKey);
-                            const cachedElement = tempDiv.firstChild;
-                            container.appendChild(cachedElement);
-                        } else {
-                            // Create new static tile and cache it
-                            createAndCacheStaticTile(tileData, xPos, yPos, container, cacheKey);
-                        }
-                    } else {
-                        // For traversable tiles (FarmLand/Forest), keep as 3D models
-                        createDynamicTile(tileData, xPos, yPos, container);
-                    }
+                    // All tiles are now 3D models for visibility
+                    createTerrainTile(tileData, xPos, yPos, container);
                 }
             }
         }
 
-        function createAndCacheStaticTile(tileData, xPos, yPos, container, cacheKey) {
-            // For static tiles (Mountain/Hill), create CSS-based visual representation
-            // This eliminates 3D overhead while maintaining visual consistency
-            
-            const staticDiv = document.createElement('div');
-            staticDiv.classList.add('hex-tile', 'static-tile');
-            staticDiv.style.position = 'absolute';
-            staticDiv.style.left = xPos + 'px';
-            staticDiv.style.top = yPos + 'px';
-            staticDiv.style.width = '40px';
-            staticDiv.style.height = '40px';
-            
-            // Create visual representation based on tile type
-            if (tileData.file.includes('Mountain')) {
-                staticDiv.style.background = 'linear-gradient(135deg, #8B7355 0%, #6B5B47 50%, #4A4338 100%)';
-                staticDiv.style.boxShadow = 'inset 2px 2px 4px rgba(255,255,255,0.3), inset -2px -2px 4px rgba(0,0,0,0.3)';
-                staticDiv.title = 'Mountain (Non-traversable)';
-            } else if (tileData.file.includes('Hill')) {
-                staticDiv.style.background = 'linear-gradient(135deg, #9CAF88 0%, #7A8A6B 50%, #5A6B4A 100%)';
-                staticDiv.style.boxShadow = 'inset 1px 1px 3px rgba(255,255,255,0.4), inset -1px -1px 3px rgba(0,0,0,0.2)';
-                staticDiv.title = 'Hill (Non-traversable)';
-            }
-            
-            // Add some texture pattern
-            const texturePattern = document.createElement('div');
-            texturePattern.style.position = 'absolute';
-            texturePattern.style.top = '0';
-            texturePattern.style.left = '0';
-            texturePattern.style.width = '100%';
-            texturePattern.style.height = '100%';
-            texturePattern.style.opacity = '0.3';
-            texturePattern.style.background = `
-                radial-gradient(circle at 20% 30%, rgba(255,255,255,0.3) 1px, transparent 1px),
-                radial-gradient(circle at 70% 60%, rgba(0,0,0,0.2) 1px, transparent 1px),
-                radial-gradient(circle at 40% 80%, rgba(255,255,255,0.2) 1px, transparent 1px)
-            `;
-            texturePattern.style.backgroundSize = '8px 8px, 12px 12px, 6px 6px';
-            staticDiv.appendChild(texturePattern);
-            
-            container.appendChild(staticDiv);
-            
-            // Cache this visual representation
-            staticTileCache.set(cacheKey, staticDiv.outerHTML);
-        }
-
-        function createDynamicTile(tileData, xPos, yPos, container) {
+        function createTerrainTile(tileData, xPos, yPos, container) {
             const tile = document.createElement('model-viewer');
-            tile.classList.add('hex-tile', 'dynamic-tile');
+            tile.classList.add('hex-tile', tileData.terrainType);
             tile.setAttribute('src', tileData.file);
             tile.setAttribute('alt', tileData.alt);
             tile.setAttribute('interaction-prompt', 'none');
@@ -641,6 +610,17 @@
             tile.setAttribute('min-camera-orbit', '0deg 0deg 150m');
             tile.setAttribute('max-camera-orbit', '0deg 0deg 150m');
             
+            // Store tile coordinates for traversability checking
+            tile.dataset.hexX = Math.floor(xPos / 30);
+            tile.dataset.hexY = Math.floor(yPos / 40);
+            
+            // Add traversability info for visual feedback
+            if (tileData.terrainType === 'mountain' || tileData.terrainType === 'hill') {
+                tile.title = `${tileData.terrainType} (Ground animals cannot pass, Flying animals can pass)`;
+            } else {
+                tile.title = `${tileData.terrainType} (All animals can pass)`;
+            }
+            
             tile.style.position = 'absolute';
             tile.style.left = xPos + 'px';
             tile.style.top = yPos + 'px';
@@ -649,7 +629,7 @@
             
             container.appendChild(tile);
             
-            // Load immediately for traversable tiles (fewer of them)
+            // Load all tiles immediately since we're back to 3D models for visibility
             tile.dismissPoster();
         }
 
@@ -992,11 +972,51 @@
                     const offsetX = Math.cos(angle) * formationRadius;
                     const offsetY = Math.sin(angle) * formationRadius;
                     
-                    unit.targetX = x + offsetX;
-                    unit.targetY = y + offsetY;
-                    unit.isMoving = true;
+                    const targetX = x + offsetX;
+                    const targetY = y + offsetY;
+                    
+                    // Convert screen coordinates to hex grid coordinates
+                    const hexX = Math.floor(targetX / 30); // 30px is hexWidth
+                    const hexY = Math.floor(targetY / 40); // 40px is hexHeight
+                    
+                    // Check if the target tile is traversable for this animal type
+                    if (isTileTraversable(hexX, hexY, unit.animal)) {
+                        unit.targetX = targetX;
+                        unit.targetY = targetY;
+                        unit.isMoving = true;
+                    } else {
+                        // Find nearest traversable tile for ground animals
+                        const nearestTraversable = findNearestTraversableTile(hexX, hexY, unit.animal);
+                        if (nearestTraversable) {
+                            unit.targetX = nearestTraversable.x * 30 + 15; // Center of tile
+                            unit.targetY = nearestTraversable.y * 40 + 20; // Center of tile
+                            unit.isMoving = true;
+                        } else {
+                            // No valid path found - unit stays in place
+                            console.log(`No valid path found for ${unit.animal} to (${hexX}, ${hexY})`);
+                        }
+                    }
                 });
             }
+        }
+
+        // Find the nearest traversable tile for an animal
+        function findNearestTraversableTile(startX, startY, animalType) {
+            const maxSearchRadius = 5; // Limit search to prevent performance issues
+            
+            for (let radius = 1; radius <= maxSearchRadius; radius++) {
+                for (let dx = -radius; dx <= radius; dx++) {
+                    for (let dy = -radius; dy <= radius; dy++) {
+                        const checkX = startX + dx;
+                        const checkY = startY + dy;
+                        
+                        if (isTileTraversable(checkX, checkY, animalType)) {
+                            return { x: checkX, y: checkY };
+                        }
+                    }
+                }
+            }
+            return null; // No traversable tile found within search radius
         }
 
         function selectAllUnitsOfType(animalType) {
