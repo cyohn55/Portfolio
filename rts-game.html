@@ -536,20 +536,43 @@
             const hex = screenToHex(screenX, screenY);
             
             // Check if the hex tile itself is traversable
+            return isTileTraversable(hex.x, hex.y, animalType);
+        }
+
+        // More restrictive check only for preventing edge-walking between different terrain types
+        function isPositionSafeFromEdgeWalking(screenX, screenY, animalType) {
+            const hex = screenToHex(screenX, screenY);
+            
+            // Check if the hex tile itself is traversable
             if (!isTileTraversable(hex.x, hex.y, animalType)) {
                 return false;
             }
             
-            // Additional check: ensure the position is well within the tile boundaries
-            // to prevent edge-walking between tiles
+            // Only apply radius restriction when near non-traversable neighbors
+            const neighbors = getNeighbors(hex.x, hex.y);
+            let hasNonTraversableNeighbor = false;
+            
+            for (const [nx, ny] of neighbors) {
+                if (!isTileTraversable(nx, ny, animalType)) {
+                    hasNonTraversableNeighbor = true;
+                    break;
+                }
+            }
+            
+            // If no blocked neighbors, allow free movement within tile
+            if (!hasNonTraversableNeighbor) {
+                return true;
+            }
+            
+            // Near blocked terrain, enforce distance restriction
             const tileCenter = hexToScreen(hex.x, hex.y);
             const distanceFromCenter = Math.sqrt(
                 Math.pow(screenX - tileCenter.x, 2) + 
                 Math.pow(screenY - tileCenter.y, 2)
             );
             
-            // Only allow movement within 70% of the tile radius to prevent edge-walking
-            const maxAllowedRadius = 30; // ~70% of 45px (half tile width) for better separation
+            // Only restrict movement when near blocked tiles
+            const maxAllowedRadius = 35; // ~80% of 45px when near obstacles
             return distanceFromCenter <= maxAllowedRadius;
         }
 
@@ -1189,19 +1212,11 @@
 
         // Snap unit to the center of its current valid tile if it's in an invalid position
         function snapUnitToValidPosition(unit) {
-            if (!isPositionTraversable(unit.x, unit.y, unit.animal)) {
-                const currentHex = screenToHex(unit.x, unit.y);
-                
-                // Try current tile center first
-                if (isTileTraversable(currentHex.x, currentHex.y, unit.animal)) {
-                    const centerPos = hexToScreen(currentHex.x, currentHex.y);
-                    unit.x = centerPos.x;
-                    unit.y = centerPos.y;
-                    console.log(`📍 Snapped ${unit.animal} to tile center (${currentHex.x}, ${currentHex.y})`);
-                    return true;
-                }
-                
-                // If current tile is not traversable, find nearest valid tile
+            const currentHex = screenToHex(unit.x, unit.y);
+            
+            // Only snap if the tile itself is not traversable
+            if (!isTileTraversable(currentHex.x, currentHex.y, unit.animal)) {
+                // Find nearest valid tile
                 const nearestTraversable = findNearestTraversableTile(currentHex.x, currentHex.y, unit.animal);
                 if (nearestTraversable) {
                     const centerPos = hexToScreen(nearestTraversable.x, nearestTraversable.y);
@@ -1400,33 +1415,50 @@
                             const nextX = unit.x + moveX;
                             const nextY = unit.y + moveY;
                             
-                            // Check if the next position is traversable with edge detection
+                            // Check if the next position is traversable
                             if (isPositionTraversable(nextX, nextY, unit.animal)) {
-                                unit.x = nextX;
-                                unit.y = nextY;
-                            } else {
-                                // Try smaller movement steps to find valid position
-                                let validMove = false;
-                                for (let scale = 0.5; scale >= 0.1; scale -= 0.1) {
-                                    const testX = unit.x + (moveX * scale);
-                                    const testY = unit.y + (moveY * scale);
+                                // For positions near blocked terrain, apply edge-walking prevention
+                                if (isPositionSafeFromEdgeWalking(nextX, nextY, unit.animal)) {
+                                    unit.x = nextX;
+                                    unit.y = nextY;
+                                } else {
+                                    // Try to find a safe position within the same tile
+                                    let validMove = false;
+                                    for (let scale = 0.8; scale >= 0.3; scale -= 0.1) {
+                                        const testX = unit.x + (moveX * scale);
+                                        const testY = unit.y + (moveY * scale);
+                                        
+                                        if (isPositionTraversable(testX, testY, unit.animal) && 
+                                            isPositionSafeFromEdgeWalking(testX, testY, unit.animal)) {
+                                            unit.x = testX;
+                                            unit.y = testY;
+                                            validMove = true;
+                                            break;
+                                        }
+                                    }
                                     
-                                    if (isPositionTraversable(testX, testY, unit.animal)) {
-                                        unit.x = testX;
-                                        unit.y = testY;
-                                        validMove = true;
-                                        break;
+                                    if (!validMove) {
+                                        // Move to center of current tile and proceed to next waypoint
+                                        const currentHex = screenToHex(unit.x, unit.y);
+                                        const centerPos = hexToScreen(currentHex.x, currentHex.y);
+                                        unit.x = centerPos.x;
+                                        unit.y = centerPos.y;
+                                        
+                                        unit.pathIndex++;
+                                        if (unit.pathIndex >= unit.path.length) {
+                                            unit.isMoving = false;
+                                            unit.path = null;
+                                            unit.pathIndex = 0;
+                                        }
                                     }
                                 }
-                                
-                                if (!validMove) {
-                                    // Cannot move closer to this waypoint, move to next one
-                                    unit.pathIndex++;
-                                    if (unit.pathIndex >= unit.path.length) {
-                                        unit.isMoving = false;
-                                        unit.path = null;
-                                        unit.pathIndex = 0;
-                                    }
+                            } else {
+                                // Trying to move to blocked terrain - move to next waypoint
+                                unit.pathIndex++;
+                                if (unit.pathIndex >= unit.path.length) {
+                                    unit.isMoving = false;
+                                    unit.path = null;
+                                    unit.pathIndex = 0;
                                 }
                             }
                             
@@ -1465,36 +1497,44 @@
                             const nextX = unit.x + moveX;
                             const nextY = unit.y + moveY;
                             
-                            // Check if the next position is traversable with edge detection
+                            // Check if the next position is traversable
                             if (isPositionTraversable(nextX, nextY, unit.animal)) {
-                                // Move to the next position
-                                unit.x = nextX;
-                                unit.y = nextY;
-                            } else {
-                                // Try smaller movement steps to find valid position
-                                let validMove = false;
-                                for (let scale = 0.5; scale >= 0.1; scale -= 0.1) {
-                                    const testX = unit.x + (moveX * scale);
-                                    const testY = unit.y + (moveY * scale);
+                                // For positions near blocked terrain, apply edge-walking prevention
+                                if (isPositionSafeFromEdgeWalking(nextX, nextY, unit.animal)) {
+                                    unit.x = nextX;
+                                    unit.y = nextY;
+                                } else {
+                                    // Try to find a safe position within the current tile
+                                    let validMove = false;
+                                    for (let scale = 0.8; scale >= 0.3; scale -= 0.1) {
+                                        const testX = unit.x + (moveX * scale);
+                                        const testY = unit.y + (moveY * scale);
+                                        
+                                        if (isPositionTraversable(testX, testY, unit.animal) && 
+                                            isPositionSafeFromEdgeWalking(testX, testY, unit.animal)) {
+                                            unit.x = testX;
+                                            unit.y = testY;
+                                            validMove = true;
+                                            break;
+                                        }
+                                    }
                                     
-                                    if (isPositionTraversable(testX, testY, unit.animal)) {
-                                        unit.x = testX;
-                                        unit.y = testY;
-                                        validMove = true;
-                                        break;
+                                    if (!validMove) {
+                                        // Cannot find safe movement, stop here
+                                        unit.isMoving = false;
+                                        unit.targetX = null;
+                                        unit.targetY = null;
                                     }
                                 }
-                                
-                                if (!validMove) {
-                                    // Stop movement if no valid position found
-                                    const hex = screenToHex(nextX, nextY);
-                                    const tile = getTileAt(hex.x, hex.y);
-                                    const terrainType = tile ? tile.terrainType : 'unknown';
-                                    console.log(`🚫 ${unit.animal} blocked by ${terrainType} at (${hex.x}, ${hex.y}) - cannot find valid position`);
-                                    unit.isMoving = false;
-                                    unit.targetX = null;
-                                    unit.targetY = null;
-                                }
+                            } else {
+                                // Trying to move to blocked terrain, stop movement
+                                const hex = screenToHex(nextX, nextY);
+                                const tile = getTileAt(hex.x, hex.y);
+                                const terrainType = tile ? tile.terrainType : 'unknown';
+                                console.log(`🚫 ${unit.animal} blocked by ${terrainType} at (${hex.x}, ${hex.y})`);
+                                unit.isMoving = false;
+                                unit.targetX = null;
+                                unit.targetY = null;
                             }
                             
                             // Rotate model to face movement direction (rotate the model, not the camera)
@@ -1517,9 +1557,12 @@
                     }
                 }
 
-                // Periodic position validation - ensure units stay in valid positions
-                if (!unit.isMoving && !isPositionTraversable(unit.x, unit.y, unit.animal)) {
-                    snapUnitToValidPosition(unit);
+                // Periodic position validation - only snap if in completely invalid tile
+                if (!unit.isMoving) {
+                    const currentHex = screenToHex(unit.x, unit.y);
+                    if (!isTileTraversable(currentHex.x, currentHex.y, unit.animal)) {
+                        snapUnitToValidPosition(unit);
+                    }
                 }
 
                 if (unit.team === 'enemy' && !unit.isMoving) {
