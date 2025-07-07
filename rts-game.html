@@ -468,10 +468,10 @@
             // Clear any existing tiles
             container.innerHTML = '';
 
-            // Adapt canvas script logic for 3D model positioning - reduced gaps
-            const hexWidth = 45;  // Reduced from 70px to minimize gaps
-            const hexHeight = 50; // Reduced from 80px to minimize gaps  
-            const hexOffset = 25; // Half height for interlocking
+            // Adapt canvas script logic for 3D model positioning - tighter spacing
+            const hexWidth = 35;  // Reduced by 10px for tighter column spacing
+            const hexHeight = 45; // Reduced by 5px for tighter row spacing
+            const hexOffset = 22; // Adjusted for new height (roughly half)
 
             for (let i = 0; i < cols; i++) { // i represents columns (x-axis)
                 for (let j = 0; j < rows; j++) { // j represents rows (y-axis)
@@ -512,8 +512,8 @@
                     tile.style.position = 'absolute';
                     tile.style.left = xPos + 'px';
                     tile.style.top = yPos + 'px';
-                    tile.style.width = '45px';  // Match hexWidth for exact container fit
-                    tile.style.height = '50px'; // Match hexHeight for exact container fit
+                    tile.style.width = '35px';  // Match hexWidth for exact container fit
+                    tile.style.height = '45px'; // Match hexHeight for exact container fit
                     
                     container.appendChild(tile);
                 }
