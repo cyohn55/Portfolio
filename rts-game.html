@@ -540,6 +540,21 @@
                 <span class="value" id="globalCameraRotationValue">0°</span>
             </div>
             <div class="dev-control">
+                <label>Pitch (X-axis):</label>
+                <input type="range" id="globalCameraPitch" min="-90" max="90" value="0">
+                <span class="value" id="globalCameraPitchValue">0°</span>
+            </div>
+            <div class="dev-control">
+                <label>Yaw (Y-axis):</label>
+                <input type="range" id="globalCameraYaw" min="-180" max="180" value="0">
+                <span class="value" id="globalCameraYawValue">0°</span>
+            </div>
+            <div class="dev-control">
+                <label>Roll (Z-axis):</label>
+                <input type="range" id="globalCameraRoll" min="-180" max="180" value="0">
+                <span class="value" id="globalCameraRollValue">0°</span>
+            </div>
+            <div class="dev-control">
                 <label>Tile Camera Orbit:</label>
                 <input type="range" id="tileCameraOrbit" min="0" max="360" value="0">
                 <span class="value" id="tileCameraOrbitValue">0°</span>
@@ -690,7 +705,7 @@
 
         // Development Settings
         let devSettings = {
-            globalCamera: { x: 0, y: 0, zoom: 1, rotation: 0 },
+            globalCamera: { x: 0, y: 0, zoom: 1, rotation: 0, pitch: 0, yaw: 0, roll: 0 },
             tileCamera: { orbit: 0, elevation: 75, distance: 100 },
             grid: { 
                 cols: 12, rows: 16, 
@@ -2010,6 +2025,9 @@
             const globalCameraY = document.getElementById('globalCameraY');
             const globalCameraZoom = document.getElementById('globalCameraZoom');
             const globalCameraRotation = document.getElementById('globalCameraRotation');
+            const globalCameraPitch = document.getElementById('globalCameraPitch');
+            const globalCameraYaw = document.getElementById('globalCameraYaw');
+            const globalCameraRoll = document.getElementById('globalCameraRoll');
             const tileCameraOrbit = document.getElementById('tileCameraOrbit');
             const tileCameraElevation = document.getElementById('tileCameraElevation');
             const tileCameraDistance = document.getElementById('tileCameraDistance');
@@ -2037,6 +2055,24 @@
             globalCameraRotation.addEventListener('input', (e) => {
                 devSettings.globalCamera.rotation = parseInt(e.target.value);
                 document.getElementById('globalCameraRotationValue').textContent = e.target.value + '°';
+                updateGlobalCameraPosition();
+            });
+
+            globalCameraPitch.addEventListener('input', (e) => {
+                devSettings.globalCamera.pitch = parseInt(e.target.value);
+                document.getElementById('globalCameraPitchValue').textContent = e.target.value + '°';
+                updateGlobalCameraPosition();
+            });
+
+            globalCameraYaw.addEventListener('input', (e) => {
+                devSettings.globalCamera.yaw = parseInt(e.target.value);
+                document.getElementById('globalCameraYawValue').textContent = e.target.value + '°';
+                updateGlobalCameraPosition();
+            });
+
+            globalCameraRoll.addEventListener('input', (e) => {
+                devSettings.globalCamera.roll = parseInt(e.target.value);
+                document.getElementById('globalCameraRollValue').textContent = e.target.value + '°';
                 updateGlobalCameraPosition();
             });
 
@@ -2195,26 +2231,39 @@
         }
 
         function updateGlobalCameraPosition() {
-            console.log(`🌍 Updating global camera: (${gameState.camera.x}, ${gameState.camera.y}) zoom: ${devSettings.globalCamera.zoom} rotation: ${devSettings.globalCamera.rotation}°`);
+            console.log(`🌍 Updating global camera: (${gameState.camera.x}, ${gameState.camera.y}) zoom: ${devSettings.globalCamera.zoom} rotation: ${devSettings.globalCamera.rotation}° pitch: ${devSettings.globalCamera.pitch}° yaw: ${devSettings.globalCamera.yaw}° roll: ${devSettings.globalCamera.roll}°`);
             
-            // Update hex grid container with position, zoom, and rotation
+            // Build comprehensive 3D transform with all camera controls
+            const transform = `
+                translate(${-gameState.camera.x}px, ${-gameState.camera.y}px) 
+                scale(${devSettings.globalCamera.zoom}) 
+                rotate(${devSettings.globalCamera.rotation}deg)
+                rotateX(${devSettings.globalCamera.pitch}deg)
+                rotateY(${devSettings.globalCamera.yaw}deg)
+                rotateZ(${devSettings.globalCamera.roll}deg)
+            `;
+            
+            // Update hex grid container with full 3D transformation
             const hexGrid = document.getElementById('hex-grid');
             if (hexGrid) {
-                hexGrid.style.transform = `
-                    translate(${-gameState.camera.x}px, ${-gameState.camera.y}px) 
-                    scale(${devSettings.globalCamera.zoom}) 
-                    rotate(${devSettings.globalCamera.rotation}deg)
-                `;
+                hexGrid.style.transform = transform;
+                hexGrid.style.transformStyle = 'preserve-3d';
+                hexGrid.style.perspective = '1000px';
             }
             
-            // Update game screen view angle
+            // Update game screen with full 3D transformation
             const gameScreen = document.getElementById('gameScreen');
             if (gameScreen) {
                 gameScreen.style.transform = `
                     scale(${devSettings.globalCamera.zoom}) 
                     rotate(${devSettings.globalCamera.rotation}deg)
+                    rotateX(${devSettings.globalCamera.pitch}deg)
+                    rotateY(${devSettings.globalCamera.yaw}deg)
+                    rotateZ(${devSettings.globalCamera.roll}deg)
                 `;
                 gameScreen.style.transformOrigin = 'center center';
+                gameScreen.style.transformStyle = 'preserve-3d';
+                gameScreen.style.perspective = '1000px';
             }
             
             // Update unit positions immediately
@@ -2289,7 +2338,7 @@
             
             // Reset dev settings to defaults
             devSettings = {
-                globalCamera: { x: 0, y: 0, zoom: 1, rotation: 0 },
+                globalCamera: { x: 0, y: 0, zoom: 1, rotation: 0, pitch: 0, yaw: 0, roll: 0 },
                 tileCamera: { orbit: 0, elevation: 75, distance: 100 },
                 grid: { 
                     cols: 12, rows: 16, 
@@ -2319,6 +2368,12 @@
             document.getElementById('globalCameraZoomValue').textContent = devSettings.globalCamera.zoom + 'x';
             document.getElementById('globalCameraRotation').value = devSettings.globalCamera.rotation;
             document.getElementById('globalCameraRotationValue').textContent = devSettings.globalCamera.rotation + '°';
+            document.getElementById('globalCameraPitch').value = devSettings.globalCamera.pitch;
+            document.getElementById('globalCameraPitchValue').textContent = devSettings.globalCamera.pitch + '°';
+            document.getElementById('globalCameraYaw').value = devSettings.globalCamera.yaw;
+            document.getElementById('globalCameraYawValue').textContent = devSettings.globalCamera.yaw + '°';
+            document.getElementById('globalCameraRoll').value = devSettings.globalCamera.roll;
+            document.getElementById('globalCameraRollValue').textContent = devSettings.globalCamera.roll + '°';
             
             // Tile Camera Controls
             document.getElementById('tileCameraOrbit').value = devSettings.tileCamera.orbit;
