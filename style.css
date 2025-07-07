@@ -1777,12 +1777,12 @@ model-viewer .progress-bar {
     align-items: center; /* Center the grid */
     margin: 0 auto;
     max-width: calc(var(--hex-tile-size) * 10);
-    gap: -60px; /* -60px vertical spacing between rows */
+    gap: -50px; /* -50px vertical spacing for dramatic overlap */
 }
 
 .hex-row {
     display: flex;
-    gap: 60px; /* 60px horizontal spacing between columns */
+    gap: 40px; /* 40px horizontal spacing between columns */
     margin-bottom: 0; /* No additional margin between rows */
 }
 
