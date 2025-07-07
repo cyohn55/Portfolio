@@ -214,6 +214,21 @@
             z-index: 10;
         }
 
+        .interactive-tile {
+            z-index: 2 !important;
+            pointer-events: auto;
+        }
+
+        .interactive-tile:hover {
+            transform: scale(1.1);
+            z-index: 15;
+        }
+
+        #staticTerrainCanvas {
+            pointer-events: none;
+            z-index: 1;
+        }
+
         .hex-tile model-viewer {
             width: 100% !important;
             height: 100% !important;
@@ -462,259 +477,203 @@
             return hexTileModels[Math.floor(Math.random() * hexTileModels.length)];
         }
 
-        // Model pooling for performance optimization
-        const modelPool = {
-            Mountain: [],
-            Forest: [],
-            Hill: [],
-            FarmLand: []
-        };
+        // Static Map Generation - Procedurally generate terrain layout once
+        let staticMapData = null;
+        let staticMapCanvas = null;
 
-        function getPooledModel(terrainType) {
-            const pool = modelPool[terrainType];
-            if (pool.length > 0) {
-                return pool.pop(); // Reuse existing model
+        function generateStaticMap(rows = 24, cols = 32) {
+            // Generate procedural terrain layout
+            staticMapData = generateProceduralTerrain(rows, cols);
+            
+            // Create static background canvas
+            createStaticBackground(rows, cols);
+            
+            // Create interactive 3D overlay for key areas only
+            createInteractiveOverlay(rows, cols);
+        }
+
+        function generateProceduralTerrain(rows, cols) {
+            const terrain = [];
+            const terrainTypes = [
+                { name: 'Mountain', file: 'models/Mountain.glb', color: '#8B7355', probability: 0.15 },
+                { name: 'Forest', file: 'models/Forest.glb', color: '#228B22', probability: 0.35 },
+                { name: 'Hill', file: 'models/Hill.glb', color: '#9ACD32', probability: 0.35 },
+                { name: 'FarmLand', file: 'models/FarmLand.glb', color: '#DAA520', probability: 0.15 }
+            ];
+
+            // Generate coherent terrain using Perlin-like noise simulation
+            for (let i = 0; i < cols; i++) {
+                terrain[i] = [];
+                for (let j = 0; j < rows; j++) {
+                    // Create terrain clusters for more realistic generation
+                    const clusterSeed = Math.sin(i * 0.1) * Math.cos(j * 0.1) + 
+                                       Math.sin(i * 0.05) * Math.cos(j * 0.05) * 0.5;
+                    const noise = (Math.random() - 0.5) * 0.3;
+                    const terrainValue = clusterSeed + noise;
+
+                    let selectedTerrain;
+                    if (terrainValue > 0.4) selectedTerrain = terrainTypes[0]; // Mountain
+                    else if (terrainValue > 0.1) selectedTerrain = terrainTypes[1]; // Forest
+                    else if (terrainValue > -0.2) selectedTerrain = terrainTypes[2]; // Hill
+                    else selectedTerrain = terrainTypes[3]; // FarmLand
+
+                    terrain[i][j] = {
+                        type: selectedTerrain.name,
+                        file: selectedTerrain.file,
+                        color: selectedTerrain.color,
+                        x: i,
+                        y: j
+                    };
+                }
             }
-            return null; // Create new if none available
+
+            return terrain;
         }
 
-        function returnToPool(model, terrainType) {
-            model.style.display = 'none';
-            model.style.left = '-1000px';
-            modelPool[terrainType].push(model);
-        }
-
-        // Extract terrain type from model file
-        function getTerrainType(file) {
-            if (file.includes('Mountain')) return 'Mountain';
-            if (file.includes('Forest')) return 'Forest';
-            if (file.includes('Hill')) return 'Hill';
-            if (file.includes('FarmLand')) return 'FarmLand';
-            return 'Forest'; // Default fallback
-        }
-
-        function generateHexGrid(rows = 6, cols = 8) {
+        function createStaticBackground(rows, cols) {
             const container = document.getElementById('hex-grid');
-            if (!container) {
-                console.warn('Hex grid container (#hex-grid) not found.');
-                return;
-            }
+            if (!container) return;
 
-            // Clear any existing tiles
-            container.innerHTML = '';
+            // Create canvas for static background
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Calculate canvas size
+            const hexWidth = 30;
+            const hexHeight = 40;
+            const hexOffset = 20;
+            
+            canvas.width = cols * hexWidth + 100;
+            canvas.height = rows * hexHeight + hexOffset + 100;
+            canvas.style.position = 'absolute';
+            canvas.style.top = '0';
+            canvas.style.left = '0';
+            canvas.style.zIndex = '1';
+            canvas.id = 'staticTerrainCanvas';
 
-            // Overlapping containers to eliminate visual gaps between hexagonal models
-            const hexWidth = 30;  // Set to 30px
-            const hexHeight = 40; // Set to 40px for uniform spacing  
-            const hexOffset = 20; // Half height for interlocking
-
-            for (let i = 0; i < cols; i++) { // i represents columns (x-axis)
-                for (let j = 0; j < rows; j++) { // j represents rows (y-axis)
+            // Draw hexagonal tiles on canvas
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    const terrainData = staticMapData[i][j];
                     
-                    const { file, alt } = getRandomHexTile();
-                    const terrainType = getTerrainType(file);
-                    
-                    // Try to reuse a pooled model first
-                    let tile = getPooledModel(terrainType);
-                    if (!tile) {
-                        // Create new model if none in pool
-                        tile = document.createElement('model-viewer');
-                        tile.setAttribute('src', file);
-                        tile.setAttribute('alt', alt);
-                    } else {
-                        // Reset pooled model
-                        tile.style.display = 'block';
-                    }
-                    
-                    tile.classList.add('hex-tile');
-                    tile.dataset.terrain = terrainType;
-                    // Performance optimizations
-                    tile.setAttribute('interaction-prompt', 'none');
-                    tile.setAttribute('loading', 'lazy');
-                    tile.setAttribute('reveal', 'manual'); // Prevent auto-loading
-                    tile.setAttribute('preload', ''); // Preload for faster display
-                    
-                    // Enhanced progressive loading with viewport culling
-                    const distance = Math.sqrt(i*i + j*j); // Distance from origin
-                    const centerX = cols / 2;
-                    const centerY = rows / 2;
-                    const distanceFromCenter = Math.sqrt((i - centerX)**2 + (j - centerY)**2);
-                    
-                    if (distanceFromCenter > 3) {
-                        tile.setAttribute('loading', 'lazy');
-                        tile.style.display = 'none'; // Hide distant tiles initially
-                        tile.dataset.priority = 'low';
-                        tile.dataset.culled = 'true';
-                    } else {
-                        tile.dataset.priority = 'high';
-                        tile.dataset.culled = 'false';
-                    }
-                    
-                    // Store position for later viewport culling
-                    tile.dataset.gridX = i;
-                    tile.dataset.gridY = j;
-                    // Optimized 3D settings for performance
-                    tile.setAttribute('camera-orbit', '0deg 0deg 150m');
-                    tile.setAttribute('field-of-view', '20deg');
-                    tile.setAttribute('rotation', '0deg 0deg 0deg');
-                    tile.setAttribute('orientation', '0deg 0deg 0deg');
-                    
-                    // Performance optimizations for 3D models
-                    tile.removeAttribute('auto-rotate');
-                    tile.setAttribute('disable-zoom', '');
-                    tile.setAttribute('disable-pan', '');
-                    tile.setAttribute('min-camera-orbit', '0deg 0deg 150m');
-                    tile.setAttribute('max-camera-orbit', '0deg 0deg 150m');
-                    
-                    // Reduce model quality for better performance
-                    tile.setAttribute('environment-image', 'none');
-                    tile.setAttribute('shadow-intensity', '0');
-                    tile.setAttribute('tone-mapping', 'none');
-                    tile.setAttribute('ar', 'false');
-                    tile.setAttribute('poster', ''); // No poster for faster loading
-
-                    // Calculate position using canvas script logic
                     let xPos, yPos;
-                    
-                    if (i % 2 === 0) { // Even columns (like drawBase(x_hex) case)
+                    if (i % 2 === 0) {
                         xPos = i * hexWidth;
                         yPos = j * hexHeight;
-                    } else { // Odd columns (like drawBase(y_hex) case) 
+                    } else {
                         xPos = i * hexWidth;
-                        yPos = j * hexHeight + hexOffset; // Add offset for interlocking
+                        yPos = j * hexHeight + hexOffset;
                     }
 
-                    // Apply positioning with larger models to create overlapping hexagons
-                    tile.style.position = 'absolute';
-                    tile.style.left = xPos + 'px';
-                    tile.style.top = yPos + 'px';
-                    tile.style.width = '40px';  // Larger than hexWidth to create visual overlap
-                    tile.style.height = '40px'; // Larger than hexHeight to create visual overlap
-                    
-                    container.appendChild(tile);
-                    
-                    // Optimize: Only reveal tiles that are likely to be visible initially
-                    if (tile.dataset.priority === 'high' && !tile.dataset.culled) {
-                        setTimeout(() => tile.dismissPoster(), Math.random() * 500); // Stagger loading
-                    }
+                    drawHexagon(ctx, xPos + 20, yPos + 20, 18, terrainData.color);
+                }
+            }
+
+            container.appendChild(canvas);
+            staticMapCanvas = canvas;
+        }
+
+        function drawHexagon(ctx, x, y, size, color) {
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 3) * i;
+                const xPos = x + size * Math.cos(angle);
+                const yPos = y + size * Math.sin(angle);
+                if (i === 0) ctx.moveTo(xPos, yPos);
+                else ctx.lineTo(xPos, yPos);
+            }
+            ctx.closePath();
+            
+            // Fill with terrain color
+            ctx.fillStyle = color;
+            ctx.fill();
+            
+            // Add border
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        function createInteractiveOverlay(rows, cols) {
+            const container = document.getElementById('hex-grid');
+            
+            // Create 3D models only for strategic areas (bases, resources, special terrain)
+            const interactiveAreas = generateInteractiveAreas(rows, cols);
+            
+            interactiveAreas.forEach(area => {
+                const terrainData = staticMapData[area.x][area.y];
+                const tile = document.createElement('model-viewer');
+                tile.classList.add('hex-tile', 'interactive-tile');
+                tile.setAttribute('src', terrainData.file);
+                tile.setAttribute('alt', terrainData.type);
+                
+                // Optimized settings for interactive tiles
+                tile.setAttribute('interaction-prompt', 'none');
+                tile.setAttribute('loading', 'eager');
+                tile.setAttribute('camera-orbit', '0deg 0deg 150m');
+                tile.setAttribute('field-of-view', '20deg');
+                tile.setAttribute('disable-zoom', '');
+                tile.setAttribute('disable-pan', '');
+
+                // Position calculation
+                const hexWidth = 30;
+                const hexHeight = 40;
+                const hexOffset = 20;
+                
+                let xPos, yPos;
+                if (area.x % 2 === 0) {
+                    xPos = area.x * hexWidth;
+                    yPos = area.y * hexHeight;
+                } else {
+                    xPos = area.x * hexWidth;
+                    yPos = area.y * hexHeight + hexOffset;
+                }
+
+                tile.style.position = 'absolute';
+                tile.style.left = xPos + 'px';
+                tile.style.top = yPos + 'px';
+                tile.style.width = '40px';
+                tile.style.height = '40px';
+                tile.style.zIndex = '2';
+                
+                container.appendChild(tile);
+            });
+        }
+
+        function generateInteractiveAreas(rows, cols) {
+            const areas = [];
+            
+            // Add strategic areas: base locations, resource nodes, chokepoints
+            // Player base area (bottom-left)
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 3; j++) {
+                    areas.push({ x: i + 2, y: j + 2, type: 'base' });
                 }
             }
             
-            // Add expandable grid button for more terrain
-            addExpandButton(rows, cols);
-        }
-
-        // Dynamic grid expansion system
-        function addExpandButton(currentRows, currentCols) {
-            // Remove existing button if any
-            const existingBtn = document.querySelector('.expand-grid-btn');
-            if (existingBtn) existingBtn.remove();
-            
-            const expandBtn = document.createElement('button');
-            expandBtn.textContent = `🌍 Expand Map (${currentRows}×${currentCols} → ${Math.floor(currentRows * 1.4)}×${Math.floor(currentCols * 1.4)})`;
-            expandBtn.className = 'expand-grid-btn';
-            expandBtn.style.cssText = `
-                position: absolute;
-                bottom: 120px;
-                right: 20px;
-                z-index: 200;
-                background: linear-gradient(45deg, #00ff88, #00cc6a);
-                border: none;
-                padding: 12px 18px;
-                border-radius: 8px;
-                color: white;
-                cursor: pointer;
-                font-weight: bold;
-                font-size: 14px;
-                box-shadow: 0 4px 12px rgba(0,255,136,0.3);
-                transition: all 0.3s ease;
-            `;
-            
-            expandBtn.addEventListener('mouseenter', () => {
-                expandBtn.style.transform = 'scale(1.05)';
-                expandBtn.style.boxShadow = '0 6px 16px rgba(0,255,136,0.4)';
-            });
-            
-            expandBtn.addEventListener('mouseleave', () => {
-                expandBtn.style.transform = 'scale(1)';
-                expandBtn.style.boxShadow = '0 4px 12px rgba(0,255,136,0.3)';
-            });
-            
-            expandBtn.addEventListener('click', () => {
-                const newRows = Math.floor(currentRows * 1.4);
-                const newCols = Math.floor(currentCols * 1.4);
-                expandGrid(newRows, newCols);
-                expandBtn.remove();
-            });
-            
-            document.getElementById('hexGridContainer').appendChild(expandBtn);
-        }
-
-        // Efficient grid expansion that reuses existing models
-        function expandGrid(newRows, newCols) {
-            const container = document.getElementById('hex-grid');
-            const existingTiles = container.querySelectorAll('.hex-tile');
-            
-            // Mark existing tiles for potential pooling if they're far from center
-            existingTiles.forEach(tile => {
-                const x = parseInt(tile.dataset.gridX);
-                const y = parseInt(tile.dataset.gridY);
-                const distanceFromCenter = Math.sqrt((x - newCols/2)**2 + (y - newRows/2)**2);
-                
-                if (distanceFromCenter > newCols * 0.6) {
-                    const terrainType = tile.dataset.terrain;
-                    returnToPool(tile, terrainType);
-                    tile.remove();
+            // Enemy base area (top-right)
+            for (let i = cols - 6; i < cols - 2; i++) {
+                for (let j = rows - 5; j < rows - 2; j++) {
+                    areas.push({ x: i, y: j, type: 'base' });
                 }
-            });
+            }
             
-            // Generate new tiles for expanded area
-            generateHexGrid(newRows, newCols);
-        }
-
-        // Enhanced performance monitoring and loading
-        let loadedTileCount = 0;
-        let totalTileCount = 0;
-
-        function setupProgressiveLoading() {
-            const tiles = document.querySelectorAll('.hex-tile');
-            totalTileCount = tiles.length;
-            
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting && entry.target.dataset.culled === 'true') {
-                        const tile = entry.target;
-                        
-                        // Show and load the tile with performance throttling
-                        if (loadedTileCount < totalTileCount * 0.7) { // Limit concurrent loading
-                            tile.style.display = 'block';
-                            tile.dataset.culled = 'false';
-                            
-                            setTimeout(() => {
-                                if (tile.hasAttribute('reveal')) {
-                                    tile.dismissPoster();
-                                    loadedTileCount++;
-                                }
-                            }, Math.random() * 1000); // Stagger loading to prevent lag spikes
-                            
-                            observer.unobserve(tile);
-                        }
-                    }
+            // Resource nodes scattered across map
+            for (let i = 0; i < 15; i++) {
+                areas.push({
+                    x: Math.floor(Math.random() * cols),
+                    y: Math.floor(Math.random() * rows),
+                    type: 'resource'
                 });
-            }, {
-                rootMargin: '150px', // Increased buffer for smoother experience
-                threshold: 0.1
-            });
-
-            // Observe only culled tiles
-            tiles.forEach(tile => {
-                if (tile.dataset.culled === 'true') {
-                    observer.observe(tile);
-                }
-            });
+            }
             
-            // Performance monitoring
-            console.log(`🎮 Grid initialized: ${totalTileCount} tiles, ${Math.round(totalTileCount * 0.3)} visible`);
+            return areas;
+        }
+
+        // Legacy function - no longer needed with static generation
+        function setupProgressiveLoading() {
+            // Static generation approach doesn't need progressive loading
+            console.log('Using static terrain generation - progressive loading disabled');
         }
 
         // Title Screen Logic
@@ -814,11 +773,8 @@
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
 
-            // Generate hex grid terrain
-            generateHexGrid();
-            
-            // Setup progressive loading for better performance
-            setTimeout(() => setupProgressiveLoading(), 100);
+            // Generate static terrain map
+            generateStaticMap();
 
             // Create bases for selected animals
             gameState.selectedAnimals.forEach((animal, index) => {
