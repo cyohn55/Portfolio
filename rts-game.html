@@ -515,7 +515,8 @@
                     tile.style.top = yPos + 'px';
                     tile.style.width = '40px';  // Larger than hexWidth to create visual overlap
                     tile.style.height = '40px'; // Larger than hexHeight to create visual overlap
-                    tile.style.display = 'none'; // Initially hidden for performance
+                    // Initially visible, will be optimized by viewport culling
+                    tile.style.display = 'block';
                     
                     container.appendChild(tile);
                 }
@@ -528,20 +529,23 @@
             const viewportWidth = window.innerWidth;
             const viewportHeight = window.innerHeight;
             
+            // Expand viewport bounds for better experience with transforms
+            const buffer = 200; // 200px buffer zone
+            
             tiles.forEach(tile => {
                 const rect = tile.getBoundingClientRect();
                 const isVisible = (
-                    rect.right >= 0 &&
-                    rect.left <= viewportWidth &&
-                    rect.bottom >= 0 &&
-                    rect.top <= viewportHeight
+                    rect.right >= -buffer &&
+                    rect.left <= viewportWidth + buffer &&
+                    rect.bottom >= -buffer &&
+                    rect.top <= viewportHeight + buffer
                 );
                 
-                if (isVisible && !tile.hasAttribute('data-loaded')) {
-                    // Load visible tiles
+                if (isVisible) {
+                    // Show visible tiles
                     tile.style.display = 'block';
                     tile.setAttribute('data-loaded', 'true');
-                } else if (!isVisible && tile.hasAttribute('data-loaded')) {
+                } else {
                     // Hide distant tiles to save performance
                     tile.style.display = 'none';
                 }
@@ -658,8 +662,12 @@
             // Generate hex grid terrain
             generateHexGrid();
             
-            // Initialize performance optimization
-            optimizeHexGridPerformance();
+            // Initialize performance optimization with delay to ensure DOM is ready
+            setTimeout(() => {
+                console.log('Initializing hex grid performance optimization...');
+                optimizeHexGridPerformance();
+                console.log('Hex tiles should now be visible');
+            }, 100);
             
             // Add scroll/resize listeners for viewport culling
             window.addEventListener('scroll', throttledOptimization);
