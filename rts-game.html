@@ -186,9 +186,11 @@
             width: 100%;
             height: 100%;
             --hex-tile-size: 180px; /* Tripled from 60px */
-            /* StarCraft-style 30-degree viewing angle for the entire hex grid */
-            transform: perspective(2000px) rotateX(30deg);
-            transform-origin: center top;
+            /* Enhanced 3D support for terrain heights */
+            transform-style: preserve-3d;
+            perspective: 2000px;
+            perspective-origin: center center;
+            transform-origin: center center;
         }
 
         /* Removed rotation - all tiles maintain same orientation */
@@ -240,6 +242,45 @@
             width: 100% !important;
             height: 100% !important;
             display: block;
+        }
+
+        /* 3D Terrain System */
+        .tile-3d-container {
+            transform-style: preserve-3d;
+        }
+
+        .terrain-plane {
+            transform-style: preserve-3d;
+            backface-visibility: visible;
+        }
+
+        .base-plane {
+            opacity: 0.8;
+        }
+
+        .height-layer {
+            pointer-events: none;
+        }
+
+        /* Enhanced 3D terrain colors with gradients */
+        .tile-3d-container.mountain .terrain-plane {
+            background: linear-gradient(45deg, #666666, #888888) !important;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
+        }
+
+        .tile-3d-container.hill .terrain-plane {
+            background: linear-gradient(45deg, #8B7355, #A0845C) !important;
+            box-shadow: inset 0 0 8px rgba(0,0,0,0.2);
+        }
+
+        .tile-3d-container.forest .terrain-plane {
+            background: linear-gradient(45deg, #228B22, #32CD32) !important;
+            box-shadow: inset 0 0 6px rgba(0,0,0,0.2);
+        }
+
+        .tile-3d-container.farmland .terrain-plane {
+            background: linear-gradient(45deg, #8B4513, #A0522D) !important;
+            box-shadow: inset 0 0 4px rgba(0,0,0,0.1);
         }
 
         /* UI Elements */
@@ -614,6 +655,36 @@
             </div>
         </div>
 
+        <!-- Terrain Height Controls -->
+        <div class="dev-section">
+            <h4 style="margin: 0 0 8px 0; color: #ffaa00;">🏔 Terrain Heights</h4>
+            <div class="dev-control">
+                <label>Mountain Height:</label>
+                <input type="range" id="mountainHeight" min="50" max="200" value="120">
+                <span class="value" id="mountainHeightValue">120px</span>
+            </div>
+            <div class="dev-control">
+                <label>Hill Height:</label>
+                <input type="range" id="hillHeight" min="30" max="150" value="80">
+                <span class="value" id="hillHeightValue">80px</span>
+            </div>
+            <div class="dev-control">
+                <label>Forest Height:</label>
+                <input type="range" id="forestHeight" min="20" max="100" value="40">
+                <span class="value" id="forestHeightValue">40px</span>
+            </div>
+            <div class="dev-control">
+                <label>Farmland Height:</label>
+                <input type="range" id="farmlandHeight" min="0" max="20" value="5">
+                <span class="value" id="farmlandHeightValue">5px</span>
+            </div>
+            <div class="dev-control">
+                <label>Height Multiplier:</label>
+                <input type="range" id="heightMultiplier" min="0.1" max="3" step="0.1" value="1">
+                <span class="value" id="heightMultiplierValue">1x</span>
+            </div>
+        </div>
+
         <!-- Unit Controls -->
         <div class="dev-section">
             <h4 style="margin: 0 0 8px 0; color: #ffaa00;">🐾 Unit Controls</h4>
@@ -711,6 +782,13 @@
                 cols: 12, rows: 16, 
                 tileWidth: 90, tileHeight: 120, 
                 columnGap: 0, rowGap: 0, hexOffset: 60 
+            },
+            terrain: {
+                mountainHeight: 120,
+                hillHeight: 80,
+                forestHeight: 40,
+                farmlandHeight: 5,
+                heightMultiplier: 1
             },
             units: { speedMultiplier: 1, sizeMultiplier: 1, spawnInterval: 15 },
             population: { maxPerTeam: 99, maxPerAnimal: 33, enableDeathSim: true },
@@ -1101,6 +1179,46 @@
         }
 
         function createTerrainTile(tileData, xPos, yPos, container) {
+            // Create a 3D container for each tile
+            const tileContainer = document.createElement('div');
+            tileContainer.classList.add('tile-3d-container', tileData.terrainType);
+            
+            // Get terrain height for 3D effect
+            const terrainHeight = getTerrainHeight(tileData.terrainType);
+            
+            // Position the 3D container
+            tileContainer.style.position = 'absolute';
+            tileContainer.style.left = xPos + 'px';
+            tileContainer.style.top = yPos + 'px';
+            tileContainer.style.width = devSettings.grid.tileWidth + 'px';
+            tileContainer.style.height = devSettings.grid.tileHeight + 'px';
+            tileContainer.style.transformStyle = 'preserve-3d';
+            
+            // Create base ground plane
+            const basePlane = document.createElement('div');
+            basePlane.classList.add('terrain-plane', 'base-plane');
+            basePlane.style.position = 'absolute';
+            basePlane.style.width = '100%';
+            basePlane.style.height = '100%';
+            basePlane.style.background = getTerrainColor(tileData.terrainType);
+            basePlane.style.transform = 'rotateX(90deg) translateZ(0px)';
+            basePlane.style.border = '1px solid rgba(255,255,255,0.1)';
+            
+            // Create height layers for 3D effect
+            for (let layer = 1; layer <= Math.ceil(terrainHeight / 10); layer++) {
+                const heightLayer = document.createElement('div');
+                heightLayer.classList.add('terrain-plane', 'height-layer');
+                heightLayer.style.position = 'absolute';
+                heightLayer.style.width = '100%';
+                heightLayer.style.height = '100%';
+                heightLayer.style.background = getTerrainColor(tileData.terrainType);
+                heightLayer.style.opacity = Math.max(0.1, 1 - (layer * 0.1));
+                heightLayer.style.transform = `rotateX(90deg) translateZ(${layer * 10}px)`;
+                heightLayer.style.border = '1px solid rgba(255,255,255,0.05)';
+                tileContainer.appendChild(heightLayer);
+            }
+            
+            // Create the model viewer on top
             const tile = document.createElement('model-viewer');
             tile.classList.add('hex-tile', tileData.terrainType);
             tile.setAttribute('src', tileData.file);
@@ -1108,6 +1226,7 @@
             tile.setAttribute('interaction-prompt', 'none');
             tile.setAttribute('loading', 'lazy');
             tile.setAttribute('reveal', 'manual');
+            
             // Use development settings for tile camera
             const orbit = `${devSettings.tileCamera.orbit}deg ${devSettings.tileCamera.elevation}deg ${devSettings.tileCamera.distance}m`;
             tile.setAttribute('camera-orbit', orbit);
@@ -1117,6 +1236,13 @@
             tile.setAttribute('disable-pan', '');
             tile.setAttribute('min-camera-orbit', orbit);
             tile.setAttribute('max-camera-orbit', orbit);
+            
+            // Position model viewer on top of the terrain
+            tile.style.position = 'absolute';
+            tile.style.width = '100%';
+            tile.style.height = '100%';
+            tile.style.transform = `translateZ(${terrainHeight}px)`;
+            tile.style.transformStyle = 'preserve-3d';
             
             // Store tile coordinates for traversability checking  
             tile.dataset.hexX = Math.floor(xPos / (devSettings.grid.tileWidth + devSettings.grid.columnGap));
@@ -1129,16 +1255,35 @@
                 tile.title = `${tileData.terrainType} (All animals can pass)`;
             }
             
-            tile.style.position = 'absolute';
-            tile.style.left = xPos + 'px';
-            tile.style.top = yPos + 'px';
-            tile.style.width = devSettings.grid.tileWidth + 'px';
-            tile.style.height = devSettings.grid.tileHeight + 'px';
+            tileContainer.appendChild(basePlane);
+            tileContainer.appendChild(tile);
+            container.appendChild(tileContainer);
             
-            container.appendChild(tile);
-            
-            // Load all tiles immediately since we're back to 3D models for visibility
+            // Load model immediately
             tile.dismissPoster();
+        }
+
+        // Get terrain colors for 3D layers
+        function getTerrainColor(terrainType) {
+            const terrainColors = {
+                'mountain': '#666666',  // Gray rock
+                'hill': '#8B7355',      // Brown earth
+                'forest': '#228B22',    // Green vegetation  
+                'farmland': '#8B4513'   // Brown soil
+            };
+            return terrainColors[terrainType] || '#654321';
+        }
+
+        // Get height values for different terrain types to create 3D depth
+        function getTerrainHeight(terrainType) {
+            const terrainHeights = {
+                'mountain': devSettings.terrain.mountainHeight,
+                'hill': devSettings.terrain.hillHeight,
+                'forest': devSettings.terrain.forestHeight,
+                'farmland': devSettings.terrain.farmlandHeight
+            };
+            
+            return (terrainHeights[terrainType] || 0) * devSettings.terrain.heightMultiplier;
         }
 
         // Performance: Progressive loading with Intersection Observer
@@ -1158,7 +1303,7 @@
             });
 
             // Observe all hex tiles for progressive loading
-            document.querySelectorAll('.hex-tile').forEach(tile => {
+            document.querySelectorAll('.tile-3d-container .hex-tile').forEach(tile => {
                 if (tile.hasAttribute('reveal')) {
                     observer.observe(tile);
                         }
@@ -2015,6 +2160,7 @@
             // Setup all control listeners
             setupCameraControls();
             setupGridControls();
+            setupTerrainControls();
             setupUnitControls();
             setupPopulationControls();
             setupDebugControls();
@@ -2092,6 +2238,44 @@
                 devSettings.tileCamera.distance = parseInt(e.target.value);
                 updateAllTileCameras();
                 document.getElementById('tileCameraDistanceValue').textContent = e.target.value + 'm';
+            });
+        }
+
+        function setupTerrainControls() {
+            const mountainHeight = document.getElementById('mountainHeight');
+            const hillHeight = document.getElementById('hillHeight');
+            const forestHeight = document.getElementById('forestHeight');
+            const farmlandHeight = document.getElementById('farmlandHeight');
+            const heightMultiplier = document.getElementById('heightMultiplier');
+
+            mountainHeight.addEventListener('input', (e) => {
+                devSettings.terrain.mountainHeight = parseInt(e.target.value);
+                document.getElementById('mountainHeightValue').textContent = e.target.value + 'px';
+                regenerateGrid();
+            });
+
+            hillHeight.addEventListener('input', (e) => {
+                devSettings.terrain.hillHeight = parseInt(e.target.value);
+                document.getElementById('hillHeightValue').textContent = e.target.value + 'px';
+                regenerateGrid();
+            });
+
+            forestHeight.addEventListener('input', (e) => {
+                devSettings.terrain.forestHeight = parseInt(e.target.value);
+                document.getElementById('forestHeightValue').textContent = e.target.value + 'px';
+                regenerateGrid();
+            });
+
+            farmlandHeight.addEventListener('input', (e) => {
+                devSettings.terrain.farmlandHeight = parseInt(e.target.value);
+                document.getElementById('farmlandHeightValue').textContent = e.target.value + 'px';
+                regenerateGrid();
+            });
+
+            heightMultiplier.addEventListener('input', (e) => {
+                devSettings.terrain.heightMultiplier = parseFloat(e.target.value);
+                document.getElementById('heightMultiplierValue').textContent = e.target.value + 'x';
+                regenerateGrid();
             });
         }
 
@@ -2217,7 +2401,7 @@
         // Development helper functions
         function updateAllTileCameras() {
             console.log(`🎥 Updating tile cameras: ${devSettings.tileCamera.orbit}° ${devSettings.tileCamera.elevation}° ${devSettings.tileCamera.distance}m`);
-            document.querySelectorAll('#hex-grid model-viewer').forEach(modelViewer => {
+            document.querySelectorAll('#hex-grid .tile-3d-container model-viewer').forEach(modelViewer => {
                 const orbit = `${devSettings.tileCamera.orbit}deg ${devSettings.tileCamera.elevation}deg ${devSettings.tileCamera.distance}m`;
                 modelViewer.setAttribute('camera-orbit', orbit);
                 modelViewer.setAttribute('min-camera-orbit', orbit);
@@ -2345,6 +2529,13 @@
                     tileWidth: 90, tileHeight: 120, 
                     columnGap: 0, rowGap: 0, hexOffset: 60 
                 },
+                terrain: {
+                    mountainHeight: 120,
+                    hillHeight: 80,
+                    forestHeight: 40,
+                    farmlandHeight: 5,
+                    heightMultiplier: 1
+                },
                 units: { speedMultiplier: 1, sizeMultiplier: 1, spawnInterval: 15 },
                 population: { maxPerTeam: 99, maxPerAnimal: 33, enableDeathSim: true },
                 debug: { showCollision: false, showPath: false, showGrid: false }
@@ -2398,6 +2589,18 @@
             document.getElementById('columnGapValue').textContent = devSettings.grid.columnGap + 'px';
             document.getElementById('rowGap').value = devSettings.grid.rowGap;
             document.getElementById('rowGapValue').textContent = devSettings.grid.rowGap + 'px';
+            
+            // Terrain Controls
+            document.getElementById('mountainHeight').value = devSettings.terrain.mountainHeight;
+            document.getElementById('mountainHeightValue').textContent = devSettings.terrain.mountainHeight + 'px';
+            document.getElementById('hillHeight').value = devSettings.terrain.hillHeight;
+            document.getElementById('hillHeightValue').textContent = devSettings.terrain.hillHeight + 'px';
+            document.getElementById('forestHeight').value = devSettings.terrain.forestHeight;
+            document.getElementById('forestHeightValue').textContent = devSettings.terrain.forestHeight + 'px';
+            document.getElementById('farmlandHeight').value = devSettings.terrain.farmlandHeight;
+            document.getElementById('farmlandHeightValue').textContent = devSettings.terrain.farmlandHeight + 'px';
+            document.getElementById('heightMultiplier').value = devSettings.terrain.heightMultiplier;
+            document.getElementById('heightMultiplierValue').textContent = devSettings.terrain.heightMultiplier + 'x';
             
             // Unit Controls
             document.getElementById('unitSpeedMultiplier').value = devSettings.units.speedMultiplier;
