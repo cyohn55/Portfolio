@@ -191,8 +191,9 @@
 
         .hex-row {
             display: flex;
-            gap: 15px;
-            margin-bottom: -46px;
+            gap: 160px !important;
+            margin-bottom: -45px;
+            border: 1px solid red; /* Debug border to see row boundaries */
         }
 
         .hex-row.offset-row {
@@ -218,6 +219,7 @@
             transition: transform 0.2s ease;
             /* Create hexagonal shape using clip-path */
             clip-path: polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%);
+            border: 2px solid blue; /* Debug border to see tile boundaries */
         }
 
         .hex-tile:hover {
@@ -484,6 +486,9 @@
                 return;
             }
 
+            console.log('Generating hex grid with', rows, 'rows and', cols, 'columns');
+            console.log('Container found:', container);
+
             // Clear any existing tiles
             container.innerHTML = '';
 
@@ -495,6 +500,8 @@
                 if (r % 2 === 1) {
                     rowEl.classList.add('offset-row');
                 }
+                
+                console.log('Created row', r, 'with classes:', rowEl.className);
 
                 // Adjust column count for offset rows to maintain visual balance
                 const colsForRow = (r % 2 === 1) ? cols - 1 : cols;
