@@ -418,7 +418,12 @@
             isSelecting: false,
             selectionStart: { x: 0, y: 0 },
             mapSize: { width: 2000, height: 1500 },
-            modelsLoaded: false
+            modelsLoaded: false,
+            // Population management
+            maxPopulationPerTeam: 99,
+            maxUnitsPerAnimalType: 33,
+            populationByTeam: { player: 0, enemy: 0 },
+            populationByAnimal: {}
         };
 
         // Animal configurations with 3D model paths
@@ -649,6 +654,55 @@
             return gameMap[x][y];
         }
 
+        // Population management functions
+        function initializePopulationTracking() {
+            gameState.populationByTeam = { player: 0, enemy: 0 };
+            gameState.populationByAnimal = {};
+            
+            // Initialize animal population counters
+            Object.keys(animalConfigs).forEach(animal => {
+                gameState.populationByAnimal[animal] = { player: 0, enemy: 0 };
+            });
+        }
+
+        function updatePopulationCount(animal, team, delta) {
+            gameState.populationByTeam[team] += delta;
+            gameState.populationByAnimal[animal][team] += delta;
+            gameState.population = gameState.populationByTeam.player + gameState.populationByTeam.enemy;
+            
+            console.log(`📊 Population update: ${animal} (${team}) ${delta > 0 ? '+' : ''}${delta}`);
+            console.log(`📊 Current: ${team} total: ${gameState.populationByTeam[team]}, ${animal}: ${gameState.populationByAnimal[animal][team]}`);
+        }
+
+        function canSpawnUnit(animal, team) {
+            // Check team population cap
+            if (gameState.populationByTeam[team] >= gameState.maxPopulationPerTeam) {
+                return false;
+            }
+            
+            // Check animal type population cap
+            if (gameState.populationByAnimal[animal][team] >= gameState.maxUnitsPerAnimalType) {
+                return false;
+            }
+            
+            return true;
+        }
+
+        function removeUnit(unit) {
+            const index = gameState.units.indexOf(unit);
+            if (index > -1) {
+                gameState.units.splice(index, 1);
+                updatePopulationCount(unit.animal, unit.team, -1);
+                
+                // Remove 3D model
+                if (unit.modelElement && unit.modelElement.parentNode) {
+                    unit.modelElement.parentNode.removeChild(unit.modelElement);
+                }
+                
+                console.log(`💀 Removed ${unit.animal} (${unit.team}) - Population: ${gameState.populationByTeam[unit.team]}`);
+            }
+        }
+
         function getRandomHexTile() {
             // Weighted terrain generation - reduce Mountains/Hills by 25%
             const terrainWeights = [
@@ -673,7 +727,7 @@
         }
 
         // Generate a static map layout once
-        function generateMapLayout(rows = 16, cols = 20) {
+        function generateMapLayout(rows = 16, cols = 12) {
             if (gameMap) return gameMap; // Return cached map if exists
             
             gameMap = [];
@@ -696,7 +750,7 @@
             return gameMap;
         }
 
-        function generateHexGrid(rows = 16, cols = 20) {
+        function generateHexGrid(rows = 16, cols = 12) {
             const container = document.getElementById('hex-grid');
             if (!container) {
                 console.warn('Hex grid container (#hex-grid) not found.');
@@ -909,6 +963,9 @@
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
 
+            // Initialize population tracking
+            initializePopulationTracking();
+            
             // Generate hex grid terrain
             generateHexGrid();
             
@@ -1429,6 +1486,12 @@
         }
 
         function spawnUnit(base) {
+            // Check if we can spawn this unit (population caps)
+            if (!canSpawnUnit(base.animal, base.team)) {
+                console.log(`🚫 Cannot spawn ${base.animal} (${base.team}) - population cap reached`);
+                return null;
+            }
+            
             const angle = Math.random() * Math.PI * 2;
             const distance = base.size + 30;
             
@@ -1452,10 +1515,12 @@
             // Create 3D model for the unit
             unit.modelElement = createUnitModel(unit);
             
-            console.log(`🐾 Spawned ${unit.animal} (${unit.team}) at (${Math.round(unit.x)}, ${Math.round(unit.y)}) with size ${unit.size}`);
-            
             gameState.units.push(unit);
-            gameState.population++;
+            updatePopulationCount(base.animal, base.team, 1);
+            
+            console.log(`🐾 Spawned ${unit.animal} (${unit.team}) at (${Math.round(unit.x)}, ${Math.round(unit.y)}) - Total: ${gameState.populationByTeam[base.team]}`);
+            
+            return unit;
         }
 
         function updateUnits(deltaTime) {
@@ -1609,6 +1674,30 @@
             document.getElementById('population').textContent = gameState.population;
         }
 
+        // Intelligent spawn manager to maintain population caps
+        function managePopulation() {
+            gameState.bases.forEach(base => {
+                // Check if this animal type needs replenishment
+                const currentCount = gameState.populationByAnimal[base.animal][base.team];
+                const teamTotal = gameState.populationByTeam[base.team];
+                
+                // Only spawn if:
+                // 1. Animal type is below cap (33)
+                // 2. Team total is below cap (99)
+                // 3. Enough time has passed since last spawn
+                if (currentCount < gameState.maxUnitsPerAnimalType && 
+                    teamTotal < gameState.maxPopulationPerTeam &&
+                    Date.now() - base.lastSpawn > base.spawnInterval) {
+                    
+                    const spawned = spawnUnit(base);
+                    if (spawned) {
+                        base.lastSpawn = Date.now();
+                        console.log(`🏭 Base spawned ${base.animal} for ${base.team} - ${currentCount + 1}/${gameState.maxUnitsPerAnimalType}`);
+                    }
+                }
+            });
+        }
+
         function render() {
             const canvas = document.getElementById('gameCanvas');
             const ctx = canvas.getContext('2d');
@@ -1737,13 +1826,16 @@
             const deltaTime = currentTime - (gameState.lastTime || currentTime);
             gameState.lastTime = currentTime;
 
-            // Spawn units from bases
-            gameState.bases.forEach(base => {
-                if (currentTime - base.lastSpawn > base.spawnInterval) {
-                    spawnUnit(base);
-                    base.lastSpawn = currentTime;
-                }
-            });
+            // Manage population with intelligent spawning
+            managePopulation();
+
+            // Simulate unit deaths (temporary - for testing population management)
+            // Remove this section when implementing actual combat
+            if (Math.random() < 0.001 && gameState.units.length > 6) { // 0.1% chance per frame if more than 6 units
+                const randomUnit = gameState.units[Math.floor(Math.random() * gameState.units.length)];
+                console.log(`⚔️ Simulated death: ${randomUnit.animal} (${randomUnit.team})`);
+                removeUnit(randomUnit);
+            }
 
             // Update units
             updateUnits(deltaTime);
