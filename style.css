@@ -1777,7 +1777,7 @@ model-viewer .progress-bar {
     align-items: center; /* Center the grid */
     margin: 0 auto;
     max-width: calc(var(--hex-tile-size) * 10);
-    gap: -50px; /* -50px vertical spacing for dramatic overlap */
+    gap: -45px; /* -45px vertical overlap */
 }
 
 .hex-row {
