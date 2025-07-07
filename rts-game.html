@@ -1063,13 +1063,15 @@
             tile.setAttribute('interaction-prompt', 'none');
             tile.setAttribute('loading', 'lazy');
             tile.setAttribute('reveal', 'manual');
-            tile.setAttribute('camera-orbit', '0deg 0deg 150m');
+            // Use development settings for tile camera
+            const orbit = `${devSettings.tileCamera.orbit}deg ${devSettings.tileCamera.elevation}deg ${devSettings.tileCamera.distance}m`;
+            tile.setAttribute('camera-orbit', orbit);
             tile.setAttribute('field-of-view', '20deg');
             tile.setAttribute('rotation', '0deg 0deg 0deg');
             tile.setAttribute('disable-zoom', '');
             tile.setAttribute('disable-pan', '');
-            tile.setAttribute('min-camera-orbit', '0deg 0deg 150m');
-            tile.setAttribute('max-camera-orbit', '0deg 0deg 150m');
+            tile.setAttribute('min-camera-orbit', orbit);
+            tile.setAttribute('max-camera-orbit', orbit);
             
             // Store tile coordinates for traversability checking
             tile.dataset.hexX = Math.floor(xPos / 90);
@@ -1085,8 +1087,8 @@
             tile.style.position = 'absolute';
             tile.style.left = xPos + 'px';
             tile.style.top = yPos + 'px';
-            tile.style.width = '120px';  // Tripled from 40px
-            tile.style.height = '120px'; // Tripled from 40px
+            tile.style.width = devSettings.grid.tileWidth + 'px';
+            tile.style.height = devSettings.grid.tileHeight + 'px';
             
             container.appendChild(tile);
             
@@ -1268,6 +1270,9 @@
             
             // Initialize development panel
             initDevPanel();
+            
+            // Apply initial camera settings
+            updateGlobalCameraPosition();
         }
 
         function createControlButtons() {
@@ -1981,12 +1986,14 @@
                 devSettings.globalCamera.x = parseInt(e.target.value);
                 gameState.camera.x = devSettings.globalCamera.x;
                 document.getElementById('globalCameraXValue').textContent = e.target.value;
+                updateGlobalCameraPosition();
             });
 
             globalCameraY.addEventListener('input', (e) => {
                 devSettings.globalCamera.y = parseInt(e.target.value);
                 gameState.camera.y = devSettings.globalCamera.y;
                 document.getElementById('globalCameraYValue').textContent = e.target.value;
+                updateGlobalCameraPosition();
             });
 
             tileCameraOrbit.addEventListener('input', (e) => {
@@ -2018,21 +2025,29 @@
             gridCols.addEventListener('input', (e) => {
                 devSettings.grid.cols = parseInt(e.target.value);
                 document.getElementById('gridColsValue').textContent = e.target.value;
+                regenerateGrid();
             });
 
             gridRows.addEventListener('input', (e) => {
                 devSettings.grid.rows = parseInt(e.target.value);
                 document.getElementById('gridRowsValue').textContent = e.target.value;
+                regenerateGrid();
             });
 
             tileWidth.addEventListener('input', (e) => {
                 devSettings.grid.tileWidth = parseInt(e.target.value);
                 document.getElementById('tileWidthValue').textContent = e.target.value + 'px';
+                // Update hex offset when tile width changes
+                devSettings.grid.hexOffset = devSettings.grid.tileHeight / 2;
+                regenerateGrid();
             });
 
             tileHeight.addEventListener('input', (e) => {
                 devSettings.grid.tileHeight = parseInt(e.target.value);
                 document.getElementById('tileHeightValue').textContent = e.target.value + 'px';
+                // Update hex offset when tile height changes  
+                devSettings.grid.hexOffset = devSettings.grid.tileHeight / 2;
+                regenerateGrid();
             });
 
             hexOffset.addEventListener('input', (e) => {
@@ -2106,10 +2121,31 @@
 
         // Development helper functions
         function updateAllTileCameras() {
+            console.log(`🎥 Updating tile cameras: ${devSettings.tileCamera.orbit}° ${devSettings.tileCamera.elevation}° ${devSettings.tileCamera.distance}m`);
             document.querySelectorAll('#hex-grid model-viewer').forEach(modelViewer => {
                 const orbit = `${devSettings.tileCamera.orbit}deg ${devSettings.tileCamera.elevation}deg ${devSettings.tileCamera.distance}m`;
                 modelViewer.setAttribute('camera-orbit', orbit);
+                modelViewer.setAttribute('min-camera-orbit', orbit);
+                modelViewer.setAttribute('max-camera-orbit', orbit);
+                
+                // Force camera update
+                if (modelViewer.resetTurntableRotation) {
+                    modelViewer.resetTurntableRotation();
+                }
             });
+        }
+
+        function updateGlobalCameraPosition() {
+            console.log(`🌍 Updating global camera: (${gameState.camera.x}, ${gameState.camera.y})`);
+            
+            // Update hex grid container position
+            const hexGrid = document.getElementById('hex-grid');
+            if (hexGrid) {
+                hexGrid.style.transform = `translate(${-gameState.camera.x}px, ${-gameState.camera.y}px)`;
+            }
+            
+            // Update unit positions immediately
+            updateUnitModelPositions();
         }
 
         function updateAllUnitSizes() {
