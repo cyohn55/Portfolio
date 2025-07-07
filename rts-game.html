@@ -567,9 +567,9 @@
                 return true;
             }
             
-            // Check if unit model edges would overlap with adjacent non-traversable tiles
-            const hexSize = 60; // Half of tile size (120/2)
-            const unitRadius = unitSize; // Animal model radius
+            // More reasonable collision detection: only check close neighboring tiles
+            const unitRadius = unitSize * 0.8; // Use 80% of unit size for more forgiving collision
+            const hexRadius = 45; // Use 75% of hex radius (60 * 0.75) for tile edge detection
             
             // Get all neighboring hexes
             const neighbors = getNeighbors(currentHex.x, currentHex.y);
@@ -584,11 +584,12 @@
                         Math.pow(unitY - neighborCenter.y, 2)
                     );
                     
-                    // Collision occurs when unit edge + tile edge overlap
-                    // Distance must be greater than (hexSize + unitRadius) to avoid collision
-                    const minSafeDistance = hexSize + unitRadius;
+                    // More reasonable collision: allow closer approach but still prevent overlap
+                    // Only collision if unit would significantly overlap with the tile
+                    const minSafeDistance = hexRadius + unitRadius * 0.5; // More forgiving distance
                     
                     if (distance < minSafeDistance) {
+                        console.log(`🚫 Collision: ${animalType} at (${Math.round(unitX)}, ${Math.round(unitY)}) too close to ${getTileAt(neighborX, neighborY)?.terrainType} at (${neighborX}, ${neighborY}), distance: ${Math.round(distance)}, min: ${Math.round(minSafeDistance)}`);
                         return true;
                     }
                 }
@@ -1118,6 +1119,8 @@
 
         function moveSelectedUnits(x, y) {
             if (gameState.selectedUnits.length > 0) {
+                console.log(`🎯 Moving ${gameState.selectedUnits.length} units to (${Math.round(x)}, ${Math.round(y)})`);
+                
                 // Create formation around target point
                 const formationRadius = Math.sqrt(gameState.selectedUnits.length) * 20;
                 
@@ -1128,6 +1131,8 @@
                     
                     const targetX = x + offsetX;
                     const targetY = y + offsetY;
+                    
+                    console.log(`📍 Setting path for ${unit.animal} from (${Math.round(unit.x)}, ${Math.round(unit.y)}) to (${Math.round(targetX)}, ${Math.round(targetY)})`);
                     
                     // Use A* pathfinding for optimal route finding
                     setUnitPath(unit, targetX, targetY);
@@ -1309,6 +1314,9 @@
             const startHex = screenToHex(unit.x, unit.y);
             const goalHex = screenToHex(targetX, targetY);
             
+            console.log(`🗺️ Finding path for ${unit.animal} from hex (${startHex.x}, ${startHex.y}) to hex (${goalHex.x}, ${goalHex.y})`);
+            console.log(`📍 Start traversable: ${isTileTraversable(startHex.x, startHex.y, unit.animal)}, Goal traversable: ${isTileTraversable(goalHex.x, goalHex.y, unit.animal)}`);
+            
             // Find path using A*
             const path = findPathAStar(startHex.x, startHex.y, goalHex.x, goalHex.y, unit.animal);
             
@@ -1318,14 +1326,15 @@
                 unit.isMoving = true;
                 unit.targetX = null;
                 unit.targetY = null;
-                console.log(`🗺️ ${unit.animal} found path with ${path.length} steps`);
+                console.log(`✅ ${unit.animal} found A* path with ${path.length} steps`);
             } else {
                 // Fallback to direct movement
                 unit.targetX = targetX;
                 unit.targetY = targetY;
                 unit.isMoving = true;
                 unit.path = null;
-                console.log(`⚠️ ${unit.animal} using direct movement (no A* path found)`);
+                unit.pathIndex = 0;
+                console.log(`⚠️ ${unit.animal} using direct movement (no A* path found) - isMoving: ${unit.isMoving}`);
             }
         }
 
@@ -1442,6 +1451,8 @@
 
             // Create 3D model for the unit
             unit.modelElement = createUnitModel(unit);
+            
+            console.log(`🐾 Spawned ${unit.animal} (${unit.team}) at (${Math.round(unit.x)}, ${Math.round(unit.y)}) with size ${unit.size}`);
             
             gameState.units.push(unit);
             gameState.population++;
