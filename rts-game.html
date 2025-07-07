@@ -183,39 +183,20 @@
             position: absolute;
             top: 50px;
             left: 50px;
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            --hex-tile-size: 80px;
-        }
-
-        .hex-row {
-            display: flex;
-            gap: 20px;
-            margin-bottom: -45px;
-        }
-
-        .hex-row.offset-row {
-            margin-left: calc(var(--hex-tile-size) * 0.5);
+            width: 100%;
+            height: 100%;
+            --hex-tile-size: 60px;
         }
 
         /* Removed rotation - all tiles maintain same orientation */
 
         .hex-tile {
-            width: var(--hex-tile-size);
-            height: var(--hex-tile-size);
-            min-width: var(--hex-tile-size);
-            min-height: var(--hex-tile-size);
-            max-width: var(--hex-tile-size);
-            max-height: var(--hex-tile-size);
             background: rgba(255, 255, 255, 0.1);
             border: 2px solid rgba(255, 255, 255, 0.3);
             --progress-bar-display: none;
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            flex-shrink: 0;
-            flex-grow: 0;
             transition: transform 0.2s ease;
             /* Create hexagonal shape using clip-path */
             clip-path: polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%);
@@ -224,10 +205,6 @@
         .hex-tile:hover {
             transform: scale(1.05);
             z-index: 10;
-        }
-
-        .hex-row.offset-row .hex-tile:hover {
-            transform: scale(1.05);
         }
 
         .hex-tile model-viewer {
@@ -488,19 +465,14 @@
             // Clear any existing tiles
             container.innerHTML = '';
 
-            for (let r = 0; r < rows; r++) {
-                const rowEl = document.createElement('div');
-                rowEl.classList.add('hex-row');
-                
-                // Offset every other row by half a tile width for proper hex interlocking
-                if (r % 2 === 1) {
-                    rowEl.classList.add('offset-row');
-                }
+            // Adapt canvas script logic for 3D model positioning
+            const hexWidth = 70;  // From canvas script hexagon width
+            const hexHeight = 80; // From canvas script hexagon height
+            const hexOffset = 40; // Half height for interlocking
 
-                // Adjust column count for offset rows to maintain visual balance
-                const colsForRow = (r % 2 === 1) ? cols - 1 : cols;
-
-                for (let c = 0; c < colsForRow; c++) {
+            for (let i = 0; i < cols; i++) { // i represents columns (x-axis)
+                for (let j = 0; j < rows; j++) { // j represents rows (y-axis)
+                    
                     const { file, alt } = getRandomHexTile();
                     const tile = document.createElement('model-viewer');
                     tile.classList.add('hex-tile');
@@ -522,10 +494,26 @@
                     tile.setAttribute('min-camera-orbit', '0deg 30deg 195m');
                     tile.setAttribute('max-camera-orbit', '0deg 30deg 195m');
 
-                    rowEl.appendChild(tile);
-                }
+                    // Calculate position using canvas script logic
+                    let xPos, yPos;
+                    
+                    if (i % 2 === 0) { // Even columns (like drawBase(x_hex) case)
+                        xPos = i * hexWidth;
+                        yPos = j * hexHeight;
+                    } else { // Odd columns (like drawBase(y_hex) case) 
+                        xPos = i * hexWidth;
+                        yPos = j * hexHeight + hexOffset; // Add offset for interlocking
+                    }
 
-                container.appendChild(rowEl);
+                    // Apply positioning via CSS transform
+                    tile.style.position = 'absolute';
+                    tile.style.left = xPos + 'px';
+                    tile.style.top = yPos + 'px';
+                    tile.style.width = '60px';  // Our current tile size
+                    tile.style.height = '60px';
+                    
+                    container.appendChild(tile);
+                }
             }
         }
 
