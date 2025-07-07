@@ -201,8 +201,8 @@
             padding: 0;
             box-sizing: border-box;
             transition: transform 0.2s ease;
-            /* Create hexagonal shape using clip-path */
-            clip-path: polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%);
+            /* Create hexagonal shape using clip-path - larger hexagon for tighter gaps */
+            clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
         }
 
         .hex-tile:hover {
@@ -468,10 +468,10 @@
             // Clear any existing tiles
             container.innerHTML = '';
 
-            // Adapt canvas script logic for 3D model positioning - tighter spacing
-            const hexWidth = 35;  // Reduced by 10px for tighter column spacing
-            const hexHeight = 45; // Reduced by 5px for tighter row spacing
-            const hexOffset = 22; // Adjusted for new height (roughly half)
+            // Overlapping containers to eliminate visual gaps between hexagonal models
+            const hexWidth = 25;  // Overlap containers horizontally
+            const hexHeight = 30; // Overlap containers vertically  
+            const hexOffset = 15; // Half height for interlocking
 
             for (let i = 0; i < cols; i++) { // i represents columns (x-axis)
                 for (let j = 0; j < rows; j++) { // j represents rows (y-axis)
@@ -508,12 +508,12 @@
                         yPos = j * hexHeight + hexOffset; // Add offset for interlocking
                     }
 
-                    // Apply positioning and sizing to match hexagonal container exactly
+                    // Apply positioning with larger models to create overlapping hexagons
                     tile.style.position = 'absolute';
                     tile.style.left = xPos + 'px';
                     tile.style.top = yPos + 'px';
-                    tile.style.width = '35px';  // Match hexWidth for exact container fit
-                    tile.style.height = '45px'; // Match hexHeight for exact container fit
+                    tile.style.width = '40px';  // Larger than hexWidth to create visual overlap
+                    tile.style.height = '40px'; // Larger than hexHeight to create visual overlap
                     
                     container.appendChild(tile);
                 }
