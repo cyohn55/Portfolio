@@ -509,8 +509,8 @@
                     tile.setAttribute('camera-controls', '');
                     tile.setAttribute('interaction-prompt', 'none');
                     tile.setAttribute('loading', 'lazy');
-                    // Perfect top-down view (looking straight down) - pulled back 195m
-                    tile.setAttribute('camera-orbit', '0deg 0deg 195m');
+                    // StarCraft-style 30-degree elevation angle - pulled back 195m
+                    tile.setAttribute('camera-orbit', '0deg 30deg 195m');
                     tile.setAttribute('field-of-view', '20deg');
                     // Ensure all models have identical orientation
                     tile.setAttribute('rotation', '0deg 0deg 0deg');
@@ -519,8 +519,8 @@
                     tile.removeAttribute('auto-rotate');
                     tile.setAttribute('disable-zoom', '');
                     tile.setAttribute('disable-pan', '');
-                    tile.setAttribute('min-camera-orbit', '0deg 0deg 195m');
-                    tile.setAttribute('max-camera-orbit', '0deg 0deg 195m');
+                    tile.setAttribute('min-camera-orbit', '0deg 30deg 195m');
+                    tile.setAttribute('max-camera-orbit', '0deg 30deg 195m');
 
                     rowEl.appendChild(tile);
                 }
