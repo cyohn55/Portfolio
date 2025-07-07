@@ -186,7 +186,7 @@
             display: flex;
             flex-direction: column;
             align-items: flex-start;
-            --hex-tile-size: 80px;
+            --hex-tile-size: 60px;
         }
 
         .hex-row {
@@ -196,7 +196,7 @@
         }
 
         .hex-row.offset-row {
-            margin-left: calc(var(--hex-tile-size) * 0.5);
+            margin-left: calc(var(--hex-tile-size) * 0.5 + 40px);
         }
 
         /* Removed rotation - all tiles maintain same orientation */
