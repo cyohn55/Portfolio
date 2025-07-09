@@ -822,25 +822,58 @@ document.addEventListener('DOMContentLoaded', function() {{
             lines = para.split('\n')
             processed_para_lines = []
             current_text_block = []
+            inside_html_block = False
+            html_block_tag = None
             
             for line in lines:
                 line_stripped = line.strip()
                 
-                # Check if this line is already an HTML element (including headers)
+                # Check if we're starting a multi-line HTML block
+                if not inside_html_block:
+                    # Check for opening tags of multi-line HTML elements
+                    if line_stripped.startswith('<video') and not line_stripped.endswith('</video>'):
+                        inside_html_block = True
+                        html_block_tag = 'video'
+                        # If we have accumulated text, wrap it in a paragraph
+                        if current_text_block:
+                            processed_para_lines.append(f'<p>{" ".join(current_text_block)}</p>')
+                            current_text_block = []
+                        processed_para_lines.append(line)
+                        continue
+                    elif line_stripped.startswith('<div') and not line_stripped.endswith('</div>'):
+                        inside_html_block = True
+                        html_block_tag = 'div'
+                        # If we have accumulated text, wrap it in a paragraph
+                        if current_text_block:
+                            processed_para_lines.append(f'<p>{" ".join(current_text_block)}</p>')
+                            current_text_block = []
+                        processed_para_lines.append(line)
+                        continue
+                
+                # If we're inside an HTML block, continue until we find the closing tag
+                if inside_html_block:
+                    processed_para_lines.append(line)
+                    if line_stripped.endswith(f'</{html_block_tag}>'):
+                        inside_html_block = False
+                        html_block_tag = None
+                    continue
+                
+                # Check if this line is already a single-line HTML element (including headers)
                 if (line_stripped.startswith('<h1>') or line_stripped.startswith('<h2>') or 
                     line_stripped.startswith('<h3>') or line_stripped.startswith('<h4>') or
                     line_stripped.startswith('<h5>') or line_stripped.startswith('<h6>') or
-                    line_stripped.startswith('<div') or line_stripped.startswith('<img') or 
-                    line_stripped.startswith('<video') or line_stripped.startswith('<ul>') or 
-                    line_stripped.startswith('<li>') or line_stripped.startswith('<strong>') or
-                    line_stripped.startswith('<em>') or line_stripped.startswith('<a ') or
+                    line_stripped.startswith('<img') or 
+                    line_stripped.startswith('<ul>') or line_stripped.startswith('<li>') or
+                    line_stripped.startswith('<strong>') or line_stripped.startswith('<em>') or
+                    line_stripped.startswith('<a ') or
                     line_stripped.endswith('</h1>') or line_stripped.endswith('</h2>') or
                     line_stripped.endswith('</h3>') or line_stripped.endswith('</h4>') or
                     line_stripped.endswith('</h5>') or line_stripped.endswith('</h6>') or
-                    line_stripped.endswith('</div>') or line_stripped.endswith('</video>') or
                     line_stripped.endswith('</ul>') or line_stripped.endswith('</li>') or
                     '<h1>' in line_stripped or '<h2>' in line_stripped or '<h3>' in line_stripped or
-                    '<h4>' in line_stripped or '<h5>' in line_stripped or '<h6>' in line_stripped):
+                    '<h4>' in line_stripped or '<h5>' in line_stripped or '<h6>' in line_stripped or
+                    (line_stripped.startswith('<video') and line_stripped.endswith('</video>')) or
+                    (line_stripped.startswith('<div') and line_stripped.endswith('</div>'))):
                     # If we have accumulated text, wrap it in a paragraph
                     if current_text_block:
                         processed_para_lines.append(f'<p>{" ".join(current_text_block)}</p>')
