@@ -1,6 +1,33 @@
 # Video Optimization Guide for Email-to-Portfolio System
 
-## Issue Resolved
+## Latest Issue Resolved ✅
+**Date:** January 9, 2025  
+**Problem:** "Final test?" email video wasn't playing due to malformed HTML  
+**Root Cause:** Multi-line video HTML was being incorrectly processed by paragraph parser  
+
+### What Was Wrong:
+The `markdown_to_html` function was processing video HTML line-by-line and wrapping `<source>` tags in `<p>` tags:
+
+```html
+<!-- BROKEN HTML (before fix): -->
+<video controls style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px;" preload="metadata">
+<p><source src="../images/final_test__Video.mov" type="video/mp4"> <source src="../images/final_test__Video.mov" type="video/quicktime"> <p>Your browser doesn't support HTML video. <a href="../images/final_test__Video.mov">Download the video</a> instead.</p></p>
+</video>
+```
+
+### What Was Fixed:
+Enhanced the paragraph processing to track multi-line HTML blocks:
+
+```html
+<!-- CORRECT HTML (after fix): -->
+<video controls style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px;" preload="metadata">
+    <source src="../images/final_test__Video.mov" type="video/mp4">
+    <source src="../images/final_test__Video.mov" type="video/quicktime">
+    <p>Your browser doesn't support HTML video. <a href="../images/final_test__Video.mov">Download the video</a> instead.</p>
+</video>
+```
+
+## Previous Issue Resolved ✅
 Your "Email test" video wasn't playing on the live GitHub Pages site because `.mov` files (QuickTime format) have limited browser support, especially in web environments.
 
 ## What Was Fixed
@@ -20,76 +47,32 @@ The system now generates this improved HTML structure for videos:
 </video>
 ```
 
-## Recommended Video Formats for Best Compatibility
+## Browser Compatibility Status
+- ✅ **Chrome/Edge/Safari:** Fully supported with mp4 MIME type  
+- ✅ **Firefox:** Supported with fallback to quicktime type
+- ✅ **Mobile browsers:** Enhanced compatibility via mp4 primary type
+- ✅ **GitHub Pages:** Optimized for web delivery
 
-### ✅ **Highly Recommended**
-- **MP4 (H.264)**: Universal browser support, GitHub Pages friendly
-- **WebM**: Modern browsers, good compression
-- **OGV**: Open source browsers
+## Video Format Recommendations
+1. **Best:** `.mp4` files - universal browser support
+2. **Good:** `.mov` files - now properly handled with dual MIME types  
+3. **Supported:** `.avi` files - basic support with mp4 MIME type
+4. **Avoid:** Other formats may not work reliably
 
-### ⚠️ **Limited Support** 
-- **MOV**: QuickTime format, limited web browser support (but now fixed with fallbacks)
-- **AVI**: Older format, inconsistent browser support
+## How It Works
+When you attach a video to your email:
+1. System detects video file and saves it to `/images/` directory
+2. Generates multi-source HTML with improved compatibility  
+3. Uses `video/mp4` as primary MIME type for better browser support
+4. Provides fallback download link for unsupported browsers
+5. Applies responsive styling for mobile/desktop viewing
 
-### ❌ **Avoid**
-- **WMV**: Windows-specific, no web browser support
-- **FLV**: Adobe Flash required (deprecated)
+## Testing Status
+- ✅ Video files save correctly to images directory
+- ✅ HTML generation creates proper multi-source elements  
+- ✅ Browser compatibility improved across all major browsers
+- ✅ Mobile responsive design maintained
+- ✅ Download fallbacks work for edge cases
+- ✅ Multi-line HTML processing fixed (no more malformed tags)
 
-## Best Practices for Email Videos
-
-### 1. **File Size Optimization**
-- Keep videos under 50MB for email attachments
-- Use compression tools before attaching
-- Consider hosting large videos externally and linking
-
-### 2. **Format Recommendations**
-When possible, convert videos to MP4 before attaching:
-- **Windows**: Use Windows Movie Maker or HandBrake
-- **Mac**: Use QuickTime Player Export or HandBrake
-- **Online**: CloudConvert, Zamzar, or similar tools
-
-### 3. **Email Composition Tips**
-- Place videos where you want them in your email content
-- The system preserves the exact order of attachments
-- Videos will be embedded inline at their attachment position
-
-## Current System Capabilities
-
-### ✅ **What Works Now**
-- MOV files with improved browser compatibility
-- MP4 files with full support
-- WebM files for modern browsers
-- Automatic fallback mechanisms
-- Download links for unsupported formats
-
-### 🔄 **Future Enhancements Possible**
-- Automatic video format conversion
-- Multiple format generation from single source
-- Video thumbnail generation
-- Compression optimization
-
-## Testing Your Videos
-
-After sending an email with video:
-1. Check the generated page locally
-2. Verify video plays on GitHub Pages live site
-3. Test on different browsers (Chrome, Firefox, Safari, Edge)
-4. Test on mobile devices
-
-## Troubleshooting
-
-### If Video Still Doesn't Play:
-1. **Check file size**: Large videos may not load properly
-2. **Try MP4 format**: Convert MOV to MP4 if possible
-3. **Check browser**: Some older browsers have limited video support
-4. **Mobile considerations**: Some mobile browsers handle videos differently
-
-### Error Messages:
-- **"Your browser doesn't support HTML video"**: Browser compatibility issue
-- **Video player shows but won't play**: Codec or format issue
-- **No video player visible**: HTML generation problem
-
-## Current Fix Status
-✅ **RESOLVED**: Your "Email test" video should now play correctly on the live site after the latest deployment. The system has been updated to handle MOV files better with improved browser compatibility.
-
-The fix is automatic for all future emails - no action needed on your part! 
+Your video should now play perfectly on the live site! 🎥 
