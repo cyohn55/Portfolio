@@ -159,14 +159,14 @@ def create_enhanced_html_page(title: str, content: str, filename: str, attachmen
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(html_template)
         
-        print(f"✅ Successfully created: {filepath}")
+        print(f"SUCCESS: Successfully created: {filepath}")
         if saved_files:
-            print(f"📎 Saved {len(saved_files)} media files: {', '.join(os.path.basename(f) for f in saved_files)}")
+            print(f"INFO: Saved {len(saved_files)} media files: {', '.join(os.path.basename(f) for f in saved_files)}")
         
         return True, saved_files, description
         
     except Exception as e:
-        print(f"❌ Error creating HTML page: {e}")
+        print(f"ERROR: Error creating HTML page: {e}")
         return False, [], ""
 
 def generate_description_from_content(content: str, title: str) -> str:
@@ -204,11 +204,11 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
         print(f"DEBUG: Looking for index.html at: {os.path.abspath(index_path)}")
         
         if not os.path.exists(index_path):
-            print(f"⚠️  Warning: Index file not found at {index_path}")
-            print(f"⚠️  Absolute path checked: {os.path.abspath(index_path)}")
-            print(f"⚠️  Current directory contents: {os.listdir('.')}")
+            print(f"WARNING: Index file not found at {index_path}")
+            print(f"WARNING: Absolute path checked: {os.path.abspath(index_path)}")
+            print(f"WARNING: Current directory contents: {os.listdir('.')}")
             if os.path.exists("../"):
-                print(f"⚠️  Parent directory contents: {os.listdir('../')}")
+                print(f"WARNING: Parent directory contents: {os.listdir('../')}")
             return False
         
         # Read current index.html
@@ -217,7 +217,7 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
         
         # Check if tile already exists - if so, remove it first (for overwrite behavior)
         if f'href="Pages/{filename}"' in content:
-            print(f"🔄 Updating existing tile for '{title}'")
+            print(f"INFO: Updating existing tile for '{title}'")
             # Remove the existing tile first
             from simple_email_processor import remove_research_tile
             remove_research_tile(filename, title)
@@ -266,16 +266,16 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
             with open(index_path, 'w', encoding='utf-8') as f:
                 f.write(updated_content)
                 
-            print(f"✅ Successfully added research tile for: {title}")
+            print(f"SUCCESS: Successfully added research tile for: {title}")
             return True
         else:
             print("DEBUG: Could not find project container div")
-            print("❌ Could not find insertion point for tile")
+            print("ERROR: Could not find insertion point for tile")
             print(f"DEBUG: Content preview (first 500 chars): {content[:500]}")
             return False
                 
     except Exception as e:
-        print(f"❌ Error adding research tile: {e}")
+        print(f"ERROR: Error adding research tile: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -302,11 +302,11 @@ def remove_research_tile(filename: str, title: str = None):
         with open(index_path, 'w', encoding='utf-8') as f:
             f.write(updated_content)
         
-        print(f"🗑️  Removed tile: {title or filename}")
+        print(f"INFO: Removed tile: {title or filename}")
         return True
         
     except Exception as e:
-        print(f"❌ Error removing tile: {e}")
+        print(f"ERROR: Error removing tile: {e}")
         return False
 
 def process_enhanced_email_to_page(email_content: str) -> bool:
@@ -322,7 +322,7 @@ def process_enhanced_email_to_page(email_content: str) -> bool:
         is_delete, page_identifier = is_delete_command(parsed["title"], parsed["content"])
         
         if is_delete:
-            print(f"🗑️ Delete command detected for: {page_identifier}")
+            print(f"DELETE: Delete command detected for: {page_identifier}")
             
             # Delete the page and tile
             if delete_page_and_tile(page_identifier):
@@ -337,18 +337,18 @@ def process_enhanced_email_to_page(email_content: str) -> bool:
                 
                 if is_github_actions:
                     # In GitHub Actions, let the workflow handle git operations
-                    print(f"✅ Successfully deleted '{page_identifier}' (GitHub Actions will handle git operations)")
+                    print(f"SUCCESS: Successfully deleted '{page_identifier}' (GitHub Actions will handle git operations)")
                     return True
                 else:
                     # Local execution - handle git operations ourselves
                     if commit_delete_changes(actual_filename, page_identifier):
-                        print(f"✅ Successfully deleted '{page_identifier}' and pushed to GitHub!")
+                        print(f"SUCCESS: Successfully deleted '{page_identifier}' and pushed to GitHub!")
                         return True
                     else:
-                        print(f"⚠️ Page deleted locally but failed to push to GitHub: {page_identifier}")
+                        print(f"WARNING: Page deleted locally but failed to push to GitHub: {page_identifier}")
                         return False
             else:
-                print(f"❌ Failed to delete page: {page_identifier}")
+                print(f"ERROR: Failed to delete page: {page_identifier}")
                 return False
         
         # Regular page creation logic
@@ -437,22 +437,22 @@ def process_enhanced_email_to_page(email_content: str) -> bool:
             
             if is_github_actions:
                 # In GitHub Actions, let the workflow handle git operations
-                print(f"✅ Successfully created page '{parsed['title']}' (GitHub Actions will handle git operations)")
+                print(f"SUCCESS: Successfully created page '{parsed['title']}' (GitHub Actions will handle git operations)")
                 return True
             else:
                 # Local execution - handle git operations ourselves
                 from simple_email_processor import commit_and_push_changes
                 if commit_and_push_changes(filename, parsed["title"], saved_files):
-                    print(f"✅ Successfully created page '{parsed['title']}' and pushed to GitHub!")
+                    print(f"SUCCESS: Successfully created page '{parsed['title']}' and pushed to GitHub!")
                     return True
                 else:
-                    print(f"⚠️ Page created but failed to push to GitHub: {parsed['title']}")
+                    print(f"WARNING: Page created but failed to push to GitHub: {parsed['title']}")
                     return False
         else:
             return False
     
     except Exception as e:
-        print(f"❌ Error processing email: {e}")
+        print(f"ERROR: Error processing email: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -460,31 +460,31 @@ def process_enhanced_email_to_page(email_content: str) -> bool:
 def main():
     """Main function for enhanced email processor"""
     if len(sys.argv) != 2:
-        print("❌ Usage: python enhanced_email_processor.py <email_file>")
-        print("📖 Example: python enhanced_email_processor.py example_email.txt")
+        print("ERROR: Usage: python enhanced_email_processor.py <email_file>")
+        print("Example: python enhanced_email_processor.py example_email.txt")
         sys.exit(1)
     
     email_file = sys.argv[1]
     
     if not os.path.exists(email_file):
-        print(f"❌ Email file not found: {email_file}")
+        print(f"ERROR: Email file not found: {email_file}")
         sys.exit(1)
     
     try:
         with open(email_file, 'r', encoding='utf-8') as f:
             email_content = f.read()
         
-        print(f"📧 Processing email from file: {email_file}")
+        print(f"Processing email from file: {email_file}")
         
         if process_enhanced_email_to_page(email_content):
-            print("✅ Email processed successfully!")
+            print("SUCCESS: Email processed successfully!")
             sys.exit(0)
         else:
-            print("❌ Failed to process email")
+            print("ERROR: Failed to process email")
             sys.exit(1)
             
     except Exception as e:
-        print(f"❌ Error reading email file: {e}")
+        print(f"ERROR: Error reading email file: {e}")
         sys.exit(1)
 
 def enhanced_safe_delete_check(subject: str, content: str) -> tuple[bool, str]:
