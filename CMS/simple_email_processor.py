@@ -675,7 +675,7 @@ def markdown_to_html(content: str) -> str:
     content = MARKDOWN_LINK_PATTERN.sub(r'<a href="\2" target="_blank">\1</a>', content)
     
     # Convert video tags: [VIDEO](url)
-    content = VIDEO_PATTERN.sub(r'<video controls style="max-width: 100%; height: auto; margin: 10px 0;"><source src="\1" type="video/mp4">Your browser does not support the video tag.</video>', content)
+    content = VIDEO_PATTERN.sub(r'<video controls style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px;" preload="metadata"><source src="\1" type="video/mp4"><p>Your browser doesn\'t support HTML video. <a href="\1">Download the video</a> instead.</p></video>', content)
     
     # Convert YouTube links: [YOUTUBE](video_id or full_url)
     def youtube_replacer(match):
@@ -717,11 +717,11 @@ def markdown_to_html(content: str) -> str:
                     else:
                         carousel_items.append(f'<div class="carousel-item"><img src="../images/{line}" alt="Carousel Image" style="width: 100%; height: auto; border-radius: 8px;"></div>')
                 elif any(line.lower().endswith(ext) for ext in ['.mp4', '.mov', '.avi']):
-                    # Video item
+                    # Video item - improved compatibility
                     if '__MEDIA_PLACEHOLDER_' in line:
-                        carousel_items.append(f'<div class="carousel-item"><video controls style="width: 100%; height: auto; border-radius: 8px;"><source src="{line}" type="video/mp4">Your browser does not support the video tag.</video></div>')
+                        carousel_items.append(f'<div class="carousel-item"><video controls style="width: 100%; height: auto; border-radius: 8px;" preload="metadata"><source src="{line}" type="video/mp4"><p>Your browser doesn\'t support HTML video. <a href="{line}">Download the video</a> instead.</p></video></div>')
                     else:
-                        carousel_items.append(f'<div class="carousel-item"><video controls style="width: 100%; height: auto; border-radius: 8px;"><source src="../images/{line}" type="video/mp4">Your browser does not support the video tag.</video></div>')
+                        carousel_items.append(f'<div class="carousel-item"><video controls style="width: 100%; height: auto; border-radius: 8px;" preload="metadata"><source src="../images/{line}" type="video/mp4"><p>Your browser doesn\'t support HTML video. <a href="../images/{line}">Download the video</a> instead.</p></video></div>')
                 elif '<img ' in line or '<video ' in line or '__MEDIA_PLACEHOLDER_' in line:
                     # Already processed media
                     carousel_items.append(f'<div class="carousel-item">{line}</div>')
@@ -892,7 +892,13 @@ def process_inline_media(content: str, attachments: List[Dict], title: str) -> t
                 alt_text = os.path.basename(original_filename)
                 media_html = f'<img src="{saved_path}" alt="{alt_text}">'
             elif content_type.startswith('video/'):
-                media_html = f'<video controls style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px;"><source src="{saved_path}" type="{content_type}">Your browser does not support the video tag.</video>'
+                # Improve video compatibility by using mp4 as primary type and original as fallback
+                primary_type = "video/mp4" if content_type == "video/quicktime" else content_type
+                media_html = f'''<video controls style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px;" preload="metadata">
+    <source src="{saved_path}" type="{primary_type}">
+    <source src="{saved_path}" type="{content_type}">
+    <p>Your browser doesn't support HTML video. <a href="{saved_path}">Download the video</a> instead.</p>
+</video>'''
             else:
                 continue
             
