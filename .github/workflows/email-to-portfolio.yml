@@ -32,6 +32,18 @@ jobs:
         git config --global user.name "Email-to-Portfolio System"
         git config --global user.email "email-system@portfolio.github.io"
     
+    - name: Run Comprehensive System Diagnostic
+      env:
+        GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+        GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+        AUTHORIZED_SENDER: ${{ secrets.AUTHORIZED_SENDER }}
+      run: |
+        cd CMS
+        echo "🔧 Running comprehensive system diagnostic..."
+        python debug_github_secrets.py
+        echo ""
+        echo "📊 System status check complete"
+    
     - name: Verify GitHub Secrets Configuration
       env:
         GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
@@ -44,25 +56,31 @@ jobs:
         if [ -z "$GMAIL_USERNAME" ]; then
           echo "❌ GMAIL_USERNAME not configured"
           echo "::error::Missing GitHub Secret: GMAIL_USERNAME"
+          echo "🎯 Fix: Go to https://github.com/cyohn55/Portfolio/settings/secrets/actions"
+          echo "   Add secret: GMAIL_USERNAME = email.to.portfolio.site@gmail.com"
           exit 1
         else
-          echo "✅ GMAIL_USERNAME configured"
+          echo "✅ GMAIL_USERNAME configured: $GMAIL_USERNAME"
         fi
         
         if [ -z "$GMAIL_PASSWORD" ]; then
           echo "❌ GMAIL_PASSWORD not configured"
           echo "::error::Missing GitHub Secret: GMAIL_PASSWORD"
+          echo "🎯 Fix: Go to https://github.com/cyohn55/Portfolio/settings/secrets/actions"
+          echo "   Add secret: GMAIL_PASSWORD = [your Gmail app password]"
           exit 1
         else
-          echo "✅ GMAIL_PASSWORD configured"
+          echo "✅ GMAIL_PASSWORD configured (${#GMAIL_PASSWORD} characters)"
         fi
         
         if [ -z "$AUTHORIZED_SENDER" ]; then
           echo "❌ AUTHORIZED_SENDER not configured"
           echo "::error::Missing GitHub Secret: AUTHORIZED_SENDER"
+          echo "🎯 Fix: Go to https://github.com/cyohn55/Portfolio/settings/secrets/actions"
+          echo "   Add secret: AUTHORIZED_SENDER = cyohn55@yahoo.com"
           exit 1
         else
-          echo "✅ AUTHORIZED_SENDER configured"
+          echo "✅ AUTHORIZED_SENDER configured: $AUTHORIZED_SENDER"
         fi
         
         echo "✅ All GitHub Secrets properly configured"
@@ -86,6 +104,9 @@ jobs:
         cd CMS
         echo "📧 Starting email processing..."
         echo "⏰ Processing started at: $(date)"
+        echo "🔑 Using Gmail username: $GMAIL_USERNAME"
+        echo "👤 Authorized sender: $AUTHORIZED_SENDER"
+        echo ""
         
         # Run with timeout and retry logic
         timeout 300 python github_actions_email_processor.py || {
@@ -97,6 +118,10 @@ jobs:
             echo "✅ Changes detected despite processor issues"
           else
             echo "❌ No changes detected - may indicate connection issues"
+            echo "🔍 This could mean:"
+            echo "   - No new emails to process (normal)"
+            echo "   - Gmail connection failed (check credentials)"
+            echo "   - Email not from authorized sender"
             exit 1
           fi
         }
@@ -213,4 +238,11 @@ jobs:
         echo ""
         echo "🔄 Next check: Within 5 minutes"
         echo "📈 System Uptime: 24/7 via GitHub Actions"
-        echo "🛡️ Reliability: MAXIMUM (Cloud-based, auto-recovery)" 
+        echo "🛡️ Reliability: MAXIMUM (Cloud-based, auto-recovery)"
+        
+        # Show diagnostic information
+        echo ""
+        echo "🔧 DIAGNOSTIC INFO:"
+        echo "Secrets configured: ${GMAIL_USERNAME:+✅}${GMAIL_USERNAME:-❌} Gmail / ${AUTHORIZED_SENDER:+✅}${AUTHORIZED_SENDER:-❌} Auth"
+        echo "Environment: GitHub Actions (Cloud)"
+        echo "Workflow Run: ${{ github.run_number }}" 
