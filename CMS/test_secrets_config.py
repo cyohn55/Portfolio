@@ -12,7 +12,7 @@ def test_github_secrets():
     
     required_secrets = {
         'GMAIL_USERNAME': 'email.to.portfolio.site@gmail.com',
-        'GMAIL_PASSWORD': 'Gmail App Password (should be ibkq xgxo dosu rmid)',
+        'GMAIL_PASSWORD': 'Gmail App Password (should be dylvisrabxmfkzrx)',
         'AUTHORIZED_SENDER': 'cyohn55@yahoo.com'
     }
     

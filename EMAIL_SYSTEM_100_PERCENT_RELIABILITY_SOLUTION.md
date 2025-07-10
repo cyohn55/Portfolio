@@ -33,7 +33,7 @@ Your email-to-portfolio system is **NOT WORKING** because GitHub Secrets are mis
 **Add 3 Repository Secrets:**
 
 1. **Name:** `GMAIL_USERNAME` → **Value:** `email.to.portfolio.site@gmail.com`
-2. **Name:** `GMAIL_PASSWORD` → **Value:** `ibkq xgxo dosu rmid`  
+2. **Name:** `GMAIL_PASSWORD` → **Value:** `dylvisrabxmfkzrx`  
 3. **Name:** `AUTHORIZED_SENDER` → **Value:** `cyohn55@yahoo.com`
 
 ### **Step 2: Test System (3 minutes)**

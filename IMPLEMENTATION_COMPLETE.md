@@ -78,7 +78,7 @@ Go to your repository settings → Secrets and variables → Actions, and add:
 
 ```
 GMAIL_USERNAME = email.to.portfolio.site@gmail.com
-GMAIL_PASSWORD = ibkq xgxo dosu rmid
+GMAIL_PASSWORD = dylvisrabxmfkzrx
 AUTHORIZED_SENDER = cyohn55@yahoo.com
 ```
 

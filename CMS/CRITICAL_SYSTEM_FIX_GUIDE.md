@@ -20,7 +20,7 @@ Your email-to-portfolio system is **INACTIVE** because GitHub Secrets are not co
 
 2. **Click "New repository secret"**
    - **Name:** `GMAIL_PASSWORD`
-   - **Secret:** `ibkq xgxo dosu rmid`
+   - **Secret:** `dylvisrabxmfkzrx`
 
 3. **Click "New repository secret"**
    - **Name:** `AUTHORIZED_SENDER`

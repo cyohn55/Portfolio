@@ -30,7 +30,7 @@ You need to add these secrets to your GitHub repository:
 ### **Required Secrets:**
 ```
 GMAIL_USERNAME = email.to.portfolio.site@gmail.com
-GMAIL_PASSWORD = ibkq xgxo dosu rmid
+GMAIL_PASSWORD = dylvisrabxmfkzrx
 AUTHORIZED_SENDER = cyohn55@yahoo.com
 ```
 

@@ -15,7 +15,7 @@ You need to add these **3 secrets** to your GitHub repository:
 - **Purpose**: The Gmail account that receives portfolio emails
 
 ### **2. GMAIL_PASSWORD** 
-- **Value**: `ibkq xgxo dosu rmid`
+- **Value**: `dylvisrabxmfkzrx`
 - **Purpose**: Gmail App Password for authentication
 
 ### **3. AUTHORIZED_SENDER**
@@ -42,7 +42,7 @@ For each secret, click **"New repository secret"**:
 
 #### **Secret 2:**
 - **Name**: `GMAIL_PASSWORD`  
-- **Secret**: `ibkq xgxo dosu rmid`
+- **Secret**: `dylvisrabxmfkzrx`
 - Click **Add Secret**
 
 #### **Secret 3:**
@@ -105,7 +105,7 @@ After adding all 3 secrets, you should see:
 
 #### **❌ "GMAIL_PASSWORD environment variable is required"**
 - **Problem**: GMAIL_PASSWORD secret not configured
-- **Solution**: Add the secret with exact value: `ibkq xgxo dosu rmid`
+- **Solution**: Add the secret with exact value: `dylvisrabxmfkzrx`
 
 #### **❌ "Could not connect to email server"**
 - **Problem**: Gmail credentials incorrect

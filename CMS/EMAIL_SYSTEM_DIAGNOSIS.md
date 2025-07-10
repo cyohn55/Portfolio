@@ -51,7 +51,7 @@ Secret Name: GMAIL_USERNAME
 Secret Value: email.to.portfolio.site@gmail.com
 
 Secret Name: GMAIL_PASSWORD  
-Secret Value: ibkq xgxo dosu rmid
+Secret Value: dylvisrabxmfkzrx
 
 Secret Name: AUTHORIZED_SENDER
 Secret Value: cyohn55@yahoo.com
