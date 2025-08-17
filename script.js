@@ -1,4 +1,93 @@
-// Removed unused infinite scroll code since projects are static in the HTML
+// ==========================================================================
+// MODERN THEME SYSTEM
+// ==========================================================================
+
+// Theme Management
+function initTheme() {
+    // Get saved theme or default to light
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    
+    // Create theme toggle button
+    createThemeToggle();
+    
+    // Update button icon
+    updateThemeToggleIcon(savedTheme);
+}
+
+function createThemeToggle() {
+    const themeToggle = document.createElement('button');
+    themeToggle.className = 'theme-toggle';
+    themeToggle.setAttribute('aria-label', 'Toggle theme');
+    themeToggle.innerHTML = '🌙';
+    themeToggle.addEventListener('click', toggleTheme);
+    document.body.appendChild(themeToggle);
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    updateThemeToggleIcon(newTheme);
+    
+    // Add transition effect
+    document.body.style.transition = 'background-color 0.3s ease, color 0.3s ease';
+}
+
+function updateThemeToggleIcon(theme) {
+    const toggle = document.querySelector('.theme-toggle');
+    if (toggle) {
+        toggle.innerHTML = theme === 'dark' ? '☀️' : '🌙';
+    }
+}
+
+// ==========================================================================
+// MODERN SCROLL ANIMATIONS
+// ==========================================================================
+
+function initScrollAnimations() {
+    const observerOptions = {
+        threshold: 0.1,
+        rootMargin: '0px 0px -50px 0px'
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('revealed');
+            }
+        });
+    }, observerOptions);
+
+    // Add reveal animation to elements
+    document.querySelectorAll('.project, .abilities-container > div, #projects h2').forEach(el => {
+        el.classList.add('reveal-on-scroll');
+        observer.observe(el);
+    });
+}
+
+// ==========================================================================
+// MODERN INTERACTIONS
+// ==========================================================================
+
+function addModernInteractions() {
+    // Add shimmer effect to buttons
+    document.querySelectorAll('.project a, button').forEach(btn => {
+        btn.classList.add('btn-shimmer');
+    });
+    
+    // Add floating animation to 3D models
+    document.querySelectorAll('model-viewer').forEach(model => {
+        model.classList.add('float-animation');
+    });
+    
+    // Add glass card effect to project cards
+    document.querySelectorAll('.project').forEach(project => {
+        project.classList.add('glass-card');
+    });
+}
 
 // Function to smoothly scroll to the top
 function scrollToTop() {
@@ -10,7 +99,12 @@ function scrollToTop() {
 
 // Simple word-by-word typing animation
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded');
+    console.log('DOM loaded - Initializing modern features');
+    
+    // Initialize modern features
+    initTheme();
+    initScrollAnimations();
+    addModernInteractions();
     
     // Elements
     const typingText = document.getElementById('typing-text');
