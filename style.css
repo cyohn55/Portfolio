@@ -320,8 +320,10 @@ h2 {
 }
 
 .home-icon:hover {
-    opacity: 0.8;
+    opacity: 0.9;
     text-decoration: none;
+    transform: translateY(-51%) scale(1.1);
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
 }
 
 /* House Silhouette Icon */
@@ -372,6 +374,8 @@ nav ul li a:hover {
     text-decoration: none;
     background-color: var(--hover-overlay);
     border-radius: var(--border-radius-small);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
 }
 
 /* ==========================================================================
@@ -745,7 +749,9 @@ section h2 {
 }
 
 .project a:hover {
-    background-color: var(--primary-blue-dark);
+    background: linear-gradient(167deg, rgba(0, 68, 102, 1) 11%, rgba(67, 179, 113, 1) 77%, rgba(132, 217, 63, 1) 100%);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0, 88, 122, 0.4);
     text-decoration: none;
 }
 
@@ -854,8 +860,8 @@ section h2 {
 .model-btn:hover {
     background: linear-gradient(167deg, rgba(0, 68, 102, 1) 11%, rgba(67, 179, 113, 1) 77%, rgba(132, 217, 63, 1) 100%);
     color: var(--white);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(20, 104, 230, 0.3);
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 6px 20px rgba(0, 88, 122, 0.4);
 }
 
 .model-btn.active {
@@ -865,8 +871,9 @@ section h2 {
 }
 
 .model-btn.active:hover {
-    background: #0d5ac7;
-    transform: translateY(-1px);
+    background: linear-gradient(167deg, rgba(0, 58, 92, 1) 11%, rgba(57, 159, 103, 1) 77%, rgba(122, 197, 53, 1) 100%);
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 4px 16px rgba(0, 88, 122, 0.5);
 }
 
 .model-modal-body {
@@ -1416,7 +1423,9 @@ section h2 {
 }
 
 .controls button:hover {
-    background: var(--primary-blue-dark);
+    background: linear-gradient(167deg, rgba(0, 68, 102, 1) 11%, rgba(67, 179, 113, 1) 77%, rgba(132, 217, 63, 1) 100%);
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 4px 15px rgba(0, 88, 122, 0.3);
 }
 
 /* Zoom Instructions */
@@ -1667,6 +1676,13 @@ model-viewer .progress-bar {
     cursor: pointer;
     font-size: 0.9rem;
     z-index: 10;
+    transition: all var(--transition-normal);
+}
+
+.ar-button:hover {
+    background: linear-gradient(167deg, rgba(0, 68, 102, 1) 11%, rgba(67, 179, 113, 1) 77%, rgba(132, 217, 63, 1) 100%);
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 4px 15px rgba(0, 88, 122, 0.3);
 }
 
 /* Mobile Responsiveness for 3D Models */
