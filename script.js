@@ -651,7 +651,58 @@ function generateHexGrid(rows = 8, cols = 10) {
 document.addEventListener('DOMContentLoaded', () => {
     generateHexGrid();
     initializeContactForm();
+    initializeDarkMode();
 });
+
+/* =====================================================================
+   DARK MODE FUNCTIONALITY
+   ===================================================================== */
+
+function initializeDarkMode() {
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    
+    if (!darkModeToggle) return; // Toggle doesn't exist on this page
+    
+    // Check for saved theme preference or default to light mode
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    
+    // Apply saved theme
+    if (savedTheme !== currentTheme) {
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        updateToggleIcon(savedTheme);
+    }
+    
+    // Add click event listener
+    darkModeToggle.addEventListener('click', toggleDarkMode);
+}
+
+function toggleDarkMode() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    
+    // Apply new theme
+    document.documentElement.setAttribute('data-theme', newTheme);
+    
+    // Save preference
+    localStorage.setItem('theme', newTheme);
+    
+    // Update toggle icon
+    updateToggleIcon(newTheme);
+    
+    // Add transition effect
+    document.body.style.transition = 'background-color 0.3s ease, color 0.3s ease';
+    setTimeout(() => {
+        document.body.style.transition = '';
+    }, 300);
+}
+
+function updateToggleIcon(theme) {
+    const toggleIcon = document.querySelector('.toggle-icon');
+    if (toggleIcon) {
+        toggleIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+}
 
 /* =====================================================================
    CONTACT FORM FUNCTIONALITY

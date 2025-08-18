@@ -6,7 +6,7 @@
 @import url('https://fonts.cdnfonts.com/css/ocr-a-extended');
 
 :root {
-    /* Colors */
+    /* Light Mode Colors */
     --primary-blue: #1468e6;
     --primary-green: #00c563;
     --gradient-blue-green: linear-gradient(167deg, rgba(0, 88, 122, 1) 11%, rgba(87, 199, 133, 1) 77%, rgba(152, 237, 83, 1) 100%);
@@ -31,6 +31,22 @@
     --border-radius-tiny: 2px;
     --max-content-width: 1200px;
     --max-section-width: 1000px;
+}
+
+/* Dark Mode Colors */
+[data-theme="dark"] {
+    --primary-blue: #b4423a;
+    --primary-green: #fc5b1d;
+    --gradient-blue-green: linear-gradient(164deg, rgba(180, 66, 58, 1) 13%, rgba(253, 115, 29, 1) 81%, rgba(252, 176, 69, 1) 100%);
+    --text-dark: #e0e0e0;
+    --text-medium: #b0b0b0;
+    --background-light: #2a2a2a;
+    --white: #1a1a1a;
+    --black: #f0f0f0;
+    --shadow-light: rgba(255, 255, 255, 0.1);
+    --shadow-medium: rgba(0, 0, 0, 0.5);
+    --hover-tomato: #ff6347;
+    --hover-overlay: rgba(0, 0, 0, 0.2);
     
     /* Typography */
     --font-primary: 'Roboto', sans-serif;
@@ -376,6 +392,38 @@ nav ul li a:hover {
     border-radius: var(--border-radius-small);
     transform: translateY(-1px);
     box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
+}
+
+/* Dark Mode Toggle */
+.dark-mode-toggle {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: 2px solid var(--white);
+    color: var(--white);
+    padding: 8px 12px;
+    border-radius: var(--border-radius-medium);
+    cursor: pointer;
+    font-size: 16px;
+    transition: all var(--transition-normal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 45px;
+    height: 40px;
+}
+
+.dark-mode-toggle:hover {
+    background-color: var(--hover-overlay);
+    transform: translateY(-50%) scale(1.05);
+    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
+}
+
+.toggle-icon {
+    font-size: 18px;
+    line-height: 1;
 }
 
 /* ==========================================================================
@@ -755,6 +803,11 @@ section h2 {
     text-decoration: none;
 }
 
+[data-theme="dark"] .project a:hover {
+    background: linear-gradient(164deg, rgba(160, 46, 38, 1) 13%, rgba(233, 95, 9, 1) 81%, rgba(232, 156, 49, 1) 100%);
+    box-shadow: 0 6px 20px rgba(180, 66, 58, 0.4);
+}
+
 /* 3D Model Project Styles */
 .project-3d .model-preview {
     width: 100%;
@@ -864,16 +917,31 @@ section h2 {
     box-shadow: 0 6px 20px rgba(0, 88, 122, 0.4);
 }
 
+[data-theme="dark"] .model-btn:hover {
+    background: linear-gradient(164deg, rgba(160, 46, 38, 1) 13%, rgba(233, 95, 9, 1) 81%, rgba(232, 156, 49, 1) 100%);
+    box-shadow: 0 6px 20px rgba(180, 66, 58, 0.4);
+}
+
 .model-btn.active {
     background: linear-gradient(167deg, rgba(0, 68, 102, 1) 11%, rgba(67, 179, 113, 1) 77%, rgba(132, 217, 63, 1) 100%);
     color: var(--white);
     box-shadow: 0 2px 8px rgba(20, 104, 230, 0.4);
 }
 
+[data-theme="dark"] .model-btn.active {
+    background: linear-gradient(164deg, rgba(160, 46, 38, 1) 13%, rgba(233, 95, 9, 1) 81%, rgba(232, 156, 49, 1) 100%);
+    box-shadow: 0 2px 8px rgba(180, 66, 58, 0.4);
+}
+
 .model-btn.active:hover {
     background: linear-gradient(167deg, rgba(0, 58, 92, 1) 11%, rgba(57, 159, 103, 1) 77%, rgba(122, 197, 53, 1) 100%);
     transform: translateY(-2px) scale(1.03);
     box-shadow: 0 4px 16px rgba(0, 88, 122, 0.5);
+}
+
+[data-theme="dark"] .model-btn.active:hover {
+    background: linear-gradient(164deg, rgba(140, 26, 18, 1) 13%, rgba(213, 75, 0, 1) 81%, rgba(212, 136, 29, 1) 100%);
+    box-shadow: 0 4px 16px rgba(180, 66, 58, 0.5);
 }
 
 .model-modal-body {
@@ -1096,6 +1164,18 @@ section h2 {
         top: -12px;
     }
 
+    .dark-mode-toggle {
+        right: 15px;
+        width: 40px;
+        height: 35px;
+        padding: 6px 8px;
+        font-size: 14px;
+    }
+    
+    .toggle-icon {
+        font-size: 16px;
+    }
+
     nav ul {
         flex-direction: column;
         align-items: center;
@@ -1294,6 +1374,18 @@ section h2 {
         font-size: 18px;
     }
 
+    .dark-mode-toggle {
+        right: 12px;
+        width: 38px;
+        height: 33px;
+        padding: 5px 7px;
+        font-size: 13px;
+    }
+    
+    .toggle-icon {
+        font-size: 15px;
+    }
+
     .project-container {
         grid-template-columns: 1fr;
     }
@@ -1426,6 +1518,11 @@ section h2 {
     background: linear-gradient(167deg, rgba(0, 68, 102, 1) 11%, rgba(67, 179, 113, 1) 77%, rgba(132, 217, 63, 1) 100%);
     transform: translateY(-2px) scale(1.05);
     box-shadow: 0 4px 15px rgba(0, 88, 122, 0.3);
+}
+
+[data-theme="dark"] .controls button:hover {
+    background: linear-gradient(164deg, rgba(160, 46, 38, 1) 13%, rgba(233, 95, 9, 1) 81%, rgba(232, 156, 49, 1) 100%);
+    box-shadow: 0 4px 15px rgba(180, 66, 58, 0.3);
 }
 
 /* Zoom Instructions */
