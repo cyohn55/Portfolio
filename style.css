@@ -490,6 +490,20 @@ nav ul li a:hover {
     color: #fff !important;
 }
 
+/* Dark mode project tiles - Enhanced visibility and distinction */
+[data-theme="dark"] .project {
+    background-color: #3a3938 !important; /* Lighter than main background */
+    border: 1px solid #4a4948 !important; /* Subtle border for definition */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(255, 255, 255, 0.05) !important; /* Enhanced shadow with dual layers */
+}
+
+[data-theme="dark"] .project:hover {
+    background-color: #454443 !important; /* Even lighter on hover */
+    border-color: #5a5958 !important; /* Brighter border on hover */
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(255, 255, 255, 0.1) !important; /* More pronounced hover shadow */
+    transform: translateY(-8px) !important; /* Slightly more lift on hover */
+}
+
 /* Keep Notable Achievements section styled like light mode in dark mode */
 [data-theme="dark"] .parallax-2 {
     color: #fff;
