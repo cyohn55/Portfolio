@@ -53,7 +53,7 @@
     --text-dark: #e0e0e0;
     --text-medium: #b0b0b0;
     --background-light: #2a2a2a;
-    --white: #2c2b2b;
+    --white: #2E3440;
     --black: #f0f0f0;
     --shadow-light: rgba(255, 255, 255, 0.1);
     --shadow-medium: rgba(0, 0, 0, 0.5);
@@ -492,14 +492,14 @@ nav ul li a:hover {
 
 /* Dark mode project tiles - Enhanced visibility and distinction */
 [data-theme="dark"] .project {
-    background-color: #3a3938 !important; /* Lighter than main background */
-    border: 1px solid #4a4948 !important; /* Subtle border for definition */
+    background-color: #434C5E !important; /* Nordic theme tile color */
+    border: 1px solid #4C566A !important; /* Complementary border color */
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(255, 255, 255, 0.05) !important; /* Enhanced shadow with dual layers */
 }
 
 [data-theme="dark"] .project:hover {
-    background-color: #454443 !important; /* Even lighter on hover */
-    border-color: #5a5958 !important; /* Brighter border on hover */
+    background-color: #4C566A !important; /* Slightly lighter on hover */
+    border-color: #5E81AC !important; /* Nordic blue accent on hover */
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(255, 255, 255, 0.1) !important; /* More pronounced hover shadow */
     transform: translateY(-8px) !important; /* Slightly more lift on hover */
 }
