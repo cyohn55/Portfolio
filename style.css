@@ -480,7 +480,11 @@ nav ul li a:hover {
 /* Keep Notable Achievements section styled like light mode in dark mode */
 [data-theme="dark"] .parallax-2 {
     color: #fff;
-    background-image: url('images/darkforrestwallpaper.png');
+    background-image: url('images/darkforrestwallpaper.png') !important;
+    background-size: cover !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-attachment: fixed !important;
 }
 
 [data-theme="dark"] .parallax-2 h1 {
