@@ -1118,7 +1118,7 @@ def add_research_tile(title: str, description: str, filename: str, tile_image: O
                 <img src="{tile_image}" alt="{html.escape(title)}">
                 <h3>{html.escape(title)}</h3>
                 <p>{html.escape(description)}</p>
-                <a href="Pages/{filename}">View Project</a>
+                <a href="Pages/{filename}">Read On...</a>
             </div>'''
         
         # More flexible approach - find the project container without requiring specific comment format
@@ -1285,7 +1285,7 @@ def remove_research_tile(filename: str, title: Optional[str] = None) -> bool:
         
         # Find and remove the tile
         # Look for the tile with the specific filename
-        tile_pattern = rf'<div class="project">\s*<img[^>]*>\s*<h3>[^<]*</h3>\s*<p>[^<]*</p>\s*<a href="Pages/{re.escape(filename)}"[^>]*>View Project</a>\s*</div>'
+        tile_pattern = rf'<div class="project">\s*<img[^>]*>\s*<h3>[^<]*</h3>\s*<p>[^<]*</p>\s*<a href="Pages/{re.escape(filename)}"[^>]*>Read On\.\.\.</a>\s*</div>'
         
         # Try to find the tile
         match = re.search(tile_pattern, content, re.DOTALL | re.IGNORECASE)

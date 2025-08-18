@@ -242,7 +242,7 @@ def add_enhanced_research_tile(title: str, description: str, filename: str, tile
                 <img src="{tile_image}" alt="{html.escape(title)}">
                 <h3>{html.escape(title)}</h3>
                 <p>{html.escape(description)}</p>
-                <a href="Pages/{filename}">View Project</a>
+                <a href="Pages/{filename}">Read On...</a>
             </div>'''
         
         # More flexible approach - find the project container without requiring specific comment format
