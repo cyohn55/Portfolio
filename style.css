@@ -447,7 +447,7 @@ nav ul li a:hover {
 
 .toggle-slider {
     position: absolute;
-    top: 0px;
+    top: -1px;
     left: 1px;
     width: 29px;
     height: 29px;
@@ -461,6 +461,7 @@ nav ul li a:hover {
 /* Dark mode state */
 [data-theme="dark"] .toggle-track {
     background: #374151;
+    border-color: #374151;
 }
 
 [data-theme="dark"] .toggle-slider {
@@ -1335,7 +1336,7 @@ section h2 {
     .toggle-slider {
         width: 24px;
         height: 24px;
-        top: -1px;
+        top: -2px;
         left: 0px;
     }
     
@@ -1558,7 +1559,7 @@ section h2 {
     .toggle-slider {
         width: 22px;
         height: 22px;
-        top: -1px;
+        top: -2px;
         left: 0px;
     }
     
