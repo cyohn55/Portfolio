@@ -504,6 +504,35 @@ nav ul li a:hover {
     transform: translateY(-8px) !important; /* Slightly more lift on hover */
 }
 
+/* Dark mode button and footer text - Make all text white */
+[data-theme="dark"] footer {
+    color: #fff !important;
+}
+
+[data-theme="dark"] .project a {
+    color: #fff !important;
+}
+
+[data-theme="dark"] .model-btn {
+    color: #fff !important;
+}
+
+[data-theme="dark"] .contact-submit-btn {
+    color: #fff !important;
+}
+
+[data-theme="dark"] .controls button {
+    color: #fff !important;
+}
+
+[data-theme="dark"] .ar-button {
+    color: #fff !important;
+}
+
+[data-theme="dark"] .close-modal {
+    color: #fff !important;
+}
+
 /* Keep Notable Achievements section styled like light mode in dark mode */
 [data-theme="dark"] .parallax-2 {
     color: #fff;
