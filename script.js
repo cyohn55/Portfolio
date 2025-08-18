@@ -662,88 +662,96 @@ function initializeContactForm() {
     
     if (!contactForm) return; // Form doesn't exist on this page
     
+    // Check for success parameter in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('success') === 'true') {
+        showSuccessMessage();
+        // Clean up URL
+        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+    }
+    
     contactForm.addEventListener('submit', handleContactFormSubmit);
 }
 
-function handleContactFormSubmit(event) {
-    event.preventDefault();
+function showSuccessMessage() {
+    // Create success message element
+    const successDiv = document.createElement('div');
+    successDiv.className = 'success-message';
+    successDiv.innerHTML = `
+        <h3>✅ Message Sent Successfully!</h3>
+        <p>Thank you for reaching out! I've received your message and will get back to you within 24 hours.</p>
+        <p>You can also reach me directly at:</p>
+        <ul>
+            <li>📧 Email: <a href="mailto:cyohn55@yahoo.com">cyohn55@yahoo.com</a></li>
+            <li>📱 Phone: <a href="tel:17177589087">1-717-758-9087</a></li>
+        </ul>
+    `;
     
+    // Insert success message before the contact form
+    const formSection = document.querySelector('.contact-form-section');
+    formSection.insertBefore(successDiv, formSection.firstChild);
+    
+    // Hide the form temporarily
+    const form = document.getElementById('contactForm');
+    form.style.display = 'none';
+    
+    // Show form again after 10 seconds
+    setTimeout(() => {
+        successDiv.remove();
+        form.style.display = 'flex';
+    }, 10000);
+}
+
+function showErrorMessage() {
+    // Create error message element
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message';
+    errorDiv.innerHTML = `
+        <h3>⚠️ Submission Error</h3>
+        <p>There was an issue sending your message. Please try again or contact me directly:</p>
+        <ul>
+            <li>📧 Email: <a href="mailto:cyohn55@yahoo.com">cyohn55@yahoo.com</a></li>
+            <li>📱 Phone: <a href="tel:17177589087">1-717-758-9087</a></li>
+        </ul>
+    `;
+    
+    // Insert error message before the contact form
+    const formSection = document.querySelector('.contact-form-section');
+    formSection.insertBefore(errorDiv, formSection.firstChild);
+    
+    // Remove error message after 8 seconds
+    setTimeout(() => {
+        errorDiv.remove();
+    }, 8000);
+}
+
+function handleContactFormSubmit(event) {
     const form = event.target;
     const submitBtn = form.querySelector('.contact-submit-btn');
     
-    // Get form data
+    // Get form data for validation
     const formData = {
         name: form.name.value.trim(),
         phone: form.phone.value.trim(),
-        email: form.email.value.trim(),
-        request: form.request.value.trim()
+        email: form.email.value.trim() || form._replyto.value.trim(),
+        request: form.message.value.trim()
     };
     
     // Validate required fields
     if (!formData.name || !formData.email || !formData.request) {
+        event.preventDefault();
         alert('Please fill out all required fields (Name, Email, and Request).');
         return;
     }
     
-    // Disable submit button
+    // Show loading state
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
     
-    // Create SMS message body
-    const smsBody = `Portfolio Contact from ${formData.name}
-
-Email: ${formData.email}
-${formData.phone ? `Phone: ${formData.phone}` : ''}
-
-Request: ${formData.request}`;
-    
-    // Create SMS link
-    const encodedMessage = encodeURIComponent(smsBody);
-    const smsLink = `sms:17177589087?body=${encodedMessage}`;
-    
-    // Open SMS client
-    window.location.href = smsLink;
-    
-    // Show success message
-    setTimeout(() => {
-        alert('Your messaging app should open with the text message ready to send to 1-717-758-9087.');
-        
-        // Reset form
-        form.reset();
-        
-        // Re-enable button
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Send';
-    }, 1000);
+    // Let the form submit naturally to Formspree
+    // The form will redirect to the success page automatically
 }
 
-// Alternative function for copy to clipboard if SMS doesn't work
-function copyContactInfo(formData) {
-    const contactInfo = `
-Portfolio Contact from ${formData.name}
 
-Email: ${formData.email}
-${formData.phone ? `Phone: ${formData.phone}` : ''}
-
-Request: ${formData.request}
-
----
-Send to: 1-717-758-9087
-    `.trim();
-    
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(contactInfo).then(() => {
-            alert('Message copied to clipboard! You can paste this into your messaging app and send to 1-717-758-9087.');
-        });
-    } else {
-        // Fallback for older browsers
-        const textArea = document.createElement('textarea');
-        textArea.value = contactInfo;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        alert('Message copied to clipboard! You can paste this into your messaging app and send to 1-717-758-9087.');
-    }
-}
 
