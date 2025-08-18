@@ -665,13 +665,9 @@ function initializeDarkMode() {
     
     // Check for saved theme preference or default to light mode
     const savedTheme = localStorage.getItem('theme') || 'light';
-    const currentTheme = document.documentElement.getAttribute('data-theme');
     
     // Apply saved theme
-    if (savedTheme !== currentTheme) {
-        document.documentElement.setAttribute('data-theme', savedTheme);
-        updateToggleIcon(savedTheme);
-    }
+    document.documentElement.setAttribute('data-theme', savedTheme);
     
     // Add click event listener
     darkModeToggle.addEventListener('click', toggleDarkMode);
@@ -687,9 +683,6 @@ function toggleDarkMode() {
     // Save preference
     localStorage.setItem('theme', newTheme);
     
-    // Update toggle icon
-    updateToggleIcon(newTheme);
-    
     // Add transition effect
     document.body.style.transition = 'background-color 0.3s ease, color 0.3s ease';
     setTimeout(() => {
@@ -697,12 +690,7 @@ function toggleDarkMode() {
     }, 300);
 }
 
-function updateToggleIcon(theme) {
-    const toggleIcon = document.querySelector('.toggle-icon');
-    if (toggleIcon) {
-        toggleIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
-    }
-}
+
 
 /* =====================================================================
    CONTACT FORM FUNCTIONALITY

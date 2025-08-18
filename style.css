@@ -394,36 +394,95 @@ nav ul li a:hover {
     box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
 }
 
-/* Dark Mode Toggle */
-.dark-mode-toggle {
+/* Theme Toggle Slider */
+.theme-toggle-wrapper {
     position: absolute;
     right: 20px;
     top: 50%;
     transform: translateY(-50%);
-    background: none;
-    border: 2px solid var(--white);
-    color: var(--white);
-    padding: 8px 12px;
-    border-radius: var(--border-radius-medium);
+}
+
+.theme-toggle {
     cursor: pointer;
-    font-size: 16px;
-    transition: all var(--transition-normal);
+    user-select: none;
+}
+
+.toggle-track {
+    position: relative;
+    width: 70px;
+    height: 32px;
+    background: #e0e0e0;
+    border-radius: 16px;
+    transition: all 0.3s ease;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.toggle-icons {
+    position: absolute;
+    width: 100%;
+    height: 100%;
     display: flex;
     align-items: center;
-    justify-content: center;
-    width: 45px;
-    height: 40px;
+    justify-content: space-between;
+    padding: 0 8px;
+    z-index: 1;
 }
 
-.dark-mode-toggle:hover {
-    background-color: var(--hover-overlay);
-    transform: translateY(-50%) scale(1.05);
-    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
+.sun-icon, .moon-icon {
+    font-size: 14px;
+    transition: all 0.3s ease;
+    z-index: 2;
 }
 
-.toggle-icon {
-    font-size: 18px;
-    line-height: 1;
+.sun-icon {
+    color: #ffd700;
+    opacity: 0.5;
+}
+
+.moon-icon {
+    color: #6b7280;
+    opacity: 1;
+}
+
+.toggle-slider {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    background: #4f46e5;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Dark mode state */
+[data-theme="dark"] .toggle-track {
+    background: #374151;
+}
+
+[data-theme="dark"] .toggle-slider {
+    transform: translateX(38px);
+    background: #1f2937;
+}
+
+[data-theme="dark"] .sun-icon {
+    opacity: 1;
+    color: #fbbf24;
+}
+
+[data-theme="dark"] .moon-icon {
+    opacity: 0.5;
+    color: #60a5fa;
+}
+
+/* Hover effects */
+.theme-toggle:hover .toggle-track {
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+}
+
+.theme-toggle:hover .toggle-slider {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* ==========================================================================
@@ -1164,16 +1223,29 @@ section h2 {
         top: -12px;
     }
 
-    .dark-mode-toggle {
+    .theme-toggle-wrapper {
         right: 15px;
-        width: 40px;
-        height: 35px;
-        padding: 6px 8px;
-        font-size: 14px;
     }
     
-    .toggle-icon {
-        font-size: 16px;
+    .toggle-track {
+        width: 60px;
+        height: 28px;
+        border-radius: 14px;
+    }
+    
+    .toggle-slider {
+        width: 20px;
+        height: 20px;
+        top: 2px;
+        left: 2px;
+    }
+    
+    [data-theme="dark"] .toggle-slider {
+        transform: translateX(32px);
+    }
+    
+    .sun-icon, .moon-icon {
+        font-size: 12px;
     }
 
     nav ul {
@@ -1374,16 +1446,29 @@ section h2 {
         font-size: 18px;
     }
 
-    .dark-mode-toggle {
+    .theme-toggle-wrapper {
         right: 12px;
-        width: 38px;
-        height: 33px;
-        padding: 5px 7px;
-        font-size: 13px;
     }
     
-    .toggle-icon {
-        font-size: 15px;
+    .toggle-track {
+        width: 55px;
+        height: 26px;
+        border-radius: 13px;
+    }
+    
+    .toggle-slider {
+        width: 18px;
+        height: 18px;
+        top: 2px;
+        left: 2px;
+    }
+    
+    [data-theme="dark"] .toggle-slider {
+        transform: translateX(29px);
+    }
+    
+    .sun-icon, .moon-icon {
+        font-size: 11px;
     }
 
     .project-container {
