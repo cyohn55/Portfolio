@@ -533,6 +533,19 @@ nav ul li a:hover {
     color: #fff !important;
 }
 
+/* Dark mode header text and home icon - Make white */
+[data-theme="dark"] header {
+    color: #fff !important;
+}
+
+[data-theme="dark"] .house-silhouette {
+    background-color: #fff !important;
+}
+
+[data-theme="dark"] .house-silhouette::before {
+    background-color: #fff !important;
+}
+
 /* Keep Notable Achievements section styled like light mode in dark mode */
 [data-theme="dark"] .parallax-2 {
     color: #fff;
