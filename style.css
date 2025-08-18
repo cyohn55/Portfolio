@@ -480,10 +480,10 @@ nav ul li a:hover {
 /* Keep Notable Achievements section styled like light mode in dark mode */
 [data-theme="dark"] .parallax-2 {
     color: #fff;
-    /* Layered background: purple overlay on top of 50% transparent B&W image */
+    /* Layered background: purple overlay (75% transparent) on top of 25% transparent B&W image */
     background-image: 
-        linear-gradient(rgba(128, 0, 128, 0.5), rgba(128, 0, 128, 0.5)),
-        linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5)),
+        linear-gradient(rgba(128, 0, 128, 0.25), rgba(128, 0, 128, 0.25)),
+        linear-gradient(rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.25)),
         url('images/bwforrestwallpaper.JPG') !important;
     background-size: cover, cover, cover !important;
     background-position: center, center, center !important;
