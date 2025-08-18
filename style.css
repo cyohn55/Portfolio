@@ -430,9 +430,9 @@ nav ul li a:hover {
 }
 
 .sun-icon, .moon-icon {
-    font-size: 14px;
+    font-size: 18px;
     transition: all 0.3s ease;
-    z-index: 2;
+    z-index: 3;
 }
 
 .sun-icon {
@@ -447,7 +447,7 @@ nav ul li a:hover {
 
 .toggle-slider {
     position: absolute;
-    top: -1px;
+    top: 0px;
     left: 1px;
     width: 29px;
     height: 29px;
@@ -455,6 +455,7 @@ nav ul li a:hover {
     border-radius: 50%;
     transition: all 0.3s ease;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    z-index: 1;
 }
 
 /* Dark mode state */
@@ -1334,7 +1335,7 @@ section h2 {
     .toggle-slider {
         width: 24px;
         height: 24px;
-        top: -2px;
+        top: -1px;
         left: 0px;
     }
     
@@ -1343,7 +1344,7 @@ section h2 {
     }
     
     .sun-icon, .moon-icon {
-        font-size: 12px;
+        font-size: 15px;
     }
 
     nav ul {
@@ -1557,7 +1558,7 @@ section h2 {
     .toggle-slider {
         width: 22px;
         height: 22px;
-        top: -2px;
+        top: -1px;
         left: 0px;
     }
     
@@ -1566,7 +1567,7 @@ section h2 {
     }
     
     .sun-icon, .moon-icon {
-        font-size: 11px;
+        font-size: 14px;
     }
 
     .project-container {
