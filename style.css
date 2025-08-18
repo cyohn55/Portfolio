@@ -9,7 +9,7 @@
     /* Light Mode Colors */
     --primary-blue: #1468e6;
     --primary-green: #00c563;
-    --gradient-blue-green: linear-gradient(159deg, rgba(119, 42, 155, 1) 0%, rgba(199, 87, 87, 1) 100%);
+    --gradient-blue-green: linear-gradient(166deg, rgba(15, 16, 86, 1) 0%, rgba(0, 72, 107, 1) 43%, rgba(76, 126, 151, 1) 100%);
     --text-dark: #333;
     --text-medium: #555;
     --background-light: #f5f5f5;
@@ -49,11 +49,11 @@
 [data-theme="dark"] {
     --primary-blue: #b4423a;
     --primary-green: #fc5b1d;
-    --gradient-blue-green: linear-gradient(159deg, rgba(119, 42, 155, 1) 0%, rgba(199, 87, 87, 1) 100%);
+    --gradient-blue-green: linear-gradient(166deg, rgba(15, 16, 86, 1) 0%, rgba(0, 72, 107, 1) 43%, rgba(76, 126, 151, 1) 100%);
     --text-dark: #e0e0e0;
     --text-medium: #b0b0b0;
     --background-light: #2a2a2a;
-    --white: #1c2e44;
+    --white: #0f1056;
     --black: #f0f0f0;
     --shadow-light: rgba(255, 255, 255, 0.1);
     --shadow-medium: rgba(0, 0, 0, 0.5);
@@ -492,14 +492,14 @@ nav ul li a:hover {
 
 /* Dark mode project tiles - Enhanced visibility and distinction */
 [data-theme="dark"] .project {
-    background-color: #2f506e !important; /* Custom blue tile color */
-    border: 1px solid #3a5f7a !important; /* Complementary border color */
+    background-color: #113065 !important; /* Deep blue tile color */
+    border: 1px solid #1b4575 !important; /* Complementary border color */
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(255, 255, 255, 0.05) !important; /* Enhanced shadow with dual layers */
 }
 
 [data-theme="dark"] .project:hover {
-    background-color: #3a5f7a !important; /* Slightly lighter on hover */
-    border-color: #4a7592 !important; /* Lighter blue accent on hover */
+    background-color: #1b4575 !important; /* Slightly lighter on hover */
+    border-color: #255985 !important; /* Lighter blue accent on hover */
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(255, 255, 255, 0.1) !important; /* More pronounced hover shadow */
     transform: translateY(-8px) !important; /* Slightly more lift on hover */
 }
