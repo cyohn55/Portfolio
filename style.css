@@ -8,8 +8,8 @@
 :root {
     /* Colors */
     --primary-blue: #1468e6;
-    --primary-green: #00ff6a;
-    --gradient-blue-green: linear-gradient(to bottom right, #1468e6, #00ff6a);
+    --primary-green: #00c563;
+    --gradient-blue-green: linear-gradient(167deg, rgba(0, 88, 122, 1) 11%, rgba(87, 199, 133, 1) 77%, rgba(152, 237, 83, 1) 100%);
     --text-dark: #333;
     --text-medium: #555;
     --background-light: #f5f5f5;
@@ -852,14 +852,14 @@ section h2 {
 }
 
 .model-btn:hover {
-    background: linear-gradient(to bottom right, #0d5ac7, #00cc55);
+    background: linear-gradient(167deg, rgba(0, 68, 102, 1) 11%, rgba(67, 179, 113, 1) 77%, rgba(132, 217, 63, 1) 100%);
     color: var(--white);
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(20, 104, 230, 0.3);
 }
 
 .model-btn.active {
-    background: linear-gradient(to bottom right, #0d5ac7, #00cc55);
+    background: linear-gradient(167deg, rgba(0, 68, 102, 1) 11%, rgba(67, 179, 113, 1) 77%, rgba(132, 217, 63, 1) 100%);
     color: var(--white);
     box-shadow: 0 2px 8px rgba(20, 104, 230, 0.4);
 }
