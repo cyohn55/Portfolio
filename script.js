@@ -650,5 +650,105 @@ function generateHexGrid(rows = 8, cols = 10) {
 // Kick off hex-grid generation after DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     generateHexGrid();
+    initializeContactForm();
 });
+
+/* =====================================================================
+   CONTACT FORM FUNCTIONALITY
+   ===================================================================== */
+
+function initializeContactForm() {
+    const contactForm = document.getElementById('contactForm');
+    
+    if (!contactForm) return; // Form doesn't exist on this page
+    
+    contactForm.addEventListener('submit', handleContactFormSubmit);
+}
+
+function handleContactFormSubmit(event) {
+    event.preventDefault();
+    
+    const form = event.target;
+    const submitBtn = form.querySelector('.contact-submit-btn');
+    
+    // Get form data
+    const formData = {
+        name: form.name.value.trim(),
+        phone: form.phone.value.trim(),
+        email: form.email.value.trim(),
+        request: form.request.value.trim()
+    };
+    
+    // Validate required fields
+    if (!formData.name || !formData.email || !formData.request) {
+        alert('Please fill out all required fields (Name, Email, and Request).');
+        return;
+    }
+    
+    // Disable submit button
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending...';
+    
+    // Create email body
+    const emailBody = `
+New Contact Form Submission from Portfolio
+
+Name: ${formData.name}
+Email: ${formData.email}
+Phone: ${formData.phone || 'Not provided'}
+
+Request:
+${formData.request}
+
+---
+Sent from Code's Portfolio Contact Form
+    `.trim();
+    
+    // Create mailto link
+    const subject = encodeURIComponent(`Portfolio Contact: ${formData.name}`);
+    const body = encodeURIComponent(emailBody);
+    const mailtoLink = `mailto:cyohn55@yahoo.com?subject=${subject}&body=${body}`;
+    
+    // Open email client
+    window.location.href = mailtoLink;
+    
+    // Show success message
+    setTimeout(() => {
+        alert('Your email client should open with the message ready to send. If you prefer to call, you can reach me at 1-717-758-9087.');
+        
+        // Reset form
+        form.reset();
+        
+        // Re-enable button
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Send';
+    }, 1000);
+}
+
+// Alternative function for copy to clipboard if mailto doesn't work
+function copyContactInfo(formData) {
+    const contactInfo = `
+Contact Information:
+Email: cyohn55@yahoo.com
+Phone: 1-717-758-9087
+
+Message from ${formData.name} (${formData.email}):
+${formData.request}
+    `.trim();
+    
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(contactInfo).then(() => {
+            alert('Contact information copied to clipboard! You can paste this into your email client or text message.');
+        });
+    } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = contactInfo;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert('Contact information copied to clipboard! You can paste this into your email client or text message.');
+    }
+}
 
