@@ -447,7 +447,7 @@ nav ul li a:hover {
 
 .toggle-slider {
     position: absolute;
-    top: 0px;
+    top: -1px;
     left: 1px;
     width: 29px;
     height: 29px;
