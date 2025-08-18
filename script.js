@@ -727,6 +727,8 @@ function showErrorMessage() {
 }
 
 function handleContactFormSubmit(event) {
+    event.preventDefault(); // Prevent default form submission
+    
     const form = event.target;
     const submitBtn = form.querySelector('.contact-submit-btn');
     
@@ -740,7 +742,6 @@ function handleContactFormSubmit(event) {
     
     // Validate required fields
     if (!formData.name || !formData.email || !formData.request) {
-        event.preventDefault();
         alert('Please fill out all required fields (Name, Email, and Request).');
         return;
     }
@@ -749,8 +750,67 @@ function handleContactFormSubmit(event) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
     
-    // Let the form submit naturally to Formspree
-    // The form will redirect to the success page automatically
+    // Send both to Formspree and SMS gateway
+    Promise.all([
+        sendToFormspree(form, formData),
+        sendToSMSGateway(formData)
+    ]).then(() => {
+        // Show success message
+        showSuccessMessage();
+        form.reset();
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Send';
+    }).catch((error) => {
+        console.error('Error sending form:', error);
+        showErrorMessage();
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Send';
+    });
+}
+
+function sendToFormspree(form, formData) {
+    const formDataObj = new FormData(form);
+    
+    return fetch(form.action, {
+        method: 'POST',
+        body: formDataObj,
+        headers: {
+            'Accept': 'application/json'
+        }
+    }).then(response => {
+        if (!response.ok) {
+            throw new Error('Formspree submission failed');
+        }
+        return response.json();
+    });
+}
+
+function sendToSMSGateway(formData) {
+    // Create SMS-friendly message (keep it short for SMS)
+    const smsMessage = `Portfolio Contact: ${formData.name} (${formData.email}) - ${formData.request.substring(0, 120)}${formData.request.length > 120 ? '...' : ''}`;
+    
+    // Use FormSubmit.co - free service that can send to any email address
+    const smsFormData = new FormData();
+    smsFormData.append('_to', '17177589087@tmomail.net');
+    smsFormData.append('_subject', 'Portfolio SMS');
+    smsFormData.append('message', smsMessage);
+    smsFormData.append('name', formData.name);
+    smsFormData.append('email', formData.email);
+    smsFormData.append('_captcha', 'false');
+    smsFormData.append('_template', 'table');
+    
+    return fetch('https://formsubmit.co/17177589087@tmomail.net', {
+        method: 'POST',
+        body: smsFormData
+    }).then(response => {
+        if (!response.ok) {
+            console.log('FormSubmit failed, SMS may not have been sent');
+        }
+        return { success: true, service: 'formsubmit' };
+    }).catch((error) => {
+        console.log('Error sending to SMS gateway:', error);
+        return { success: false, error: error.message };
+    });
 }
 
 
