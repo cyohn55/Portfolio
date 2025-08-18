@@ -480,11 +480,16 @@ nav ul li a:hover {
 /* Keep Notable Achievements section styled like light mode in dark mode */
 [data-theme="dark"] .parallax-2 {
     color: #fff;
-    background-image: url('images/darkforrestwallpaper.png') !important;
-    background-size: cover !important;
-    background-position: center !important;
-    background-repeat: no-repeat !important;
-    background-attachment: fixed !important;
+    /* Layered background: purple overlay on top of 50% transparent B&W image */
+    background-image: 
+        linear-gradient(rgba(128, 0, 128, 0.5), rgba(128, 0, 128, 0.5)),
+        linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5)),
+        url('images/bwforrestwallpaper.JPG') !important;
+    background-size: cover, cover, cover !important;
+    background-position: center, center, center !important;
+    background-repeat: no-repeat, no-repeat, no-repeat !important;
+    background-attachment: fixed, fixed, fixed !important;
+    position: relative !important;
 }
 
 [data-theme="dark"] .parallax-2 h1 {
