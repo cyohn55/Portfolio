@@ -477,6 +477,19 @@ nav ul li a:hover {
     color: #60a5fa;
 }
 
+/* Dark mode text color overrides for "Who is Code?" text */
+[data-theme="dark"] .red-link {
+    color: #fff !important;
+}
+
+[data-theme="dark"] .red-text {
+    color: #fff !important;
+}
+
+[data-theme="dark"] .black-question {
+    color: #fff !important;
+}
+
 /* Keep Notable Achievements section styled like light mode in dark mode */
 [data-theme="dark"] .parallax-2 {
     color: #fff;
