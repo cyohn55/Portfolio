@@ -689,32 +689,24 @@ function handleContactFormSubmit(event) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
     
-    // Create email body
-    const emailBody = `
-New Contact Form Submission from Portfolio
+    // Create SMS message body
+    const smsBody = `Portfolio Contact from ${formData.name}
 
-Name: ${formData.name}
 Email: ${formData.email}
-Phone: ${formData.phone || 'Not provided'}
+${formData.phone ? `Phone: ${formData.phone}` : ''}
 
-Request:
-${formData.request}
-
----
-Sent from Code's Portfolio Contact Form
-    `.trim();
+Request: ${formData.request}`;
     
-    // Create mailto link
-    const subject = encodeURIComponent(`Portfolio Contact: ${formData.name}`);
-    const body = encodeURIComponent(emailBody);
-    const mailtoLink = `mailto:cyohn55@yahoo.com?subject=${subject}&body=${body}`;
+    // Create SMS link
+    const encodedMessage = encodeURIComponent(smsBody);
+    const smsLink = `sms:17177589087?body=${encodedMessage}`;
     
-    // Open email client
-    window.location.href = mailtoLink;
+    // Open SMS client
+    window.location.href = smsLink;
     
     // Show success message
     setTimeout(() => {
-        alert('Your email client should open with the message ready to send. If you prefer to call, you can reach me at 1-717-758-9087.');
+        alert('Your messaging app should open with the text message ready to send to 1-717-758-9087.');
         
         // Reset form
         form.reset();
@@ -725,20 +717,23 @@ Sent from Code's Portfolio Contact Form
     }, 1000);
 }
 
-// Alternative function for copy to clipboard if mailto doesn't work
+// Alternative function for copy to clipboard if SMS doesn't work
 function copyContactInfo(formData) {
     const contactInfo = `
-Contact Information:
-Email: cyohn55@yahoo.com
-Phone: 1-717-758-9087
+Portfolio Contact from ${formData.name}
 
-Message from ${formData.name} (${formData.email}):
-${formData.request}
+Email: ${formData.email}
+${formData.phone ? `Phone: ${formData.phone}` : ''}
+
+Request: ${formData.request}
+
+---
+Send to: 1-717-758-9087
     `.trim();
     
     if (navigator.clipboard) {
         navigator.clipboard.writeText(contactInfo).then(() => {
-            alert('Contact information copied to clipboard! You can paste this into your email client or text message.');
+            alert('Message copied to clipboard! You can paste this into your messaging app and send to 1-717-758-9087.');
         });
     } else {
         // Fallback for older browsers
@@ -748,7 +743,7 @@ ${formData.request}
         textArea.select();
         document.execCommand('copy');
         document.body.removeChild(textArea);
-        alert('Contact information copied to clipboard! You can paste this into your email client or text message.');
+        alert('Message copied to clipboard! You can paste this into your messaging app and send to 1-717-758-9087.');
     }
 }
 
