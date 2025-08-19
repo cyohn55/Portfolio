@@ -84,44 +84,44 @@
         <p>Choose 3 animals to build your army and conquer the battlefield!</p>
         
         <div class="animal-selection" id="animalSelection" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; max-width: 800px; margin: 2rem 0;">
-            <!-- Animal cards - fallback if JavaScript doesn't load -->
-            <div class="animal-card" data-animal="bear">
+            <!-- Animal cards - clickable for selection -->
+            <div class="animal-card" data-animal="bear" style="cursor: pointer; user-select: none;">
                 <h3>🐻 Bear</h3>
                 <p>Strong & Durable<br>Slow but powerful units</p>
             </div>
-            <div class="animal-card" data-animal="bee">
+            <div class="animal-card" data-animal="bee" style="cursor: pointer; user-select: none;">
                 <h3>🐝 Bee</h3>
                 <p>Fast & Agile<br>Quick swarm attacks</p>
             </div>
-            <div class="animal-card" data-animal="turtle">
+            <div class="animal-card" data-animal="turtle" style="cursor: pointer; user-select: none;">
                 <h3>🐢 Turtle</h3>
                 <p>Defensive<br>High armor, steady advance</p>
             </div>
-            <div class="animal-card" data-animal="fox">
+            <div class="animal-card" data-animal="fox" style="cursor: pointer; user-select: none;">
                 <h3>🦊 Fox</h3>
                 <p>Cunning & Quick<br>Hit and run tactics</p>
             </div>
-            <div class="animal-card" data-animal="frog">
+            <div class="animal-card" data-animal="frog" style="cursor: pointer; user-select: none;">
                 <h3>🐸 Frog</h3>
                 <p>Amphibious<br>Can cross water</p>
             </div>
-            <div class="animal-card" data-animal="owl">
+            <div class="animal-card" data-animal="owl" style="cursor: pointer; user-select: none;">
                 <h3>🦉 Owl</h3>
                 <p>Air Support<br>Flying reconnaissance</p>
             </div>
-            <div class="animal-card" data-animal="pig">
+            <div class="animal-card" data-animal="pig" style="cursor: pointer; user-select: none;">
                 <h3>🐷 Pig</h3>
                 <p>Resource Gatherer<br>Boosts economy</p>
             </div>
-            <div class="animal-card" data-animal="cat">
+            <div class="animal-card" data-animal="cat" style="cursor: pointer; user-select: none;">
                 <h3>🐱 Cat</h3>
                 <p>Stealth Hunter<br>Invisible attacks</p>
             </div>
-            <div class="animal-card" data-animal="chicken">
+            <div class="animal-card" data-animal="chicken" style="cursor: pointer; user-select: none;">
                 <h3>🐔 Chicken</h3>
                 <p>Rapid Breeder<br>Fast unit production</p>
             </div>
-            <div class="animal-card" data-animal="dolphin">
+            <div class="animal-card" data-animal="dolphin" style="cursor: pointer; user-select: none;">
                 <h3>🐬 Dolphin</h3>
                 <p>Naval Unit<br>Controls waterways</p>
             </div>
@@ -224,48 +224,67 @@
                         console.log('✅ Start button made visible');
                     }
                     
-                    // Setup basic animal selection if systems didn't load
-                    if (!window.gameState || !window.uiSystem?.isInitialized) {
-                        console.log('⚠️ Main systems not loaded, using fallback');
-                        setupBasicAnimalSelection();
-                    } else {
-                        console.log('✅ Main systems loaded, using full game engine');
-                    }
+                    // Always ensure animal selection works
+                    console.log('🔧 Setting up animal selection...');
+                    setupBasicAnimalSelection();
                 }
             }, 2000); // Increased timeout to allow all modules to load
         });
         
         // Basic animal selection fallback
         function setupBasicAnimalSelection() {
-            console.log('🔧 Setting up basic animal selection fallback...');
+            console.log('🔧 Setting up animal selection system...');
             
-            const selectedAnimals = [];
+            let selectedAnimals = [];
             const startBtn = document.getElementById('startBtn');
             const animalCards = document.querySelectorAll('.animal-card');
             
-            // Check if real UI system is working
-            if (window.uiSystem?.isInitialized) {
-                console.log('✅ Real UI system detected, skipping fallback setup');
-                return;
+            console.log('🐾 Found', animalCards.length, 'animal cards');
+            
+            // Use game state if available, otherwise use local array
+            if (window.gameState) {
+                selectedAnimals = window.gameState.selectedAnimals;
+                console.log('✅ Using game state for animal selection');
+            } else {
+                console.log('⚠️ No game state, using local selection array');
             }
             
             animalCards.forEach(card => {
-                card.addEventListener('click', () => {
+                card.addEventListener('click', (event) => {
                     const animal = card.dataset.animal;
+                    console.log('🐾 Animal card clicked:', animal);
+                    
+                    // Prevent event bubbling to avoid conflicts
+                    event.stopPropagation();
                     
                     if (card.classList.contains('selected')) {
+                        // Deselect
                         card.classList.remove('selected');
                         const index = selectedAnimals.indexOf(animal);
                         if (index > -1) selectedAnimals.splice(index, 1);
+                        console.log('➖ Deselected:', animal);
                     } else if (selectedAnimals.length < 3) {
+                        // Select
                         card.classList.add('selected');
                         selectedAnimals.push(animal);
+                        console.log('➕ Selected:', animal);
+                    } else {
+                        console.log('⚠️ Cannot select more than 3 animals');
+                        return;
                     }
+                    
+                    // Update game state if available
+                    if (window.gameState) {
+                        window.gameState.selectedAnimals = [...selectedAnimals];
+                    }
+                    
+                    console.log('📊 Current selection:', selectedAnimals);
                     
                     // Update start button
                     if (selectedAnimals.length === 3) {
                         startBtn.classList.add('enabled');
                         startBtn.textContent = 'Start Game!';
+                        console.log('✅ Ready to start - 3 animals selected');
                     } else {
                         startBtn.classList.remove('enabled');
                         startBtn.textContent = `Select ${3 - selectedAnimals.length} more animals`;
@@ -273,15 +292,42 @@
                 });
             });
             
-            startBtn.addEventListener('click', () => {
+            startBtn.addEventListener('click', (event) => {
+                console.log('🚀 Start button clicked, selected animals:', selectedAnimals.length);
+                
                 if (selectedAnimals.length === 3) {
+                    // Prevent default and stop propagation
+                    event.preventDefault();
+                    event.stopPropagation();
+                    
+                    console.log('🎮 Starting game with animals:', selectedAnimals);
+                    
+                    // Update game state
+                    if (window.gameState) {
+                        window.gameState.selectedAnimals = [...selectedAnimals];
+                        console.log('✅ Game state updated');
+                    }
+                    
                     // Try to start real game first
-                    if (window.gameState && window.uiSystem) {
-                        window.gameState.selectedAnimals = selectedAnimals;
+                    if (window.gameState && window.uiSystem?.isInitialized) {
+                        console.log('🚀 Using real UI system to start game');
                         window.uiSystem.handleStartGame();
+                    } else if (window.gameEngine) {
+                        console.log('🚀 Using game engine directly');
+                        // Hide title screen and show game screen
+                        const titleScreen = document.getElementById('titleScreen');
+                        const gameScreen = document.getElementById('gameScreen');
+                        
+                        if (titleScreen) titleScreen.style.display = 'none';
+                        if (gameScreen) gameScreen.style.display = 'block';
+                        
+                        window.gameEngine.startGame();
                     } else {
+                        console.log('⚠️ No game systems available, showing fallback message');
                         alert(`Game would start with: ${selectedAnimals.join(', ')}\n\nNote: Full game requires JavaScript modules to be loaded properly.`);
                     }
+                } else {
+                    console.log('⚠️ Need to select 3 animals first');
                 }
             });
         }
