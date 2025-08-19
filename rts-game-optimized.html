@@ -187,7 +187,11 @@
             // Initialize game engine
             if (window.GameEngine) {
                 console.log('🚀 Initializing game engine...');
-                window.GameEngine.initialize();
+                window.GameEngine.initialize().then(() => {
+                    console.log('🎮 Game engine initialization complete');
+                }).catch(error => {
+                    console.error('❌ Game engine initialization failed:', error);
+                });
             } else {
                 console.error('❌ GameEngine not found - check script loading order');
             }
@@ -221,11 +225,14 @@
                     }
                     
                     // Setup basic animal selection if systems didn't load
-                    if (!window.gameState || !window.uiSystem) {
+                    if (!window.gameState || !window.uiSystem?.isInitialized) {
+                        console.log('⚠️ Main systems not loaded, using fallback');
                         setupBasicAnimalSelection();
+                    } else {
+                        console.log('✅ Main systems loaded, using full game engine');
                     }
                 }
-            }, 1000);
+            }, 2000); // Increased timeout to allow all modules to load
         });
         
         // Basic animal selection fallback
@@ -235,6 +242,12 @@
             const selectedAnimals = [];
             const startBtn = document.getElementById('startBtn');
             const animalCards = document.querySelectorAll('.animal-card');
+            
+            // Check if real UI system is working
+            if (window.uiSystem?.isInitialized) {
+                console.log('✅ Real UI system detected, skipping fallback setup');
+                return;
+            }
             
             animalCards.forEach(card => {
                 card.addEventListener('click', () => {
@@ -262,7 +275,13 @@
             
             startBtn.addEventListener('click', () => {
                 if (selectedAnimals.length === 3) {
-                    alert(`Game would start with: ${selectedAnimals.join(', ')}\n\nNote: Full game requires JavaScript modules to be loaded properly.`);
+                    // Try to start real game first
+                    if (window.gameState && window.uiSystem) {
+                        window.gameState.selectedAnimals = selectedAnimals;
+                        window.uiSystem.handleStartGame();
+                    } else {
+                        alert(`Game would start with: ${selectedAnimals.join(', ')}\n\nNote: Full game requires JavaScript modules to be loaded properly.`);
+                    }
                 }
             });
         }

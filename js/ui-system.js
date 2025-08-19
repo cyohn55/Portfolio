@@ -200,6 +200,7 @@ class UISystem {
         
         // Start button
         if (target.id === 'startBtn' || target.closest('#startBtn')) {
+            console.log('🎯 Start button clicked - UI system handling');
             this.handleStartGame();
         }
         
@@ -212,9 +213,18 @@ class UISystem {
     // Handle animal card selection
     handleAnimalSelection(card) {
         const animal = card.dataset.animal;
-        if (!animal || !window.gameState) return;
+        if (!animal) {
+            console.log('❌ No animal data on card');
+            return;
+        }
+        
+        if (!window.gameState) {
+            console.log('❌ No game state available');
+            return;
+        }
         
         const selectedAnimals = window.gameState.selectedAnimals;
+        console.log('🐾 Animal selection:', animal, 'Current selection:', selectedAnimals);
         
         if (card.classList.contains('selected')) {
             // Deselect
@@ -223,12 +233,17 @@ class UISystem {
             if (index > -1) {
                 selectedAnimals.splice(index, 1);
             }
+            console.log('➖ Deselected:', animal);
         } else if (selectedAnimals.length < 3) {
             // Select
             card.classList.add('selected');
             selectedAnimals.push(animal);
+            console.log('➕ Selected:', animal);
+        } else {
+            console.log('⚠️ Cannot select more than 3 animals');
         }
         
+        console.log('📊 Final selection:', selectedAnimals);
         this.updateStartButton();
         this.animateCard(card);
     }
@@ -258,7 +273,12 @@ class UISystem {
 
     // Handle game start
     handleStartGame() {
-        if (!window.gameState || window.gameState.selectedAnimals.length !== 3) return;
+        if (!window.gameState || window.gameState.selectedAnimals.length !== 3) {
+            console.log('❌ Cannot start game - gameState missing or wrong animal count');
+            return;
+        }
+        
+        console.log('🚀 Starting game with animals:', window.gameState.selectedAnimals);
         
         this.showLoadingScreen();
         
@@ -284,22 +304,34 @@ class UISystem {
 
     // Transition from title to game screen
     transitionToGame() {
+        console.log('🔄 Transitioning to game screen...');
+        
         if (this.elements.titleScreen) {
             this.elements.titleScreen.style.display = 'none';
+            console.log('✅ Title screen hidden');
         }
         
         if (this.elements.gameScreen) {
             this.elements.gameScreen.style.display = 'block';
+            console.log('✅ Game screen shown');
         }
         
         this.hideLoadingScreen();
         
-        // Initialize game
+        // Initialize game engine
         if (window.gameEngine) {
-            window.gameEngine.startGame();
+            console.log('🚀 Starting game engine...');
+            const success = window.gameEngine.startGame();
+            if (success) {
+                console.log('✅ Game engine started successfully');
+            } else {
+                console.error('❌ Game engine failed to start');
+            }
+        } else {
+            console.error('❌ Game engine not available');
         }
         
-        console.log('🎮 Transitioned to game screen');
+        console.log('🎮 Transition complete');
     }
 
     // Handle mouse events for unit selection and movement

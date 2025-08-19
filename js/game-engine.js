@@ -48,7 +48,14 @@ class GameEngine {
             window.gameEngine = new GameEngine();
         }
         
-        return window.gameEngine.init();
+        return window.gameEngine.init().then(result => {
+            if (result) {
+                console.log('✅ Game Engine initialized successfully');
+            } else {
+                console.error('❌ Game Engine initialization failed');
+            }
+            return result;
+        });
     }
 
     // Internal initialization
