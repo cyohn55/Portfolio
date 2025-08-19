@@ -168,7 +168,7 @@
     
     <!-- Initialize Enhanced Systems -->
     <script>
-        // Basic animal selection system - Must be defined first
+        // Enhanced animal selection system with better debugging
         function setupBasicAnimalSelection() {
             console.log('🔧 Setting up animal selection system...');
             
@@ -177,22 +177,53 @@
             const animalCards = document.querySelectorAll('.animal-card');
             
             console.log('🐾 Found', animalCards.length, 'animal cards');
+            console.log('📦 Start button:', startBtn ? 'Found' : 'Missing');
+            
+            if (animalCards.length === 0) {
+                console.error('❌ No animal cards found! Cannot setup selection.');
+                return false;
+            }
+            
+            if (!startBtn) {
+                console.error('❌ Start button not found! Cannot setup selection.');
+                return false;
+            }
             
             // Use game state if available, otherwise use local array
-            if (window.gameState) {
-                selectedAnimals = window.gameState.selectedAnimals || [];
-                console.log('✅ Using game state for animal selection');
+            if (window.gameState && window.gameState.selectedAnimals) {
+                selectedAnimals = [...window.gameState.selectedAnimals];
+                console.log('✅ Using game state for animal selection:', selectedAnimals);
             } else {
+                selectedAnimals = [];
                 console.log('⚠️ No game state, using local selection array');
             }
             
-            animalCards.forEach(card => {
-                card.addEventListener('click', (event) => {
-                    const animal = card.dataset.animal;
+            // Clear any existing event listeners by cloning elements
+            animalCards.forEach((card, index) => {
+                const animal = card.dataset.animal;
+                console.log(`🔗 Setting up card ${index}: ${animal}`);
+                
+                if (!animal) {
+                    console.error(`❌ Card ${index} missing data-animal attribute!`);
+                    return;
+                }
+                
+                // Remove any existing selected state
+                card.classList.remove('selected');
+                
+                // Add selected state if animal was previously selected
+                if (selectedAnimals.includes(animal)) {
+                    card.classList.add('selected');
+                    console.log(`✅ Restored selection for: ${animal}`);
+                }
+                
+                // Add click event listener
+                const clickHandler = (event) => {
                     console.log('🐾 Animal card clicked:', animal);
                     
                     // Prevent event bubbling to avoid conflicts
                     event.stopPropagation();
+                    event.preventDefault();
                     
                     if (card.classList.contains('selected')) {
                         // Deselect
@@ -206,7 +237,8 @@
                         selectedAnimals.push(animal);
                         console.log('➕ Selected:', animal);
                     } else {
-                        console.log('⚠️ Cannot select more than 3 animals');
+                        console.log('⚠️ Cannot select more than 3 animals. Current:', selectedAnimals);
+                        return;
                     }
                     
                     // Update game state if available
@@ -217,22 +249,37 @@
                     console.log('📊 Current selection:', selectedAnimals);
                     
                     // Update start button
-                    if (selectedAnimals.length === 3) {
-                        startBtn.classList.add('enabled');
-                        startBtn.textContent = 'Start Game!';
-                        console.log('✅ Ready to start - 3 animals selected');
-                    } else {
-                        startBtn.classList.remove('enabled');
-                        startBtn.textContent = `Select ${3 - selectedAnimals.length} more animals`;
-                    }
+                    updateStartButton();
+                };
+                
+                // Add the event listener
+                card.addEventListener('click', clickHandler);
+                
+                // Also add visual feedback on hover
+                card.addEventListener('mouseenter', () => {
+                    console.log(`👆 Hovering: ${animal}`);
                 });
             });
+            
+            function updateStartButton() {
+                if (selectedAnimals.length === 3) {
+                    startBtn.classList.add('enabled');
+                    startBtn.textContent = 'Start Game!';
+                    console.log('✅ Ready to start - 3 animals selected');
+                } else {
+                    startBtn.classList.remove('enabled');
+                    startBtn.textContent = `Select ${3 - selectedAnimals.length} more animals`;
+                    console.log(`🔄 Need ${3 - selectedAnimals.length} more animals`);
+                }
+            }
+            
+            // Initialize start button state
+            updateStartButton();
             
             startBtn.addEventListener('click', (event) => {
                 console.log('🚀 Start button clicked, selected animals:', selectedAnimals.length);
                 
                 if (selectedAnimals.length === 3) {
-                    // Prevent default and stop propagation
                     event.preventDefault();
                     event.stopPropagation();
                     
@@ -259,10 +306,13 @@
                     }
                 } else {
                     console.log('⚠️ Need to select 3 animals first');
+                    alert(`Please select 3 animals. Currently selected: ${selectedAnimals.length}`);
                 }
             });
             
             console.log('🔧 Animal selection system setup complete');
+            console.log('🧪 Try clicking on animal cards now!');
+            return true;
         }
 
         function initializeGame() {
@@ -285,9 +335,44 @@
                 console.error('❌ Game state not found');
             }
             
-            // Step 3: Setup animal selection immediately
+            // Step 3: Setup animal selection immediately with debugging
             console.log('🐾 Setting up animal selection system...');
-            setupBasicAnimalSelection();
+            
+            // Wait a moment for DOM to be fully ready, then setup
+            setTimeout(() => {
+                console.log('🔍 Debugging animal selection setup...');
+                
+                // Check if elements exist
+                const animalCards = document.querySelectorAll('.animal-card');
+                const startBtn = document.getElementById('startBtn');
+                const animalSelection = document.getElementById('animalSelection');
+                
+                console.log('📦 Elements found:');
+                console.log(`  - Animal cards: ${animalCards.length}`);
+                console.log(`  - Start button: ${startBtn ? 'YES' : 'NO'}`);
+                console.log(`  - Animal selection container: ${animalSelection ? 'YES' : 'NO'}`);
+                
+                if (animalCards.length === 0) {
+                    console.error('❌ No animal cards found! Animal selection cannot work.');
+                    return;
+                }
+                
+                if (!startBtn) {
+                    console.error('❌ Start button not found! Animal selection cannot work.');
+                    return;
+                }
+                
+                // Setup the animal selection
+                setupBasicAnimalSelection();
+                
+                // Test first animal card
+                if (animalCards.length > 0) {
+                    console.log('🧪 Testing first animal card click...');
+                    // Just log, don't auto-click
+                    console.log(`First card data-animal: ${animalCards[0].dataset.animal}`);
+                }
+                
+            }, 500); // Wait 500ms for everything to be ready
             
             // Initialize UI system
             if (window.uiSystem) {
