@@ -515,6 +515,14 @@ nav ul li a:hover {
     color: #fff !important;
 }
 
+[data-theme="dark"] .project h3 {
+    color: #fff !important;
+}
+
+[data-theme="dark"] .project p {
+    color: #fff !important;
+}
+
 [data-theme="dark"] .model-btn {
     color: #fff !important;
 }
