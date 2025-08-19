@@ -168,6 +168,103 @@
     
     <!-- Initialize Enhanced Systems -->
     <script>
+        // Basic animal selection system - Must be defined first
+        function setupBasicAnimalSelection() {
+            console.log('🔧 Setting up animal selection system...');
+            
+            let selectedAnimals = [];
+            const startBtn = document.getElementById('startBtn');
+            const animalCards = document.querySelectorAll('.animal-card');
+            
+            console.log('🐾 Found', animalCards.length, 'animal cards');
+            
+            // Use game state if available, otherwise use local array
+            if (window.gameState) {
+                selectedAnimals = window.gameState.selectedAnimals || [];
+                console.log('✅ Using game state for animal selection');
+            } else {
+                console.log('⚠️ No game state, using local selection array');
+            }
+            
+            animalCards.forEach(card => {
+                card.addEventListener('click', (event) => {
+                    const animal = card.dataset.animal;
+                    console.log('🐾 Animal card clicked:', animal);
+                    
+                    // Prevent event bubbling to avoid conflicts
+                    event.stopPropagation();
+                    
+                    if (card.classList.contains('selected')) {
+                        // Deselect
+                        card.classList.remove('selected');
+                        const index = selectedAnimals.indexOf(animal);
+                        if (index > -1) selectedAnimals.splice(index, 1);
+                        console.log('➖ Deselected:', animal);
+                    } else if (selectedAnimals.length < 3) {
+                        // Select
+                        card.classList.add('selected');
+                        selectedAnimals.push(animal);
+                        console.log('➕ Selected:', animal);
+                    } else {
+                        console.log('⚠️ Cannot select more than 3 animals');
+                    }
+                    
+                    // Update game state if available
+                    if (window.gameState) {
+                        window.gameState.selectedAnimals = [...selectedAnimals];
+                    }
+                    
+                    console.log('📊 Current selection:', selectedAnimals);
+                    
+                    // Update start button
+                    if (selectedAnimals.length === 3) {
+                        startBtn.classList.add('enabled');
+                        startBtn.textContent = 'Start Game!';
+                        console.log('✅ Ready to start - 3 animals selected');
+                    } else {
+                        startBtn.classList.remove('enabled');
+                        startBtn.textContent = `Select ${3 - selectedAnimals.length} more animals`;
+                    }
+                });
+            });
+            
+            startBtn.addEventListener('click', (event) => {
+                console.log('🚀 Start button clicked, selected animals:', selectedAnimals.length);
+                
+                if (selectedAnimals.length === 3) {
+                    // Prevent default and stop propagation
+                    event.preventDefault();
+                    event.stopPropagation();
+                    
+                    console.log('🎮 Starting game with animals:', selectedAnimals);
+                    
+                    // Update game state
+                    if (window.gameState) {
+                        window.gameState.selectedAnimals = [...selectedAnimals];
+                        console.log('✅ Game state updated');
+                    }
+                    
+                    const titleScreen = document.getElementById('titleScreen');
+                    const gameScreen = document.getElementById('gameScreen');
+                    
+                    if (titleScreen) titleScreen.style.display = 'none';
+                    if (gameScreen) gameScreen.style.display = 'block';
+                    
+                    if (window.gameEngine && window.gameEngine.startGame) {
+                        console.log('🎯 Starting game through game engine...');
+                        window.gameEngine.startGame();
+                    } else {
+                        console.log('⚠️ No game systems available, showing fallback message');
+                        alert(`Game would start with: ${selectedAnimals.join(', ')}\n\nNote: Full game requires JavaScript modules to be loaded properly.`);
+                    }
+                } else {
+                    console.log('⚠️ Need to select 3 animals first');
+                }
+            });
+            
+            console.log('🔧 Animal selection system setup complete');
+        }
+
         function initializeGame() {
             console.log('🚀 Initializing Enhanced Hex RTS System...');
             
@@ -187,6 +284,10 @@
             } else {
                 console.error('❌ Game state not found');
             }
+            
+            // Step 3: Setup animal selection immediately
+            console.log('🐾 Setting up animal selection system...');
+            setupBasicAnimalSelection();
             
             // Initialize UI system
             if (window.uiSystem) {
@@ -236,113 +337,11 @@
                         console.log('✅ Start button made visible');
                     }
                     
-                    // Always ensure animal selection works
-                    console.log('🔧 Setting up animal selection...');
-                    setupBasicAnimalSelection();
                 }
-            }, 2000); // Increased timeout to allow all modules to load
+            }, 2000); // Fallback timeout for any remaining setup
         });
         
-        // Basic animal selection fallback
-        function setupBasicAnimalSelection() {
-            console.log('🔧 Setting up animal selection system...');
-            
-            let selectedAnimals = [];
-            const startBtn = document.getElementById('startBtn');
-            const animalCards = document.querySelectorAll('.animal-card');
-            
-            console.log('🐾 Found', animalCards.length, 'animal cards');
-            
-            // Use game state if available, otherwise use local array
-            if (window.gameState) {
-                selectedAnimals = window.gameState.selectedAnimals;
-                console.log('✅ Using game state for animal selection');
-            } else {
-                console.log('⚠️ No game state, using local selection array');
-            }
-            
-            animalCards.forEach(card => {
-                card.addEventListener('click', (event) => {
-                    const animal = card.dataset.animal;
-                    console.log('🐾 Animal card clicked:', animal);
-                    
-                    // Prevent event bubbling to avoid conflicts
-                    event.stopPropagation();
-                    
-                    if (card.classList.contains('selected')) {
-                        // Deselect
-                        card.classList.remove('selected');
-                        const index = selectedAnimals.indexOf(animal);
-                        if (index > -1) selectedAnimals.splice(index, 1);
-                        console.log('➖ Deselected:', animal);
-                    } else if (selectedAnimals.length < 3) {
-                        // Select
-                        card.classList.add('selected');
-                        selectedAnimals.push(animal);
-                        console.log('➕ Selected:', animal);
-                    } else {
-                        console.log('⚠️ Cannot select more than 3 animals');
-                        return;
-                    }
-                    
-                    // Update game state if available
-                    if (window.gameState) {
-                        window.gameState.selectedAnimals = [...selectedAnimals];
-                    }
-                    
-                    console.log('📊 Current selection:', selectedAnimals);
-                    
-                    // Update start button
-                    if (selectedAnimals.length === 3) {
-                        startBtn.classList.add('enabled');
-                        startBtn.textContent = 'Start Game!';
-                        console.log('✅ Ready to start - 3 animals selected');
-                    } else {
-                        startBtn.classList.remove('enabled');
-                        startBtn.textContent = `Select ${3 - selectedAnimals.length} more animals`;
-                    }
-                });
-            });
-            
-            startBtn.addEventListener('click', (event) => {
-                console.log('🚀 Start button clicked, selected animals:', selectedAnimals.length);
-                
-                if (selectedAnimals.length === 3) {
-                    // Prevent default and stop propagation
-                    event.preventDefault();
-                    event.stopPropagation();
-                    
-                    console.log('🎮 Starting game with animals:', selectedAnimals);
-                    
-                    // Update game state
-                    if (window.gameState) {
-                        window.gameState.selectedAnimals = [...selectedAnimals];
-                        console.log('✅ Game state updated');
-                    }
-                    
-                    // Try to start real game first
-                    if (window.gameState && window.uiSystem?.isInitialized) {
-                        console.log('🚀 Using real UI system to start game');
-                        window.uiSystem.handleStartGame();
-                    } else if (window.gameEngine) {
-                        console.log('🚀 Using game engine directly');
-                        // Hide title screen and show game screen
-                        const titleScreen = document.getElementById('titleScreen');
-                        const gameScreen = document.getElementById('gameScreen');
-                        
-                        if (titleScreen) titleScreen.style.display = 'none';
-                        if (gameScreen) gameScreen.style.display = 'block';
-                        
-                        window.gameEngine.startGame();
-                    } else {
-                        console.log('⚠️ No game systems available, showing fallback message');
-                        alert(`Game would start with: ${selectedAnimals.join(', ')}\n\nNote: Full game requires JavaScript modules to be loaded properly.`);
-                    }
-                } else {
-                    console.log('⚠️ Need to select 3 animals first');
-                }
-            });
-        }
+
         
         // Performance monitoring (development mode only)
         if (window.location.search.includes('debug=true')) {
