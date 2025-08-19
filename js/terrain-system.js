@@ -390,42 +390,87 @@ class TerrainSystem {
 
     // Create optimized terrain tile element
     createTerrainTile(tileData, position, settings) {
-        // Try to reuse tile from pool
-        let tileContainer = this.tilePool.get(tileData.type);
-        if (tileContainer) {
-            this.tilePool.delete(tileData.type);
-        } else {
-            tileContainer = document.createElement('div');
+        try {
+            // Try to reuse tile from pool
+            let tileContainer = this.tilePool.get(tileData.type);
+            if (tileContainer) {
+                this.tilePool.delete(tileData.type);
+            } else {
+                tileContainer = document.createElement('div');
+            }
+            
+            tileContainer.className = `tile-3d-container ${tileData.type}`;
+            tileContainer.style.position = 'absolute';
+            tileContainer.style.left = position.x + 'px';
+            tileContainer.style.top = position.y + 'px';
+            tileContainer.style.width = settings.tileWidth + 'px';
+            tileContainer.style.height = settings.tileHeight + 'px';
+            tileContainer.style.transformStyle = 'preserve-3d';
+            
+            // Create or reuse model-viewer
+            let modelViewer = tileContainer.querySelector('model-viewer');
+            if (!modelViewer) {
+                // Check if model-viewer is available
+                if (typeof customElements.get('model-viewer') === 'undefined') {
+                    console.warn('⚠️ model-viewer not available yet, creating fallback div');
+                    modelViewer = document.createElement('div');
+                    modelViewer.textContent = `🌍 ${tileData.type}`;
+                    modelViewer.style.display = 'flex';
+                    modelViewer.style.alignItems = 'center';
+                    modelViewer.style.justifyContent = 'center';
+                    modelViewer.style.background = this.getTerrainColor(tileData.type);
+                    modelViewer.style.color = 'white';
+                    modelViewer.style.fontSize = '12px';
+                } else {
+                    modelViewer = document.createElement('model-viewer');
+                }
+            }
+        
+            // Setup model-viewer with optimized settings
+            this.setupModelViewer(modelViewer, tileData, settings);
+            
+            // Store tile data
+            tileContainer.dataset.tileId = tileData.id;
+            tileContainer.dataset.hexX = tileData.x;
+            tileContainer.dataset.hexY = tileData.y;
+            tileContainer.dataset.terrainType = tileData.type;
+            
+            if (!tileContainer.contains(modelViewer)) {
+                tileContainer.appendChild(modelViewer);
+            }
+            
+            return tileContainer;
+        } catch (error) {
+            console.error(`❌ Error creating terrain tile for ${tileData.type}:`, error);
+            
+            // Return a fallback div even on error
+            const fallbackContainer = document.createElement('div');
+            fallbackContainer.textContent = `❌ ${tileData.type}`;
+            fallbackContainer.style.position = 'absolute';
+            fallbackContainer.style.left = position.x + 'px';
+            fallbackContainer.style.top = position.y + 'px';
+            fallbackContainer.style.width = settings.tileWidth + 'px';
+            fallbackContainer.style.height = settings.tileHeight + 'px';
+            fallbackContainer.style.background = 'red';
+            fallbackContainer.style.color = 'white';
+            fallbackContainer.style.display = 'flex';
+            fallbackContainer.style.alignItems = 'center';
+            fallbackContainer.style.justifyContent = 'center';
+            
+            return fallbackContainer;
         }
-        
-        tileContainer.className = `tile-3d-container ${tileData.type}`;
-        tileContainer.style.position = 'absolute';
-        tileContainer.style.left = position.x + 'px';
-        tileContainer.style.top = position.y + 'px';
-        tileContainer.style.width = settings.tileWidth + 'px';
-        tileContainer.style.height = settings.tileHeight + 'px';
-        tileContainer.style.transformStyle = 'preserve-3d';
-        
-        // Create or reuse model-viewer
-        let modelViewer = tileContainer.querySelector('model-viewer');
-        if (!modelViewer) {
-            modelViewer = document.createElement('model-viewer');
-        }
-        
-        // Setup model-viewer with optimized settings
-        this.setupModelViewer(modelViewer, tileData, settings);
-        
-        // Store tile data
-        tileContainer.dataset.tileId = tileData.id;
-        tileContainer.dataset.hexX = tileData.x;
-        tileContainer.dataset.hexY = tileData.y;
-        tileContainer.dataset.terrainType = tileData.type;
-        
-        if (!tileContainer.contains(modelViewer)) {
-            tileContainer.appendChild(modelViewer);
-        }
-        
-        return tileContainer;
+    }
+
+    // Get fallback color for terrain types
+    getTerrainColor(terrainType) {
+        const colors = {
+            mountain: '#666',
+            hill: '#8B4513',
+            forest: '#228B22',
+            farmland: '#90EE90',
+            pinetree: '#006400'
+        };
+        return colors[terrainType] || '#444';
     }
 
     // Setup model-viewer with performance optimizations

@@ -156,6 +156,7 @@
 
     <!-- Scripts loaded in optimal order -->
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+    
     <!-- Enhanced Hex Grid System with Red Blob Games Algorithms -->
     <script src="js/hex-coordinate.js"></script>
     <script src="js/game-config.js"></script>
@@ -165,6 +166,18 @@
     <script src="js/unit-system.js"></script>
     <script src="js/ui-system.js"></script>
     <script src="js/game-engine.js"></script>
+    
+    <!-- Wait for model-viewer to load before initializing -->
+    <script type="module">
+        // Ensure model-viewer is fully loaded before game systems initialize
+        await customElements.whenDefined('model-viewer');
+        console.log('✅ Model-viewer component loaded and ready');
+        
+        // Now initialize game systems
+        if (typeof window.initializeEnhancedSystems === 'function') {
+            window.initializeEnhancedSystems();
+        }
+    </script>
     
     <!-- Initialize Enhanced Systems -->
     <script>
@@ -318,13 +331,9 @@
         function initializeGame() {
             console.log('🚀 Initializing Enhanced Hex RTS System...');
             
-            // Step 1: Initialize enhanced systems first
-            if (typeof window.initializeEnhancedSystems === 'function') {
-                window.initializeEnhancedSystems();
-                console.log('✅ Enhanced systems initialized');
-            } else {
-                console.warn('⚠️ Enhanced systems initialization function not found');
-            }
+            // Step 1: Enhanced systems are now initialized after model-viewer loads
+            // This prevents timing issues with 3D model creation
+            console.log('⏳ Enhanced systems will initialize after model-viewer loads...');
             
             console.log('🎮 Continuing with game initialization...');
             
