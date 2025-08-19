@@ -2085,21 +2085,21 @@ model-viewer .progress-bar {
     max-width: 600px;
     margin: 60px auto 40px;
     padding: 40px;
-    background: var(--white);
+    background: #165a72;
     border-radius: var(--border-radius-medium);
     box-shadow: 0 4px 20px var(--shadow-light);
 }
 
 .contact-form-section h2 {
     text-align: center;
-    color: var(--text-dark);
+    color: #fff;
     margin-bottom: 10px;
     font-size: 2rem;
 }
 
 .contact-form-section > p {
     text-align: center;
-    color: var(--text-medium);
+    color: #fff;
     margin-bottom: 30px;
     font-size: 1.1rem;
 }
@@ -2116,7 +2116,7 @@ model-viewer .progress-bar {
 }
 
 .form-group label {
-    color: var(--text-dark);
+    color: #fff;
     font-weight: 600;
     margin-bottom: 8px;
     font-size: 1rem;
