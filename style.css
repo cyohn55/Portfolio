@@ -449,8 +449,8 @@ nav ul li a:hover {
     position: absolute;
     top: -1px;
     left: 1px;
-    width: 29px;
-    height: 29px;
+    width: 30px;
+    height: 30px;
     background: #4C7E97;
     border-radius: 50%;
     transition: all 0.3s ease;
@@ -465,7 +465,7 @@ nav ul li a:hover {
 }
 
 [data-theme="dark"] .toggle-slider {
-    transform: translateX(35px);
+    transform: translateX(34px);
     background: #00486B;
 }
 
@@ -1335,14 +1335,14 @@ section h2 {
     }
     
     .toggle-slider {
-        width: 24px;
-        height: 24px;
+        width: 25px;
+        height: 25px;
         top: 0px;
         left: 0px;
     }
     
     [data-theme="dark"] .toggle-slider {
-        transform: translateX(30px);
+        transform: translateX(29px);
     }
     
     .sun-icon, .moon-icon {
@@ -1559,14 +1559,14 @@ section h2 {
     }
     
     .toggle-slider {
-        width: 22px;
-        height: 22px;
+        width: 23px;
+        height: 23px;
         top: 0px;
         left: 0px;
     }
     
     [data-theme="dark"] .toggle-slider {
-        transform: translateX(27px);
+        transform: translateX(26px);
     }
     
     .sun-icon, .moon-icon {
