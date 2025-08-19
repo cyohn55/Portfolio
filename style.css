@@ -494,14 +494,14 @@ nav ul li a:hover {
 
 /* Dark mode project tiles - Enhanced visibility and distinction */
 [data-theme="dark"] .project {
-    background-color: #3A9693 !important; /* Teal tile color */
-    border: 1px solid #4aafa8 !important; /* Complementary border color */
+    background-color: #165a72 !important; /* Dark teal blue tile color */
+    border: 1px solid #1e6b85 !important; /* Complementary border color */
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(255, 255, 255, 0.05) !important; /* Enhanced shadow with dual layers */
 }
 
 [data-theme="dark"] .project:hover {
-    background-color: #4aafa8 !important; /* Slightly lighter teal on hover */
-    border-color: #5cbbb4 !important; /* Lighter teal accent on hover */
+    background-color: #1e6b85 !important; /* Slightly lighter on hover */
+    border-color: #257a97 !important; /* Lighter accent on hover */
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(255, 255, 255, 0.1) !important; /* More pronounced hover shadow */
     transform: translateY(-8px) !important; /* Slightly more lift on hover */
 }
