@@ -79,11 +79,11 @@
     </div>
 
     <!-- Title Screen -->
-    <div id="titleScreen">
+    <div id="titleScreen" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; position: relative; z-index: 100;">
         <h1>🎮 Animal RTS</h1>
         <p>Choose 3 animals to build your army and conquer the battlefield!</p>
         
-        <div class="animal-selection" id="animalSelection">
+        <div class="animal-selection" id="animalSelection" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; max-width: 800px; margin: 2rem 0;">
             <!-- Animal cards - fallback if JavaScript doesn't load -->
             <div class="animal-card" data-animal="bear">
                 <h3>🐻 Bear</h3>
@@ -127,7 +127,7 @@
             </div>
         </div>
         
-        <button class="start-btn" id="startBtn">Select 3 animals to start</button>
+        <button class="start-btn" id="startBtn" style="display: block; margin: 2rem auto;">Select 3 animals to start</button>
     </div>
 
     <!-- Game Screen -->
@@ -196,11 +196,29 @@
             setTimeout(() => {
                 const titleScreen = document.getElementById('titleScreen');
                 const loadingIndicator = document.getElementById('loadingIndicator');
+                const startBtn = document.getElementById('startBtn');
+                const animalSelection = document.getElementById('animalSelection');
+                
+                console.log('🔍 Debug check:');
+                console.log('  Title screen:', titleScreen ? 'Found' : 'Missing');
+                console.log('  Loading indicator:', loadingIndicator ? 'Found' : 'Missing');
+                console.log('  Start button:', startBtn ? 'Found' : 'Missing');
+                console.log('  Animal selection:', animalSelection ? 'Found' : 'Missing');
                 
                 if (titleScreen && loadingIndicator) {
                     titleScreen.style.display = 'flex';
+                    titleScreen.style.flexDirection = 'column';
+                    titleScreen.style.alignItems = 'center';
+                    titleScreen.style.justifyContent = 'center';
+                    titleScreen.style.minHeight = '100vh';
                     loadingIndicator.style.display = 'none';
                     console.log('✅ Title screen shown');
+                    
+                    if (startBtn) {
+                        startBtn.style.display = 'block';
+                        startBtn.style.margin = '2rem auto';
+                        console.log('✅ Start button made visible');
+                    }
                     
                     // Setup basic animal selection if systems didn't load
                     if (!window.gameState || !window.uiSystem) {

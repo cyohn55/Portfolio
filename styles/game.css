@@ -124,12 +124,14 @@
     color: var(--text-primary);
     font-size: 1.2rem;
     font-weight: bold;
-    cursor: pointer;
+    cursor: not-allowed;
     transition: all var(--transition-normal);
-    opacity: 0.5;
+    opacity: 0.8;
     pointer-events: none;
     position: relative;
     overflow: hidden;
+    filter: grayscale(50%);
+    margin-top: 1rem;
 }
 
 .start-btn::before {
@@ -146,6 +148,9 @@
 .start-btn.enabled {
     opacity: 1;
     pointer-events: all;
+    cursor: pointer;
+    filter: none;
+    box-shadow: 0 4px 12px rgba(0,255,136,0.3);
 }
 
 .start-btn:hover.enabled {
