@@ -19,7 +19,6 @@ class UnitSystem {
         
         // Bind methods to avoid function creation in loops
         this.updateUnit = this.updateUnit.bind(this);
-        this.renderUnit = this.renderUnit.bind(this);
         
         // Unit movement threshold for precision
         this.movementThreshold = window.GAME_SETTINGS?.movement?.pathfindingThreshold || 10;

@@ -13,9 +13,7 @@ class GameState {
         this._lastCleanupTime = 0;
         this.CLEANUP_INTERVAL = 30000; // 30 seconds
         
-        // Bind methods to avoid creating new functions in loops
-        this.updateUnit = this.updateUnit.bind(this);
-        this.renderUnit = this.renderUnit.bind(this);
+        // Note: Method binding moved to where methods are actually defined
     }
 
     reset() {
