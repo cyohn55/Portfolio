@@ -660,23 +660,7 @@ section h2 {
     position: relative;
 }
 
-/* Asteroids Animation Background - Desktop Only */
-.asteroids-background {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: -1;
-    pointer-events: none;
-    display: none; /* Hidden by default, shown on desktop */
-}
 
-@media (min-width: 1024px) {
-    .asteroids-background {
-        display: block;
-    }
-}
 
 /* Red Link Styling */
 .red-link {
