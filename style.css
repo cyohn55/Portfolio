@@ -1525,6 +1525,10 @@ section h2 {
         margin-left: -4px;
     }
 
+    header h2 {
+        margin-left: -2px;
+    }
+
     .home-icon {
         left: 12px;
         height: 44px;
@@ -1562,7 +1566,7 @@ section h2 {
         width: 23px;
         height: 23px;
         top: 0px;
-        left: 0px;
+        left: 1px;
     }
     
     [data-theme="dark"] .toggle-slider {
