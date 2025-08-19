@@ -142,6 +142,7 @@
         <div id="resourcePanel" class="ui-panel">
             <div>Population: <span id="population">0</span></div>
             <div>Selected: <span id="selectedCount">0</span></div>
+            <button onclick="debugGenerateTerrain()" style="margin-top: 10px; padding: 5px; background: #0f0; color: #000; border: none; cursor: pointer;">🔧 Generate Terrain</button>
         </div>
 
         <div id="controlPanel" class="ui-panel"></div>
@@ -444,6 +445,34 @@
                     console.log('📊 Performance:', stats);
                 }
             }, 5000);
+        }
+
+        // Debug terrain generation function
+        function debugGenerateTerrain() {
+            console.log('🔧 Debug: Manually generating terrain...');
+            
+            // Ensure enhanced systems are initialized
+            if (typeof window.initializeEnhancedSystems === 'function') {
+                window.initializeEnhancedSystems();
+            }
+            
+            const hexContainer = document.getElementById('hex-grid');
+            if (hexContainer && window.terrainSystem) {
+                console.log('🎨 Clearing and regenerating hex grid...');
+                hexContainer.innerHTML = '';
+                const result = window.terrainSystem.generateHexGrid(10, 8, true);
+                console.log('🗺️ Manual terrain generation result:', result);
+                console.log('📊 Container children:', hexContainer.children.length);
+                
+                // Force visibility
+                hexContainer.style.display = 'block';
+                hexContainer.style.visibility = 'visible';
+                hexContainer.style.opacity = '1';
+                
+                alert(`Terrain generation ${result ? 'SUCCESS' : 'FAILED'}! Check console for details.`);
+            } else {
+                alert('ERROR: Hex container or terrain system not found!');
+            }
         }
 
         // Start game initialization when DOM is ready

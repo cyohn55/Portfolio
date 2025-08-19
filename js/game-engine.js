@@ -191,12 +191,32 @@ class GameEngine {
             window.gameState.gameStarted = true;
             
             // Generate terrain
-            if (this.systems.terrain) {
-                console.log('🌍 Terrain system found, generating hex grid...');
-                const terrainResult = this.systems.terrain.generateHexGrid();
-                console.log('🗺️ Terrain generation result:', terrainResult);
+            console.log('🌍 Generating terrain...');
+            
+            // Ensure enhanced systems are initialized
+            if (typeof window.initializeEnhancedSystems === 'function') {
+                window.initializeEnhancedSystems();
+            }
+            
+            // Force visual terrain generation
+            const hexContainer = document.getElementById('hex-grid');
+            if (hexContainer && window.terrainSystem) {
+                console.log('🎨 Force generating visual hex grid...');
+                hexContainer.innerHTML = ''; // Clear any existing content
+                const visualResult = window.terrainSystem.generateHexGrid(10, 8, true);
+                console.log('🗺️ Visual terrain generation result:', visualResult);
+                console.log('📊 Container children after generation:', hexContainer.children.length);
+                
+                // Ensure container is visible
+                hexContainer.style.display = 'block';
+                hexContainer.style.visibility = 'visible';
+                hexContainer.style.opacity = '1';
+                console.log('👁️ Hex container visibility ensured');
             } else {
-                console.error('❌ Terrain system not found! Available systems:', Object.keys(this.systems));
+                console.error('❌ Hex container or terrain system not found!', {
+                    container: !!hexContainer,
+                    terrainSystem: !!window.terrainSystem
+                });
             }
             
             // Create bases for selected animals
