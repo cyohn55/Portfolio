@@ -31,10 +31,13 @@ class GameState {
             end: { x: 0, y: 0 }
         };
         
-        // Population tracking
+        // Population tracking - Use fallback if TEAMS not loaded
+        const playerTeam = window.TEAMS?.PLAYER || 'player';
+        const aiTeam = window.TEAMS?.AI || 'enemy';
+        
         this.population = {
             total: 0,
-            byTeam: { [TEAMS.PLAYER]: 0, [TEAMS.AI]: 0 },
+            byTeam: { [playerTeam]: 0, [aiTeam]: 0 },
             byAnimal: this._initializeAnimalPopulation()
         };
         
@@ -46,13 +49,15 @@ class GameState {
             visibleUnits: 0
         };
         
-        // Game map
+        // Game map - Use fallback if GAME_SETTINGS not loaded
+        const gridSettings = window.GAME_SETTINGS?.grid || { defaultCols: 12, defaultRows: 16 };
+        
         this.map = {
             layout: null,
             width: 2000,
             height: 1500,
-            cols: GAME_SETTINGS.grid.defaultCols,
-            rows: GAME_SETTINGS.grid.defaultRows
+            cols: gridSettings.defaultCols,
+            rows: gridSettings.defaultRows
         };
     }
 

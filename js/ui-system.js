@@ -43,6 +43,15 @@ class UISystem {
             this.applyMobileOptimizations();
         }
         
+        // Hide loading indicator and show title screen
+        if (this.elements.loadingIndicator) {
+            this.elements.loadingIndicator.style.display = 'none';
+        }
+        
+        if (this.elements.titleScreen) {
+            this.elements.titleScreen.style.display = 'flex';
+        }
+        
         this.isInitialized = true;
         console.log('✅ UI System initialized');
     }
@@ -106,14 +115,18 @@ class UISystem {
     setupTitleScreen() {
         if (!this.elements.animalSelection) return;
         
-        // Clear existing content
-        this.elements.animalSelection.innerHTML = '';
+        // Check if animal cards already exist in HTML
+        const existingCards = this.elements.animalSelection.querySelectorAll('.animal-card');
         
-        // Create animal cards dynamically
-        Object.entries(window.ANIMAL_CONFIGS || {}).forEach(([animal, config]) => {
-            const card = this.createAnimalCard(animal, config);
-            this.elements.animalSelection.appendChild(card);
-        });
+        if (existingCards.length === 0) {
+            // Create animal cards dynamically if none exist
+            Object.entries(window.ANIMAL_CONFIGS || {}).forEach(([animal, config]) => {
+                const card = this.createAnimalCard(animal, config);
+                this.elements.animalSelection.appendChild(card);
+            });
+        } else {
+            console.log('✅ Using existing animal cards from HTML');
+        }
         
         this.updateStartButton();
     }

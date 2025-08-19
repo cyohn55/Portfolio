@@ -73,7 +73,7 @@
 </head>
 <body>
     <!-- Loading Screen -->
-    <div class="loading" id="loadingIndicator">
+    <div class="loading" id="loadingIndicator" style="display: none;">
         <div>🎮 Loading Animal RTS...</div>
         <div style="font-size: 0.8rem; margin-top: 10px;">Preparing 3D models and terrain...</div>
     </div>
@@ -84,7 +84,47 @@
         <p>Choose 3 animals to build your army and conquer the battlefield!</p>
         
         <div class="animal-selection" id="animalSelection">
-            <!-- Animal cards will be loaded dynamically -->
+            <!-- Animal cards - fallback if JavaScript doesn't load -->
+            <div class="animal-card" data-animal="bear">
+                <h3>🐻 Bear</h3>
+                <p>Strong & Durable<br>Slow but powerful units</p>
+            </div>
+            <div class="animal-card" data-animal="bee">
+                <h3>🐝 Bee</h3>
+                <p>Fast & Agile<br>Quick swarm attacks</p>
+            </div>
+            <div class="animal-card" data-animal="turtle">
+                <h3>🐢 Turtle</h3>
+                <p>Defensive<br>High armor, steady advance</p>
+            </div>
+            <div class="animal-card" data-animal="fox">
+                <h3>🦊 Fox</h3>
+                <p>Cunning & Quick<br>Hit and run tactics</p>
+            </div>
+            <div class="animal-card" data-animal="frog">
+                <h3>🐸 Frog</h3>
+                <p>Amphibious<br>Can cross water</p>
+            </div>
+            <div class="animal-card" data-animal="owl">
+                <h3>🦉 Owl</h3>
+                <p>Air Support<br>Flying reconnaissance</p>
+            </div>
+            <div class="animal-card" data-animal="pig">
+                <h3>🐷 Pig</h3>
+                <p>Resource Gatherer<br>Boosts economy</p>
+            </div>
+            <div class="animal-card" data-animal="cat">
+                <h3>🐱 Cat</h3>
+                <p>Stealth Hunter<br>Invisible attacks</p>
+            </div>
+            <div class="animal-card" data-animal="chicken">
+                <h3>🐔 Chicken</h3>
+                <p>Rapid Breeder<br>Fast unit production</p>
+            </div>
+            <div class="animal-card" data-animal="dolphin">
+                <h3>🐬 Dolphin</h3>
+                <p>Naval Unit<br>Controls waterways</p>
+            </div>
         </div>
         
         <button class="start-btn" id="startBtn">Select 3 animals to start</button>
@@ -128,12 +168,86 @@
         // Initialize game when all scripts are loaded
         document.addEventListener('DOMContentLoaded', () => {
             console.log('🎮 DOM loaded - initializing RTS game...');
+            
+            // Initialize game state first
+            if (window.gameState) {
+                console.log('✅ Game state available');
+            } else {
+                console.error('❌ Game state not found');
+            }
+            
+            // Initialize UI system
+            if (window.uiSystem) {
+                console.log('🎨 Initializing UI system...');
+                window.uiSystem.initialize();
+            } else {
+                console.error('❌ UI system not found');
+            }
+            
+            // Initialize game engine
             if (window.GameEngine) {
+                console.log('🚀 Initializing game engine...');
                 window.GameEngine.initialize();
             } else {
-                console.error('GameEngine not found - check script loading order');
+                console.error('❌ GameEngine not found - check script loading order');
             }
+            
+            // Fallback initialization if modules don't load
+            setTimeout(() => {
+                const titleScreen = document.getElementById('titleScreen');
+                const loadingIndicator = document.getElementById('loadingIndicator');
+                
+                if (titleScreen && loadingIndicator) {
+                    titleScreen.style.display = 'flex';
+                    loadingIndicator.style.display = 'none';
+                    console.log('✅ Title screen shown');
+                    
+                    // Setup basic animal selection if systems didn't load
+                    if (!window.gameState || !window.uiSystem) {
+                        setupBasicAnimalSelection();
+                    }
+                }
+            }, 1000);
         });
+        
+        // Basic animal selection fallback
+        function setupBasicAnimalSelection() {
+            console.log('🔧 Setting up basic animal selection fallback...');
+            
+            const selectedAnimals = [];
+            const startBtn = document.getElementById('startBtn');
+            const animalCards = document.querySelectorAll('.animal-card');
+            
+            animalCards.forEach(card => {
+                card.addEventListener('click', () => {
+                    const animal = card.dataset.animal;
+                    
+                    if (card.classList.contains('selected')) {
+                        card.classList.remove('selected');
+                        const index = selectedAnimals.indexOf(animal);
+                        if (index > -1) selectedAnimals.splice(index, 1);
+                    } else if (selectedAnimals.length < 3) {
+                        card.classList.add('selected');
+                        selectedAnimals.push(animal);
+                    }
+                    
+                    // Update start button
+                    if (selectedAnimals.length === 3) {
+                        startBtn.classList.add('enabled');
+                        startBtn.textContent = 'Start Game!';
+                    } else {
+                        startBtn.classList.remove('enabled');
+                        startBtn.textContent = `Select ${3 - selectedAnimals.length} more animals`;
+                    }
+                });
+            });
+            
+            startBtn.addEventListener('click', () => {
+                if (selectedAnimals.length === 3) {
+                    alert(`Game would start with: ${selectedAnimals.join(', ')}\n\nNote: Full game requires JavaScript modules to be loaded properly.`);
+                }
+            });
+        }
         
         // Performance monitoring (development mode only)
         if (window.location.search.includes('debug=true')) {
