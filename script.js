@@ -979,8 +979,8 @@ function initializeAsteroidsAnimation() {
     // Game state
     const gameObjects = {
         spaceships: [
-            new Spaceship(100, 100, '#00ff00', 0),
-            new Spaceship(canvas.width - 100, canvas.height - 100, '#ff6600', 1)
+            new Spaceship(100, 100, '#ff0000', 0),
+            new Spaceship(canvas.width - 100, canvas.height - 100, '#1e3a8a', 1)
         ],
         bullets: [],
         asteroids: []
@@ -988,7 +988,7 @@ function initializeAsteroidsAnimation() {
     
     // Initialize asteroids
     function spawnAsteroids() {
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 15; i++) {
             let x, y;
             do {
                 x = Math.random() * canvas.width;
@@ -1060,7 +1060,7 @@ function initializeAsteroidsAnimation() {
         gameObjects.bullets = gameObjects.bullets.filter(bullet => bullet.life > 0);
         
         // Respawn destroyed asteroids occasionally
-        if (gameObjects.asteroids.length < 3 && Math.random() < 0.01) {
+        if (gameObjects.asteroids.length < 9 && Math.random() < 0.01) {
             spawnAsteroids();
         }
         
@@ -1080,7 +1080,7 @@ function initializeAsteroidsAnimation() {
     // Game loop
     function gameLoop() {
         // Clear canvas
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+        ctx.fillStyle = 'rgba(0, 72, 107, 0.1)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
         // Update all objects
