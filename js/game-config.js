@@ -194,12 +194,30 @@ window.initializeEnhancedSystems = function() {
     if (!window.terrainSystem) {
         window.terrainSystem = new TerrainSystem();
         console.log('✅ Enhanced Terrain System created');
+        console.log('🔍 Terrain system methods:', Object.getOwnPropertyNames(window.terrainSystem));
+    } else {
+        console.log('♻️ Terrain system already exists');
     }
     
     // Generate hex map if not already generated
     if (window.terrainSystem.hexGrid.size === 0) {
         window.terrainSystem.generateHexMap();
-        console.log('✅ Strategic hex map generated');
+        console.log(`✅ Strategic hex map generated with ${window.terrainSystem.hexGrid.size} tiles`);
+    } else {
+        console.log(`♻️ Hex map already generated with ${window.terrainSystem.hexGrid.size} tiles`);
+    }
+    
+    // Also generate visual hex grid if container exists
+    const hexContainer = document.getElementById('hex-grid');
+    console.log(`📦 Hex container found: ${hexContainer ? 'YES' : 'NO'}`);
+    
+    if (hexContainer) {
+        console.log('🎨 Generating visual hex grid...');
+        const visualResult = window.terrainSystem.generateHexGrid(8, 8, true);
+        console.log(`🎯 Visual hex grid result: ${visualResult}`);
+        console.log(`📊 Container children count after generation: ${hexContainer.children.length}`);
+    } else {
+        console.log('⚠️ Hex container not found - visual tiles cannot be created yet');
     }
     
     console.log('🎯 Enhanced systems ready for strategic gameplay!');

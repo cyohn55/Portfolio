@@ -168,26 +168,20 @@
     
     <!-- Initialize Enhanced Systems -->
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        function initializeGame() {
             console.log('🚀 Initializing Enhanced Hex RTS System...');
             
-            // Initialize enhanced systems after all scripts load
-            setTimeout(() => {
-                if (typeof window.initializeEnhancedSystems === 'function') {
-                    window.initializeEnhancedSystems();
-                } else {
-                    console.warn('⚠️ Enhanced systems initialization function not found');
-                }
-            }, 100);
-        });
-    </script>
-    
-    <script>
-        // Initialize game when all scripts are loaded
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('🎮 DOM loaded - initializing RTS game...');
+            // Step 1: Initialize enhanced systems first
+            if (typeof window.initializeEnhancedSystems === 'function') {
+                window.initializeEnhancedSystems();
+                console.log('✅ Enhanced systems initialized');
+            } else {
+                console.warn('⚠️ Enhanced systems initialization function not found');
+            }
             
-            // Initialize game state first
+            console.log('🎮 Continuing with game initialization...');
+            
+            // Step 2: Initialize game state
             if (window.gameState) {
                 console.log('✅ Game state available');
             } else {
@@ -359,6 +353,9 @@
                 }
             }, 5000);
         }
+
+        // Start game initialization when DOM is ready
+        document.addEventListener('DOMContentLoaded', initializeGame);
     </script>
 </body>
 </html> 
