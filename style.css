@@ -1565,7 +1565,7 @@ section h2 {
     .toggle-slider {
         width: 23px;
         height: 23px;
-        top: 0px;
+        top: -0.5px;
         left: 1px;
     }
     
