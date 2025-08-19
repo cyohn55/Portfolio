@@ -190,34 +190,9 @@ class GameEngine {
         if (window.gameState) {
             window.gameState.gameStarted = true;
             
-            // Generate terrain
+            // Generate terrain - simple approach
             console.log('🌍 Generating terrain...');
-            
-            // Ensure enhanced systems are initialized
-            if (typeof window.initializeEnhancedSystems === 'function') {
-                window.initializeEnhancedSystems();
-            }
-            
-            // Force visual terrain generation
-            const hexContainer = document.getElementById('hex-grid');
-            if (hexContainer && window.terrainSystem) {
-                console.log('🎨 Force generating visual hex grid...');
-                hexContainer.innerHTML = ''; // Clear any existing content
-                const visualResult = window.terrainSystem.generateHexGrid(10, 8, true);
-                console.log('🗺️ Visual terrain generation result:', visualResult);
-                console.log('📊 Container children after generation:', hexContainer.children.length);
-                
-                // Ensure container is visible
-                hexContainer.style.display = 'block';
-                hexContainer.style.visibility = 'visible';
-                hexContainer.style.opacity = '1';
-                console.log('👁️ Hex container visibility ensured');
-            } else {
-                console.error('❌ Hex container or terrain system not found!', {
-                    container: !!hexContainer,
-                    terrainSystem: !!window.terrainSystem
-                });
-            }
+            this.generateSimpleTerrain();
             
             // Create bases for selected animals
             this.createPlayerBases();
@@ -587,6 +562,101 @@ class GameEngine {
         }
         
         console.log('🧹 Game engine destroyed');
+    }
+
+    // Generate simple terrain for immediate visibility
+    generateSimpleTerrain() {
+        const hexContainer = document.getElementById('hex-grid');
+        if (!hexContainer) {
+            console.error('❌ Hex container not found for terrain generation');
+            return false;
+        }
+
+        console.log('🎨 Generating simple hex terrain...');
+        hexContainer.innerHTML = '';
+
+        const terrainTypes = [
+            { type: 'farmland', color: '#90EE90', emoji: '🌾', model: 'models/FarmLand.glb' },
+            { type: 'forest', color: '#228B22', emoji: '🌲', model: 'models/Forest.glb' },
+            { type: 'mountain', color: '#696969', emoji: '🏔️', model: 'models/Mountain.glb' },
+            { type: 'hill', color: '#8FBC8F', emoji: '🏞️', model: 'models/Hill.glb' },
+            { type: 'pinetree', color: '#006400', emoji: '🌲', model: 'models/PineTree.glb' }
+        ];
+
+        let tilesCreated = 0;
+
+        // Create 10x8 grid of hex tiles
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 10; col++) {
+                const terrain = terrainTypes[Math.floor(Math.random() * terrainTypes.length)];
+                
+                // Create tile container
+                const tileContainer = document.createElement('div');
+                tileContainer.className = `tile-3d-container ${terrain.type}`;
+                tileContainer.style.cssText = `
+                    position: absolute;
+                    width: 90px;
+                    height: 120px;
+                    left: ${col * 80 + (row % 2) * 40}px;
+                    top: ${row * 70}px;
+                    transform-style: preserve-3d;
+                `;
+                
+                // Try to create model-viewer, fallback to colored hex
+                if (window.customElements && window.customElements.get('model-viewer')) {
+                    const modelViewer = document.createElement('model-viewer');
+                    modelViewer.className = `hex-tile ${terrain.type}`;
+                    modelViewer.setAttribute('src', terrain.model);
+                    modelViewer.setAttribute('alt', `${terrain.type} tile`);
+                    modelViewer.setAttribute('interaction-prompt', 'none');
+                    modelViewer.setAttribute('disable-zoom', 'true');
+                    modelViewer.setAttribute('auto-rotate', 'false');
+                    modelViewer.setAttribute('camera-orbit', '0deg 75deg 100m');
+                    modelViewer.style.cssText = `
+                        width: 100%;
+                        height: 100%;
+                        background: transparent;
+                    `;
+                    tileContainer.appendChild(modelViewer);
+                } else {
+                    // Fallback to simple colored hex
+                    const hexTile = document.createElement('div');
+                    hexTile.style.cssText = `
+                        width: 80px;
+                        height: 70px;
+                        background: ${terrain.color};
+                        border: 2px solid #fff;
+                        clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 20px;
+                        color: white;
+                        text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
+                        margin: 5px;
+                    `;
+                    hexTile.textContent = terrain.emoji;
+                    tileContainer.appendChild(hexTile);
+                }
+                
+                tileContainer.dataset.terrainType = terrain.type;
+                tileContainer.dataset.hexX = col;
+                tileContainer.dataset.hexY = row;
+                tileContainer.title = `${terrain.type} at (${col}, ${row})`;
+                
+                hexContainer.appendChild(tileContainer);
+                tilesCreated++;
+            }
+        }
+
+        // Ensure container visibility
+        hexContainer.style.display = 'block';
+        hexContainer.style.visibility = 'visible';
+        hexContainer.style.opacity = '1';
+        hexContainer.style.zIndex = '3';
+
+        console.log(`✅ Generated ${tilesCreated} terrain tiles`);
+        return true;
     }
 }
 
