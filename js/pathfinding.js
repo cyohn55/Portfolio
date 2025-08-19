@@ -97,7 +97,7 @@ class PathfindingSystem {
         }
         
         // Ground animals cannot traverse mountains or hills
-        if (tile.terrainType === 'mountain' || tile.terrainType === 'hill') {
+        if (tile.type === 'mountain' || tile.type === 'hill') {
             return false;
         }
         

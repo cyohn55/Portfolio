@@ -92,6 +92,9 @@ class GameEngine {
         // Initialize terrain system
         if (window.terrainSystem) {
             this.systems.terrain = window.terrainSystem;
+            console.log('✅ Terrain system initialized');
+        } else {
+            console.error('❌ window.terrainSystem not found!');
         }
         
         // Initialize unit system
@@ -189,7 +192,11 @@ class GameEngine {
             
             // Generate terrain
             if (this.systems.terrain) {
-                this.systems.terrain.generateHexGrid();
+                console.log('🌍 Terrain system found, generating hex grid...');
+                const terrainResult = this.systems.terrain.generateHexGrid();
+                console.log('🗺️ Terrain generation result:', terrainResult);
+            } else {
+                console.error('❌ Terrain system not found! Available systems:', Object.keys(this.systems));
             }
             
             // Create bases for selected animals

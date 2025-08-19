@@ -12,10 +12,11 @@ class TerrainSystem {
         
         // Terrain configuration
         this.terrainWeights = {
-            mountain: 0.15,  // Reduced for better gameplay
-            forest: 0.40,    // Most common
-            hill: 0.15,      // Reduced for better gameplay
-            farmland: 0.30   // Increased for traversability
+            mountain: 0.12,  // Reduced to make room for pine trees
+            forest: 0.30,    // Reduced to make room for pine trees
+            hill: 0.12,      // Reduced to make room for pine trees
+            farmland: 0.28,  // Reduced to make room for pine trees
+            pinetree: 0.18   // New pine tree terrain
         };
         
         this.setupProgressiveLoading();
@@ -122,11 +123,16 @@ class TerrainSystem {
 
     // Generate and render hex grid with performance optimizations
     generateHexGrid(rows = 16, cols = 12, forceRegenerate = false) {
+        console.log(`🏗️ Starting hex grid generation: ${cols}x${rows} tiles`);
+        
         const container = document.getElementById('hex-grid');
         if (!container) {
-            console.warn('Hex grid container not found');
+            console.error('❌ Hex grid container (#hex-grid) not found!');
+            console.log('Available elements:', document.getElementById('gameScreen') ? 'gameScreen found' : 'gameScreen missing');
             return false;
         }
+        
+        console.log('✅ Hex grid container found:', container);
 
         // Clear existing tiles if regenerating
         if (forceRegenerate) {
@@ -153,6 +159,9 @@ class TerrainSystem {
         // Performance optimization: Use document fragment for batch DOM insertion
         const fragment = document.createDocumentFragment();
         const tilesToObserve = [];
+        let tilesCreated = 0;
+
+        console.log(`🔧 Creating ${cols * rows} terrain tiles...`);
 
         for (let x = 0; x < cols; x++) {
             for (let y = 0; y < rows; y++) {
@@ -166,17 +175,24 @@ class TerrainSystem {
                 
                 if (tileElement) {
                     fragment.appendChild(tileElement);
+                    tilesCreated++;
                     
                     // Add to progressive loading if enabled
                     if (this.intersectionObserver) {
                         tilesToObserve.push(tileElement);
                     }
+                } else {
+                    console.warn(`⚠️ Failed to create tile at (${x}, ${y}):`, tileData);
                 }
             }
         }
 
+        console.log(`✅ Created ${tilesCreated} terrain tiles, adding to container...`);
+
         // Batch insert all tiles
         container.appendChild(fragment);
+        
+        console.log(`🎯 Hex grid generation complete! Container now has ${container.children.length} tiles`);
 
         // Setup progressive loading for new tiles
         tilesToObserve.forEach(tile => {
@@ -186,6 +202,7 @@ class TerrainSystem {
         });
 
         console.log(`✅ Generated hex grid: ${cols}x${rows} with ${cols * rows} tiles`);
+        console.log(`🌍 Terrain distribution:`, this.getTerrainDistribution(mapLayout, cols, rows));
         return true;
     }
 
@@ -288,7 +305,7 @@ class TerrainSystem {
     applyTerrainStyling(modelViewer, terrainType) {
         // Add terrain height effects
         const heights = window.TERRAIN_CONFIG?.heights || {
-            mountain: 120, hill: 80, forest: 40, farmland: 5
+            mountain: 120, hill: 80, forest: 40, farmland: 5, pinetree: 60
         };
         
         const height = heights[terrainType] || 0;
@@ -315,10 +332,25 @@ class TerrainSystem {
             mountain: 'Mountain terrain (Ground animals cannot pass, Flying animals can pass)',
             hill: 'Hill terrain (Ground animals cannot pass, Flying animals can pass)',
             forest: 'Forest terrain (All animals can pass)',
-            farmland: 'Farmland terrain (All animals can pass)'
+            farmland: 'Farmland terrain (All animals can pass)',
+            pinetree: 'Pine tree terrain (All animals can pass)'
         };
         
         return descriptions[terrainType] || 'Terrain tile';
+    }
+
+    // Get terrain distribution for debugging
+    getTerrainDistribution(mapLayout, cols, rows) {
+        const distribution = {};
+        
+        for (let x = 0; x < cols; x++) {
+            for (let y = 0; y < rows; y++) {
+                const terrainType = mapLayout[x][y].type;
+                distribution[terrainType] = (distribution[terrainType] || 0) + 1;
+            }
+        }
+        
+        return distribution;
     }
 
     // Clear grid and return tiles to pool for reuse
