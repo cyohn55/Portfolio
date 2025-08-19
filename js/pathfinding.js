@@ -18,6 +18,25 @@ class AStarNode {
     }
 }
 
+// Enhanced hex pathfinding node
+class HexAStarNode {
+    constructor(hexCoord, gCost = 0, hCost = 0, parent = null) {
+        this.hexCoord = hexCoord; // HexCoord object
+        this.gCost = gCost; // Distance from start
+        this.hCost = hCost; // Heuristic distance to goal
+        this.fCost = gCost + hCost; // Total cost
+        this.parent = parent;
+    }
+    
+    equals(other) {
+        return this.hexCoord.equals(other.hexCoord);
+    }
+    
+    toString() {
+        return this.hexCoord.toString();
+    }
+}
+
 class PathfindingSystem {
     constructor() {
         // Performance optimization: Pre-allocate node pool
@@ -278,6 +297,171 @@ class PathfindingSystem {
             return false;
         }
     }
+
+    // === ENHANCED HEX PATHFINDING METHODS ===
+
+    // Find hex path using A* with terrain awareness
+    findHexPath(startCoord, goalCoord, unitType) {
+        const terrainSystem = window.terrainSystem;
+        if (!terrainSystem) {
+            console.warn('⚠️ Terrain system not available for hex pathfinding');
+            return null;
+        }
+
+        console.log(`🗺️ Finding hex path from ${startCoord.toString()} to ${goalCoord.toString()} for ${unitType}`);
+
+        const openSet = [];
+        const closedSet = new Set();
+        const gScores = new Map();
+        const startKey = startCoord.toString();
+        const goalKey = goalCoord.toString();
+
+        // Initialize start node
+        const startNode = new HexAStarNode(startCoord, 0, startCoord.distanceTo(goalCoord));
+        openSet.push(startNode);
+        gScores.set(startKey, 0);
+
+        while (openSet.length > 0) {
+            // Get node with lowest fCost
+            openSet.sort((a, b) => a.fCost - b.fCost);
+            const currentNode = openSet.shift();
+            const currentKey = currentNode.hexCoord.toString();
+
+            // Check if we reached the goal
+            if (currentKey === goalKey) {
+                console.log(`✅ Hex path found with ${this.reconstructHexPath(currentNode).length} steps`);
+                return this.reconstructHexPath(currentNode);
+            }
+
+            closedSet.add(currentKey);
+
+            // Check all hex neighbors
+            const neighbors = currentNode.hexCoord.getNeighbors();
+            for (const neighborCoord of neighbors) {
+                const neighborKey = neighborCoord.toString();
+
+                // Skip if already processed
+                if (closedSet.has(neighborKey)) continue;
+
+                // Get terrain movement cost
+                const movementCost = terrainSystem.getMovementCost(neighborCoord, unitType);
+                if (movementCost === Infinity) continue; // Impassable terrain
+
+                const tentativeGCost = currentNode.gCost + movementCost;
+                const existingGCost = gScores.get(neighborKey) || Infinity;
+
+                // Check if this path is better
+                if (tentativeGCost < existingGCost) {
+                    gScores.set(neighborKey, tentativeGCost);
+                    const hCost = neighborCoord.distanceTo(goalCoord);
+                    const neighborNode = new HexAStarNode(neighborCoord, tentativeGCost, hCost, currentNode);
+
+                    // Add to open set if not already there
+                    const existingNodeIndex = openSet.findIndex(node => node.hexCoord.equals(neighborCoord));
+                    if (existingNodeIndex === -1) {
+                        openSet.push(neighborNode);
+                    } else {
+                        openSet[existingNodeIndex] = neighborNode;
+                    }
+                }
+            }
+        }
+
+        console.log('❌ No hex path found');
+        return null;
+    }
+
+    // Reconstruct path from A* result
+    reconstructHexPath(goalNode) {
+        const path = [];
+        let current = goalNode;
+
+        while (current) {
+            path.unshift(current.hexCoord);
+            current = current.parent;
+        }
+
+        return path;
+    }
+
+    // Convert screen coordinates to hex coordinates
+    screenToHex(screenX, screenY) {
+        const size = 45; // Half of tile width from settings
+        return HexMath.pixelToHex({ x: screenX, y: screenY }, size);
+    }
+
+    // Convert hex coordinates to screen coordinates  
+    hexToScreen(hexCoord) {
+        const size = 45;
+        return HexMath.hexToPixel(hexCoord, size);
+    }
+
+    // Find path for unit using enhanced hex system
+    findEnhancedUnitPath(unit, targetX, targetY) {
+        const startCoord = this.screenToHex(unit.x, unit.y);
+        const goalCoord = this.screenToHex(targetX, targetY);
+
+        const hexPath = this.findHexPath(startCoord, goalCoord, unit.animal);
+
+        if (hexPath && hexPath.length > 1) {
+            // Convert hex path to screen coordinates
+            const screenPath = hexPath.slice(1).map(hexCoord => this.hexToScreen(hexCoord));
+            
+            unit.path = screenPath;
+            unit.pathIndex = 0;
+            unit.isMoving = true;
+            unit.targetX = null;
+            unit.targetY = null;
+            unit.hexPath = hexPath; // Store hex path for debugging
+            
+            console.log(`✅ ${unit.animal} found enhanced hex path with ${hexPath.length} steps`);
+            return true;
+        } else {
+            // Fallback to direct movement
+            unit.targetX = targetX;
+            unit.targetY = targetY;
+            unit.isMoving = true;
+            unit.path = null;
+            unit.pathIndex = 0;
+            
+            console.log(`⚠️ ${unit.animal} using direct movement (no hex path found)`);
+            return false;
+        }
+    }
+
+    // Check if unit has line of sight to target
+    hasLineOfSight(unit, targetX, targetY) {
+        const startCoord = this.screenToHex(unit.x, unit.y);
+        const endCoord = this.screenToHex(targetX, targetY);
+        
+        const terrainSystem = window.terrainSystem;
+        if (!terrainSystem) return true; // Default to true if no terrain system
+        
+        return terrainSystem.hasLineOfSight(startCoord, endCoord);
+    }
+
+    // Get tactical information about hex position
+    getHexTacticalInfo(hexCoord) {
+        const terrainSystem = window.terrainSystem;
+        if (!terrainSystem) return null;
+        
+        const tile = terrainSystem.getHexTile(hexCoord);
+        if (!tile) return null;
+        
+        return {
+            terrain: tile.terrain.type,
+            defensive: tile.terrain.defensive,
+            concealment: tile.terrain.concealment,
+            visionBonus: tile.terrain.vision.bonus,
+            movementPenalty: {
+                ground: 1 - tile.terrain.movement.ground,
+                flying: 1 - tile.terrain.movement.flying
+            },
+            resources: tile.resources
+        };
+    }
+
+    // === END ENHANCED HEX METHODS ===
 }
 
 // Create global pathfinding instance

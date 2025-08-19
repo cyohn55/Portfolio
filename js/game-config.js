@@ -17,28 +17,122 @@ window.ANIMAL_CONFIGS = {
     dolphin: { speed: 2.5, size: 38, model: 'models/dolphin.glb', baseStyle: 'pool', emoji: '🐬' }
 };
 
-// Terrain configuration
+// Enhanced Terrain configuration with strategic properties
 window.TERRAIN_CONFIG = {
-    models: [
-        { file: 'models/Mountain.glb', alt: 'Mountain Tile', type: 'mountain' },
-        { file: 'models/Forest.glb', alt: 'Forest Tile', type: 'forest' },
-        { file: 'models/Hill.glb', alt: 'Hill Tile', type: 'hill' },
-        { file: 'models/FarmLand.glb', alt: 'Farm Land Tile', type: 'farmland' },
-        { file: 'models/PineTree.glb', alt: 'Pine Tree Tile', type: 'pinetree' }
-    ],
-    weights: {
-        mountain: 0.12,   // Reduced to make room for pine trees
-        forest: 0.30,     // Reduced to make room for pine trees
-        hill: 0.12,       // Reduced to make room for pine trees
-        farmland: 0.28,   // Reduced to make room for pine trees
-        pinetree: 0.18    // New pine tree terrain
+    types: {
+        FARMLAND: {
+            model: 'models/FarmLand.glb',
+            alt: 'Farm Land Tile',
+            type: 'farmland',
+            movement: { 
+                ground: 1.0,    // Normal speed for ground units
+                flying: 1.0     // Normal speed for flying units
+            },
+            height: 5,
+            vision: { blocks: false, penalty: 0, bonus: 0 },
+            buildable: true,
+            resources: { food: 2, strategic_value: 'high' },
+            defensive: false,
+            concealment: false
+        },
+        HILL: {
+            model: 'models/Hill.glb',
+            alt: 'Hill Tile', 
+            type: 'hill',
+            movement: {
+                ground: 0.7,    // 30% slower for ground units
+                flying: 1.0     // Normal for flying units
+            },
+            height: 80,
+            vision: { blocks: false, penalty: 0, bonus: 1.5 }, // 50% vision bonus
+            buildable: true,
+            resources: { strategic_value: 'medium', defensive_bonus: 0.3 },
+            defensive: true,
+            concealment: false
+        },
+        MOUNTAIN: {
+            model: 'models/Mountain.glb',
+            alt: 'Mountain Tile',
+            type: 'mountain',
+            movement: {
+                ground: 0.0,    // Impassable for ground units  
+                flying: 1.0     // Normal for flying units
+            },
+            height: 120,
+            vision: { blocks: true, penalty: 0, bonus: 0 },
+            buildable: false,
+            resources: { strategic_value: 'fortress' },
+            defensive: true,
+            concealment: false
+        },
+        PINETREE: {
+            model: 'models/PineTree.glb',
+            alt: 'Pine Tree Tile',
+            type: 'pinetree',
+            movement: {
+                ground: 0.8,    // 20% slower for ground units
+                flying: 0.9     // 10% slower for flying units (branches)
+            },
+            height: 60,
+            vision: { blocks: true, penalty: 0.3, bonus: 0 },
+            buildable: false,
+            resources: { wood: 1, strategic_value: 'medium' },
+            defensive: false,
+            concealment: true // Units can hide in forests
+        },
+        FOREST: {
+            model: 'models/Forest.glb',
+            alt: 'Forest Tile',
+            type: 'forest',
+            movement: {
+                ground: 0.8,    // 20% slower for ground units
+                flying: 0.9     // 10% slower for flying units
+            },
+            height: 40,
+            vision: { blocks: true, penalty: 0.2, bonus: 0 },
+            buildable: false,
+            resources: { wood: 2, strategic_value: 'medium' },
+            defensive: false,
+            concealment: true
+        }
     },
-    heights: {
-        mountain: 120,
-        hill: 80,
-        forest: 40,
-        farmland: 5,
-        pinetree: 60
+    
+    // Terrain generation weights
+    weights: {
+        farmland: 0.25,   // Valuable resource areas
+        hill: 0.15,       // Strategic high ground
+        mountain: 0.10,   // Natural barriers
+        pinetree: 0.20,   // Forest coverage
+        forest: 0.30      // Primary forest coverage
+    },
+    
+    // Strategic placement patterns
+    patterns: {
+        centralHighlands: {
+            terrains: ['hill', 'mountain', 'hill'],
+            purpose: 'control_point',
+            weight: 0.15
+        },
+        farmingValleys: {
+            terrains: ['farmland', 'farmland', 'hill'],
+            purpose: 'resource_zone',
+            weight: 0.25
+        },
+        mountainRanges: {
+            terrains: ['mountain', 'pinetree', 'mountain'],
+            purpose: 'natural_barrier',
+            weight: 0.10
+        },
+        wilderness: {
+            terrains: ['pinetree', 'forest', 'hill'],
+            purpose: 'mixed_terrain',
+            weight: 0.30
+        },
+        defensivePositions: {
+            terrains: ['hill', 'forest', 'mountain'],
+            purpose: 'tactical_advantage',
+            weight: 0.20
+        }
     }
 };
 
@@ -89,8 +183,29 @@ window.TEAMS = Object.freeze({
     AI: 'enemy'
 });
 
-// Flying animals (for collision detection)
-window.FLYING_ANIMALS = ['owl', 'bee'];
+// Flying animals (for collision detection and pathfinding)
+window.FLYING_ANIMALS = ['bee', 'owl']; // These animals can fly over obstacles
+
+// Initialize enhanced terrain system
+window.initializeEnhancedSystems = function() {
+    console.log('🚀 Initializing Enhanced Hex Systems...');
+    
+    // Create global terrain system instance
+    if (!window.terrainSystem) {
+        window.terrainSystem = new TerrainSystem();
+        console.log('✅ Enhanced Terrain System created');
+    }
+    
+    // Generate hex map if not already generated
+    if (window.terrainSystem.hexGrid.size === 0) {
+        window.terrainSystem.generateHexMap();
+        console.log('✅ Strategic hex map generated');
+    }
+    
+    console.log('🎯 Enhanced systems ready for strategic gameplay!');
+};
+
+// Enhanced unit movement and tactical systems ready
 
 // Export for module systems if needed
 if (typeof module !== 'undefined' && module.exports) {

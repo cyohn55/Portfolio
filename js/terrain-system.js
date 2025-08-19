@@ -1,25 +1,39 @@
 /**
- * Terrain System - Hex Grid & 3D Terrain Management
- * Optimized for performance with progressive loading and caching
+ * Enhanced Terrain System - Strategic Hex Grid with Red Blob Games Algorithms
+ * Features: Axial coordinates, advanced pathfinding, strategic terrain placement
  */
 
 class TerrainSystem {
     constructor() {
-        this.mapCache = null;
+        this.hexGrid = new Map(); // Map<string, HexTile> using axial coordinates
         this.loadedTiles = new Set();
         this.intersectionObserver = null;
         this.tilePool = new Map(); // Reuse tile elements
+        this.gridRadius = 8; // Hex map radius
         
-        // Terrain configuration
-        this.terrainWeights = {
-            mountain: 0.12,  // Reduced to make room for pine trees
-            forest: 0.30,    // Reduced to make room for pine trees
-            hill: 0.12,      // Reduced to make room for pine trees
-            farmland: 0.28,  // Reduced to make room for pine trees
-            pinetree: 0.18   // New pine tree terrain
-        };
+        // Enhanced terrain configuration from TERRAIN_CONFIG
+        this.terrainTypes = window.TERRAIN_CONFIG?.types || this.getDefaultTerrainTypes();
+        this.terrainWeights = window.TERRAIN_CONFIG?.weights || this.getDefaultWeights();
+        this.strategicPatterns = window.TERRAIN_CONFIG?.patterns || {};
         
+        console.log('🏗️ Enhanced Terrain System initialized with axial coordinates');
         this.setupProgressiveLoading();
+    }
+
+    // Fallback terrain types if config not loaded
+    getDefaultTerrainTypes() {
+        return {
+            FARMLAND: { model: 'models/FarmLand.glb', type: 'farmland', movement: { ground: 1.0, flying: 1.0 } },
+            HILL: { model: 'models/Hill.glb', type: 'hill', movement: { ground: 0.7, flying: 1.0 } },
+            MOUNTAIN: { model: 'models/Mountain.glb', type: 'mountain', movement: { ground: 0.0, flying: 1.0 } },
+            PINETREE: { model: 'models/PineTree.glb', type: 'pinetree', movement: { ground: 0.8, flying: 0.9 } },
+            FOREST: { model: 'models/Forest.glb', type: 'forest', movement: { ground: 0.8, flying: 0.9 } }
+        };
+    }
+
+    // Fallback weights
+    getDefaultWeights() {
+        return { farmland: 0.25, hill: 0.15, mountain: 0.10, pinetree: 0.20, forest: 0.30 };
     }
 
     // Setup intersection observer for progressive loading
@@ -99,6 +113,159 @@ class TerrainSystem {
         this.logTerrainStats(layout, cols, rows);
         return layout;
     }
+
+    // === NEW HEX-BASED METHODS ===
+    
+    // Generate strategic hex map using axial coordinates
+    generateHexMap(radius = null, useCache = true) {
+        const mapRadius = radius || this.gridRadius;
+        console.log(`🗺️ Generating strategic hex map: radius ${mapRadius} (cache: ${useCache})`);
+        
+        if (useCache && this.hexGrid.size > 0) {
+            console.log('📋 Using cached hex map layout');
+            return this.hexGrid;
+        }
+
+        // Clear existing grid
+        this.hexGrid.clear();
+        
+        // Generate hexagonal map shape using Red Blob Games range algorithm
+        const centerCoord = new HexCoord(0, 0);
+        const hexPositions = HexMath.hexRange(centerCoord, mapRadius);
+        
+        console.log(`🔧 Creating ${hexPositions.length} hex tiles in strategic layout`);
+        
+        // Apply strategic terrain placement
+        this.applyStrategicPlacement(hexPositions);
+        
+        // Fill remaining positions with weighted random terrain
+        for (const hexCoord of hexPositions) {
+            const key = hexCoord.toString();
+            if (!this.hexGrid.has(key)) {
+                const terrainType = this.selectWeightedTerrain();
+                this.createHexTile(hexCoord, terrainType);
+            }
+        }
+
+        this.logHexTerrainDistribution();
+        console.log('✅ Strategic hex map generated');
+        return this.hexGrid;
+    }
+
+    // Apply strategic terrain placement patterns
+    applyStrategicPlacement(hexPositions) {
+        const patterns = Object.values(this.strategicPatterns);
+        const totalPatternWeight = patterns.reduce((sum, pattern) => sum + pattern.weight, 0);
+        
+        for (const pattern of patterns) {
+            const patternCount = Math.floor(hexPositions.length * (pattern.weight / totalPatternWeight));
+            
+            for (let i = 0; i < patternCount; i++) {
+                const centerHex = hexPositions[Math.floor(Math.random() * hexPositions.length)];
+                const neighbors = centerHex.getNeighbors();
+                
+                // Place pattern terrain in center and neighbors
+                const terrains = pattern.terrains;
+                this.createHexTile(centerHex, terrains[0]);
+                
+                for (let j = 0; j < Math.min(neighbors.length, terrains.length - 1); j++) {
+                    const neighbor = neighbors[j];
+                    const terrainType = terrains[j + 1] || terrains[Math.floor(Math.random() * terrains.length)];
+                    this.createHexTile(neighbor, terrainType);
+                }
+            }
+        }
+    }
+
+    // Create a hex tile with terrain properties
+    createHexTile(hexCoord, terrainType) {
+        const key = hexCoord.toString();
+        const terrainConfig = this.terrainTypes[terrainType.toUpperCase()] || this.terrainTypes.FARMLAND;
+        
+        const hexTile = {
+            coord: hexCoord,
+            terrain: terrainConfig,
+            units: [],
+            visibility: new Set(),
+            explored: false,
+            resources: terrainConfig.resources || {},
+            lastUpdate: Date.now()
+        };
+        
+        this.hexGrid.set(key, hexTile);
+        return hexTile;
+    }
+
+    // Select terrain type using weighted distribution
+    selectWeightedTerrain() {
+        const weights = Object.values(this.terrainWeights);
+        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+        let random = Math.random() * totalWeight;
+        
+        const terrainTypes = Object.keys(this.terrainWeights);
+        for (const terrainType of terrainTypes) {
+            random -= this.terrainWeights[terrainType];
+            if (random <= 0) {
+                return terrainType;
+            }
+        }
+        
+        return 'farmland'; // Fallback
+    }
+
+    // Get hex tile at coordinate
+    getHexTile(hexCoord) {
+        const key = hexCoord.toString();
+        return this.hexGrid.get(key);
+    }
+
+    // Get all hex neighbors that exist on the map
+    getHexNeighbors(hexCoord) {
+        return hexCoord.getNeighbors()
+            .map(neighborCoord => this.getHexTile(neighborCoord))
+            .filter(tile => tile !== undefined);
+    }
+
+    // Check line of sight between two hex positions
+    hasLineOfSight(startCoord, endCoord) {
+        const line = HexMath.hexLineDraw(startCoord, endCoord);
+        
+        for (const coord of line) {
+            const tile = this.getHexTile(coord);
+            if (tile?.terrain.vision?.blocks) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Get movement cost for unit type on terrain
+    getMovementCost(hexCoord, unitType) {
+        const tile = this.getHexTile(hexCoord);
+        if (!tile) return Infinity;
+        
+        const isFlying = window.FLYING_ANIMALS?.includes(unitType) || false;
+        const movementType = isFlying ? 'flying' : 'ground';
+        
+        return 1 / (tile.terrain.movement[movementType] || 0.1);
+    }
+
+    // Log hex terrain distribution
+    logHexTerrainDistribution() {
+        const distribution = {};
+        let total = 0;
+        
+        for (const tile of this.hexGrid.values()) {
+            const type = tile.terrain.type;
+            distribution[type] = (distribution[type] || 0) + 1;
+            total++;
+        }
+        
+        console.log('🗺️ Hex Terrain Distribution:', distribution);
+        console.log(`📊 Total hex tiles: ${total}`);
+    }
+
+    // === END HEX-BASED METHODS ===
 
     // Get random terrain based on weighted distribution
     getRandomTerrain(terrainModels) {

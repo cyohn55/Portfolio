@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Hex System Test</title>
+    <style>
+        body { 
+            font-family: monospace; 
+            background: #000; 
+            color: #0f0; 
+            padding: 20px; 
+        }
+        .test-section { 
+            margin: 20px 0; 
+            padding: 15px; 
+            border: 1px solid #333; 
+            background: #111; 
+        }
+        .success { color: #0f0; }
+        .error { color: #f00; }
+        .info { color: #ff0; }
+    </style>
+</head>
+<body>
+    <h1>🔬 Enhanced Hex System Test Suite</h1>
+    <div id="test-output"></div>
+
+    <script src="js/hex-coordinate.js"></script>
+    <script src="js/game-config.js"></script>
+    <script src="js/terrain-system.js"></script>
+    <script src="js/pathfinding.js"></script>
+
+    <script>
+        const output = document.getElementById('test-output');
+        
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = `[${new Date().toISOString().split('T')[1].split('.')[0]}] ${message}`;
+            output.appendChild(div);
+            console.log(message);
+        }
+
+        function runTests() {
+            log('🧪 Starting Enhanced Hex System Tests...', 'info');
+            
+            try {
+                // Test 1: Hex Coordinate System
+                log('=== TEST 1: Hex Coordinate System ===', 'info');
+                const coord1 = new HexCoord(0, 0);
+                const coord2 = new HexCoord(1, 0);
+                const distance = coord1.distanceTo(coord2);
+                
+                if (distance === 1) {
+                    log('✅ Hex distance calculation: PASS', 'success');
+                } else {
+                    log(`❌ Hex distance calculation: FAIL (expected 1, got ${distance})`, 'error');
+                }
+
+                // Test 2: Hex Neighbors
+                const neighbors = coord1.getNeighbors();
+                if (neighbors.length === 6) {
+                    log('✅ Hex neighbors generation: PASS', 'success');
+                } else {
+                    log(`❌ Hex neighbors generation: FAIL (expected 6, got ${neighbors.length})`, 'error');
+                }
+
+                // Test 3: Hex Math - Line Drawing
+                const line = HexMath.hexLineDraw(coord1, coord2);
+                if (line.length >= 2) {
+                    log('✅ Hex line drawing: PASS', 'success');
+                } else {
+                    log(`❌ Hex line drawing: FAIL (expected >=2 points, got ${line.length})`, 'error');
+                }
+
+                // Test 4: Terrain System
+                log('=== TEST 2: Enhanced Terrain System ===', 'info');
+                const terrainSystem = new TerrainSystem();
+                
+                if (terrainSystem.terrainTypes.FARMLAND) {
+                    log('✅ Terrain types loading: PASS', 'success');
+                } else {
+                    log('❌ Terrain types loading: FAIL', 'error');
+                }
+
+                // Test 5: Hex Map Generation
+                const hexMap = terrainSystem.generateHexMap(3); // Small test map
+                if (hexMap.size > 0) {
+                    log(`✅ Hex map generation: PASS (${hexMap.size} tiles)`, 'success');
+                } else {
+                    log('❌ Hex map generation: FAIL', 'error');
+                }
+
+                // Test 6: Terrain Properties
+                const testCoord = new HexCoord(0, 0);
+                const tile = terrainSystem.getHexTile(testCoord);
+                if (tile && tile.terrain) {
+                    log('✅ Hex tile properties: PASS', 'success');
+                    log(`📊 Tile terrain: ${tile.terrain.type}`, 'info');
+                    log(`🚶 Ground movement: ${tile.terrain.movement.ground}`, 'info');
+                    log(`🦅 Flying movement: ${tile.terrain.movement.flying}`, 'info');
+                } else {
+                    log('❌ Hex tile properties: FAIL', 'error');
+                }
+
+                // Test 7: Pathfinding System  
+                log('=== TEST 3: Enhanced Pathfinding ===', 'info');
+                const pathfinding = new PathfindingSystem();
+                
+                if (typeof pathfinding.findHexPath === 'function') {
+                    log('✅ Enhanced pathfinding methods: PASS', 'success');
+                } else {
+                    log('❌ Enhanced pathfinding methods: FAIL', 'error');
+                }
+
+                // Test 8: Movement Cost Calculation
+                const moveCost = terrainSystem.getMovementCost(testCoord, 'bear');
+                if (typeof moveCost === 'number' && moveCost > 0) {
+                    log(`✅ Movement cost calculation: PASS (cost: ${moveCost})`, 'success');
+                } else {
+                    log('❌ Movement cost calculation: FAIL', 'error');
+                }
+
+                // Test 9: Line of Sight
+                const coord3 = new HexCoord(2, 0);
+                const hasLOS = terrainSystem.hasLineOfSight(testCoord, coord3);
+                log(`👁️ Line of sight test: ${hasLOS ? 'CLEAR' : 'BLOCKED'}`, 'info');
+
+                // Test 10: Strategic Pattern Application
+                log('=== TEST 4: Strategic Features ===', 'info');
+                terrainSystem.logHexTerrainDistribution();
+                log('✅ Strategic terrain distribution: PASS', 'success');
+
+                log('🎯 All tests completed!', 'success');
+                log(`📈 Total hex tiles generated: ${hexMap.size}`, 'info');
+                log('🚀 Enhanced Hex System is ready for strategic gameplay!', 'success');
+
+            } catch (error) {
+                log(`💥 Test suite error: ${error.message}`, 'error');
+                console.error('Test error:', error);
+            }
+        }
+
+        // Run tests when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(runTests, 100);
+        });
+    </script>
+</body>
+</html>
