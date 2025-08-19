@@ -531,6 +531,24 @@ nav ul li a:hover {
     color: #fff !important;
 }
 
+[data-theme="dark"] .form-group input,
+[data-theme="dark"] .form-group textarea {
+    color: #fff !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+[data-theme="dark"] .form-group input:focus,
+[data-theme="dark"] .form-group textarea:focus {
+    border-color: #57c785 !important;
+    box-shadow: 0 0 0 3px rgba(87, 199, 133, 0.2) !important;
+}
+
+[data-theme="dark"] .form-group input::placeholder,
+[data-theme="dark"] .form-group textarea::placeholder {
+    color: rgba(255, 255, 255, 0.7) !important;
+}
+
 [data-theme="dark"] .controls button {
     color: #fff !important;
 }
