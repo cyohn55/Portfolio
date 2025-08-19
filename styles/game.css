@@ -1,0 +1,597 @@
+/**
+ * RTS Game CSS - Optimized Styles
+ * Organized by component for better maintainability
+ */
+
+/* ========================================
+   CSS Variables for consistent theming
+======================================== */
+:root {
+    --primary-blue: #1e3c72;
+    --secondary-blue: #2a5298;
+    --accent-green: #00ff88;
+    --accent-green-dark: #00cc6a;
+    --ui-glass: rgba(0, 0, 0, 0.8);
+    --ui-glass-light: rgba(255, 255, 255, 0.1);
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.8);
+    --border-radius: 10px;
+    --transition-fast: 0.2s ease;
+    --transition-normal: 0.3s ease;
+    --shadow-glow: 0 0 20px rgba(0, 255, 136, 0.5);
+}
+
+/* ========================================
+   Performance Optimizations
+======================================== */
+* {
+    /* Hardware acceleration for better performance */
+    will-change: auto;
+    transform-style: preserve-3d;
+    backface-visibility: hidden;
+}
+
+/* Reduce animations on low-end devices */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ========================================
+   Title Screen Styles
+======================================== */
+#titleScreen p {
+    color: var(--text-primary);
+    font-size: clamp(1rem, 2.5vw, 1.2rem);
+    margin-bottom: 3rem;
+    text-align: center;
+    max-width: 600px;
+}
+
+.animal-selection {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    max-width: 800px;
+    width: 100%;
+    padding: 0 1rem;
+}
+
+.animal-card {
+    background: var(--ui-glass-light);
+    border: 3px solid transparent;
+    border-radius: var(--border-radius);
+    padding: 1rem;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    backdrop-filter: blur(10px);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.animal-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1));
+    opacity: 0;
+    transition: opacity var(--transition-normal);
+}
+
+.animal-card:hover::before {
+    opacity: 1;
+}
+
+.animal-card:hover {
+    background: rgba(255,255,255,0.2);
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+.animal-card.selected {
+    border-color: var(--accent-green);
+    background: rgba(0,255,136,0.2);
+    box-shadow: var(--shadow-glow);
+}
+
+.animal-card h3 {
+    color: var(--text-primary);
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.animal-card p {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin: 0;
+    line-height: 1.4;
+}
+
+.start-btn {
+    background: linear-gradient(45deg, var(--accent-green), var(--accent-green-dark));
+    border: none;
+    padding: 1rem 2rem;
+    border-radius: var(--border-radius);
+    color: var(--text-primary);
+    font-size: 1.2rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    opacity: 0.5;
+    pointer-events: none;
+    position: relative;
+    overflow: hidden;
+}
+
+.start-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    transition: left 0.5s ease;
+}
+
+.start-btn.enabled {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.start-btn:hover.enabled {
+    transform: scale(1.05);
+    box-shadow: 0 5px 15px rgba(0,255,136,0.4);
+}
+
+.start-btn:hover.enabled::before {
+    left: 100%;
+}
+
+/* ========================================
+   Game Screen Styles
+======================================== */
+#gameCanvas {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    cursor: crosshair;
+    position: relative;
+    z-index: 1;
+}
+
+/* 3D Models Container */
+#modelsContainer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 5;
+    /* Performance optimization */
+    contain: layout style paint;
+}
+
+.unit-model {
+    position: absolute;
+    pointer-events: none;
+    z-index: 15;
+    /* Performance optimization */
+    will-change: transform;
+    contain: strict;
+}
+
+.unit-model model-viewer {
+    width: 100%;
+    height: 100%;
+    --progress-bar-display: none;
+    /* Disable unnecessary features for performance */
+    pointer-events: none;
+}
+
+.unit-model.selected model-viewer {
+    filter: drop-shadow(0 0 10px var(--accent-green));
+}
+
+/* ========================================
+   Hex Grid Terrain System
+======================================== */
+#hexGridContainer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 2;
+    opacity: 0.8;
+    /* Performance optimization */
+    contain: layout style;
+}
+
+#hex-grid {
+    position: absolute;
+    top: 50px;
+    left: 50px;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    perspective: 2000px;
+    perspective-origin: center center;
+    transform-origin: center center;
+    /* Performance optimization */
+    contain: layout style paint;
+}
+
+.hex-tile {
+    background: transparent;
+    border: none;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    /* Performance optimizations */
+    will-change: transform;
+    transform-style: preserve-3d;
+    backface-visibility: hidden;
+    transition: transform var(--transition-fast);
+    /* Hexagonal clipping */
+    clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+}
+
+.hex-tile:hover {
+    transform: scale(1.05);
+    z-index: 10;
+    filter: brightness(1.1) saturate(1.2);
+}
+
+.hex-tile.mountain {
+    filter: brightness(0.9);
+}
+
+.hex-tile.hill {
+    filter: brightness(0.95);
+}
+
+.hex-tile.non-traversable {
+    cursor: not-allowed;
+}
+
+.hex-tile.traversable {
+    cursor: pointer;
+}
+
+.hex-tile model-viewer {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+    pointer-events: none;
+}
+
+.tile-3d-container {
+    transform-style: preserve-3d;
+    contain: layout style paint;
+}
+
+/* ========================================
+   UI Elements
+======================================== */
+.ui-panel {
+    position: absolute;
+    background: var(--ui-glass);
+    border-radius: var(--border-radius);
+    padding: 1rem;
+    color: var(--text-primary);
+    backdrop-filter: blur(10px);
+    z-index: 100;
+    border: 1px solid rgba(255,255,255,0.1);
+    /* Performance optimization */
+    contain: layout style;
+}
+
+#resourcePanel {
+    top: 20px;
+    left: 20px;
+    min-width: 150px;
+}
+
+#resourcePanel div {
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+#resourcePanel span {
+    color: var(--accent-green);
+    font-weight: bold;
+}
+
+#controlPanel {
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.animal-btn {
+    background: var(--ui-glass-light);
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: var(--border-radius);
+    padding: 0.5rem 1rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.animal-btn:hover {
+    background: rgba(255,255,255,0.2);
+    border-color: rgba(255,255,255,0.5);
+    transform: translateY(-2px);
+}
+
+.animal-btn.active {
+    background: rgba(0,255,136,0.3);
+    border-color: var(--accent-green);
+    box-shadow: 0 0 10px rgba(0,255,136,0.3);
+}
+
+#selectionBox {
+    position: absolute;
+    border: 2px dashed var(--accent-green);
+    background: rgba(0,255,136,0.1);
+    pointer-events: none;
+    display: none;
+    z-index: 50;
+    backdrop-filter: blur(2px);
+}
+
+#miniMap {
+    top: 20px;
+    right: 20px;
+    width: 200px;
+    height: 150px;
+    padding: 0.5rem;
+}
+
+#miniMapCanvas {
+    width: 100%;
+    height: 100%;
+    border-radius: 5px;
+}
+
+/* ========================================
+   Development Panel (Conditional)
+======================================== */
+#devPanel {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.95);
+    padding: 15px;
+    border-radius: 8px;
+    color: var(--text-primary);
+    z-index: 1001;
+    width: 320px;
+    max-height: 90vh;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    transition: transform var(--transition-normal);
+    border: 2px solid var(--accent-green);
+    /* Only show in development mode */
+    display: none;
+}
+
+.dev-mode #devPanel {
+    display: block;
+}
+
+#devPanel.collapsed {
+    transform: translateX(305px);
+}
+
+#devToggle {
+    position: fixed;
+    top: 15px;
+    right: 15px;
+    background: var(--accent-green);
+    color: black;
+    border: none;
+    border-radius: 50%;
+    width: 35px;
+    height: 35px;
+    cursor: pointer;
+    z-index: 1002;
+    font-weight: bold;
+    font-size: 16px;
+    transition: all var(--transition-fast);
+    /* Only show in development mode */
+    display: none;
+}
+
+.dev-mode #devToggle {
+    display: block;
+}
+
+#devToggle:hover {
+    background: var(--accent-green-dark);
+    transform: scale(1.1);
+}
+
+/* ========================================
+   Responsive Design
+======================================== */
+@media (max-width: 768px) {
+    .animal-selection {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+    
+    .animal-card {
+        padding: 0.75rem;
+    }
+    
+    .animal-card h3 {
+        font-size: 1rem;
+    }
+    
+    .animal-card p {
+        font-size: 0.75rem;
+    }
+    
+    .start-btn {
+        padding: 0.8rem 1.5rem;
+        font-size: 1rem;
+    }
+    
+    #controlPanel {
+        bottom: 10px;
+        gap: 0.5rem;
+    }
+    
+    .animal-btn {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.8rem;
+    }
+    
+    #resourcePanel,
+    #miniMap {
+        transform: scale(0.9);
+    }
+    
+    #devPanel {
+        width: 280px;
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 480px) {
+    #titleScreen h1 {
+        font-size: 2rem;
+        margin-bottom: 1rem;
+    }
+    
+    #titleScreen p {
+        font-size: 1rem;
+        margin-bottom: 2rem;
+    }
+    
+    .animal-selection {
+        grid-template-columns: 1fr;
+        max-width: 300px;
+    }
+    
+    #controlPanel {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    #resourcePanel {
+        top: 10px;
+        left: 10px;
+        padding: 0.5rem;
+    }
+    
+    #miniMap {
+        top: 10px;
+        right: 10px;
+        width: 150px;
+        height: 100px;
+    }
+}
+
+/* ========================================
+   Animations
+======================================== */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-out;
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+/* ========================================
+   Loading States
+======================================== */
+.loading-shimmer {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+/* ========================================
+   Accessibility
+======================================== */
+@media (prefers-high-contrast: high) {
+    :root {
+        --ui-glass: rgba(0, 0, 0, 0.95);
+        --text-primary: #ffffff;
+        --text-secondary: #cccccc;
+    }
+}
+
+/* Focus indicators for keyboard navigation */
+.animal-card:focus,
+.start-btn:focus,
+.animal-btn:focus {
+    outline: 2px solid var(--accent-green);
+    outline-offset: 2px;
+}
+
+/* Reduced motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+    .animal-card:hover {
+        transform: none;
+    }
+    
+    .start-btn:hover.enabled {
+        transform: none;
+    }
+    
+    .hex-tile:hover {
+        transform: none;
+    }
+} 

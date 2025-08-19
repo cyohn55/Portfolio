@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animal RTS - Choose Your Army</title>
+    
+    <!-- Preload critical 3D models -->
+    <link rel="preload" href="models/Bear.glb" as="fetch" crossorigin="anonymous">
+    <link rel="preload" href="models/Bee.glb" as="fetch" crossorigin="anonymous">
+    <link rel="preload" href="models/Turtle.glb" as="fetch" crossorigin="anonymous">
+    
+    <!-- Critical CSS - inline for faster render -->
+    <style>
+        /* Critical above-the-fold styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            overflow: hidden;
+            height: 100vh;
+            position: relative;
+        }
+
+        /* Loading indicator */
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 1.5rem;
+            z-index: 1001;
+            background: rgba(0,0,0,0.8);
+            padding: 20px 40px;
+            border-radius: 10px;
+        }
+
+        /* Title Screen - critical path */
+        #titleScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        #titleScreen h1 {
+            color: white;
+            font-size: clamp(2rem, 5vw, 3rem);
+            margin-bottom: 2rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+    </style>
+    
+    <!-- Load non-critical CSS asynchronously -->
+    <link rel="stylesheet" href="styles/game.css" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="styles/game.css"></noscript>
+    
+    <!-- Preload model-viewer -->
+    <link rel="modulepreload" href="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div class="loading" id="loadingIndicator">
+        <div>🎮 Loading Animal RTS...</div>
+        <div style="font-size: 0.8rem; margin-top: 10px;">Preparing 3D models and terrain...</div>
+    </div>
+
+    <!-- Title Screen -->
+    <div id="titleScreen">
+        <h1>🎮 Animal RTS</h1>
+        <p>Choose 3 animals to build your army and conquer the battlefield!</p>
+        
+        <div class="animal-selection" id="animalSelection">
+            <!-- Animal cards will be loaded dynamically -->
+        </div>
+        
+        <button class="start-btn" id="startBtn">Select 3 animals to start</button>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="gameScreen" style="display: none;">
+        <canvas id="gameCanvas"></canvas>
+        <div id="modelsContainer"></div>
+        <div id="hexGridContainer">
+            <div id="hex-grid"></div>
+        </div>
+        
+        <!-- UI Panels -->
+        <div id="resourcePanel" class="ui-panel">
+            <div>Population: <span id="population">0</span></div>
+            <div>Selected: <span id="selectedCount">0</span></div>
+        </div>
+
+        <div id="controlPanel" class="ui-panel"></div>
+        <div id="miniMap" class="ui-panel">
+            <canvas id="miniMapCanvas" width="200" height="150"></canvas>
+        </div>
+        <div id="selectionBox"></div>
+    </div>
+
+    <!-- Development Panel (conditional) -->
+    <div id="devControls" style="display: none;"></div>
+
+    <!-- Scripts loaded in optimal order -->
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+    <script src="js/game-config.js"></script>
+    <script src="js/game-state.js"></script>
+    <script src="js/pathfinding.js"></script>
+    <script src="js/terrain-system.js"></script>
+    <script src="js/unit-system.js"></script>
+    <script src="js/ui-system.js"></script>
+    <script src="js/game-engine.js"></script>
+    
+    <script>
+        // Initialize game when all scripts are loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('🎮 DOM loaded - initializing RTS game...');
+            if (window.GameEngine) {
+                window.GameEngine.initialize();
+            } else {
+                console.error('GameEngine not found - check script loading order');
+            }
+        });
+        
+        // Performance monitoring (development mode only)
+        if (window.location.search.includes('debug=true')) {
+            setInterval(() => {
+                if (window.gameEngine) {
+                    const stats = window.gameEngine.getPerformanceStats();
+                    console.log('📊 Performance:', stats);
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html> 
