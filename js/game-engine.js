@@ -675,7 +675,9 @@ class GameEngine {
                     modelViewer.className = `hex-tile ${terrain.type}`;
                     modelViewer.setAttribute('src', terrain.model);
                     modelViewer.setAttribute('alt', `${terrain.type} tile`);
+                    // Aggressively disable all interactions
                     modelViewer.setAttribute('interaction-prompt', 'none');
+                    modelViewer.setAttribute('camera-controls', 'false');
                     modelViewer.setAttribute('disable-zoom', 'true');
                     modelViewer.setAttribute('disable-pan', 'true');
                     modelViewer.setAttribute('disable-tap', 'true');
@@ -683,15 +685,33 @@ class GameEngine {
                     modelViewer.setAttribute('camera-orbit', '0deg 0deg 75m');
                     modelViewer.setAttribute('field-of-view', '45deg');
                     modelViewer.setAttribute('touch-action', 'none');
-                    modelViewer.removeAttribute('camera-controls');
+                    modelViewer.setAttribute('ar', 'false');
+                    modelViewer.setAttribute('environment-image', 'none');
+                    
+                    // Lock camera with event listeners
+                    modelViewer.addEventListener('camera-change', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        modelViewer.cameraOrbit = '0deg 0deg 75m';
+                    });
+                    
                     modelViewer.style.cssText = `
                         width: 100%;
                         height: 100%;
                         background: transparent;
-                        pointer-events: none;
-                        touch-action: none;
-                        user-select: none;
+                        pointer-events: none !important;
+                        touch-action: none !important;
+                        user-select: none !important;
+                        -webkit-user-select: none !important;
+                        -webkit-touch-callout: none !important;
                     `;
+                    
+                    // Force lock after load
+                    modelViewer.addEventListener('load', () => {
+                        modelViewer.cameraOrbit = '0deg 0deg 75m';
+                        modelViewer.fieldOfView = '45deg';
+                    });
+                    
                     tileContainer.appendChild(modelViewer);
                 } else {
                     // Fallback to simple colored hex
@@ -750,7 +770,9 @@ class GameEngine {
                         modelViewer.className = `hex-tile ${terrain.type}`;
                         modelViewer.setAttribute('src', terrain.model);
                         modelViewer.setAttribute('alt', `${terrain.type} tile`);
+                        // Aggressively disable all interactions
                         modelViewer.setAttribute('interaction-prompt', 'none');
+                        modelViewer.setAttribute('camera-controls', 'false');
                         modelViewer.setAttribute('disable-zoom', 'true');
                         modelViewer.setAttribute('disable-pan', 'true');
                         modelViewer.setAttribute('disable-tap', 'true');
@@ -758,15 +780,32 @@ class GameEngine {
                         modelViewer.setAttribute('camera-orbit', '0deg 0deg 75m');
                         modelViewer.setAttribute('field-of-view', '45deg');
                         modelViewer.setAttribute('touch-action', 'none');
-                        modelViewer.removeAttribute('camera-controls');
+                        modelViewer.setAttribute('ar', 'false');
+                        modelViewer.setAttribute('environment-image', 'none');
+                        
+                        // Lock camera with event listeners
+                        modelViewer.addEventListener('camera-change', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            modelViewer.cameraOrbit = '0deg 0deg 75m';
+                        });
+                        
                         modelViewer.style.cssText = `
                             width: 100%;
                             height: 100%;
                             background: transparent;
-                            pointer-events: none;
-                            touch-action: none;
-                            user-select: none;
+                            pointer-events: none !important;
+                            touch-action: none !important;
+                            user-select: none !important;
+                            -webkit-user-select: none !important;
+                            -webkit-touch-callout: none !important;
                         `;
+                        
+                        // Force lock after load
+                        modelViewer.addEventListener('load', () => {
+                            modelViewer.cameraOrbit = '0deg 0deg 75m';
+                            modelViewer.fieldOfView = '45deg';
+                        });
                         tileContainer.appendChild(modelViewer);
                     } else {
                         // Fallback to simple colored hex
@@ -821,6 +860,7 @@ class GameEngine {
         baseModel.setAttribute('src', `models/${base.animal}.glb`);
         baseModel.setAttribute('alt', `${base.animal} base`);
         baseModel.setAttribute('interaction-prompt', 'none');
+        baseModel.setAttribute('camera-controls', 'false');
         baseModel.setAttribute('disable-zoom', 'true');
         baseModel.setAttribute('disable-pan', 'true');
         baseModel.setAttribute('disable-tap', 'true');
@@ -828,7 +868,19 @@ class GameEngine {
         baseModel.setAttribute('camera-orbit', '0deg 0deg 132m');
         baseModel.setAttribute('field-of-view', '45deg');
         baseModel.setAttribute('touch-action', 'none');
-        baseModel.removeAttribute('camera-controls');
+        baseModel.setAttribute('ar', 'false');
+        
+        // Lock camera for base
+        baseModel.addEventListener('camera-change', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            baseModel.cameraOrbit = '0deg 0deg 132m';
+        });
+        
+        baseModel.addEventListener('load', () => {
+            baseModel.cameraOrbit = '0deg 0deg 132m';
+            baseModel.fieldOfView = '45deg';
+        });
         
         baseModel.style.cssText = `
             position: absolute;
@@ -867,6 +919,7 @@ class GameEngine {
         kingModel.setAttribute('src', animalConfig.model);
         kingModel.setAttribute('alt', `King ${animal}`);
         kingModel.setAttribute('interaction-prompt', 'none');
+        kingModel.setAttribute('camera-controls', 'false');
         kingModel.setAttribute('disable-zoom', 'true');
         kingModel.setAttribute('disable-pan', 'true');
         kingModel.setAttribute('disable-tap', 'true');
@@ -874,7 +927,19 @@ class GameEngine {
         kingModel.setAttribute('camera-orbit', '0deg 0deg 176m');
         kingModel.setAttribute('field-of-view', '45deg');
         kingModel.setAttribute('touch-action', 'none');
-        kingModel.removeAttribute('camera-controls');
+        kingModel.setAttribute('ar', 'false');
+        
+        // Lock camera for king
+        kingModel.addEventListener('camera-change', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            kingModel.cameraOrbit = '0deg 0deg 176m';
+        });
+        
+        kingModel.addEventListener('load', () => {
+            kingModel.cameraOrbit = '0deg 0deg 176m';
+            kingModel.fieldOfView = '45deg';
+        });
         
         kingModel.style.cssText = `
             position: absolute;
@@ -916,6 +981,7 @@ class GameEngine {
         queenModel.setAttribute('src', animalConfig.model);
         queenModel.setAttribute('alt', `Queen ${animal}`);
         queenModel.setAttribute('interaction-prompt', 'none');
+        queenModel.setAttribute('camera-controls', 'false');
         queenModel.setAttribute('disable-zoom', 'true');
         queenModel.setAttribute('disable-pan', 'true');
         queenModel.setAttribute('disable-tap', 'true');
@@ -923,7 +989,19 @@ class GameEngine {
         queenModel.setAttribute('camera-orbit', '0deg 0deg 154m');
         queenModel.setAttribute('field-of-view', '45deg');
         queenModel.setAttribute('touch-action', 'none');
-        queenModel.removeAttribute('camera-controls');
+        queenModel.setAttribute('ar', 'false');
+        
+        // Lock camera for queen
+        queenModel.addEventListener('camera-change', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            queenModel.cameraOrbit = '0deg 0deg 154m';
+        });
+        
+        queenModel.addEventListener('load', () => {
+            queenModel.cameraOrbit = '0deg 0deg 154m';
+            queenModel.fieldOfView = '45deg';
+        });
         
         queenModel.style.cssText = `
             position: absolute;
@@ -972,6 +1050,7 @@ class GameEngine {
         unitModel.setAttribute('src', animalConfig.model);
         unitModel.setAttribute('alt', `${base.animal} unit`);
         unitModel.setAttribute('interaction-prompt', 'none');
+        unitModel.setAttribute('camera-controls', 'false');
         unitModel.setAttribute('disable-zoom', 'true');
         unitModel.setAttribute('disable-pan', 'true');
         unitModel.setAttribute('disable-tap', 'true');
@@ -979,7 +1058,19 @@ class GameEngine {
         unitModel.setAttribute('camera-orbit', '0deg 0deg 110m');
         unitModel.setAttribute('field-of-view', '45deg');
         unitModel.setAttribute('touch-action', 'none');
-        unitModel.removeAttribute('camera-controls');
+        unitModel.setAttribute('ar', 'false');
+        
+        // Lock camera for unit
+        unitModel.addEventListener('camera-change', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            unitModel.cameraOrbit = '0deg 0deg 110m';
+        });
+        
+        unitModel.addEventListener('load', () => {
+            unitModel.cameraOrbit = '0deg 0deg 110m';
+            unitModel.fieldOfView = '45deg';
+        });
         
         unitModel.style.cssText = `
             position: absolute;

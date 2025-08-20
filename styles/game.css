@@ -273,6 +273,23 @@
     /* border: 1px solid rgba(255, 255, 255, 0.2); */
 }
 
+/* Aggressive model-viewer locking */
+model-viewer {
+    pointer-events: none !important;
+    touch-action: none !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -webkit-touch-callout: none !important;
+    -webkit-user-drag: none !important;
+}
+
+/* Only allow interaction for selectable units */
+model-viewer.king-model,
+model-viewer.queen-model,
+model-viewer.unit-model {
+    pointer-events: auto !important;
+}
+
 /* Disabled hover effects for terrain tiles to prevent movement */
 .hex-tile.terrain:hover {
     /* No hover effects for terrain */
