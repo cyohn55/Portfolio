@@ -677,14 +677,20 @@ class GameEngine {
                     modelViewer.setAttribute('alt', `${terrain.type} tile`);
                     modelViewer.setAttribute('interaction-prompt', 'none');
                     modelViewer.setAttribute('disable-zoom', 'true');
+                    modelViewer.setAttribute('disable-pan', 'true');
+                    modelViewer.setAttribute('disable-tap', 'true');
                     modelViewer.setAttribute('auto-rotate', 'false');
                     modelViewer.setAttribute('camera-orbit', '0deg 0deg 75m');
-                    modelViewer.setAttribute('disable-pan', 'true');
+                    modelViewer.setAttribute('field-of-view', '45deg');
+                    modelViewer.setAttribute('touch-action', 'none');
+                    modelViewer.removeAttribute('camera-controls');
                     modelViewer.style.cssText = `
                         width: 100%;
                         height: 100%;
                         background: transparent;
                         pointer-events: none;
+                        touch-action: none;
+                        user-select: none;
                     `;
                     tileContainer.appendChild(modelViewer);
                 } else {
@@ -746,14 +752,20 @@ class GameEngine {
                         modelViewer.setAttribute('alt', `${terrain.type} tile`);
                         modelViewer.setAttribute('interaction-prompt', 'none');
                         modelViewer.setAttribute('disable-zoom', 'true');
+                        modelViewer.setAttribute('disable-pan', 'true');
+                        modelViewer.setAttribute('disable-tap', 'true');
                         modelViewer.setAttribute('auto-rotate', 'false');
                         modelViewer.setAttribute('camera-orbit', '0deg 0deg 75m');
-                        modelViewer.setAttribute('disable-pan', 'true');
+                        modelViewer.setAttribute('field-of-view', '45deg');
+                        modelViewer.setAttribute('touch-action', 'none');
+                        modelViewer.removeAttribute('camera-controls');
                         modelViewer.style.cssText = `
                             width: 100%;
                             height: 100%;
                             background: transparent;
                             pointer-events: none;
+                            touch-action: none;
+                            user-select: none;
                         `;
                         tileContainer.appendChild(modelViewer);
                     } else {
@@ -810,8 +822,13 @@ class GameEngine {
         baseModel.setAttribute('alt', `${base.animal} base`);
         baseModel.setAttribute('interaction-prompt', 'none');
         baseModel.setAttribute('disable-zoom', 'true');
+        baseModel.setAttribute('disable-pan', 'true');
+        baseModel.setAttribute('disable-tap', 'true');
         baseModel.setAttribute('auto-rotate', 'false');
         baseModel.setAttribute('camera-orbit', '0deg 0deg 132m');
+        baseModel.setAttribute('field-of-view', '45deg');
+        baseModel.setAttribute('touch-action', 'none');
+        baseModel.removeAttribute('camera-controls');
         
         baseModel.style.cssText = `
             position: absolute;
@@ -823,6 +840,9 @@ class GameEngine {
             border-radius: 50%;
             background: rgba(${base.team === 'player' ? '0,255,136' : '255,68,68'}, 0.2);
             z-index: 4;
+            pointer-events: none;
+            touch-action: none;
+            user-select: none;
         `;
         
         baseModel.dataset.baseId = index;
@@ -848,8 +868,13 @@ class GameEngine {
         kingModel.setAttribute('alt', `King ${animal}`);
         kingModel.setAttribute('interaction-prompt', 'none');
         kingModel.setAttribute('disable-zoom', 'true');
+        kingModel.setAttribute('disable-pan', 'true');
+        kingModel.setAttribute('disable-tap', 'true');
         kingModel.setAttribute('auto-rotate', 'false');
         kingModel.setAttribute('camera-orbit', '0deg 0deg 176m');
+        kingModel.setAttribute('field-of-view', '45deg');
+        kingModel.setAttribute('touch-action', 'none');
+        kingModel.removeAttribute('camera-controls');
         
         kingModel.style.cssText = `
             position: absolute;
@@ -863,6 +888,9 @@ class GameEngine {
             box-shadow: 0 0 20px rgba(255,215,0,0.6);
             z-index: 6;
             filter: drop-shadow(0 0 10px gold);
+            pointer-events: auto;
+            touch-action: none;
+            user-select: none;
         `;
         
         kingModel.dataset.unitType = 'king';
@@ -889,8 +917,13 @@ class GameEngine {
         queenModel.setAttribute('alt', `Queen ${animal}`);
         queenModel.setAttribute('interaction-prompt', 'none');
         queenModel.setAttribute('disable-zoom', 'true');
+        queenModel.setAttribute('disable-pan', 'true');
+        queenModel.setAttribute('disable-tap', 'true');
         queenModel.setAttribute('auto-rotate', 'false');
         queenModel.setAttribute('camera-orbit', '0deg 0deg 154m');
+        queenModel.setAttribute('field-of-view', '45deg');
+        queenModel.setAttribute('touch-action', 'none');
+        queenModel.removeAttribute('camera-controls');
         
         queenModel.style.cssText = `
             position: absolute;
@@ -904,6 +937,9 @@ class GameEngine {
             box-shadow: 0 0 15px rgba(192,192,192,0.6);
             z-index: 5;
             filter: drop-shadow(0 0 8px silver);
+            pointer-events: auto;
+            touch-action: none;
+            user-select: none;
         `;
         
         queenModel.dataset.unitType = 'queen';
@@ -937,8 +973,13 @@ class GameEngine {
         unitModel.setAttribute('alt', `${base.animal} unit`);
         unitModel.setAttribute('interaction-prompt', 'none');
         unitModel.setAttribute('disable-zoom', 'true');
+        unitModel.setAttribute('disable-pan', 'true');
+        unitModel.setAttribute('disable-tap', 'true');
         unitModel.setAttribute('auto-rotate', 'false');
         unitModel.setAttribute('camera-orbit', '0deg 0deg 110m');
+        unitModel.setAttribute('field-of-view', '45deg');
+        unitModel.setAttribute('touch-action', 'none');
+        unitModel.removeAttribute('camera-controls');
         
         unitModel.style.cssText = `
             position: absolute;
@@ -952,6 +993,8 @@ class GameEngine {
             z-index: 3;
             transition: all 0.3s ease;
             cursor: pointer;
+            touch-action: none;
+            user-select: none;
         `;
         
         unitModel.dataset.unitType = 'regular';
