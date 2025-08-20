@@ -656,15 +656,15 @@ class GameEngine {
                 const centerX = 400;
                 const centerY = 300;
                 
-                // Create tile container
+                // Create tile container (doubled size)
                 const tileContainer = document.createElement('div');
                 tileContainer.className = `tile-3d-container ${terrain.type}`;
                 tileContainer.style.cssText = `
                     position: absolute;
-                    width: ${hexSize * 2}px;
-                    height: ${hexSize * 2}px;
-                    left: ${centerX + pixelPos.x - hexSize}px;
-                    top: ${centerY + pixelPos.y - hexSize}px;
+                    width: ${hexSize * 4}px;
+                    height: ${hexSize * 4}px;
+                    left: ${centerX + pixelPos.x - (hexSize * 2)}px;
+                    top: ${centerY + pixelPos.y - (hexSize * 2)}px;
                     transform-style: preserve-3d;
                 `;
                 
@@ -678,10 +678,12 @@ class GameEngine {
                     modelViewer.setAttribute('disable-zoom', 'true');
                     modelViewer.setAttribute('auto-rotate', 'false');
                     modelViewer.setAttribute('camera-orbit', '0deg 0deg 88m');
+                    modelViewer.setAttribute('disable-pan', 'true');
                     modelViewer.style.cssText = `
                         width: 100%;
                         height: 100%;
                         background: transparent;
+                        pointer-events: none;
                     `;
                     tileContainer.appendChild(modelViewer);
                 } else {
@@ -722,15 +724,15 @@ class GameEngine {
                 for (let col = 0; col < 8; col++) {
                     const terrain = terrainTypes[Math.floor(Math.random() * terrainTypes.length)];
                     
-                    // Create tile container with offset coordinates
+                    // Create tile container with offset coordinates (doubled size)
                     const tileContainer = document.createElement('div');
                     tileContainer.className = `tile-3d-container ${terrain.type}`;
                     tileContainer.style.cssText = `
                         position: absolute;
-                        width: 80px;
-                        height: 80px;
-                        left: ${col * 65 + (row % 2) * 32}px;
-                        top: ${row * 56}px;
+                        width: 160px;
+                        height: 160px;
+                        left: ${col * 130 + (row % 2) * 65}px;
+                        top: ${row * 112}px;
                         transform-style: preserve-3d;
                     `;
                     
@@ -744,10 +746,12 @@ class GameEngine {
                         modelViewer.setAttribute('disable-zoom', 'true');
                         modelViewer.setAttribute('auto-rotate', 'false');
                         modelViewer.setAttribute('camera-orbit', '0deg 0deg 88m');
+                        modelViewer.setAttribute('disable-pan', 'true');
                         modelViewer.style.cssText = `
                             width: 100%;
                             height: 100%;
                             background: transparent;
+                            pointer-events: none;
                         `;
                         tileContainer.appendChild(modelViewer);
                     } else {

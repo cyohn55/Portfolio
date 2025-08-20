@@ -255,13 +255,14 @@
     padding: 0;
     box-sizing: border-box;
     /* Performance optimizations */
-    will-change: transform;
+    will-change: auto;
     transform-style: preserve-3d;
     backface-visibility: hidden;
     /* Debugging - ensure visibility */
-    min-width: 60px;
-    min-height: 60px;
-    transition: transform var(--transition-fast);
+    min-width: 120px;
+    min-height: 120px;
+    /* Disable transitions to prevent rotation */
+    transition: none;
     /* Hexagonal clipping */
     clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
 }
@@ -272,7 +273,13 @@
     /* border: 1px solid rgba(255, 255, 255, 0.2); */
 }
 
-.hex-tile:hover {
+/* Disabled hover effects for terrain tiles to prevent movement */
+.hex-tile.terrain:hover {
+    /* No hover effects for terrain */
+}
+
+/* Keep hover effects only for interactive elements */
+.hex-tile.unit:hover {
     transform: scale(1.05);
     z-index: 10;
     filter: brightness(1.1) saturate(1.2);
