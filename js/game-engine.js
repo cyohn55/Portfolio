@@ -206,29 +206,54 @@ class GameEngine {
         return true;
     }
 
-    // Create player bases
+    // Create player bases with Kings and Queens
     createPlayerBases() {
         if (!window.gameState?.selectedAnimals) return;
         
+        console.log('🏰 Creating player bases with Kings and Queens...');
+        
         window.gameState.selectedAnimals.forEach((animal, index) => {
+            const baseX = 150 + (index * 200);
+            const baseY = 150;
+            
+            // Create base structure
             const base = {
                 animal: animal,
                 team: window.TEAMS?.PLAYER || 'player',
-                x: 200 + (index * 150),
-                y: 200,
+                x: baseX,
+                y: baseY,
                 lastSpawn: 0,
-                spawnInterval: window.GAME_SETTINGS?.population?.spawnInterval || 15000,
-                size: 40
+                spawnInterval: window.GAME_SETTINGS?.population?.spawnInterval || 8000,
+                size: 60
             };
             
             window.gameState.bases.push(base);
-            console.log(`🏠 Created player base: ${animal}`);
+            
+            // Create visual base representation
+            this.createBaseModel(base, index);
+            
+            // Spawn King (3x larger) immediately
+            this.spawnKing(animal, baseX - 80, baseY - 80);
+            
+            // Spawn Queen (2x larger) immediately  
+            this.spawnQueen(animal, baseX + 80, baseY - 80);
+            
+            // Spawn some initial regular units
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => {
+                    this.spawnRegularUnit(base);
+                }, i * 1000); // Stagger the spawning
+            }
+            
+            console.log(`👑 Created player base with King and Queen: ${animal}`);
         });
     }
 
-    // Create enemy bases
+    // Create enemy bases with Kings and Queens
     createEnemyBases() {
         if (!window.gameState?.selectedAnimals) return;
+        
+        console.log('🏰 Creating enemy bases with Kings and Queens...');
         
         // Get random animals not selected by player
         const availableAnimals = Object.keys(window.ANIMAL_CONFIGS || {})
@@ -243,18 +268,38 @@ class GameEngine {
         const enemyAnimals = availableAnimals.slice(0, 3);
         
         enemyAnimals.forEach((animal, index) => {
+            const baseX = window.innerWidth - (150 + (index * 200));
+            const baseY = window.innerHeight - 200;
+            
             const base = {
                 animal: animal,
                 team: window.TEAMS?.AI || 'enemy',
-                x: window.gameState.map.width - (200 + (index * 150)),
-                y: window.gameState.map.height - 200,
+                x: baseX,
+                y: baseY,
                 lastSpawn: 0,
-                spawnInterval: window.GAME_SETTINGS?.population?.spawnInterval || 15000,
-                size: 40
+                spawnInterval: window.GAME_SETTINGS?.population?.spawnInterval || 8000,
+                size: 60
             };
             
             window.gameState.bases.push(base);
-            console.log(`🏠 Created enemy base: ${animal}`);
+            
+            // Create visual base representation
+            this.createBaseModel(base, index + 3); // Offset index for enemy bases
+            
+            // Spawn King (3x larger) immediately
+            this.spawnKing(animal, baseX - 80, baseY + 80, 'enemy');
+            
+            // Spawn Queen (2x larger) immediately
+            this.spawnQueen(animal, baseX + 80, baseY + 80, 'enemy');
+            
+            // Spawn some initial regular units
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => {
+                    this.spawnRegularUnit(base);
+                }, (i + 3) * 1000); // Stagger the spawning, offset from player
+            }
+            
+            console.log(`👑 Created enemy base with King and Queen: ${animal}`);
         });
     }
 
@@ -444,16 +489,18 @@ class GameEngine {
         
         this.lastSpawnCheck = now;
         
-        if (!window.gameState?.bases || !this.systems.units) return;
+        if (!window.gameState?.bases) return;
         
         window.gameState.bases.forEach(base => {
             // Check if can spawn and enough time has passed
             if (window.gameState.canSpawnUnit(base.animal, base.team) &&
                 now - base.lastSpawn > base.spawnInterval) {
                 
-                const unit = this.systems.units.spawnUnit(base);
+                // Use our own spawn method instead of unit system
+                const unit = this.spawnRegularUnit(base);
                 if (unit) {
                     base.lastSpawn = now;
+                    console.log(`⏰ Spawned unit from ${base.team} ${base.animal} base`);
                 }
             }
         });
@@ -676,8 +723,8 @@ class GameEngine {
             // Fallback to offset coordinates if hex system not available
             console.warn('⚠️ Red Blob Games hex system not available, using fallback offset coordinates');
             
-            for (let row = 0; row < 8; row++) {
-                for (let col = 0; col < 10; col++) {
+            for (let row = 0; row < 6; row++) {
+                for (let col = 0; col < 8; col++) {
                     const terrain = terrainTypes[Math.floor(Math.random() * terrainTypes.length)];
                     
                     // Create tile container with offset coordinates
@@ -748,6 +795,214 @@ class GameEngine {
 
         console.log(`✅ Generated ${tilesCreated} terrain tiles`);
         return true;
+    }
+
+    // Create visual base model
+    createBaseModel(base, index) {
+        const modelsContainer = document.getElementById('modelsContainer');
+        if (!modelsContainer) return;
+
+        // Create base structure using model-viewer
+        const baseModel = document.createElement('model-viewer');
+        baseModel.className = `base-model ${base.team}`;
+        baseModel.setAttribute('src', `models/${base.animal}.glb`);
+        baseModel.setAttribute('alt', `${base.animal} base`);
+        baseModel.setAttribute('interaction-prompt', 'none');
+        baseModel.setAttribute('disable-zoom', 'true');
+        baseModel.setAttribute('auto-rotate', 'false');
+        baseModel.setAttribute('camera-orbit', '0deg 75deg 150m');
+        
+        baseModel.style.cssText = `
+            position: absolute;
+            width: ${base.size}px;
+            height: ${base.size}px;
+            left: ${base.x - base.size/2}px;
+            top: ${base.y - base.size/2}px;
+            border: 3px solid ${base.team === 'player' ? '#00ff88' : '#ff4444'};
+            border-radius: 50%;
+            background: rgba(${base.team === 'player' ? '0,255,136' : '255,68,68'}, 0.2);
+            z-index: 4;
+        `;
+        
+        baseModel.dataset.baseId = index;
+        baseModel.dataset.team = base.team;
+        baseModel.dataset.animal = base.animal;
+        baseModel.title = `${base.team} ${base.animal} base`;
+        
+        modelsContainer.appendChild(baseModel);
+        console.log(`🏗️ Created visual base model for ${base.team} ${base.animal}`);
+    }
+
+    // Spawn King (3x larger)
+    spawnKing(animal, x, y, team = 'player') {
+        const modelsContainer = document.getElementById('modelsContainer');
+        if (!modelsContainer) return;
+
+        const animalConfig = window.ANIMAL_CONFIGS?.[animal] || { size: 30, model: `models/${animal}.glb` };
+        const kingSize = animalConfig.size * 3; // 3x larger
+
+        const kingModel = document.createElement('model-viewer');
+        kingModel.className = `king-model ${team} ${animal}`;
+        kingModel.setAttribute('src', animalConfig.model);
+        kingModel.setAttribute('alt', `King ${animal}`);
+        kingModel.setAttribute('interaction-prompt', 'none');
+        kingModel.setAttribute('disable-zoom', 'true');
+        kingModel.setAttribute('auto-rotate', 'false');
+        kingModel.setAttribute('camera-orbit', '0deg 75deg 200m');
+        
+        kingModel.style.cssText = `
+            position: absolute;
+            width: ${kingSize}px;
+            height: ${kingSize}px;
+            left: ${x - kingSize/2}px;
+            top: ${y - kingSize/2}px;
+            border: 4px solid gold;
+            border-radius: 50%;
+            background: linear-gradient(45deg, rgba(255,215,0,0.3), rgba(255,140,0,0.3));
+            box-shadow: 0 0 20px rgba(255,215,0,0.6);
+            z-index: 6;
+            filter: drop-shadow(0 0 10px gold);
+        `;
+        
+        kingModel.dataset.unitType = 'king';
+        kingModel.dataset.team = team;
+        kingModel.dataset.animal = animal;
+        kingModel.dataset.size = kingSize;
+        kingModel.title = `👑 King ${animal} (${team})`;
+        
+        modelsContainer.appendChild(kingModel);
+        console.log(`👑 Spawned King ${animal} for ${team} team`);
+    }
+
+    // Spawn Queen (2x larger)
+    spawnQueen(animal, x, y, team = 'player') {
+        const modelsContainer = document.getElementById('modelsContainer');
+        if (!modelsContainer) return;
+
+        const animalConfig = window.ANIMAL_CONFIGS?.[animal] || { size: 30, model: `models/${animal}.glb` };
+        const queenSize = animalConfig.size * 2; // 2x larger
+
+        const queenModel = document.createElement('model-viewer');
+        queenModel.className = `queen-model ${team} ${animal}`;
+        queenModel.setAttribute('src', animalConfig.model);
+        queenModel.setAttribute('alt', `Queen ${animal}`);
+        queenModel.setAttribute('interaction-prompt', 'none');
+        queenModel.setAttribute('disable-zoom', 'true');
+        queenModel.setAttribute('auto-rotate', 'false');
+        queenModel.setAttribute('camera-orbit', '0deg 75deg 180m');
+        
+        queenModel.style.cssText = `
+            position: absolute;
+            width: ${queenSize}px;
+            height: ${queenSize}px;
+            left: ${x - queenSize/2}px;
+            top: ${y - queenSize/2}px;
+            border: 3px solid silver;
+            border-radius: 50%;
+            background: linear-gradient(45deg, rgba(192,192,192,0.3), rgba(255,255,255,0.3));
+            box-shadow: 0 0 15px rgba(192,192,192,0.6);
+            z-index: 5;
+            filter: drop-shadow(0 0 8px silver);
+        `;
+        
+        queenModel.dataset.unitType = 'queen';
+        queenModel.dataset.team = team;
+        queenModel.dataset.animal = animal;
+        queenModel.dataset.size = queenSize;
+        queenModel.title = `👸 Queen ${animal} (${team})`;
+        
+        modelsContainer.appendChild(queenModel);
+        console.log(`👸 Spawned Queen ${animal} for ${team} team`);
+    }
+
+    // Spawn regular unit around base
+    spawnRegularUnit(base) {
+        const modelsContainer = document.getElementById('modelsContainer');
+        if (!modelsContainer || !window.gameState?.canSpawnUnit(base.animal, base.team)) {
+            return null;
+        }
+
+        const animalConfig = window.ANIMAL_CONFIGS?.[base.animal] || { size: 30, model: `models/${base.animal}.glb` };
+        
+        // Calculate spawn position around base
+        const angle = Math.random() * Math.PI * 2;
+        const distance = base.size + 40;
+        const x = base.x + Math.cos(angle) * distance;
+        const y = base.y + Math.sin(angle) * distance;
+
+        const unitModel = document.createElement('model-viewer');
+        unitModel.className = `unit-model ${base.team} ${base.animal}`;
+        unitModel.setAttribute('src', animalConfig.model);
+        unitModel.setAttribute('alt', `${base.animal} unit`);
+        unitModel.setAttribute('interaction-prompt', 'none');
+        unitModel.setAttribute('disable-zoom', 'true');
+        unitModel.setAttribute('auto-rotate', 'false');
+        unitModel.setAttribute('camera-orbit', '0deg 75deg 120m');
+        
+        unitModel.style.cssText = `
+            position: absolute;
+            width: ${animalConfig.size}px;
+            height: ${animalConfig.size}px;
+            left: ${x - animalConfig.size/2}px;
+            top: ${y - animalConfig.size/2}px;
+            border: 2px solid ${base.team === 'player' ? '#00ff88' : '#ff4444'};
+            border-radius: 50%;
+            background: rgba(${base.team === 'player' ? '0,255,136' : '255,68,68'}, 0.1);
+            z-index: 3;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        `;
+        
+        unitModel.dataset.unitType = 'regular';
+        unitModel.dataset.team = base.team;
+        unitModel.dataset.animal = base.animal;
+        unitModel.dataset.size = animalConfig.size;
+        unitModel.dataset.x = x;
+        unitModel.dataset.y = y;
+        unitModel.title = `${base.animal} unit (${base.team})`;
+        
+        // Add click handler for unit selection
+        unitModel.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.selectUnit(unitModel);
+        });
+        
+        modelsContainer.appendChild(unitModel);
+        
+        // Update game state
+        if (window.gameState) {
+            window.gameState.units.push({
+                id: Date.now() + Math.random(),
+                animal: base.animal,
+                team: base.team,
+                x: x,
+                y: y,
+                size: animalConfig.size,
+                element: unitModel
+            });
+            
+            // Update population count
+            const teamUnits = window.gameState.units.filter(u => u.team === base.team);
+            window.gameState.population[base.team] = teamUnits.length;
+        }
+        
+        console.log(`🐾 Spawned regular ${base.animal} unit for ${base.team} team`);
+        return unitModel;
+    }
+
+    // Select unit (basic implementation)
+    selectUnit(unitElement) {
+        // Clear previous selections
+        document.querySelectorAll('.unit-model.selected').forEach(el => {
+            el.classList.remove('selected');
+            el.style.boxShadow = '';
+        });
+        
+        // Select this unit
+        unitElement.classList.add('selected');
+        unitElement.style.boxShadow = '0 0 20px #00ff88';
+        
+        console.log(`📍 Selected ${unitElement.dataset.animal} unit`);
     }
 }
 

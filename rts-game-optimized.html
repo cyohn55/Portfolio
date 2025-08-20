@@ -143,6 +143,7 @@
             <div>Population: <span id="population">0</span></div>
             <div>Selected: <span id="selectedCount">0</span></div>
             <button onclick="debugGenerateTerrain()" style="margin-top: 10px; padding: 5px; background: #0f0; color: #000; border: none; cursor: pointer; font-weight: bold;">🔧 Generate Terrain</button>
+            <button onclick="debugShowUnits()" style="margin-top: 5px; padding: 5px; background: #ff0; color: #000; border: none; cursor: pointer; font-weight: bold;">🐾 Show Units</button>
         </div>
 
         <div id="controlPanel" class="ui-panel"></div>
@@ -576,6 +577,43 @@
             const method = window.HexCoord ? 'Red Blob Games axial coordinates' : 'offset coordinates fallback';
             console.log(`✅ Created ${tilesCreated} hex tiles using ${method}`);
             alert(`SUCCESS: Created ${tilesCreated} hex tiles using ${method}! Check the game screen.`);
+        }
+
+        // Debug function to show unit information
+        function debugShowUnits() {
+            console.log('🔍 Debugging units and models...');
+            
+            const modelsContainer = document.getElementById('modelsContainer');
+            const gameState = window.gameState;
+            
+            console.log('📦 Models container:', modelsContainer ? 'Found' : 'Missing');
+            console.log('🎮 Game state:', gameState ? 'Found' : 'Missing');
+            
+            if (modelsContainer) {
+                const models = modelsContainer.children;
+                console.log(`🎭 Total models in container: ${models.length}`);
+                
+                for (let i = 0; i < models.length; i++) {
+                    const model = models[i];
+                    console.log(`  ${i + 1}. ${model.className} - ${model.title}`);
+                }
+            }
+            
+            if (gameState) {
+                console.log('🏰 Bases:', gameState.bases ? gameState.bases.length : 'None');
+                console.log('🐾 Units:', gameState.units ? gameState.units.length : 'None');
+                console.log('👥 Population:', gameState.population);
+                console.log('🎯 Selected animals:', gameState.selectedAnimals);
+            }
+            
+            // Force create bases if missing
+            if (window.gameEngine && (!gameState?.bases || gameState.bases.length === 0)) {
+                console.log('🚨 Creating missing bases...');
+                window.gameEngine.createPlayerBases();
+                window.gameEngine.createEnemyBases();
+            }
+            
+            alert('Check console for detailed unit and model information!');
         }
 
         // Start game initialization when DOM is ready
