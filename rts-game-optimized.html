@@ -474,11 +474,11 @@
             if (window.HexCoord && window.HexMath) {
                 console.log('✅ Using Red Blob Games hex coordinate system');
                 
-                const hexSize = 35;
+                const hexSize = 70;
                 const layout = 'flat';
                 const mapRadius = 3;
-                const centerX = 300;
-                const centerY = 250;
+                const centerX = 400;
+                const centerY = 300;
                 
                 // Generate hex positions using axial coordinates
                 const centerCoord = new window.HexCoord(0, 0);
@@ -531,8 +531,8 @@
                             height: 120px;
                             background: ${terrain.color};
                             border: 2px solid #fff;
-                            left: ${col * 116 + (row % 2) * 58}px;
-                            top: ${row * 100}px;
+                            left: ${col * 232 + (row % 2) * 116}px;
+                            top: ${row * 200}px;
                             clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
                             display: flex;
                             align-items: center;
