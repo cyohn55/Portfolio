@@ -631,7 +631,7 @@ class GameEngine {
         ];
 
         // Red Blob Games compliant hex grid parameters
-        const hexSize = 60; // Radius of hexagon (1.5x original size)
+        const hexSize = 70; // Radius of hexagon (increased for more spacing)
         const layout = 'flat'; // flat-top hexagons (as per current clip-path)
         const mapRadius = 4; // Creates a roughly 8x8 hex map
         let tilesCreated = 0;
@@ -739,8 +739,8 @@ class GameEngine {
                         position: absolute;
                         width: ${fallbackSize}px;
                         height: ${fallbackSize}px;
-                        left: ${col * (fallbackSize * 0.75) + (row % 2) * (fallbackSize * 0.375)}px;
-                        top: ${row * (fallbackSize * 0.866)}px;
+                        left: ${col * (fallbackSize * 0.9) + (row % 2) * (fallbackSize * 0.45)}px;
+                        top: ${row * (fallbackSize * 1.04)}px;
                         transform-style: preserve-3d;
                     `;
                     
