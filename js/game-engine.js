@@ -625,7 +625,7 @@ class GameEngine {
                         width: 80px;
                         height: 70px;
                         background: ${terrain.color};
-                        border: 2px solid #fff;
+                        border: 2px solid #333;
                         clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
                         display: flex;
                         align-items: center;
@@ -634,6 +634,7 @@ class GameEngine {
                         color: white;
                         text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
                         margin: 5px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
                     `;
                     hexTile.textContent = terrain.emoji;
                     tileContainer.appendChild(hexTile);

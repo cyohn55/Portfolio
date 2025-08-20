@@ -483,7 +483,7 @@
                         width: 80px;
                         height: 70px;
                         background: ${terrain.color};
-                        border: 2px solid #fff;
+                        border: 2px solid #333;
                         left: ${col * 65 + (row % 2) * 32}px;
                         top: ${row * 60}px;
                         clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
@@ -495,6 +495,7 @@
                         text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
                         cursor: pointer;
                         transition: transform 0.2s;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
                     `;
                     tile.textContent = terrain.emoji;
                     tile.title = `${terrain.type} terrain at (${col}, ${row})`;
