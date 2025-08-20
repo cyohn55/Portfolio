@@ -705,11 +705,6 @@ class GameEngine {
                     tileContainer.appendChild(hexTile);
                 }
                 
-                tileContainer.dataset.terrainType = terrain.type;
-                tileContainer.dataset.hexX = col;
-                tileContainer.dataset.hexY = row;
-                tileContainer.title = `${terrain.type} at (${col}, ${row})`;
-                
                 // Store hex coordinates for gameplay
                 tileContainer.dataset.terrainType = terrain.type;
                 tileContainer.dataset.hexQ = hexCoord.q;
