@@ -631,7 +631,7 @@ class GameEngine {
         ];
 
         // Red Blob Games compliant hex grid parameters
-        const hexSize = 80; // Radius of hexagon (doubled for larger tiles)
+        const hexSize = 60; // Radius of hexagon (1.5x original size)
         const layout = 'flat'; // flat-top hexagons (as per current clip-path)
         const mapRadius = 4; // Creates a roughly 8x8 hex map
         let tilesCreated = 0;
@@ -656,15 +656,16 @@ class GameEngine {
                 const centerX = 400;
                 const centerY = 300;
                 
-                // Create tile container (doubled size)
+                // Create tile container (proper hex proportions)
                 const tileContainer = document.createElement('div');
                 tileContainer.className = `tile-3d-container ${terrain.type}`;
+                const containerSize = hexSize * 2.2; // Slightly larger than hex for padding
                 tileContainer.style.cssText = `
                     position: absolute;
-                    width: ${hexSize * 4}px;
-                    height: ${hexSize * 4}px;
-                    left: ${centerX + pixelPos.x - (hexSize * 2)}px;
-                    top: ${centerY + pixelPos.y - (hexSize * 2)}px;
+                    width: ${containerSize}px;
+                    height: ${containerSize}px;
+                    left: ${centerX + pixelPos.x - (containerSize / 2)}px;
+                    top: ${centerY + pixelPos.y - (containerSize / 2)}px;
                     transform-style: preserve-3d;
                 `;
                 
@@ -677,7 +678,7 @@ class GameEngine {
                     modelViewer.setAttribute('interaction-prompt', 'none');
                     modelViewer.setAttribute('disable-zoom', 'true');
                     modelViewer.setAttribute('auto-rotate', 'false');
-                    modelViewer.setAttribute('camera-orbit', '0deg 0deg 88m');
+                    modelViewer.setAttribute('camera-orbit', '0deg 0deg 75m');
                     modelViewer.setAttribute('disable-pan', 'true');
                     modelViewer.style.cssText = `
                         width: 100%;
@@ -724,15 +725,16 @@ class GameEngine {
                 for (let col = 0; col < 8; col++) {
                     const terrain = terrainTypes[Math.floor(Math.random() * terrainTypes.length)];
                     
-                    // Create tile container with offset coordinates (doubled size)
+                    // Create tile container with offset coordinates (1.5x size)
                     const tileContainer = document.createElement('div');
                     tileContainer.className = `tile-3d-container ${terrain.type}`;
+                    const fallbackSize = 120; // Reduced by 25% from 160
                     tileContainer.style.cssText = `
                         position: absolute;
-                        width: 160px;
-                        height: 160px;
-                        left: ${col * 260 + (row % 2) * 130}px;
-                        top: ${row * 224}px;
+                        width: ${fallbackSize}px;
+                        height: ${fallbackSize}px;
+                        left: ${col * (fallbackSize * 0.75) + (row % 2) * (fallbackSize * 0.375)}px;
+                        top: ${row * (fallbackSize * 0.866)}px;
                         transform-style: preserve-3d;
                     `;
                     
@@ -745,7 +747,7 @@ class GameEngine {
                         modelViewer.setAttribute('interaction-prompt', 'none');
                         modelViewer.setAttribute('disable-zoom', 'true');
                         modelViewer.setAttribute('auto-rotate', 'false');
-                        modelViewer.setAttribute('camera-orbit', '0deg 0deg 88m');
+                        modelViewer.setAttribute('camera-orbit', '0deg 0deg 75m');
                         modelViewer.setAttribute('disable-pan', 'true');
                         modelViewer.style.cssText = `
                             width: 100%;
