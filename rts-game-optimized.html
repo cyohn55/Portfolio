@@ -474,7 +474,7 @@
             if (window.HexCoord && window.HexMath) {
                 console.log('✅ Using Red Blob Games hex coordinate system');
                 
-                const hexSize = 62; // Increased spacing for less overlap
+                const hexSize = 75; // Further increased spacing for better separation
                 const layout = 'flat';
                 const mapRadius = 3;
                 const centerX = 400;
@@ -520,8 +520,8 @@
                 // Fallback to offset coordinates
                 console.warn('⚠️ Red Blob Games system not available, using offset fallback');
                 
-                for (let row = 0; row < 6; row++) {
-                    for (let col = 0; col < 8; col++) {
+                for (let row = 0; row < 5; row++) {
+                    for (let col = 0; col < 6; col++) {
                         const terrain = terrainTypes[Math.floor(Math.random() * terrainTypes.length)];
                         
                         const tile = document.createElement('div');
@@ -534,8 +534,8 @@
                             height: ${debugFallbackHeight}px;
                             background: ${terrain.color};
                             border: 2px solid #fff;
-                            left: ${col * (debugFallbackWidth * 0.9) + (row % 2) * (debugFallbackWidth * 0.45)}px;
-                            top: ${row * (debugFallbackHeight * 1.04)}px;
+                            left: ${col * (debugFallbackWidth * 1.1) + (row % 2) * (debugFallbackWidth * 0.55)}px;
+                            top: ${row * (debugFallbackHeight * 1.25)}px;
                             clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
                             display: flex;
                             align-items: center;

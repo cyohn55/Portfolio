@@ -631,9 +631,9 @@ class GameEngine {
         ];
 
         // Red Blob Games compliant hex grid parameters
-        const hexSize = 70; // Radius of hexagon (increased for more spacing)
+        const hexSize = 85; // Radius of hexagon (increased for much more spacing)
         const layout = 'flat'; // flat-top hexagons (as per current clip-path)
-        const mapRadius = 4; // Creates a roughly 8x8 hex map
+        const mapRadius = 3; // Reduced to fit well-spaced tiles on screen
         let tilesCreated = 0;
 
         // Generate hexagonal map using Red Blob Games axial coordinates
@@ -727,8 +727,8 @@ class GameEngine {
             // Fallback to offset coordinates if hex system not available
             console.warn('⚠️ Red Blob Games hex system not available, using fallback offset coordinates');
             
-            for (let row = 0; row < 6; row++) {
-                for (let col = 0; col < 8; col++) {
+            for (let row = 0; row < 5; row++) {
+                for (let col = 0; col < 6; col++) {
                     const terrain = terrainTypes[Math.floor(Math.random() * terrainTypes.length)];
                     
                     // Create tile container with offset coordinates (1.5x size)
@@ -739,8 +739,8 @@ class GameEngine {
                         position: absolute;
                         width: ${fallbackSize}px;
                         height: ${fallbackSize}px;
-                        left: ${col * (fallbackSize * 0.9) + (row % 2) * (fallbackSize * 0.45)}px;
-                        top: ${row * (fallbackSize * 1.04)}px;
+                        left: ${col * (fallbackSize * 1.1) + (row % 2) * (fallbackSize * 0.55)}px;
+                        top: ${row * (fallbackSize * 1.25)}px;
                         transform-style: preserve-3d;
                     `;
                     
