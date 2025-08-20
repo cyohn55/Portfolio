@@ -447,9 +447,9 @@
             }, 5000);
         }
 
-        // Debug terrain generation function
+        // Debug terrain generation function - Red Blob Games compliant
         function debugGenerateTerrain() {
-            console.log('🔧 Debug: Manually generating terrain...');
+            console.log('🔧 Debug: Manually generating Red Blob Games compliant terrain...');
             
             const hexContainer = document.getElementById('hex-grid');
             if (!hexContainer) {
@@ -457,10 +457,9 @@
                 return;
             }
             
-            console.log('🎨 Creating simple hex tiles...');
+            console.log('🎨 Creating Red Blob Games compliant hex tiles...');
             hexContainer.innerHTML = '';
             
-            // Create simple colored hex tiles for testing
             const terrainTypes = [
                 { type: 'farmland', color: '#90EE90', emoji: '🌾' },
                 { type: 'forest', color: '#228B22', emoji: '🌲' },
@@ -471,33 +470,46 @@
             
             let tilesCreated = 0;
             
-            // Create 8x6 grid of simple hex tiles
-            for (let row = 0; row < 6; row++) {
-                for (let col = 0; col < 8; col++) {
+            // Use Red Blob Games hex coordinate system if available
+            if (window.HexCoord && window.HexMath) {
+                console.log('✅ Using Red Blob Games hex coordinate system');
+                
+                const hexSize = 35;
+                const layout = 'flat';
+                const mapRadius = 3;
+                const centerX = 300;
+                const centerY = 250;
+                
+                // Generate hex positions using axial coordinates
+                const centerCoord = new window.HexCoord(0, 0);
+                const hexPositions = window.HexMath.hexRange(centerCoord, mapRadius);
+                
+                hexPositions.forEach(hexCoord => {
                     const terrain = terrainTypes[Math.floor(Math.random() * terrainTypes.length)];
+                    const pixelPos = window.HexMath.hexToPixel(hexCoord, hexSize, layout);
                     
                     const tile = document.createElement('div');
-                    tile.className = 'simple-hex-tile';
+                    tile.className = 'red-blob-hex-tile';
                     tile.style.cssText = `
                         position: absolute;
-                        width: 80px;
-                        height: 70px;
+                        width: ${hexSize * 1.8}px;
+                        height: ${hexSize * 1.6}px;
                         background: ${terrain.color};
                         border: 2px solid #fff;
-                        left: ${col * 65 + (row % 2) * 32}px;
-                        top: ${row * 60}px;
+                        left: ${centerX + pixelPos.x - hexSize * 0.9}px;
+                        top: ${centerY + pixelPos.y - hexSize * 0.8}px;
                         clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
                         display: flex;
                         align-items: center;
                         justify-content: center;
-                        font-size: 24px;
+                        font-size: 20px;
                         color: white;
                         text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
                         cursor: pointer;
                         transition: transform 0.2s;
                     `;
                     tile.textContent = terrain.emoji;
-                    tile.title = `${terrain.type} terrain at (${col}, ${row})`;
+                    tile.title = `${terrain.type} at axial(${hexCoord.q}, ${hexCoord.r})`;
                     
                     tile.addEventListener('mouseover', () => {
                         tile.style.transform = 'scale(1.1)';
@@ -509,6 +521,49 @@
                     
                     hexContainer.appendChild(tile);
                     tilesCreated++;
+                });
+            } else {
+                // Fallback to offset coordinates
+                console.warn('⚠️ Red Blob Games system not available, using offset fallback');
+                
+                for (let row = 0; row < 6; row++) {
+                    for (let col = 0; col < 8; col++) {
+                        const terrain = terrainTypes[Math.floor(Math.random() * terrainTypes.length)];
+                        
+                        const tile = document.createElement('div');
+                        tile.className = 'simple-hex-tile';
+                        tile.style.cssText = `
+                            position: absolute;
+                            width: 70px;
+                            height: 60px;
+                            background: ${terrain.color};
+                            border: 2px solid #fff;
+                            left: ${col * 58 + (row % 2) * 29}px;
+                            top: ${row * 50}px;
+                            clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 18px;
+                            color: white;
+                            text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
+                            cursor: pointer;
+                            transition: transform 0.2s;
+                        `;
+                        tile.textContent = terrain.emoji;
+                        tile.title = `${terrain.type} at offset(${col}, ${row})`;
+                        
+                        tile.addEventListener('mouseover', () => {
+                            tile.style.transform = 'scale(1.1)';
+                        });
+                        
+                        tile.addEventListener('mouseout', () => {
+                            tile.style.transform = 'scale(1)';
+                        });
+                        
+                        hexContainer.appendChild(tile);
+                        tilesCreated++;
+                    }
                 }
             }
             
@@ -518,8 +573,9 @@
             hexContainer.style.opacity = '1';
             hexContainer.style.zIndex = '3';
             
-            console.log(`✅ Created ${tilesCreated} simple hex tiles`);
-            alert(`SUCCESS: Created ${tilesCreated} hex tiles! Check the game screen.`);
+            const method = window.HexCoord ? 'Red Blob Games axial coordinates' : 'offset coordinates fallback';
+            console.log(`✅ Created ${tilesCreated} hex tiles using ${method}`);
+            alert(`SUCCESS: Created ${tilesCreated} hex tiles using ${method}! Check the game screen.`);
         }
 
         // Start game initialization when DOM is ready

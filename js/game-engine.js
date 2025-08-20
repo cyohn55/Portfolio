@@ -564,7 +564,7 @@ class GameEngine {
         console.log('🧹 Game engine destroyed');
     }
 
-    // Generate simple terrain for immediate visibility
+    // Generate Red Blob Games compliant hex terrain
     generateSimpleTerrain() {
         const hexContainer = document.getElementById('hex-grid');
         if (!hexContainer) {
@@ -572,7 +572,7 @@ class GameEngine {
             return false;
         }
 
-        console.log('🎨 Generating simple hex terrain...');
+        console.log('🎨 Generating Red Blob Games compliant hex terrain...');
         hexContainer.innerHTML = '';
 
         const terrainTypes = [
@@ -583,22 +583,41 @@ class GameEngine {
             { type: 'pinetree', color: '#006400', emoji: '🌲', model: 'models/PineTree.glb' }
         ];
 
+        // Red Blob Games compliant hex grid parameters
+        const hexSize = 40; // Radius of hexagon
+        const layout = 'flat'; // flat-top hexagons (as per current clip-path)
+        const mapRadius = 4; // Creates a roughly 8x8 hex map
         let tilesCreated = 0;
 
-        // Create 10x8 grid of hex tiles
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 10; col++) {
+        // Generate hexagonal map using Red Blob Games axial coordinates
+        if (window.HexCoord && window.HexMath) {
+            console.log('✅ Using Red Blob Games hex coordinate system');
+            
+            // Generate hex positions using axial coordinates
+            const centerCoord = new window.HexCoord(0, 0);
+            const hexPositions = window.HexMath.hexRange(centerCoord, mapRadius);
+            
+            console.log(`🔧 Creating ${hexPositions.length} hex tiles using axial coordinates`);
+            
+            hexPositions.forEach(hexCoord => {
                 const terrain = terrainTypes[Math.floor(Math.random() * terrainTypes.length)];
+                
+                // Convert hex coordinates to pixel coordinates using Red Blob Games formula
+                const pixelPos = window.HexMath.hexToPixel(hexCoord, hexSize, layout);
+                
+                // Center the grid in the container
+                const centerX = 400;
+                const centerY = 300;
                 
                 // Create tile container
                 const tileContainer = document.createElement('div');
                 tileContainer.className = `tile-3d-container ${terrain.type}`;
                 tileContainer.style.cssText = `
                     position: absolute;
-                    width: 90px;
-                    height: 120px;
-                    left: ${col * 80 + (row % 2) * 40}px;
-                    top: ${row * 70}px;
+                    width: ${hexSize * 2}px;
+                    height: ${hexSize * 2}px;
+                    left: ${centerX + pixelPos.x - hexSize}px;
+                    top: ${centerY + pixelPos.y - hexSize}px;
                     transform-style: preserve-3d;
                 `;
                 
@@ -644,8 +663,80 @@ class GameEngine {
                 tileContainer.dataset.hexY = row;
                 tileContainer.title = `${terrain.type} at (${col}, ${row})`;
                 
+                // Store hex coordinates for gameplay
+                tileContainer.dataset.terrainType = terrain.type;
+                tileContainer.dataset.hexQ = hexCoord.q;
+                tileContainer.dataset.hexR = hexCoord.r;
+                tileContainer.title = `${terrain.type} at axial(${hexCoord.q}, ${hexCoord.r})`;
+                
                 hexContainer.appendChild(tileContainer);
                 tilesCreated++;
+            });
+        } else {
+            // Fallback to offset coordinates if hex system not available
+            console.warn('⚠️ Red Blob Games hex system not available, using fallback offset coordinates');
+            
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 10; col++) {
+                    const terrain = terrainTypes[Math.floor(Math.random() * terrainTypes.length)];
+                    
+                    // Create tile container with offset coordinates
+                    const tileContainer = document.createElement('div');
+                    tileContainer.className = `tile-3d-container ${terrain.type}`;
+                    tileContainer.style.cssText = `
+                        position: absolute;
+                        width: 80px;
+                        height: 80px;
+                        left: ${col * 65 + (row % 2) * 32}px;
+                        top: ${row * 56}px;
+                        transform-style: preserve-3d;
+                    `;
+                    
+                    // Try to create model-viewer, fallback to colored hex
+                    if (window.customElements && window.customElements.get('model-viewer')) {
+                        const modelViewer = document.createElement('model-viewer');
+                        modelViewer.className = `hex-tile ${terrain.type}`;
+                        modelViewer.setAttribute('src', terrain.model);
+                        modelViewer.setAttribute('alt', `${terrain.type} tile`);
+                        modelViewer.setAttribute('interaction-prompt', 'none');
+                        modelViewer.setAttribute('disable-zoom', 'true');
+                        modelViewer.setAttribute('auto-rotate', 'false');
+                        modelViewer.setAttribute('camera-orbit', '0deg 75deg 100m');
+                        modelViewer.style.cssText = `
+                            width: 100%;
+                            height: 100%;
+                            background: transparent;
+                        `;
+                        tileContainer.appendChild(modelViewer);
+                    } else {
+                        // Fallback to simple colored hex
+                        const hexTile = document.createElement('div');
+                        hexTile.style.cssText = `
+                            width: 70px;
+                            height: 60px;
+                            background: ${terrain.color};
+                            border: 2px solid #fff;
+                            clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 16px;
+                            color: white;
+                            text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
+                            margin: 5px;
+                        `;
+                        hexTile.textContent = terrain.emoji;
+                        tileContainer.appendChild(hexTile);
+                    }
+                    
+                    tileContainer.dataset.terrainType = terrain.type;
+                    tileContainer.dataset.hexX = col;
+                    tileContainer.dataset.hexY = row;
+                    tileContainer.title = `${terrain.type} at offset(${col}, ${row})`;
+                    
+                    hexContainer.appendChild(tileContainer);
+                    tilesCreated++;
+                }
             }
         }
 
