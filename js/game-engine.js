@@ -677,7 +677,7 @@ class GameEngine {
                     modelViewer.setAttribute('interaction-prompt', 'none');
                     modelViewer.setAttribute('disable-zoom', 'true');
                     modelViewer.setAttribute('auto-rotate', 'false');
-                    modelViewer.setAttribute('camera-orbit', '0deg 90deg 80m');
+                    modelViewer.setAttribute('camera-orbit', '0deg 0deg 80m');
                     modelViewer.style.cssText = `
                         width: 100%;
                         height: 100%;
@@ -743,7 +743,7 @@ class GameEngine {
                         modelViewer.setAttribute('interaction-prompt', 'none');
                         modelViewer.setAttribute('disable-zoom', 'true');
                         modelViewer.setAttribute('auto-rotate', 'false');
-                        modelViewer.setAttribute('camera-orbit', '0deg 90deg 80m');
+                        modelViewer.setAttribute('camera-orbit', '0deg 0deg 80m');
                         modelViewer.style.cssText = `
                             width: 100%;
                             height: 100%;
@@ -805,7 +805,7 @@ class GameEngine {
         baseModel.setAttribute('interaction-prompt', 'none');
         baseModel.setAttribute('disable-zoom', 'true');
         baseModel.setAttribute('auto-rotate', 'false');
-        baseModel.setAttribute('camera-orbit', '0deg 90deg 120m');
+        baseModel.setAttribute('camera-orbit', '0deg 0deg 120m');
         
         baseModel.style.cssText = `
             position: absolute;
@@ -843,7 +843,7 @@ class GameEngine {
         kingModel.setAttribute('interaction-prompt', 'none');
         kingModel.setAttribute('disable-zoom', 'true');
         kingModel.setAttribute('auto-rotate', 'false');
-        kingModel.setAttribute('camera-orbit', '0deg 90deg 160m');
+        kingModel.setAttribute('camera-orbit', '0deg 0deg 160m');
         
         kingModel.style.cssText = `
             position: absolute;
@@ -884,7 +884,7 @@ class GameEngine {
         queenModel.setAttribute('interaction-prompt', 'none');
         queenModel.setAttribute('disable-zoom', 'true');
         queenModel.setAttribute('auto-rotate', 'false');
-        queenModel.setAttribute('camera-orbit', '0deg 90deg 140m');
+        queenModel.setAttribute('camera-orbit', '0deg 0deg 140m');
         
         queenModel.style.cssText = `
             position: absolute;
@@ -932,7 +932,7 @@ class GameEngine {
         unitModel.setAttribute('interaction-prompt', 'none');
         unitModel.setAttribute('disable-zoom', 'true');
         unitModel.setAttribute('auto-rotate', 'false');
-        unitModel.setAttribute('camera-orbit', '0deg 90deg 100m');
+        unitModel.setAttribute('camera-orbit', '0deg 0deg 100m');
         
         unitModel.style.cssText = `
             position: absolute;
