@@ -4,6 +4,22 @@ import './MainMenu.css';
 export function MainMenu() {
   const transitionToScreen = useGameStore((s) => s.transitionToScreen);
 
+  const handleQuickPlay = () => {
+    // Request fullscreen when entering game
+    const iframe = document.getElementById('rts-iframe') as HTMLIFrameElement;
+    if (iframe) {
+      // Try to make the iframe fullscreen
+      if (iframe.requestFullscreen) {
+        iframe.requestFullscreen().catch(err => {
+          console.log('Fullscreen request failed:', err);
+        });
+      }
+    }
+
+    // Transition to lobby
+    transitionToScreen('lobby');
+  };
+
   return (
     <div className="main-menu">
       <div className="main-menu-content">
@@ -13,7 +29,7 @@ export function MainMenu() {
         <div className="menu-buttons">
           <button
             className="menu-button primary"
-            onClick={() => transitionToScreen('lobby')}
+            onClick={handleQuickPlay}
           >
             QUICK PLAY
           </button>
