@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "github-portfolio": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "description": "GitHub MCP server for Portfolio repository management",
+      "toolsets": [
+        "context",
+        "issues",
+        "pull_requests",
+        "repository"
+      ],
+      "config": {
+        "repository": "cyohn55/Portfolio",
+        "defaultBranch": "main"
+      }
+    }
+  }
+}
