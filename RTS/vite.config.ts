@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  base: './',  // Use relative paths so assets resolve correctly in iframe
+  base: '/',  // Assets resolve from root where symlinks/copies exist
   plugins: [react()],
   publicDir: 'public',  // Vite will copy public/ contents to dist/
   build: {
