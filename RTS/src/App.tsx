@@ -57,7 +57,19 @@ export default function App() {
         gl={{
           antialias: true, // Re-enable anti-aliasing for better quality
           powerPreference: "high-performance",
-          precision: "highp"
+          precision: "highp",
+          preserveDrawingBuffer: true,  // Preserve context
+          failIfMajorPerformanceCaveat: false  // Allow fallback
+        }}
+        onCreated={({ gl }) => {
+          // Handle context loss
+          gl.domElement.addEventListener('webglcontextlost', (e) => {
+            console.error('WebGL context lost!', e);
+            e.preventDefault();
+          });
+          gl.domElement.addEventListener('webglcontextrestored', () => {
+            console.log('WebGL context restored');
+          });
         }}
       >
         {/* Day/Night Cycle with Sun and Moon - handles background color dynamically */}

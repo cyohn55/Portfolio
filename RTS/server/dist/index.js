@@ -10,9 +10,15 @@ const path_1 = __importDefault(require("path"));
 const cors_1 = __importDefault(require("cors"));
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
-// Serve models statically (models are located one level up from this app dir)
-const modelsPath = path_1.default.resolve(process.cwd(), '..', 'models');
+// Serve models statically (models are in the project root)
+const modelsPath = path_1.default.resolve(process.cwd(), 'models');
+console.log('[server] Models path:', modelsPath);
+console.log('[server] Current working directory:', process.cwd());
 app.use('/models', express_1.default.static(modelsPath));
+// Serve audio files statically
+const audioPath = path_1.default.resolve(process.cwd(), 'audio');
+console.log('[server] Audio path:', audioPath);
+app.use('/audio', express_1.default.static(audioPath));
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 const server = http_1.default.createServer(app);
 const io = new socket_io_1.Server(server, {

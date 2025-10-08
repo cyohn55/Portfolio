@@ -854,5 +854,68 @@ function sendToSMSGateway(formData) {
     });
 }
 
+// =============================================================================
+// RTS GAME IFRAME LOADER
+// =============================================================================
+
+/**
+ * Lazy-load RTS game iframe when user clicks the "Load Game" button
+ * This improves initial page load performance by deferring the game assets
+ */
+document.addEventListener('DOMContentLoaded', function() {
+    const loadGameBtn = document.getElementById('load-game-btn');
+    const rtsIframe = document.getElementById('rts-iframe');
+
+    if (loadGameBtn && rtsIframe) {
+        loadGameBtn.addEventListener('click', function() {
+            // Change button text to show loading
+            loadGameBtn.textContent = '⏳ Loading Game...';
+            loadGameBtn.disabled = true;
+
+            // IMPORTANT: Pause/hide all model-viewers to free WebGL contexts
+            // This prevents "WebGL Context Lost" errors when the RTS game loads
+            const modelViewers = document.querySelectorAll('model-viewer');
+            modelViewers.forEach(viewer => {
+                if (viewer.pause) viewer.pause();
+                viewer.style.display = 'none';
+                console.log('Paused model-viewer to free WebGL context');
+            });
+
+            // Close modal if open (contains model-viewer)
+            const modal = document.getElementById('modelsModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+
+            // Set iframe source to load the game
+            rtsIframe.src = 'RTS/dist/index.html';
+
+            // Show iframe immediately
+            rtsIframe.style.display = 'block';
+
+            // Wait a moment then hide button
+            setTimeout(() => {
+                loadGameBtn.style.display = 'none';
+            }, 1000);
+
+            // Log for debugging
+            console.log('RTS game iframe loading from:', rtsIframe.src);
+
+            // Add load event listener
+            rtsIframe.addEventListener('load', function() {
+                console.log('RTS game iframe loaded successfully');
+            });
+
+            // Add error event listener
+            rtsIframe.addEventListener('error', function() {
+                console.error('RTS game iframe failed to load');
+                loadGameBtn.textContent = '❌ Failed to Load - Try Refresh';
+                loadGameBtn.style.display = 'block';
+                loadGameBtn.disabled = false;
+                rtsIframe.style.display = 'none';
+            });
+        });
+    }
+});
 
 

@@ -194,8 +194,96 @@ export function Settings({ onBack }: SettingsProps) {
 
         {/* Controls Tab */}
         {activeTab === 'controls' && (
-          <div style={{ color: '#94a3b8', textAlign: 'center', padding: '40px' }}>
-            Controller settings coming soon...
+          <div style={{ color: '#e2e8f0', fontSize: '14px' }}>
+            {/* Camera Controls Section */}
+            <div style={{ marginBottom: '24px' }}>
+              <h3 style={{ color: '#fff', fontSize: '18px', marginBottom: '12px', fontWeight: '600' }}>
+                🎥 Camera Controls
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Move Camera:</span>
+                  <span style={{ color: '#e2e8f0', fontWeight: '600' }}>W / A / S / D</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Zoom In/Out:</span>
+                  <span style={{ color: '#e2e8f0', fontWeight: '600' }}>Mouse Wheel</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Unit Selection Section */}
+            <div style={{ marginBottom: '24px' }}>
+              <h3 style={{ color: '#fff', fontSize: '18px', marginBottom: '12px', fontWeight: '600' }}>
+                🎯 Unit Selection
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Select Unit(s):</span>
+                  <span style={{ color: '#e2e8f0', fontWeight: '600' }}>Left Click</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Box Select Units:</span>
+                  <span style={{ color: '#e2e8f0', fontWeight: '600' }}>Left Click + Drag</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Select All Units:</span>
+                  <span style={{ color: '#e2e8f0', fontWeight: '600' }}>Spacebar</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Select Animal Type 1:</span>
+                  <span style={{ color: '#e2e8f0', fontWeight: '600' }}>Shift + A</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Select Animal Type 2:</span>
+                  <span style={{ color: '#e2e8f0', fontWeight: '600' }}>Shift + S</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Select Animal Type 3:</span>
+                  <span style={{ color: '#e2e8f0', fontWeight: '600' }}>Shift + D</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Deselect All:</span>
+                  <span style={{ color: '#e2e8f0', fontWeight: '600' }}>Escape</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Unit Commands Section */}
+            <div style={{ marginBottom: '24px' }}>
+              <h3 style={{ color: '#fff', fontSize: '18px', marginBottom: '12px', fontWeight: '600' }}>
+                ⚔️ Unit Commands
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Move/Attack:</span>
+                  <span style={{ color: '#e2e8f0', fontWeight: '600' }}>Right Click</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Set Patrol Path:</span>
+                  <span style={{ color: '#e2e8f0', fontWeight: '600' }}>Right Click + Drag (on Queens)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Tips Section */}
+            <div style={{
+              marginTop: '24px',
+              padding: '16px',
+              background: 'rgba(88,120,255,0.1)',
+              borderRadius: '8px',
+              border: '1px solid rgba(88,120,255,0.3)'
+            }}>
+              <h4 style={{ color: '#fff', fontSize: '14px', marginBottom: '8px', fontWeight: '600' }}>
+                💡 Tips
+              </h4>
+              <ul style={{ margin: 0, paddingLeft: '20px', color: '#94a3b8', fontSize: '13px', lineHeight: '1.6' }}>
+                <li>Queens spawn new units automatically near their location</li>
+                <li>Units regenerate health when near their Queen</li>
+                <li>Victory is achieved by eliminating all enemy Bases, Kings, and Queens</li>
+                <li>Different animal types have unique stats and abilities</li>
+              </ul>
+            </div>
           </div>
         )}
 
