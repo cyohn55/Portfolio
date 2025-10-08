@@ -1,0 +1,61 @@
+/* App.css - Fix Canvas and HUD layering */
+
+/* Ensure the MAIN game Canvas takes full screen but doesn't block UI */
+/* Use a more specific selector to avoid affecting button canvases */
+#root > canvas {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+/* HUD should be above the Canvas */
+.hud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  pointer-events: none; /* Allow clicks to pass through to Canvas */
+}
+
+/* HUD children should have pointer events */
+.hud > * {
+  pointer-events: auto;
+}
+
+/* Ensure body and html have no margins/padding */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Root container */
+#root {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* Performance Stats - Small, Top-Center */
+.grid-overlay {
+  position: fixed !important;
+  top: 10px !important;
+  left: 50% !important;
+  transform: translateX(-50%) scale(0.7) !important;
+  z-index: 999 !important;
+  opacity: 0.8 !important;
+  pointer-events: none !important;
+}
+
+.grid-overlay canvas {
+  border-radius: 4px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}

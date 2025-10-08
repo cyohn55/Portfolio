@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "YOUR_GITHUB_TOKEN_HERE"
+      }
+    }
+  },
+  "repository": {
+    "owner": "cyohn55",
+    "repo": "RTS",
+    "url": "https://github.com/cyohn55/RTS"
+  }
+}

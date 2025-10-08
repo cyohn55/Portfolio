@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Animal RTS</title>
+    <style>
+      html, body, #root { height: 100%; margin: 0; background: #0b0f1a; color: #e6ebff; }
+      .hud { position: fixed; top: 0; left: 0; right: 0; padding: 8px 12px; display: flex; gap: 12px; align-items: center; z-index: 1000; pointer-events: auto; }
+      .hud * { pointer-events: auto; }
+      .panel { background: rgba(17,23,38,0.8); border: 1px solid rgba(88,120,255,0.25); border-radius: 8px; padding: 8px 12px; }
+      .btn { background: #2a3466; color: white; border: 1px solid #5a7cff; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .grid-overlay { position: absolute; bottom: 8px; left: 8px; font: 12px/1.4 system-ui, sans-serif; opacity: 0.8; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+  </html>
+
+
