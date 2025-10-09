@@ -9,7 +9,7 @@ export function Skybox() {
   // Error handling for skybox loading
   let scene;
   try {
-    const gltf = useGLTF('/models/nebula_skybox/scene.gltf');
+    const gltf = useGLTF(`${import.meta.env.BASE_URL}models/nebula_skybox/scene.gltf`);
     scene = gltf.scene;
   } catch (error) {
     console.error('❌ Failed to load skybox GLTF:', error);
@@ -128,4 +128,4 @@ export function Skybox() {
 }
 
 // Preload the skybox model
-useGLTF.preload('/models/nebula_skybox/scene.gltf');
+useGLTF.preload(`${import.meta.env.BASE_URL}models/nebula_skybox/scene.gltf`);

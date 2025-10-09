@@ -36,12 +36,12 @@ loader.setDRACOLoader(draco);
 
 // Preload each animal model immediately
 Object.values(ANIMAL_FILE_MAP).forEach(filename => {
-  useGLTF.preload(`/models/${filename}`, loader);
+  useGLTF.preload(`${import.meta.env.BASE_URL}models/${filename}`, loader);
 });
 
 // Preload owl wing models
 OWL_WING_MODELS.forEach(filename => {
-  useGLTF.preload(`/models/${filename}`, loader);
+  useGLTF.preload(`${import.meta.env.BASE_URL}models/${filename}`, loader);
 });
 
 // Get preloaded model with optimized cloning
@@ -50,7 +50,7 @@ export function usePreloadedModel(animal: AnimalId) {
     console.error(`❌ Invalid animal ID: "${animal}". Available animals:`, Object.keys(ANIMAL_FILE_MAP));
     throw new Error(`Invalid animal ID: ${animal}`);
   }
-  const path = `/models/${ANIMAL_FILE_MAP[animal]}`;
+  const path = `${import.meta.env.BASE_URL}models/${ANIMAL_FILE_MAP[animal]}`;
   return useGLTF(path);
 }
 
@@ -139,7 +139,7 @@ export function useOwlWingModel(wingPhase: number) {
   // 0.75-1.00: Wings Glide
   const modelIndex = Math.floor(wingPhase * 4) % 4;
   const modelName = OWL_WING_MODELS[modelIndex];
-  const path = `/models/${modelName}`;
+  const path = `${import.meta.env.BASE_URL}models/${modelName}`;
   return useGLTF(path);
 }
 

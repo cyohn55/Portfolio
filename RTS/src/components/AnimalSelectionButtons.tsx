@@ -40,7 +40,7 @@ const ANIMAL_COLORS: Record<AnimalId, string> = {
 };
 
 function getModelPath(animal: AnimalId) {
-  return `/models/${ANIMAL_FILE_MAP[animal]}`;
+  return `${import.meta.env.BASE_URL}models/${ANIMAL_FILE_MAP[animal]}`;
 }
 
 // 3D Model component for buttons
