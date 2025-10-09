@@ -182,9 +182,11 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
       hemisphereRef.current.groundColor = groundColor;
       hemisphereRef.current.intensity = lightingSettings.ambientLight + (dayFactor * (lightingSettings.ambientLight * 0.75)); // Dynamic based on ambient setting
 
-      // Don't set scene.background - let the Skybox mesh render naturally
-      // Setting scene.background to null allows the skybox geometry to be visible
-      scene.background = null;
+      // Set a subtle dark blue background instead of null
+      // This provides a fallback if skybox fails to load, and works with alpha: false
+      if (!scene.background) {
+        scene.background = new THREE.Color(0x0a0e1a); // Subtle dark space blue
+      }
     }
   });
 

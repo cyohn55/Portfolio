@@ -1,5 +1,6 @@
 import { Canvas } from '@react-three/fiber';
 import { Suspense, useEffect } from 'react';
+import * as THREE from 'three';
 import './App.css';
 import { BattleMap } from './components/HexGrid';
 import { CameraController } from './components/CameraController';
@@ -64,21 +65,27 @@ export default function App() {
           stencil: false,  // Disable stencil buffer if not needed
           depth: true  // Keep depth buffer for 3D rendering
         }}
-        onCreated={({ gl }) => {
+        onCreated={({ gl, scene }) => {
           console.log('🎮 RTS Game: WebGL context created successfully');
           console.log('WebGL Version:', gl.getParameter(gl.VERSION));
           console.log('WebGL Vendor:', gl.getParameter(gl.VENDOR));
           console.log('Max Textures:', gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS));
+          console.log('Renderer info:', gl.getParameter(gl.RENDERER));
+
+          // Set initial background color in case models take time to load
+          scene.background = new THREE.Color(0x1a1f35);
+          console.log('✅ Initial background set');
 
           // Handle context loss with recovery
           gl.domElement.addEventListener('webglcontextlost', (e) => {
-            console.error('❌ WebGL context lost!', e);
+            console.error('❌❌❌ CRITICAL: WebGL context lost!', e);
+            console.error('This usually happens when too many WebGL contexts are created');
             e.preventDefault(); // Prevent default to allow recovery
 
             // Show error message to user
             const errorMsg = document.createElement('div');
             errorMsg.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255,0,0,0.9); color: white; padding: 20px; border-radius: 10px; z-index: 10000; font-size: 16px; text-align: center;';
-            errorMsg.innerHTML = '⚠️ WebGL Context Lost<br><small>Reloading game...</small>';
+            errorMsg.innerHTML = '⚠️ WebGL Context Lost<br><small>Too many 3D models active. Reloading...</small>';
             document.body.appendChild(errorMsg);
 
             // Attempt to recover by reloading after 2 seconds
