@@ -208,11 +208,11 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
 
   return (
     <>
-      {/* Hemisphere light for ambient day/night transition - HIDDEN */}
-      {/* <hemisphereLight
+      {/* Hemisphere light for ambient day/night transition */}
+      <hemisphereLight
         ref={hemisphereRef}
         args={[0x87CEEB, 0x222233, 0.8]}
-      /> */}
+      />
 
       {/* Sun directional light */}
       <directionalLight
