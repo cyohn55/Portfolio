@@ -51,7 +51,7 @@ export function BackgroundMusic() {
   useEffect(() => {
     if (!menuMusicRef.current) {
       // URL encode the filename with spaces
-      const menuMusicPath = "/audio/Music/" + encodeURIComponent("The Teddy Bears Picnic.mp3");
+      const menuMusicPath = `${import.meta.env.BASE_URL}audio/Music/` + encodeURIComponent("The Teddy Bears Picnic.mp3");
       const audio = new Audio(menuMusicPath);
       audio.loop = false; // Don't loop - we'll manually control playback
       audio.volume = 0.5;
@@ -87,7 +87,7 @@ export function BackgroundMusic() {
 
     if (!gameMusicRef.current) {
       // URL encode the filename with spaces
-      const gameMusicPath = "/audio/Music/" + encodeURIComponent("Clash of Titans.mp3");
+      const gameMusicPath = `${import.meta.env.BASE_URL}audio/Music/` + encodeURIComponent("Clash of Titans.mp3");
       const audio = new Audio(gameMusicPath);
       audio.loop = true;
       audio.volume = 0.5;
