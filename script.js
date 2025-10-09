@@ -872,48 +872,88 @@ document.addEventListener('DOMContentLoaded', function() {
             loadGameBtn.textContent = '⏳ Loading Game...';
             loadGameBtn.disabled = true;
 
-            // IMPORTANT: Pause/hide all model-viewers to free WebGL contexts
-            // This prevents "WebGL Context Lost" errors when the RTS game loads
-            const modelViewers = document.querySelectorAll('model-viewer');
-            modelViewers.forEach(viewer => {
-                if (viewer.pause) viewer.pause();
-                viewer.style.display = 'none';
-                console.log('Paused model-viewer to free WebGL context');
-            });
+            console.log('🎮 Starting game load - freeing WebGL contexts...');
 
-            // Close modal if open (contains model-viewer)
+            // STEP 1: Stop auto-cycling to prevent new model loads
+            autoCycleEnabled = false;
+            stopAutoCycle();
+
+            // STEP 2: Close modal immediately to free its WebGL context
             const modal = document.getElementById('modelsModal');
             if (modal) {
                 modal.style.display = 'none';
+                console.log('✓ Closed modal');
             }
 
-            // Set iframe source to load the game
-            rtsIframe.src = 'RTS/dist/index.html';
+            // STEP 3: Aggressively dispose of all model-viewer WebGL contexts
+            const modelViewers = document.querySelectorAll('model-viewer');
+            console.log(`Found ${modelViewers.length} model-viewers to dispose`);
 
-            // Show iframe immediately
-            rtsIframe.style.display = 'block';
+            let disposedCount = 0;
+            modelViewers.forEach((viewer, index) => {
+                try {
+                    // Stop rendering
+                    if (viewer.pause) viewer.pause();
 
-            // Wait a moment then hide button
+                    // Remove from DOM to force WebGL context release
+                    viewer.style.display = 'none';
+                    viewer.style.visibility = 'hidden';
+
+                    // Clear the src to unload the model
+                    viewer.src = '';
+
+                    // Force garbage collection hint by removing rendering
+                    if (viewer.shadowRoot) {
+                        const canvas = viewer.shadowRoot.querySelector('canvas');
+                        if (canvas) {
+                            // Get WebGL context and force lose it
+                            const gl = canvas.getContext('webgl') || canvas.getContext('webgl2');
+                            if (gl && gl.getExtension('WEBGL_lose_context')) {
+                                gl.getExtension('WEBGL_lose_context').loseContext();
+                                console.log(`✓ Disposed WebGL context for model-viewer #${index + 1}`);
+                                disposedCount++;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`Failed to dispose model-viewer #${index + 1}:`, e);
+                }
+            });
+
+            console.log(`✓ Disposed ${disposedCount} WebGL contexts`);
+
+            // STEP 4: Wait for WebGL contexts to be fully released (give browser time to clean up)
             setTimeout(() => {
-                loadGameBtn.style.display = 'none';
-            }, 1000);
+                console.log('⏳ WebGL contexts released, loading game iframe...');
 
-            // Log for debugging
-            console.log('RTS game iframe loading from:', rtsIframe.src);
+                // Set iframe source to load the game
+                rtsIframe.src = 'RTS/dist/index.html';
 
-            // Add load event listener
-            rtsIframe.addEventListener('load', function() {
-                console.log('RTS game iframe loaded successfully');
-            });
+                // Show iframe immediately
+                rtsIframe.style.display = 'block';
 
-            // Add error event listener
-            rtsIframe.addEventListener('error', function() {
-                console.error('RTS game iframe failed to load');
-                loadGameBtn.textContent = '❌ Failed to Load - Try Refresh';
-                loadGameBtn.style.display = 'block';
-                loadGameBtn.disabled = false;
-                rtsIframe.style.display = 'none';
-            });
+                // Wait a moment then hide button
+                setTimeout(() => {
+                    loadGameBtn.style.display = 'none';
+                }, 1000);
+
+                // Log for debugging
+                console.log('🎮 RTS game iframe loading from:', rtsIframe.src);
+
+                // Add load event listener
+                rtsIframe.addEventListener('load', function() {
+                    console.log('✅ RTS game iframe loaded successfully');
+                });
+
+                // Add error event listener
+                rtsIframe.addEventListener('error', function() {
+                    console.error('❌ RTS game iframe failed to load');
+                    loadGameBtn.textContent = '❌ Failed to Load - Try Refresh';
+                    loadGameBtn.style.display = 'block';
+                    loadGameBtn.disabled = false;
+                    rtsIframe.style.display = 'none';
+                });
+            }, 500); // 500ms delay to ensure cleanup completes
         });
     }
 });

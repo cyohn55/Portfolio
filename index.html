@@ -111,12 +111,12 @@
 <!-- Embedded 3D Model Viewer Section -->
 <section id="embedded-3d-models" class="embedded-models-section">
     <div class="embedded-model-viewer">
-        <model-viewer 
+        <model-viewer
             id="embeddedModelViewer"
-            src="models/dolphin.glb" 
+            src="models/dolphin.glb"
             alt="3D Model - Embedded View"
             auto-rotate rotation-per-second="75deg"
-            camera-controls 
+            camera-controls
             touch-action="pan-y"
             auto-rotate-delay="1000"
             interaction-prompt="auto"
@@ -126,6 +126,8 @@
             max-camera-orbit="auto auto 24m"
             min-field-of-view="25deg"
             max-field-of-view="75deg"
+            loading="lazy"
+            reveal="auto"
             style="width: 100%; height: 800px; background: #00bfff; --progress-bar-display: none;">
             
             <!-- Empty progress bar slot to prevent default progress bar -->
@@ -313,12 +315,12 @@
             </button>
         </div>
         <div class="model-modal-body">
-            <model-viewer 
+            <model-viewer
                 id="mainModelViewer"
-                src="models/dolphin.glb" 
+                src="models/dolphin.glb"
                 alt="3D Model - Full View"
                 auto-rotate rotation-per-second="37.5deg"
-                camera-controls 
+                camera-controls
                 touch-action="pan-y"
                 auto-rotate-delay="1000"
                 interaction-prompt="auto"
@@ -327,7 +329,9 @@
                 min-camera-orbit="auto auto 12m"
                 max-camera-orbit="auto auto 24m"
                 min-field-of-view="25deg"
-                max-field-of-view="75deg">
+                max-field-of-view="75deg"
+                loading="lazy"
+                reveal="auto">
                 
                 <div slot="progress-bar" class="progress-bar">
                     <div class="update-bar"></div>

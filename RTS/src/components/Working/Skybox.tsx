@@ -5,7 +5,18 @@ import * as THREE from 'three';
 
 export function Skybox() {
   console.log('🌌 SKYBOX GLTF VERSION LOADING');
-  const { scene } = useGLTF('/models/nebula_skybox/scene.gltf');
+
+  // Error handling for skybox loading
+  let scene;
+  try {
+    const gltf = useGLTF('/models/nebula_skybox/scene.gltf');
+    scene = gltf.scene;
+  } catch (error) {
+    console.error('❌ Failed to load skybox GLTF:', error);
+    // Return a simple fallback background color instead
+    return null;
+  }
+
   const groupRef = useRef<THREE.Group>(null);
 
   // Create quaternions for rotation (avoids gimbal lock)
