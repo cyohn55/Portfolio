@@ -1,19 +1,27 @@
+import { useEffect } from 'react';
 import { useGameStore } from '../../game/state';
 import './MainMenu.css';
 
 export function MainMenu() {
   const transitionToScreen = useGameStore((s) => s.transitionToScreen);
 
+  useEffect(() => {
+    console.log('🎮 MainMenu component mounted and rendering');
+    console.log('📱 Window dimensions:', window.innerWidth, 'x', window.innerHeight);
+    console.log('📄 Document body:', document.body);
+    return () => {
+      console.log('🎮 MainMenu component unmounting');
+    };
+  }, []);
+
   const handleQuickPlay = () => {
-    // Request fullscreen when entering game
-    const iframe = document.getElementById('rts-iframe') as HTMLIFrameElement;
-    if (iframe) {
-      // Try to make the iframe fullscreen
-      if (iframe.requestFullscreen) {
-        iframe.requestFullscreen().catch(err => {
-          console.log('Fullscreen request failed:', err);
-        });
-      }
+    console.log('Quick Play clicked - transitioning to lobby');
+
+    // Try to request fullscreen for the entire document
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.log('Fullscreen request failed (user may need to interact first):', err);
+      });
     }
 
     // Transition to lobby
