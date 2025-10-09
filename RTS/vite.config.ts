@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  base: '/',  // Assets resolve from root where symlinks/copies exist
+  base: './',  // Use relative paths for GitHub Pages deployment
   plugins: [react()],
   publicDir: 'public',  // Vite will copy public/ contents to dist/
   build: {
