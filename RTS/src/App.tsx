@@ -67,10 +67,13 @@ export default function App() {
         }}
         onCreated={({ gl, scene }) => {
           console.log('🎮 RTS Game: WebGL context created successfully');
-          console.log('WebGL Version:', gl.getParameter(gl.VERSION));
-          console.log('WebGL Vendor:', gl.getParameter(gl.VENDOR));
-          console.log('Max Textures:', gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS));
-          console.log('Renderer info:', gl.getParameter(gl.RENDERER));
+
+          // Access the WebGL context correctly from the renderer
+          const glContext = gl.getContext();
+          console.log('WebGL Version:', glContext.getParameter(glContext.VERSION));
+          console.log('WebGL Vendor:', glContext.getParameter(glContext.VENDOR));
+          console.log('Max Textures:', glContext.getParameter(glContext.MAX_TEXTURE_IMAGE_UNITS));
+          console.log('Renderer info:', glContext.getParameter(glContext.RENDERER));
 
           // Set initial background color in case models take time to load
           scene.background = new THREE.Color(0x1a1f35);
@@ -99,7 +102,7 @@ export default function App() {
           });
 
           // Log available extensions for debugging
-          const extensions = gl.getSupportedExtensions();
+          const extensions = glContext.getSupportedExtensions();
           console.log('Available WebGL Extensions:', extensions?.length || 0);
         }}
       >
