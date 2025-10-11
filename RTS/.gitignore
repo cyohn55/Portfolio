@@ -7,6 +7,8 @@ node_modules/
 /dist
 /build
 
+# Note: Models are sourced from /public/models/ and auto-copied to /dist/models/ during build
+
 # Environment variables
 .env
 .env.local
