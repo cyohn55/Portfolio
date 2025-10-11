@@ -27,7 +27,7 @@ export function Skybox() {
     // Create quaternions for X and Y rotations
     const quatX = new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(1, 0, 0),
-      Math.PI / 2 // 90 degrees X
+      Math.PI // 180 degrees X
     );
     const quatY = new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(0, 1, 0),
@@ -82,7 +82,7 @@ export function Skybox() {
       if (groupRef.current.userData.initialRotationSet !== true) {
         groupRef.current.quaternion.copy(initialQuaternion);
         groupRef.current.userData.initialRotationSet = true;
-        console.log('🔄 Skybox GLTF: Initial rotation applied via quaternions - X=90°, Y=180°');
+        console.log('🔄 Skybox GLTF: Initial rotation applied via quaternions - X=180°, Y=180°');
       }
 
       // Continuous rotation around world-space Z-axis using quaternions
