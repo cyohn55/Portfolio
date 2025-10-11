@@ -20,7 +20,7 @@ export function Skybox() {
   const groupRef = useRef<THREE.Group>(null);
 
   // Create quaternions for rotation (avoids gimbal lock)
-  const worldZAxis = useRef(new THREE.Vector3(0, 0, 1)); // World-space Z axis
+  const worldYAxis = useRef(new THREE.Vector3(0, 1, 0)); // World-space Y axis (up/down)
 
   // Create initial quaternion in useMemo so it updates when component remounts
   const initialQuaternion = useMemo(() => {
@@ -85,16 +85,16 @@ export function Skybox() {
         console.log('🔄 Skybox GLTF: Initial rotation applied via quaternions - X=180°, Y=180°');
       }
 
-      // Continuous rotation around world-space Z-axis using quaternions
+      // Continuous rotation around world-space Y-axis using quaternions
       // This avoids gimbal lock by rotating around a fixed world axis
       const rotationSpeed = 0.1 * delta; // Slower for testing visibility
-      const zRotationQuat = new THREE.Quaternion().setFromAxisAngle(
-        worldZAxis.current,
+      const yRotationQuat = new THREE.Quaternion().setFromAxisAngle(
+        worldYAxis.current,
         rotationSpeed
       );
 
-      // Apply Z rotation to existing quaternion (pre-multiply for world-space rotation)
-      groupRef.current.quaternion.premultiply(zRotationQuat);
+      // Apply Y rotation to existing quaternion (pre-multiply for world-space rotation)
+      groupRef.current.quaternion.premultiply(yRotationQuat);
 
       // Log every 2 seconds with rotation info
       if (Math.floor(state.clock.elapsedTime) % 2 === 0 && state.clock.elapsedTime % 2 < delta) {
