@@ -181,9 +181,8 @@ export function MapInteraction() {
 
   const handleMouseDown = (event: MouseEvent) => {
     if (event.button === 0) { // Left mouse button
-      // Reset click state - will be set to true if unit's onPointerDown fires first
-      console.log('🔴 Canvas mousedown - resetting clickState to FALSE');
-      clickState.resetClickState();
+      // Don't reset clickState here - it will be reset at the end of mouseup
+      console.log('🔴 Canvas mousedown - NOT resetting clickState (unit events fire first)');
 
       const screenPos = getScreenPosition(event);
       dragStateRef.current = {
@@ -318,6 +317,10 @@ export function MapInteraction() {
         } else {
           console.log('✅ NOT clearing selection - unit was clicked');
         }
+
+        // Reset clickState for next click (after we've used it)
+        console.log('🔄 Resetting clickState for next click');
+        clickState.resetClickState();
       }
     }
 
