@@ -182,6 +182,7 @@ export function MapInteraction() {
   const handleMouseDown = (event: MouseEvent) => {
     if (event.button === 0) { // Left mouse button
       // Reset click state - will be set to true if unit's onPointerDown fires first
+      console.log('🔴 Canvas mousedown - resetting clickState to FALSE');
       clickState.resetClickState();
 
       const screenPos = getScreenPosition(event);
@@ -309,8 +310,13 @@ export function MapInteraction() {
         selectUnits(selectedIds);
       } else {
         // Single click - only clear selection if we clicked on empty ground (not a unit)
-        if (!clickState.wasUnitClicked()) {
+        const unitWasClicked = clickState.wasUnitClicked();
+        console.log('⚪ Canvas mouseup - clickState is:', unitWasClicked);
+        if (!unitWasClicked) {
+          console.log('❌ Clearing selection');
           clearSelection();
+        } else {
+          console.log('✅ NOT clearing selection - unit was clicked');
         }
       }
     }

@@ -150,6 +150,7 @@ function UnitModel({ unit }: { unit: Unit }) {
 
   const handlePointerDown = (e: any) => {
     e.stopPropagation();
+    console.log('🎯 Unit clicked:', unit.id, 'button:', e.button, 'isOwnUnit:', isOwnUnit);
 
     // Right-click on enemy unit - attack target with selected units
     if (e.button === 2 && !isOwnUnit) {
@@ -171,6 +172,7 @@ function UnitModel({ unit }: { unit: Unit }) {
     if (!isOwnUnit) return;
 
     // Mark that a unit was clicked (for HexInteraction to know not to clear selection)
+    console.log('🔵 Setting clickState to TRUE');
     clickState.setUnitClicked();
 
     if (e.shiftKey) {
