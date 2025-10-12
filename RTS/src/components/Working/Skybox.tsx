@@ -66,6 +66,13 @@ export function Skybox() {
           mat.depthWrite = false; // Don't interfere with other objects
           console.log(`🎨 Set material to DoubleSide for mesh #${meshCount}:`, child.name);
         }
+
+        // Set render order to render skybox behind everything
+        child.renderOrder = -1000;
+
+        // Make sure the mesh is visible
+        child.visible = true;
+        child.frustumCulled = false; // Don't cull the skybox
       }
     });
 
@@ -121,7 +128,12 @@ export function Skybox() {
   const skyboxCenter = { x: 0, y: 0, z: 2 };
 
   return (
-    <group ref={groupRef} scale={[scale, scale, scale]} position={[skyboxCenter.x, skyboxCenter.y, skyboxCenter.z]}>
+    <group
+      ref={groupRef}
+      scale={[scale, scale, scale]}
+      position={[skyboxCenter.x, skyboxCenter.y, skyboxCenter.z]}
+      renderOrder={-1000}
+    >
       <primitive object={processedScene} />
     </group>
   );
