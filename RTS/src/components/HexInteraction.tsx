@@ -41,6 +41,9 @@ export function MapInteraction() {
     currentWorldPos: null
   });
 
+  // Track if the current click sequence started on a unit (not ground)
+  const clickedOnUnitRef = useRef<boolean>(false);
+
   // Create selection box visual element
   const selectionBoxRef = useRef<HTMLDivElement | null>(null);
   // Create patrol arrow visual element
@@ -180,6 +183,32 @@ export function MapInteraction() {
 
   const handleMouseDown = (event: MouseEvent) => {
     if (event.button === 0) { // Left mouse button
+      // Check if we're clicking on a unit using raycasting
+      const mousePos = getMousePosition(event);
+      raycaster.setFromCamera(new THREE.Vector2(mousePos.x, mousePos.y), camera);
+
+      // Get all objects in the scene (units are primitive objects)
+      const scene = gl.domElement.parentElement;
+      const allObjects: THREE.Object3D[] = [];
+
+      // Traverse the Three.js scene to find all meshes
+      camera.parent?.traverse((obj) => {
+        if (obj.type === 'Mesh' || obj.type === 'Group') {
+          allObjects.push(obj);
+        }
+      });
+
+      const intersects = raycaster.intersectObjects(allObjects, true);
+
+      // Check if we hit a unit (units are positioned above y=0, ground is at y=0)
+      // The ground plane is at renderOrder -1000, units are at default 0
+      const hitUnit = intersects.some(intersect => {
+        // Check if this intersection is above ground (y > 0.1) indicating a unit
+        return intersect.point.y > 0.1;
+      });
+
+      clickedOnUnitRef.current = hitUnit;
+
       const screenPos = getScreenPosition(event);
       dragStateRef.current = {
         isDragging: true,
@@ -304,9 +333,14 @@ export function MapInteraction() {
         const selectedIds = selectedUnitsInBox.map(unit => unit.id);
         selectUnits(selectedIds);
       } else {
-        // Single click - clear selection
-        clearSelection();
+        // Single click - only clear selection if we clicked on empty ground (not a unit)
+        if (!clickedOnUnitRef.current) {
+          clearSelection();
+        }
       }
+
+      // Reset the unit click flag for next interaction
+      clickedOnUnitRef.current = false;
     }
 
     if (patrolDragRef.current.isDragging && event.button === 2) {
