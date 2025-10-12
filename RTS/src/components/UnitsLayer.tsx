@@ -5,6 +5,7 @@ import type { AnimalId, Unit } from '../game/types';
 import { usePreloadedModel, createPreparedScene, useOwlWingModel } from '../utils/ModelPreloader';
 import { vector3Pool, matrix4Pool, frustumPool } from '../utils/ObjectPool';
 import * as THREE from 'three';
+import { clickState } from '../utils/clickState';
 
 // Shared selection ring geometries and materials (created once, reused for all units)
 const SELECTION_RING_OUTER_GEO = new THREE.RingGeometry(0.9, 1.5, 16);
@@ -168,6 +169,9 @@ function UnitModel({ unit }: { unit: Unit }) {
 
     // Left-click on own unit - select it
     if (!isOwnUnit) return;
+
+    // Mark that a unit was clicked (for HexInteraction to know not to clear selection)
+    clickState.setUnitClicked();
 
     if (e.shiftKey) {
       addToSelection([unit.id]);
