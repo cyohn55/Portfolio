@@ -76,3 +76,9 @@ temp/
 # Large Blender source files
 *.blend
 *.blend1
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
