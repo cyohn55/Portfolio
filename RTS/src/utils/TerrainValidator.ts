@@ -37,11 +37,19 @@ export class TerrainValidator {
   }
 
   /**
+   * Check if the terrain validator is initialized
+   */
+  public isInitialized(): boolean {
+    return this.battleMapScene !== null;
+  }
+
+  /**
    * Initialize the terrain validator with the battle map scene
    */
   public initialize(scene: THREE.Scene) {
     this.battleMapScene = scene;
     this.findWaterMeshes();
+    console.log('✅ Terrain validator initialized');
   }
 
   /**
@@ -147,6 +155,11 @@ export class TerrainValidator {
    * Check if an animal can move to a specific position
    */
   public canAnimalMoveTo(animal: AnimalId, position: Position3D): boolean {
+    // If not initialized, allow all movement (graceful degradation)
+    if (!this.isInitialized()) {
+      return true;
+    }
+
     const movementType = ANIMAL_MOVEMENT_TYPES[animal];
 
     // Air animals can go anywhere
@@ -191,6 +204,11 @@ export class TerrainValidator {
    * Returns true if movement is valid
    */
   public isPathValid(animal: AnimalId, start: Position3D, end: Position3D, checkPoints: number = 5): boolean {
+    // If not initialized, allow all movement (graceful degradation)
+    if (!this.isInitialized()) {
+      return true;
+    }
+
     // Air animals can always move
     if (ANIMAL_MOVEMENT_TYPES[animal] === 'air') {
       return true;

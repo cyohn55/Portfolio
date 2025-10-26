@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import { produce } from 'immer';
 import { SpatialGrid } from '../utils/SpatialGrid';
+import { terrainValidator } from '../utils/TerrainValidator';
 import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, GameConfig, GameState, Player, Unit, PatrolRoute } from './types';
 
 type BridgeAnimationState = 'up' | 'lowering' | 'down' | 'raising';
@@ -1132,21 +1133,26 @@ export const useGameStore = create<Store>((set, get) => ({
         const u = draft.units.find((x) => x.id === id);
         if (!u || u.ownerId !== draft.localPlayerId) continue; // Only allow moving own units
 
-        // Validate terrain before issuing move order
-        const { terrainValidator } = require('../utils/TerrainValidator');
-        const canMove = terrainValidator.canAnimalMoveTo(u.animal, cmd.target);
+        // Validate terrain before issuing move order (if terrain validator is ready)
+        // Gracefully allow movement if validator isn't initialized yet
+        try {
+          const canMove = terrainValidator.canAnimalMoveTo(u.animal, cmd.target);
 
-        if (!canMove) {
-          console.log(`❌ ${u.animal} cannot move to target position (blocked by water/terrain)`);
-          continue; // Skip this unit
-        }
+          if (!canMove) {
+            console.log(`❌ ${u.animal} cannot move to target position (blocked by water/terrain)`);
+            continue; // Skip this unit
+          }
 
-        // Validate path to target
-        const pathValid = terrainValidator.isPathValid(u.animal, u.position, cmd.target);
+          // Validate path to target
+          const pathValid = terrainValidator.isPathValid(u.animal, u.position, cmd.target);
 
-        if (!pathValid) {
-          console.log(`❌ ${u.animal} path to target is blocked by water/terrain`);
-          continue; // Skip this unit
+          if (!pathValid) {
+            console.log(`❌ ${u.animal} path to target is blocked by water/terrain`);
+            continue; // Skip this unit
+          }
+        } catch (error) {
+          // If terrain validation fails (validator not initialized), allow movement
+          console.warn(`⚠️ Terrain validator not ready, allowing movement for ${u.animal}`);
         }
 
         // Set new movement order
