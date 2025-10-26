@@ -1,6 +1,8 @@
 // 3D world coordinates
 export type Position3D = { x: number; y: number; z: number };
 
+export type MovementType = 'ground' | 'water' | 'air';
+
 export type AnimalId =
   | 'Bee'
   | 'Bear'
@@ -14,6 +16,22 @@ export type AnimalId =
   | 'Pig'
   | 'Turtle'
   | 'Yetti';
+
+// Movement type mapping for each animal
+export const ANIMAL_MOVEMENT_TYPES: Record<AnimalId, MovementType> = {
+  Bee: 'air',
+  Owl: 'air',
+  Frog: 'water',
+  Turtle: 'water',
+  Dolphin: 'water',
+  Bear: 'ground',
+  Bunny: 'ground',
+  Chicken: 'ground',
+  Cat: 'ground',
+  Fox: 'ground',
+  Pig: 'ground',
+  Yetti: 'ground',
+};
 
 export type UnitKind = 'Unit' | 'Queen' | 'King' | 'Base';
 

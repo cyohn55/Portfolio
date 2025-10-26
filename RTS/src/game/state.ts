@@ -1132,6 +1132,23 @@ export const useGameStore = create<Store>((set, get) => ({
         const u = draft.units.find((x) => x.id === id);
         if (!u || u.ownerId !== draft.localPlayerId) continue; // Only allow moving own units
 
+        // Validate terrain before issuing move order
+        const { terrainValidator } = require('../utils/TerrainValidator');
+        const canMove = terrainValidator.canAnimalMoveTo(u.animal, cmd.target);
+
+        if (!canMove) {
+          console.log(`❌ ${u.animal} cannot move to target position (blocked by water/terrain)`);
+          continue; // Skip this unit
+        }
+
+        // Validate path to target
+        const pathValid = terrainValidator.isPathValid(u.animal, u.position, cmd.target);
+
+        if (!pathValid) {
+          console.log(`❌ ${u.animal} path to target is blocked by water/terrain`);
+          continue; // Skip this unit
+        }
+
         // Set new movement order
         draft.unitOrders[id] = cmd.target;
 
@@ -1152,7 +1169,7 @@ export const useGameStore = create<Store>((set, get) => ({
         // Clear owl landing timer
         delete u.nearDestinationSinceMs;
 
-        console.log(`PLAYER issued new order to ${u.animal} - switching to MOVING_TO_ORDER state`);
+        console.log(`✅ PLAYER issued new order to ${u.animal} - switching to MOVING_TO_ORDER state`);
       }
     })
   ),

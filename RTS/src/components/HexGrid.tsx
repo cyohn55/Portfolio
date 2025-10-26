@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { useGameStore } from '../game/state';
@@ -7,6 +7,7 @@ import { MapInteraction } from './HexInteraction';
 import { Skybox } from './Working/Skybox';
 import { performanceMonitor } from '../utils/PerformanceMonitor';
 import { interpolationHelper } from '../utils/InterpolationHelper';
+import { terrainValidator } from '../utils/TerrainValidator';
 import * as THREE from 'three';
 
 export function BattleMap() {
@@ -95,6 +96,14 @@ export function BattleMap() {
     return clonedScene;
   }, [scene]);
 
+  // Initialize terrain validator when battle map scene is ready
+  useEffect(() => {
+    if (battleMapScene) {
+      console.log('🗺️ Initializing terrain validator with battle map scene');
+      terrainValidator.initialize(battleMapScene);
+    }
+  }, [battleMapScene]);
+
   const last = useRef(performance.now());
   const accumulator = useRef(0);
   const GAME_LOGIC_FPS = 60; // Full 60 FPS game logic for maximum smoothness
@@ -180,6 +189,12 @@ export function BattleMap() {
           }
         }
       }
+    });
+
+    // Update terrain validator with current bridge state
+    terrainValidator.updateBridgeState({
+      right: rightFrame as 'Fully_Up' | 'Almost_Up' | 'Almost_Down' | 'Fully_Down',
+      left: leftFrame as 'Fully_Up' | 'Almost_Up' | 'Almost_Down' | 'Fully_Down',
     });
   };
 
