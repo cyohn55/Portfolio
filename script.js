@@ -301,7 +301,7 @@ const modelConfig = {
         background: '#ff1493' // Vibrant pink
     },
     yeti: {
-        file: 'models/Yetti.glb',
+        file: 'models/Yeti.glb',
         title: '👾 Interactive 3D Yeti Model',
         emoji: '👾',
         background: '#007fff' // Vibrant azure
