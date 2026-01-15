@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cody's Portfolio</title>
-    <meta name="description" content="Learn more about me, my background, and my skills.">
-    
+    <meta name="description" content="Cody Yohn's Portfolio - Computer Science student, full-stack developer, and 3D artist. Explore projects in web development, game development, and innovative software solutions.">
+
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="images/python.jpg">
     <link rel="icon" type="image/png" sizes="32x32" href="images/python.jpg">
@@ -16,7 +16,7 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://cyohn55.github.io/Portfolio/">
     <meta property="og:title" content="Cody's Portfolio">
-    <meta property="og:description" content="Learn more about me, my background, and my skills.">
+    <meta property="og:description" content="Cody Yohn's Portfolio - Computer Science student, full-stack developer, and 3D artist. Explore projects in web development, game development, and innovative software solutions.">
     <meta property="og:image" content="https://cyohn55.github.io/Portfolio/images/python.jpg">
     <meta property="og:site_name" content="Cody's Portfolio">
     
@@ -24,7 +24,7 @@
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://cyohn55.github.io/Portfolio/">
     <meta property="twitter:title" content="Cody's Portfolio">
-    <meta property="twitter:description" content="Learn more about me, my background, and my skills.">
+    <meta property="twitter:description" content="Cody Yohn's Portfolio - Computer Science student, full-stack developer, and 3D artist. Explore projects in web development, game development, and innovative software solutions.">
     <meta property="twitter:image" content="https://cyohn55.github.io/Portfolio/images/python.jpg">
     
     <!-- Link to CSS -->
@@ -57,7 +57,7 @@
 
  <!-- Carousel Section -->
  <div id="carousel">
-    <video id="carousel-video" autoplay muted loop playsinline>
+    <video id="carousel-video" autoplay muted loop playsinline loading="lazy" aria-label="Blender 3D animation showcase">
         <source src="images/Blender Clip.mp4" type="video/mp4">
         Your browser does not support the video tag.
     </video>
@@ -75,11 +75,11 @@
             </div>
             <h2 id="be-first-text" style="text-align: center; margin-top: 0; margin-bottom: 0; visibility: hidden; opacity: 0; transition: visibility 0ms ease-in-out 0ms, opacity 2500ms ease-in-out;">(👆Be the first to ask!👆)</h2>
             <div class="intro-text">
-                <h2>Hi, I'm Cody <i>—but you can call me Code!</i></strong> 🤓</h2>
+                <h2>Hi, I'm Cody <i>—but you can call me Code!</i> 🤓</h2>
                 
                 <p>I'm a driven, lifelong learner passionate about all things computer science — from web and mobile development to machine learning, video games, and beyond. I love diagnosing new problems, engineering thoughtful solutions, and bringing software to life. Outside of code, I enjoy 3D modeling in Blender (especially for Unity game dev), exploring startup ideas, and creating digital content with tools like Figma, Photoshop, Final Cut Pro, and Aseprite.</p>
                 
-                <p><b>I'm currently pursuing a Bachelor's in Computer Science at the University of the People and will graduate in January 2026.</b> I'm passionate about creating efficient, scalable, and user-friendly solutions. My journey in tech is driven by a desire to solve real-world problems and a love for continuous learning.</p>
+                <p><b>I completed my Bachelor's degree in Computer Science at the University of the People in January 2026.</b> I'm passionate about creating efficient, scalable, and user-friendly solutions. My journey in tech is driven by a desire to solve real-world problems and a love for continuous learning.</p>
             </div>
         </div>
 
@@ -89,19 +89,21 @@
                 <ul class="skills-list">
                     <li><strong>University:</strong> University of the People</li>
                     <li><strong>Degree:</strong> B.S. Computer Science</li>
-                    <li><strong>GPA:</strong> 3.7</li>
+                    <li><strong>GPA:</strong> 3.71</li>
                     <li><strong>Certificate:</strong> Data Science, Leveraging AI for Career Growth and Skill Enhancement in Business and Healthcare Fields</li>
                     <li><strong>Dean's List:</strong> 10 Semesters</li>
+                    <li><strong>Internship:</strong> Souloxy, Role - AI Developer Intern</li>
+                    <li><strong>Achievements:</strong> A former judge entrusted my web development company with migrating their current website to a new WordPress website, including hosting and ongoing maintenance. As part of my internship, I developed three AI-integrated APIs for Souloxy's wellness and life coaching application for college students.</li>
                 </ul>
             </div>
             <div class="technical-skills">
                 <h1>Technical Skills</h1>
                 <ul class="skills-list">
-                    <li><strong>Programming Languages:</strong> Java, Python, C, C#, PHP, MySQL, Kotlin, HTML, CSS, Visual Basic, and JavaScript.</li>
+                    <li><strong>Programming Languages:</strong> Java, Python, C, C#, PHP, MySQL, PostgreSQL, Kotlin, Visual Basic, HTML, CSS, React, TypScript, and JavaScript.</li>
                     <li><strong>Programming Software:</strong> Cursor, Claude Code, ChatGPT, Gemini, IntelliJ, Eclipse, and Visual Studio Code.</li>
                     <li><strong>Office Applications:</strong> Microsoft Word, Excel, Access, PowerPoint, Outlook, and Google Sheets.</li>
                     <li><strong>Productivity Applications:</strong> Mailchimp, Miro, Zapier, and Salesforce.</li>
-                    <li><strong>Design Software:</strong> Final Cut Pro, Blender, Photoshop, and Aseprite.</li>
+                    <li><strong>Design Software:</strong> WordPress, WP Bakery, Figma, Final Cut Pro, Blender, Photoshop, and Aseprite.</li>
                 </ul>
             </div>
         </div>
@@ -142,7 +144,7 @@
                 <button class="model-nav-arrow prev-model" onclick="previousModel()" aria-label="Previous model">
                     &#8249;
                 </button>
-                <button id="rotationToggle" onclick="toggleEmbeddedAutoRotate()">&#9208;</button>
+                <button id="rotationToggle" onclick="toggleEmbeddedAutoRotate()" aria-label="Toggle auto-rotation">&#9208;</button>
                 <button class="model-nav-arrow next-model" onclick="nextModel()" aria-label="Next model">
                     &#8250;
                 </button>
@@ -190,7 +192,7 @@
 
               <!-- Project items -->
             <div class="project">
-                <img src="images/this_web_page_was_ge_cid_5C477791-9FD8-4303-AB7E-AF7715661474.jpeg" alt="This Web Page was Generated with an Email">
+                <img src="images/this_web_page_was_ge_cid_5C477791-9FD8-4303-AB7E-AF7715661474.jpeg" alt="This Web Page was Generated with an Email" loading="lazy">
                 <h3>This Web Page was Generated with an Email</h3>
                 <p>...No, Seriously</p>
                 <a href="Pages/thiswebpagewasgeneratedwithanemail.html">Read On...</a>
@@ -200,45 +202,45 @@
             
               <!-- Project items -->
             <div class="project">
-                <img src="images/ball.jpg" alt="Bouncing Ball">
+                <img src="images/ball.jpg" alt="Bouncing Ball" loading="lazy">
                 <h3>Bouncing Ball</h3>
                 <p>A simple animation of a ball as it bounces around the screen using HTML and Javascript.</p>
                 <a href="Pages/bouncingball.html">Read On...</a>
             </div>
             
             <div class="project">
-                <img src="images/speedgauge.jpg" alt="Web Performance">
+                <img src="images/speedgauge.jpg" alt="Web Performance" loading="lazy">
                 <h3>Web Performance</h3>
                 <p>A need for speed... in our web applications.</p>
                 <a href="Pages/webperformance.html">Read On...</a>
             </div>
             <div class="project">
-                <img src="images/logicgates.jpeg" alt="Hardware Architecture">
+                <img src="images/logicgates.jpeg" alt="Hardware Architecture" loading="lazy">
                 <h3>Hardware Architecture</h3>
                 <p>Understanding what's in the black box.</p>
                 <a href="Pages/hardwarearchitecture.html">Read On...</a>
             </div>
             <div class="project">
-                <img src="images/database.png" alt="Databases">
+                <img src="images/database.png" alt="Databases" loading="lazy">
                 <h3>Databases</h3>
                 <p>A deep dive on data normalization and a real-world example.</p>
                 <a href="Pages/database.html">Read On...</a>
             </div>
             <div class="project">
-                <img src="images/bladerunner.webp" alt="Python">
+                <img src="images/bladerunner.webp" alt="Python" loading="lazy">
                 <h3>Python</h3>
                 <p>The Voight-Kampff test interlinked using Python.</p>
                 <a href="Pages/codeexample.html">Read On...</a>
             </div>
             <div class="project">
-                <img src="images/algorithms.webp" alt="Algorithms">
+                <img src="images/algorithms.webp" alt="Algorithms" loading="lazy">
                 <h3>Algorithms</h3>
                 <p>Recursion at all levels.</p>
                 <a href="Pages/algorithms.html">Read On...</a>
             </div>
             
             <div class="project">
-                <img src="images/python.jpg" alt="Video Game Development">
+                <img src="images/python.jpg" alt="Video Game Development" loading="lazy">
                 <h3>Video Game Development</h3>
                 <p>3D modeling in Blender for Unity game development projects.</p>
                 <a href="Pages/videogame.html">Read On...</a>
@@ -253,7 +255,7 @@
         <p>An interactive real-time strategy game built with React Three Fiber. Command animal armies in epic 3D battles!</p>
 
         <div class="game-container">
-            <button id="load-game-btn" class="btn-load-game">
+                <button id="load-game-btn" class="btn-load-game" aria-label="Load interactive RTS game">
                 ▶ Load Game
             </button>
 
@@ -288,6 +290,9 @@
             </button>
             <button class="model-btn" data-model="bear" onclick="switchModel('bear')">
                 🐻 Bear
+            </button>
+            <button class="model-btn" data-model="bunny" onclick="switchModel('bunny')">
+                🐰 Bunny
             </button>
             <button class="model-btn" data-model="fox" onclick="switchModel('fox')">
                 🦊 Fox

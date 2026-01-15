@@ -4,6 +4,7 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap');
 @import url('https://fonts.cdnfonts.com/css/ocr-a-extended');
+@import url('https://fonts.cdnfonts.com/css/bitwise');
 
 :root {
     /* Light Mode Colors */
@@ -40,9 +41,6 @@
     /* Transitions */
     --transition-fast: 0.2s;
     --transition-normal: 0.3s;
-    
-    /* Hex grid */
-    --hex-tile-size: 200px;
 }
 
 /* Dark Mode Colors */
@@ -89,6 +87,131 @@ body {
     background-color: var(--white);
     display: flex;
     flex-direction: column;
+}
+
+/* Dark mode font */
+[data-theme="dark"] body {
+    font-family: 'OCR A Extended', monospace;
+    position: relative;
+}
+
+/* CRT Shader Effect for Dark Mode */
+[data-theme="dark"] body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+
+    /* Enhanced scanlines with alternating opacity */
+    background:
+        repeating-linear-gradient(
+            0deg,
+            rgba(0, 0, 0, 0.3) 0px,
+            rgba(0, 0, 0, 0.3) 1px,
+            transparent 1px,
+            transparent 3px
+        ),
+        /* Vertical RGB grid */
+        repeating-linear-gradient(
+            90deg,
+            rgba(255, 0, 0, 0.03) 0px,
+            rgba(0, 255, 0, 0.03) 1px,
+            rgba(0, 0, 255, 0.03) 2px,
+            transparent 3px
+        );
+
+    /* Screen flicker and noise animation */
+    animation: flicker 0.15s infinite, scanline-roll 8s linear infinite;
+}
+
+[data-theme="dark"] body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9998;
+
+    /* Enhanced vignette and curvature effect */
+    background:
+        radial-gradient(
+            ellipse at center,
+            transparent 0%,
+            transparent 50%,
+            rgba(0, 0, 0, 0.5) 100%
+        );
+
+    /* Stronger screen curvature glow with cyan phosphor effect */
+    box-shadow:
+        inset 0 0 200px rgba(0, 255, 255, 0.1),
+        inset 0 0 50px rgba(0, 255, 255, 0.15);
+}
+
+/* Add text glow for authentic phosphor effect - exclude structural elements */
+[data-theme="dark"] body,
+[data-theme="dark"] p,
+[data-theme="dark"] h1,
+[data-theme="dark"] h2,
+[data-theme="dark"] h3,
+[data-theme="dark"] h4,
+[data-theme="dark"] h5,
+[data-theme="dark"] h6,
+[data-theme="dark"] a,
+[data-theme="dark"] li,
+[data-theme="dark"] span,
+[data-theme="dark"] button {
+    text-shadow: 0 0 2px currentColor;
+}
+
+/* CRT flicker animation with random intensity */
+@keyframes flicker {
+    0% {
+        opacity: 0.97;
+    }
+    25% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.98;
+    }
+    75% {
+        opacity: 0.99;
+    }
+    100% {
+        opacity: 0.97;
+    }
+}
+
+/* Rolling scanline effect */
+@keyframes scanline-roll {
+    0% {
+        background-position: 0 0, 0 0;
+    }
+    100% {
+        background-position: 0 100vh, 0 0;
+    }
+}
+
+/* Revert font for typing animation in dark mode - but preserve specific font classes */
+[data-theme="dark"] #typing-animation-container,
+[data-theme="dark"] #typing-text,
+[data-theme="dark"] #fade-in {
+    font-family: var(--font-primary);
+}
+
+/* Ensure ocr-code and red-code keep their original fonts in dark mode */
+[data-theme="dark"] .ocr-code {
+    font-family: 'OCR A Extended', monospace !important;
+}
+
+[data-theme="dark"] .red-code {
+    font-family: 'Dancing Script', cursive !important;
 }
 
 /* ==========================================================================
@@ -319,6 +442,18 @@ h2 {
     margin: 5px;
 }
 
+/* Education and Technical Skills headers - full h1 size in light mode (3rem) */
+.education h1,
+.technical-skills h1 {
+    font-size: 3rem;
+}
+
+/* Education and Technical Skills headers - h2 size in dark mode (2.25rem) */
+[data-theme="dark"] .education h1,
+[data-theme="dark"] .technical-skills h1 {
+    font-size: 2.25rem;
+}
+
 /* Home Icon */
 .home-icon {
     position: absolute;
@@ -461,17 +596,22 @@ nav ul li a:hover {
 /* Dark mode state */
 [data-theme="dark"] .toggle-track {
     background: #374151;
-    border-color: #374151;
+    border-color: #83EEFF;
+    border-radius: 0;
+    box-shadow: 0 0 7.5px rgba(131, 238, 255, 1), 0 0 15px rgba(131, 238, 255, 0.9), 0 0 22.5px rgba(131, 238, 255, 0.8), 0 0 37.5px rgba(131, 238, 255, 0.6);
 }
 
 [data-theme="dark"] .toggle-slider {
-    transform: translateX(34px);
-    background: #00486B;
+    transform: translateX(35px);
+    background: #83EEFF;
+    border-radius: 0;
+    box-shadow: 0 0 7.5px rgba(131, 238, 255, 1), 0 0 15px rgba(131, 238, 255, 0.9), 0 0 22.5px rgba(131, 238, 255, 0.8), 0 0 37.5px rgba(131, 238, 255, 0.6);
 }
 
 [data-theme="dark"] .sun-icon {
     opacity: 1;
-    color: #fbbf24;
+    color: #FFB800;
+    filter: drop-shadow(0 0 7.5px rgba(255, 184, 0, 1)) drop-shadow(0 0 15px rgba(255, 184, 0, 0.9)) drop-shadow(0 0 22.5px rgba(255, 184, 0, 0.8));
 }
 
 [data-theme="dark"] .moon-icon {
@@ -494,33 +634,76 @@ nav ul li a:hover {
 
 /* Dark mode project tiles - Enhanced visibility and distinction */
 [data-theme="dark"] .project {
-    background-color: #165a72 !important; /* Dark teal blue tile color */
-    border: 1px solid #1e6b85 !important; /* Complementary border color */
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(255, 255, 255, 0.05) !important; /* Enhanced shadow with dual layers */
+    background-color: #8C2435 !important;
+    border: 3px solid #FFB800 !important;
+    box-shadow: 0 0 8px rgba(255, 184, 0, 1), 0 0 15px rgba(255, 184, 0, 0.95), 0 0 20px rgba(255, 184, 0, 0.85), 0 0 30px rgba(255, 184, 0, 0.7), inset 0 0 15px rgba(255, 184, 0, 0.8) !important;
+    clip-path: polygon(10% 0, 100% 0, 100% 90%, 90% 100%, 0 100%, 0 10%);
 }
 
 [data-theme="dark"] .project:hover {
-    background-color: #1e6b85 !important; /* Slightly lighter on hover */
-    border-color: #257a97 !important; /* Lighter accent on hover */
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(255, 255, 255, 0.1) !important; /* More pronounced hover shadow */
-    transform: translateY(-8px) !important; /* Slightly more lift on hover */
+    background-color: #00486b !important;
+    border-color: #83EEFF !important;
+    box-shadow: 0 0 5px rgba(131, 238, 255, 1), 0 0 10px rgba(131, 238, 255, 0.9), 0 0 15px rgba(131, 238, 255, 0.8), 0 0 25px rgba(131, 238, 255, 0.6), inset 0 0 10px rgba(131, 238, 255, 0.7) !important;
+    transform: translateY(-8px) !important;
 }
 
-/* Dark mode button and footer text - Make all text white */
+[data-theme="dark"] .project:hover h3 {
+    color: #83EEFF !important;
+    text-shadow: 0 0 30px rgba(131, 238, 255, 1), 0 0 60px rgba(131, 238, 255, 0.9), 0 0 90px rgba(131, 238, 255, 0.8), 0 0 120px rgba(131, 238, 255, 0.7) !important;
+}
+
+[data-theme="dark"] .project:hover p {
+    color: #83EEFF !important;
+    text-shadow: 0 0 30px rgba(131, 238, 255, 1), 0 0 60px rgba(131, 238, 255, 0.9), 0 0 90px rgba(131, 238, 255, 0.8), 0 0 120px rgba(131, 238, 255, 0.7) !important;
+}
+
+[data-theme="dark"] .project:hover a {
+    color: #83EEFF !important;
+    text-shadow: 0 0 30px rgba(131, 238, 255, 1), 0 0 60px rgba(131, 238, 255, 0.9), 0 0 90px rgba(131, 238, 255, 0.8), 0 0 120px rgba(131, 238, 255, 0.7) !important;
+    background: transparent !important;
+}
+
+/* Dark mode button and footer text - Make all text white with glow */
 [data-theme="dark"] footer {
     color: #fff !important;
 }
 
 [data-theme="dark"] .project a {
-    color: #fff !important;
+    color: #FFB800 !important;
+    text-shadow: 0 0 30px rgba(255, 184, 0, 1), 0 0 60px rgba(255, 184, 0, 0.9), 0 0 90px rgba(255, 184, 0, 0.8), 0 0 120px rgba(255, 184, 0, 0.7) !important;
+    border: 2px solid #FFB800 !important;
+    box-shadow: 0 0 5px rgba(255, 184, 0, 1), 0 0 10px rgba(255, 184, 0, 0.8), 0 0 15px rgba(255, 184, 0, 0.6) !important;
+    background: transparent !important;
+    border-radius: 0 !important;
 }
 
 [data-theme="dark"] .project h3 {
-    color: #fff !important;
+    color: #FFB800 !important;
+    text-shadow: 0 0 30px rgba(255, 184, 0, 1), 0 0 60px rgba(255, 184, 0, 0.9), 0 0 90px rgba(255, 184, 0, 0.8), 0 0 120px rgba(255, 184, 0, 0.7) !important;
 }
 
 [data-theme="dark"] .project p {
-    color: #fff !important;
+    color: #FFB800 !important;
+    text-shadow: 0 0 30px rgba(255, 184, 0, 1), 0 0 60px rgba(255, 184, 0, 0.9), 0 0 90px rgba(255, 184, 0, 0.8), 0 0 120px rgba(255, 184, 0, 0.7) !important;
+}
+
+/* Dark mode glowing border for project images */
+[data-theme="dark"] .project img {
+    border: 3px solid #FFB800 !important;
+    box-shadow: 0 0 5px rgba(255, 184, 0, 1), 0 0 10px rgba(255, 184, 0, 0.9), 0 0 15px rgba(255, 184, 0, 0.8), 0 0 25px rgba(255, 184, 0, 0.6), inset 0 0 10px rgba(255, 184, 0, 0.7) !important;
+}
+
+/* Dark mode hover state for images - cyan glow */
+[data-theme="dark"] .project:hover img {
+    border-color: #83EEFF !important;
+    box-shadow: 0 0 5px rgba(131, 238, 255, 1), 0 0 10px rgba(131, 238, 255, 0.9), 0 0 15px rgba(131, 238, 255, 0.8), 0 0 25px rgba(131, 238, 255, 0.6), inset 0 0 10px rgba(131, 238, 255, 0.7) !important;
+}
+
+/* Dark mode hover state for Read On buttons - cyan glow */
+[data-theme="dark"] .project:hover a {
+    border-color: #83EEFF !important;
+    box-shadow: 0 0 5px rgba(131, 238, 255, 1), 0 0 10px rgba(131, 238, 255, 0.8), 0 0 15px rgba(131, 238, 255, 0.6) !important;
+    background: transparent !important;
 }
 
 [data-theme="dark"] .model-btn {
@@ -561,17 +744,25 @@ nav ul li a:hover {
     color: #fff !important;
 }
 
-/* Dark mode header text and home icon - Make white */
+/* Dark mode header text and home icon - Make white with cyan glow */
 [data-theme="dark"] header {
     color: #fff !important;
+    border-bottom: 3px solid #83EEFF;
+    box-shadow: 0 0 7.5px rgba(131, 238, 255, 1), 0 0 15px rgba(131, 238, 255, 0.9), 0 0 22.5px rgba(131, 238, 255, 0.8), 0 0 37.5px rgba(131, 238, 255, 0.6);
+}
+
+[data-theme="dark"] header h2 {
+    text-shadow: 0 0 45px rgba(131, 238, 255, 1), 0 0 90px rgba(131, 238, 255, 0.9), 0 0 135px rgba(131, 238, 255, 0.8), 0 0 180px rgba(131, 238, 255, 0.7) !important;
 }
 
 [data-theme="dark"] .house-silhouette {
     background-color: #fff !important;
+    box-shadow: 0 0 7.5px rgba(131, 238, 255, 1), 0 0 15px rgba(131, 238, 255, 0.9), 0 0 22.5px rgba(131, 238, 255, 0.8), 0 0 37.5px rgba(131, 238, 255, 0.6);
 }
 
 [data-theme="dark"] .house-silhouette::before {
     background-color: #fff !important;
+    box-shadow: 0 0 7.5px rgba(131, 238, 255, 1), 0 0 15px rgba(131, 238, 255, 0.9), 0 0 22.5px rgba(131, 238, 255, 0.8), 0 0 37.5px rgba(131, 238, 255, 0.6);
 }
 
 /* Keep Notable Achievements section styled like light mode in dark mode */
@@ -620,9 +811,13 @@ main {
     position: relative;
     z-index: 10;
     margin-top: var(--header-overlap-desktop);
-    background-color: var(--white);
+    background-color: #ffffff;
     border-radius: var(--border-radius-large) var(--border-radius-large) 0 0;
     box-shadow: 0 -4px 20px var(--shadow-light);
+}
+
+[data-theme="dark"] main {
+    background-color: #750000;
 }
 
 #carousel {
@@ -733,6 +928,11 @@ section h2 {
 .abilities-container > div {
     flex: 1 1 45%;
     margin: 10px 0;
+}
+
+/* Dark mode spacing for Education and Technical Skills sections */
+[data-theme="dark"] .abilities-container > div {
+    margin-top: 30px;
 }
 
 .default-container {
@@ -924,9 +1124,33 @@ section h2 {
 }
 
 #projects h2 {
-    text-align: center;
+    text-align: center !important;
     margin-bottom: 30px;
     font-size: 2.5rem;
+    background-color: #ffffff !important;
+    color: rgba(15, 50, 62, 0.8) !important;
+    border-style: solid;
+    border-width: 3px;
+    border-color: #ffffff !important;
+    padding-left: 30px !important;
+    padding-right: 30px !important;
+}
+
+/* Dark mode styling for Research h2 */
+[data-theme="dark"] #projects h2 {
+    text-align: left !important;
+    color: #FFB800 !important;
+    border-style: solid;
+    border-width: 3px;
+    border-color: #FFB800 !important;
+    background-color: #8C2435 !important;
+    font-family: "Roboto", -apple-system, BlinkMacSystemFont, sans-serif;
+    padding-left: 30px !important;
+    padding-right: 30px !important;
+    clip-path: polygon(5% 0, 50% 0, 55% 20%, 95% 20%, 100% 50%, 100% 100%, 0 100%, 0 40%) !important;
+    -webkit-clip-path: polygon(5% 0, 50% 0, 55% 20%, 95% 20%, 100% 50%, 100% 100%, 0 100%, 0 40%) !important;
+    text-shadow: 0 0 30px rgba(255, 184, 0, 1), 0 0 60px rgba(255, 184, 0, 0.9), 0 0 90px rgba(255, 184, 0, 0.8), 0 0 120px rgba(255, 184, 0, 0.7);
+    box-shadow: 0 0 25px rgba(255, 184, 0, 1), 0 0 50px rgba(255, 184, 0, 0.9), 0 0 75px rgba(255, 184, 0, 0.8), 0 0 100px rgba(255, 184, 0, 0.6), inset 0 0 30px rgba(255, 184, 0, 0.7);
 }
 
 .project-container {
@@ -945,6 +1169,60 @@ section h2 {
     display: flex;
     flex-direction: column;
     min-height: 400px;
+}
+
+/* First project specific styling - Dark mode */
+[data-theme="dark"] #project-container > .project:first-child,
+[data-theme="dark"] .project-container > .project:first-child {
+    background-color: #8C2435 !important;
+    border: 3px solid #FFB800 !important;
+    background-image: none !important;
+    background: #8C2435 !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 8px rgba(255, 184, 0, 1), 0 0 15px rgba(255, 184, 0, 0.95), 0 0 20px rgba(255, 184, 0, 0.85), 0 0 30px rgba(255, 184, 0, 0.7), inset 0 0 15px rgba(255, 184, 0, 0.8) !important;
+    clip-path: polygon(10% 0, 100% 0, 100% 90%, 90% 100%, 0 100%, 0 10%);
+}
+
+[data-theme="dark"] #project-container > .project:first-child:hover,
+[data-theme="dark"] .project-container > .project:first-child:hover {
+    background-color: #00486b !important;
+    border: 3px solid #83EEFF !important;
+    background-image: none !important;
+    background: #00486b !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 5px rgba(131, 238, 255, 1), 0 0 10px rgba(131, 238, 255, 0.9), 0 0 15px rgba(131, 238, 255, 0.8), 0 0 25px rgba(131, 238, 255, 0.6), inset 0 0 10px rgba(131, 238, 255, 0.7) !important;
+}
+
+/* Text color for first project in dark mode */
+[data-theme="dark"] #project-container > .project:first-child h3,
+[data-theme="dark"] .project-container > .project:first-child h3,
+[data-theme="dark"] #project-container > .project:first-child p,
+[data-theme="dark"] .project-container > .project:first-child p,
+[data-theme="dark"] #project-container > .project:first-child a,
+[data-theme="dark"] .project-container > .project:first-child a {
+    color: #FFB800 !important;
+    text-shadow: 0 0 30px rgba(255, 184, 0, 1), 0 0 60px rgba(255, 184, 0, 0.9), 0 0 90px rgba(255, 184, 0, 0.8), 0 0 120px rgba(255, 184, 0, 0.7) !important;
+    background: transparent !important;
+}
+
+/* Text color for first project on hover in dark mode */
+[data-theme="dark"] #project-container > .project:first-child:hover h3,
+[data-theme="dark"] .project-container > .project:first-child:hover h3 {
+    color: #83EEFF !important;
+    text-shadow: 0 0 30px rgba(131, 238, 255, 1), 0 0 60px rgba(131, 238, 255, 0.9), 0 0 90px rgba(131, 238, 255, 0.8), 0 0 120px rgba(131, 238, 255, 0.7) !important;
+}
+
+[data-theme="dark"] #project-container > .project:first-child:hover p,
+[data-theme="dark"] .project-container > .project:first-child:hover p {
+    color: #83EEFF !important;
+    text-shadow: 0 0 30px rgba(131, 238, 255, 1), 0 0 60px rgba(131, 238, 255, 0.9), 0 0 90px rgba(131, 238, 255, 0.8), 0 0 120px rgba(131, 238, 255, 0.7) !important;
+}
+
+[data-theme="dark"] #project-container > .project:first-child:hover a,
+[data-theme="dark"] .project-container > .project:first-child:hover a {
+    color: #83EEFF !important;
+    text-shadow: 0 0 30px rgba(131, 238, 255, 1), 0 0 60px rgba(131, 238, 255, 0.9), 0 0 90px rgba(131, 238, 255, 0.8), 0 0 120px rgba(131, 238, 255, 0.7) !important;
+    background: transparent !important;
 }
 
 .project:hover {
@@ -978,7 +1256,7 @@ section h2 {
     color: var(--white);
     padding: 10px 20px;
     text-decoration: none;
-    border-radius: var(--border-radius-small);
+    border-radius: 22px;
     transition: all var(--transition-normal);
     margin-top: auto;
     align-self: flex-start;
@@ -990,6 +1268,8 @@ section h2 {
     box-shadow: 0 6px 20px rgba(0, 88, 122, 0.4);
     text-decoration: none;
 }
+
+/* First project specific styling - Light mode - Removed to match other tiles */
 
 [data-theme="dark"] .project a:hover {
     background: linear-gradient(164deg, rgba(160, 46, 38, 1) 13%, rgba(233, 95, 9, 1) 81%, rgba(232, 156, 49, 1) 100%);
@@ -1371,7 +1651,7 @@ section h2 {
     }
     
     [data-theme="dark"] .toggle-slider {
-        transform: translateX(29px);
+        transform: translateX(30px);
     }
     
     .sun-icon, .moon-icon {
@@ -1599,7 +1879,7 @@ section h2 {
     }
     
     [data-theme="dark"] .toggle-slider {
-        transform: translateX(26px);
+        transform: translateX(27px);
     }
     
     .sun-icon, .moon-icon {
@@ -2356,123 +2636,6 @@ model-viewer .progress-bar {
 }
 
 /* ==========================================================================
-   HEX GRID STYLES
-   ========================================================================== */
-
-#hex-grid-section {
-    padding: 60px 20px;
-    text-align: center;
-    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-}
-
-#hex-grid-section h2 {
-    color: white;
-    margin-bottom: 40px;
-    font-size: 2.5rem;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-}
-
-#hex-grid {
-    display: flex;
-    flex-direction: column;
-    align-items: center; /* Center the grid */
-    margin: 0 auto;
-    max-width: calc(var(--hex-tile-size) * 10);
-    gap: -46px; /* -46px vertical overlap */
-}
-
-.hex-row {
-    display: flex;
-    gap: 15px; /* 15px horizontal spacing between columns */
-    margin-bottom: 0; /* No additional margin between rows */
-}
-
-.hex-row.offset-row {
-    margin-left: calc(var(--hex-tile-size) * 0.5); /* Offset by half tile width for proper hex interlocking */
-}
-
-/* Removed rotation - all tiles maintain same orientation */
-
-.hex-tile {
-    width: var(--hex-tile-size);
-    height: var(--hex-tile-size);
-    min-width: var(--hex-tile-size);
-    min-height: var(--hex-tile-size);
-    max-width: var(--hex-tile-size);
-    max-height: var(--hex-tile-size);
-    background: transparent;
-    --progress-bar-display: none; /* Hide default progress bar */
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    flex-shrink: 0;
-    flex-grow: 0;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-    cursor: pointer;
-    /* Create hexagonal shape using clip-path */
-    clip-path: polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%);
-}
-
-.hex-tile:hover {
-    transform: translateY(-5px) scale(1.02);
-    box-shadow: 0 10px 20px rgba(0,0,0,0.3);
-    z-index: 10;
-}
-
-.hex-row.offset-row .hex-tile:hover {
-    transform: translateY(-5px) scale(1.02);
-}
-
-.hex-tile model-viewer {
-    width: 100% !important;
-    height: 100% !important;
-    display: block;
-}
-
-/* Responsive design */
-@media (max-width: 1024px) {
-    :root {
-        --hex-tile-size: 100px;
-    }
-    
-    #hex-grid {
-        max-width: calc(var(--hex-tile-size) * 8);
-    }
-}
-
-@media (max-width: 768px) {
-    :root {
-        --hex-tile-size: 80px;
-    }
-    
-    #hex-grid-section {
-        padding: 40px 15px;
-    }
-    
-    #hex-grid-section h2 {
-        font-size: 2rem;
-    }
-    
-    #hex-grid {
-        max-width: calc(var(--hex-tile-size) * 6);
-    }
-}
-
-@media (max-width: 480px) {
-    :root {
-        --hex-tile-size: 60px;
-    }
-
-    #hex-grid-section h2 {
-        font-size: 1.5rem;
-    }
-
-    #hex-grid {
-        max-width: calc(var(--hex-tile-size) * 5);
-    }
-}
-
-/* ==========================================================================
    RTS GAME SECTION
    ========================================================================== */
 
@@ -2531,10 +2694,10 @@ model-viewer .progress-bar {
     padding: 20px 50px;
     font-size: 1.3rem;
     font-weight: bold;
-    background: linear-gradient(135deg, var(--primary-blue), var(--primary-green));
+    background: var(--gradient-blue-green);
     color: var(--white);
     border: none;
-    border-radius: var(--border-radius-medium);
+    border-radius: 35px;
     cursor: pointer;
     transition: all var(--transition-normal);
     z-index: 10;
@@ -2542,8 +2705,9 @@ model-viewer .progress-bar {
 }
 
 .btn-load-game:hover {
-    transform: translate(-50%, -50%) scale(1.05);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    background: linear-gradient(167deg, rgba(0, 68, 102, 1) 11%, rgba(67, 179, 113, 1) 77%, rgba(132, 217, 63, 1) 100%);
+    transform: translate(-50%, -50%) translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0, 88, 122, 0.4);
 }
 
 .btn-load-game:active {
@@ -2552,11 +2716,30 @@ model-viewer .progress-bar {
 
 /* Dark mode adjustments for game section */
 [data-theme="dark"] .game-section h2 {
-    color: var(--text-dark);
+    color: #fff;
+    text-shadow: 0 0 45px rgba(131, 238, 255, 1), 0 0 90px rgba(131, 238, 255, 0.9), 0 0 135px rgba(131, 238, 255, 0.8), 0 0 180px rgba(131, 238, 255, 0.7);
 }
 
 [data-theme="dark"] .game-section p {
-    color: var(--text-medium);
+    color: #fff;
+    text-shadow: 0 0 45px rgba(131, 238, 255, 1), 0 0 90px rgba(131, 238, 255, 0.9), 0 0 135px rgba(131, 238, 255, 0.8), 0 0 180px rgba(131, 238, 255, 0.7);
+}
+
+[data-theme="dark"] .btn-load-game {
+    color: #FFB800 !important;
+    text-shadow: 0 0 30px rgba(255, 184, 0, 1), 0 0 60px rgba(255, 184, 0, 0.9), 0 0 90px rgba(255, 184, 0, 0.8), 0 0 120px rgba(255, 184, 0, 0.7) !important;
+    border: 2px solid #FFB800 !important;
+    box-shadow: 0 0 5px rgba(255, 184, 0, 1), 0 0 10px rgba(255, 184, 0, 0.8), 0 0 15px rgba(255, 184, 0, 0.6) !important;
+    background: #8c2435 !important;
+    border-radius: 0 !important;
+}
+
+[data-theme="dark"] .btn-load-game:hover {
+    color: #83EEFF !important;
+    text-shadow: 0 0 30px rgba(131, 238, 255, 1), 0 0 60px rgba(131, 238, 255, 0.9), 0 0 90px rgba(131, 238, 255, 0.8), 0 0 120px rgba(131, 238, 255, 0.7) !important;
+    border-color: #83EEFF !important;
+    box-shadow: 0 0 5px rgba(131, 238, 255, 1), 0 0 10px rgba(131, 238, 255, 0.8), 0 0 15px rgba(131, 238, 255, 0.6) !important;
+    background: #00486b !important;
 }
 
 [data-theme="dark"] .game-container {

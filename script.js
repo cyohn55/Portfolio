@@ -10,8 +10,6 @@ function scrollToTop() {
 
 // Simple word-by-word typing animation
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded');
-    
     // Elements
     const typingText = document.getElementById('typing-text');
     const typingContainer = document.getElementById('typing-animation-container');
@@ -45,7 +43,6 @@ Can you<br><span class="ocr-code">CODE</span>?
         typingText.innerHTML = finalContent.replace(/\n/g, '<br>');
 
         const finalHeight = typingText.offsetHeight;
-        console.log("Calculated final height:", finalHeight);
         
         // Set the container height
         if (finalHeight > 0) {
@@ -236,7 +233,7 @@ let autoCycleEnabled = true;
 let autoCycleTimer = null;
 
 // Array of model keys for cycling
-const modelKeys = ['dolphin', 'bee', 'bear', 'fox', 'frog', 'owl', 'pig', 'turtle', 'cat', 'chicken', 'yeti'];
+const modelKeys = ['dolphin', 'bee', 'bear', 'bunny', 'fox', 'frog', 'owl', 'pig', 'turtle', 'cat', 'chicken', 'yeti'];
 
 // Model configuration
 const modelConfig = {
@@ -257,6 +254,13 @@ const modelConfig = {
         title: '🐻 Interactive 3D Bear Model',
         emoji: '🐻',
         background: '#00ffd9' // Vibrant aqua
+    },
+    bunny: {
+        file: 'models/Bunny.glb',
+        title: '🐰 Interactive 3D Bunny Model',
+        emoji: '🐰',
+        background: '#ff69b4', // Vibrant hot pink
+        scale: '4 4 4' // 4x larger
     },
     fox: {
         file: 'models/Fox.glb',
@@ -301,10 +305,11 @@ const modelConfig = {
         background: '#ff1493' // Vibrant pink
     },
     yeti: {
-        file: 'models/Yetti.glb',
+        file: 'models/Yeti.glb',
         title: '👾 Interactive 3D Yeti Model',
         emoji: '👾',
-        background: '#007fff' // Vibrant azure
+        background: '#007fff', // Vibrant azure
+        scale: '4 4 4' // 4x larger
     }
 };
 
@@ -364,6 +369,13 @@ function switchModel(modelType) {
         modelViewer.style.background = modelConfig[modelType].background;
         // Ensure faster rotation speed
         modelViewer.setAttribute('rotation-per-second', '37.5deg');
+
+        // Apply scale if specified in config
+        if (modelConfig[modelType].scale) {
+            modelViewer.scale = modelConfig[modelType].scale;
+        } else {
+            modelViewer.scale = '1 1 1'; // Reset to default scale
+        }
     }
     
     // Update modal title
@@ -448,6 +460,13 @@ function switchEmbeddedModel(modelType) {
         modelViewer.alt = modelConfig[modelType].title;
         modelViewer.style.background = modelConfig[modelType].background;
         modelViewer.setAttribute('rotation-per-second', '75deg');
+
+        // Apply scale if specified in config
+        if (modelConfig[modelType].scale) {
+            modelViewer.scale = modelConfig[modelType].scale;
+        } else {
+            modelViewer.scale = '1 1 1'; // Reset to default scale
+        }
     }
     
     // Reset camera position for new model
@@ -557,7 +576,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const modelViewers = document.querySelectorAll('model-viewer');
     modelViewers.forEach(viewer => {
         viewer.addEventListener('load', function() {
-            console.log('3D model loaded successfully');
             // Start auto-cycle for embedded viewer
             if (viewer.id === 'embeddedModelViewer') {
                 startAutoCycle();
@@ -573,83 +591,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 
-/* =====================================================================
-   HEX-GRID GENERATION (Mountain / Forest / Hill / FarmLand)
-   ===================================================================== */
-
-// Configuration for hex-tile GLB models
-const hexTileModels = [
-    { file: 'models/Mountain.glb', alt: 'Mountain Tile' },
-    { file: 'models/Forest.glb', alt: 'Forest Tile' },
-    { file: 'models/Hill.glb', alt: 'Hill Tile' },
-    { file: 'models/FarmLand.glb', alt: 'Farm Land Tile' }
-];
-
-function getRandomHexTile() {
-    return hexTileModels[Math.floor(Math.random() * hexTileModels.length)];
-}
-
-/**
- * Generates a hex-grid inside #hex-grid.
- * Each odd row is horizontally offset by half a tile so the hexes interlock.
- * @param {number} rows – number of rows
- * @param {number} cols – number of columns per row
- */
-function generateHexGrid(rows = 8, cols = 10) {
-    const container = document.getElementById('hex-grid');
-    if (!container) {
-        console.warn('Hex grid container (#hex-grid) not found.');
-        return;
-    }
-
-    // Clear any existing tiles
-    container.innerHTML = '';
-
-    for (let r = 0; r < rows; r++) {
-        const rowEl = document.createElement('div');
-        rowEl.classList.add('hex-row');
-        
-        // Offset every other row by half a tile width for proper hex interlocking
-        if (r % 2 === 1) {
-            rowEl.classList.add('offset-row');
-        }
-
-        // Adjust column count for offset rows to maintain visual balance
-        const colsForRow = (r % 2 === 1) ? cols - 1 : cols;
-
-        for (let c = 0; c < colsForRow; c++) {
-            const { file, alt } = getRandomHexTile();
-            const tile = document.createElement('model-viewer');
-            tile.classList.add('hex-tile');
-            tile.setAttribute('src', file);
-            tile.setAttribute('alt', alt);
-            tile.setAttribute('camera-controls', '');
-            tile.setAttribute('interaction-prompt', 'none');
-            tile.setAttribute('touch-action', 'pan-y');
-            tile.setAttribute('loading', 'lazy');
-            // Perfect top-down view (looking straight down) - pulled back 195m
-            tile.setAttribute('camera-orbit', '0deg 0deg 195m');
-            tile.setAttribute('field-of-view', '20deg');
-            // Ensure all models have identical orientation
-            tile.setAttribute('rotation', '0deg 0deg 0deg');
-            tile.setAttribute('orientation', '0deg 0deg 0deg');
-            // Disable all rotation and movement
-            tile.removeAttribute('auto-rotate');
-            tile.setAttribute('disable-zoom', '');
-            tile.setAttribute('disable-pan', '');
-            tile.setAttribute('min-camera-orbit', '0deg 0deg 195m');
-            tile.setAttribute('max-camera-orbit', '0deg 0deg 195m');
-
-            rowEl.appendChild(tile);
-        }
-
-        container.appendChild(rowEl);
-    }
-}
-
-// Kick off hex-grid generation after DOM is ready
+// Initialize features after DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    generateHexGrid();
     initializeContactForm();
     initializeDarkMode();
 });
@@ -845,11 +788,11 @@ function sendToSMSGateway(formData) {
         body: smsFormData
     }).then(response => {
         if (!response.ok) {
-            console.log('FormSubmit failed, SMS may not have been sent');
+            // FormSubmit failed, SMS may not have been sent (non-critical)
         }
         return { success: true, service: 'formsubmit' };
     }).catch((error) => {
-        console.log('Error sending to SMS gateway:', error);
+        // Error sending to SMS gateway (non-critical, form submission still succeeds)
         return { success: false, error: error.message };
     });
 }
@@ -872,8 +815,6 @@ document.addEventListener('DOMContentLoaded', function() {
             loadGameBtn.textContent = '⏳ Loading Game...';
             loadGameBtn.disabled = true;
 
-            console.log('🎮 Starting game load - freeing WebGL contexts...');
-
             // STEP 1: Stop auto-cycling to prevent new model loads
             autoCycleEnabled = false;
             stopAutoCycle();
@@ -882,12 +823,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const modal = document.getElementById('modelsModal');
             if (modal) {
                 modal.style.display = 'none';
-                console.log('✓ Closed modal');
             }
 
             // STEP 3: Aggressively dispose of all model-viewer WebGL contexts
             const modelViewers = document.querySelectorAll('model-viewer');
-            console.log(`Found ${modelViewers.length} model-viewers to dispose`);
 
             let disposedCount = 0;
             modelViewers.forEach((viewer, index) => {
@@ -910,7 +849,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             const gl = canvas.getContext('webgl') || canvas.getContext('webgl2');
                             if (gl && gl.getExtension('WEBGL_lose_context')) {
                                 gl.getExtension('WEBGL_lose_context').loseContext();
-                                console.log(`✓ Disposed WebGL context for model-viewer #${index + 1}`);
                                 disposedCount++;
                             }
                         }
@@ -920,12 +858,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
 
-            console.log(`✓ Disposed ${disposedCount} WebGL contexts`);
-
             // STEP 4: Wait for WebGL contexts to be fully released (give browser time to clean up)
             setTimeout(() => {
-                console.log('⏳ WebGL contexts released, loading game iframe...');
-
                 // Set iframe source to load the game
                 rtsIframe.src = 'RTS/dist/index.html';
 
@@ -937,12 +871,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     loadGameBtn.style.display = 'none';
                 }, 1000);
 
-                // Log for debugging
-                console.log('🎮 RTS game iframe loading from:', rtsIframe.src);
-
                 // Add load event listener
                 rtsIframe.addEventListener('load', function() {
-                    console.log('✅ RTS game iframe loaded successfully');
+                    // Game loaded successfully
                 });
 
                 // Add error event listener
