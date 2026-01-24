@@ -47,7 +47,7 @@
 [data-theme="dark"] {
     --primary-blue: #b4423a;
     --primary-green: #fc5b1d;
-    --gradient-blue-green: linear-gradient(166deg, rgba(15, 16, 86, 1) 0%, rgba(0, 72, 107, 1) 43%, rgba(76, 126, 151, 1) 100%);
+    --gradient-blue-green: linear-gradient(166deg, rgba(139, 0, 0, 1) 0%, rgba(220, 80, 20, 1) 43%, rgba(255, 165, 50, 1) 100%);
     --text-dark: #e0e0e0;
     --text-medium: #b0b0b0;
     --background-light: #2a2a2a;
@@ -596,16 +596,16 @@ nav ul li a:hover {
 /* Dark mode state */
 [data-theme="dark"] .toggle-track {
     background: #374151;
-    border-color: #83EEFF;
+    border-color: #FFB800;
     border-radius: 0;
-    box-shadow: 0 0 7.5px rgba(131, 238, 255, 1), 0 0 15px rgba(131, 238, 255, 0.9), 0 0 22.5px rgba(131, 238, 255, 0.8), 0 0 37.5px rgba(131, 238, 255, 0.6);
+    box-shadow: 0 0 7.5px rgba(255, 184, 0, 1), 0 0 15px rgba(255, 184, 0, 0.9), 0 0 22.5px rgba(255, 184, 0, 0.8), 0 0 37.5px rgba(255, 184, 0, 0.6);
 }
 
 [data-theme="dark"] .toggle-slider {
     transform: translateX(35px);
-    background: #83EEFF;
+    background: #FFB800;
     border-radius: 0;
-    box-shadow: 0 0 7.5px rgba(131, 238, 255, 1), 0 0 15px rgba(131, 238, 255, 0.9), 0 0 22.5px rgba(131, 238, 255, 0.8), 0 0 37.5px rgba(131, 238, 255, 0.6);
+    box-shadow: 0 0 7.5px rgba(255, 184, 0, 1), 0 0 15px rgba(255, 184, 0, 0.9), 0 0 22.5px rgba(255, 184, 0, 0.8), 0 0 37.5px rgba(255, 184, 0, 0.6);
 }
 
 [data-theme="dark"] .sun-icon {
@@ -744,25 +744,25 @@ nav ul li a:hover {
     color: #fff !important;
 }
 
-/* Dark mode header text and home icon - Make white with cyan glow */
+/* Dark mode header text and home icon - Make white with orange-yellow glow */
 [data-theme="dark"] header {
     color: #fff !important;
-    border-bottom: 3px solid #83EEFF;
-    box-shadow: 0 0 7.5px rgba(131, 238, 255, 1), 0 0 15px rgba(131, 238, 255, 0.9), 0 0 22.5px rgba(131, 238, 255, 0.8), 0 0 37.5px rgba(131, 238, 255, 0.6);
+    border-bottom: 3px solid #FFB800;
+    box-shadow: 0 0 7.5px rgba(255, 184, 0, 1), 0 0 15px rgba(255, 184, 0, 0.9), 0 0 22.5px rgba(255, 184, 0, 0.8), 0 0 37.5px rgba(255, 184, 0, 0.6);
 }
 
 [data-theme="dark"] header h2 {
-    text-shadow: 0 0 45px rgba(131, 238, 255, 1), 0 0 90px rgba(131, 238, 255, 0.9), 0 0 135px rgba(131, 238, 255, 0.8), 0 0 180px rgba(131, 238, 255, 0.7) !important;
+    text-shadow: 0 0 45px rgba(255, 184, 0, 1), 0 0 90px rgba(255, 184, 0, 0.9), 0 0 135px rgba(255, 184, 0, 0.8), 0 0 180px rgba(255, 184, 0, 0.7) !important;
 }
 
 [data-theme="dark"] .house-silhouette {
     background-color: #fff !important;
-    box-shadow: 0 0 7.5px rgba(131, 238, 255, 1), 0 0 15px rgba(131, 238, 255, 0.9), 0 0 22.5px rgba(131, 238, 255, 0.8), 0 0 37.5px rgba(131, 238, 255, 0.6);
+    box-shadow: 0 0 7.5px rgba(255, 184, 0, 1), 0 0 15px rgba(255, 184, 0, 0.9), 0 0 22.5px rgba(255, 184, 0, 0.8), 0 0 37.5px rgba(255, 184, 0, 0.6);
 }
 
 [data-theme="dark"] .house-silhouette::before {
     background-color: #fff !important;
-    box-shadow: 0 0 7.5px rgba(131, 238, 255, 1), 0 0 15px rgba(131, 238, 255, 0.9), 0 0 22.5px rgba(131, 238, 255, 0.8), 0 0 37.5px rgba(131, 238, 255, 0.6);
+    box-shadow: 0 0 7.5px rgba(255, 184, 0, 1), 0 0 15px rgba(255, 184, 0, 0.9), 0 0 22.5px rgba(255, 184, 0, 0.8), 0 0 37.5px rgba(255, 184, 0, 0.6);
 }
 
 /* Keep Notable Achievements section styled like light mode in dark mode */
@@ -780,17 +780,25 @@ nav ul li a:hover {
 }
 
 [data-theme="dark"] .parallax-2 h1 {
-    background-color: rgba(0, 0, 0, 0.7);
-    color: #fff;
+    background-color: #8C2435 !important;
+    color: #FFB800 !important;
+    border: 3px solid #FFB800 !important;
+    box-shadow: 0 0 8px rgba(255, 184, 0, 1), 0 0 15px rgba(255, 184, 0, 0.95), 0 0 20px rgba(255, 184, 0, 0.85), 0 0 30px rgba(255, 184, 0, 0.7), inset 0 0 15px rgba(255, 184, 0, 0.8) !important;
+    text-shadow: 0 0 30px rgba(255, 184, 0, 1), 0 0 60px rgba(255, 184, 0, 0.9), 0 0 90px rgba(255, 184, 0, 0.8), 0 0 120px rgba(255, 184, 0, 0.7) !important;
+    clip-path: polygon(5% 0, 95% 0, 100% 10%, 100% 90%, 95% 100%, 5% 100%, 0 90%, 0 10%);
 }
 
 [data-theme="dark"] .parallax-2 ul {
-    background-color: rgba(0, 0, 0, 0.7);
-    color: #fff;
+    background-color: #8C2435 !important;
+    color: #FFB800 !important;
+    border: 3px solid #FFB800 !important;
+    box-shadow: 0 0 8px rgba(255, 184, 0, 1), 0 0 15px rgba(255, 184, 0, 0.95), 0 0 20px rgba(255, 184, 0, 0.85), 0 0 30px rgba(255, 184, 0, 0.7), inset 0 0 15px rgba(255, 184, 0, 0.8) !important;
+    clip-path: polygon(5% 0, 95% 0, 100% 5%, 100% 95%, 95% 100%, 5% 100%, 0 95%, 0 5%);
 }
 
 [data-theme="dark"] .parallax-2 ul li {
-    color: #fff;
+    color: #FFB800 !important;
+    text-shadow: 0 0 30px rgba(255, 184, 0, 1), 0 0 60px rgba(255, 184, 0, 0.9), 0 0 90px rgba(255, 184, 0, 0.8), 0 0 120px rgba(255, 184, 0, 0.7) !important;
 }
 
 /* Hover effects */
@@ -818,6 +826,10 @@ main {
 
 [data-theme="dark"] main {
     background-color: #750000;
+    box-shadow:
+        0 -4px 20px rgba(255, 140, 0, 0.6),
+        0 -8px 40px rgba(255, 165, 0, 0.4),
+        0 -2px 10px rgba(255, 200, 50, 0.8);
 }
 
 #carousel {
@@ -871,9 +883,151 @@ section h2 {
 #about {
     padding: 20px;
     position: relative;
+    overflow: hidden;
 }
 
+/* ==========================================================================
+   HEXAGON ANIMATION
+   ========================================================================== */
 
+.hexagon-container {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 15%;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 0;
+}
+
+.hexagon-container-left {
+    left: 0;
+}
+
+.hexagon-container-right {
+    right: 0;
+}
+
+.falling-hexagon {
+    position: absolute;
+    top: -80px;
+    left: var(--horizontal-pos);
+    width: var(--hex-size);
+    height: calc(var(--hex-size) * 1.1547);
+    transform: rotate(var(--initial-rotation));
+    animation:
+        hexagon-fall var(--fall-duration) linear var(--delay) forwards,
+        hexagon-rotate var(--fall-duration) linear var(--delay) forwards;
+    opacity: 0;
+}
+
+.falling-hexagon::before,
+.falling-hexagon::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    border-left: calc(var(--hex-size) / 2) solid transparent;
+    border-right: calc(var(--hex-size) / 2) solid transparent;
+}
+
+.hexagon-filled {
+    background: linear-gradient(135deg, #f5a623 0%, #ff8c00 50%, #ffa500 100%);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    box-shadow: 0 0 10px rgba(245, 166, 35, 0.3);
+}
+
+.hexagon-outline {
+    background: transparent;
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    border: 2px solid transparent;
+    position: relative;
+}
+
+.hexagon-outline::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, #f5a623 0%, #ff8c00 50%, #ffa500 100%);
+    clip-path: polygon(
+        50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%,
+        50% 0%,
+        4% 27%, 4% 73%, 50% 96%, 96% 73%, 96% 27%, 50% 4%,
+        50% 0%
+    );
+}
+
+@keyframes hexagon-fall {
+    0% {
+        top: -80px;
+        opacity: 0;
+    }
+    5% {
+        opacity: 0.7;
+    }
+    90% {
+        opacity: 0.7;
+    }
+    100% {
+        top: 100%;
+        opacity: 0;
+    }
+}
+
+@keyframes hexagon-rotate {
+    0% {
+        transform: rotate(var(--initial-rotation));
+    }
+    100% {
+        transform: rotate(calc(var(--initial-rotation) + var(--rotation-speed)));
+    }
+}
+
+/* Dark mode hexagon styling */
+[data-theme="dark"] .hexagon-filled {
+    background: linear-gradient(135deg, #ff6b00 0%, #ff4500 50%, #dc143c 100%);
+    box-shadow: 0 0 15px rgba(255, 107, 0, 0.5);
+}
+
+[data-theme="dark"] .hexagon-outline {
+    filter:
+        drop-shadow(0 0 4px rgba(255, 200, 50, 0.9))
+        drop-shadow(0 0 8px rgba(255, 165, 0, 0.7))
+        drop-shadow(0 0 15px rgba(255, 140, 0, 0.5));
+}
+
+[data-theme="dark"] .hexagon-outline::before {
+    background: linear-gradient(135deg, #ffcc00 0%, #ff9500 50%, #ff6b00 100%);
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .hexagon-container {
+        width: 12%;
+    }
+}
+
+@media (max-width: 768px) {
+    .hexagon-container {
+        width: 10%;
+    }
+
+    .falling-hexagon {
+        --hex-size: calc(var(--hex-size) * 0.7);
+    }
+}
+
+@media (max-width: 480px) {
+    .hexagon-container {
+        display: none;
+    }
+}
+
+/* Ensure content stays above hexagons */
+#about > .default-container,
+#about > .abilities-container {
+    position: relative;
+    z-index: 1;
+}
 
 /* Red Link Styling */
 .red-link {
