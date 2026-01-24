@@ -155,9 +155,24 @@ class HexagonAnimator {
     }
 
     getRandomSize() {
-        return Math.floor(
-            Math.random() * (this.options.maxSize - this.options.minSize) + this.options.minSize
-        );
+        const random = Math.random();
+
+        // 60% chance: small hexagons (minSize to maxSize)
+        // 25% chance: medium-large hexagons (maxSize to 2x maxSize)
+        // 15% chance: extra-large hexagons (2x to 3x maxSize)
+        if (random < 0.6) {
+            return Math.floor(
+                Math.random() * (this.options.maxSize - this.options.minSize) + this.options.minSize
+            );
+        } else if (random < 0.85) {
+            return Math.floor(
+                Math.random() * this.options.maxSize + this.options.maxSize
+            );
+        } else {
+            return Math.floor(
+                Math.random() * this.options.maxSize + (this.options.maxSize * 2)
+            );
+        }
     }
 
     getRandomHorizontalPosition(side, size) {
@@ -249,11 +264,12 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
 
-    const aboutSection = document.getElementById('about');
-    if (aboutSection) {
-        window.hexagonAnimator = new HexagonAnimator('about', {
-            spawnInterval: 600,
-            maxHexagons: 15,
+    const mainSection = document.querySelector('main');
+    if (mainSection) {
+        mainSection.id = mainSection.id || 'main-content';
+        window.hexagonAnimator = new HexagonAnimator(mainSection.id, {
+            spawnInterval: 200,
+            maxHexagons: 45,
             minSize: 15,
             maxSize: 50,
             fallDuration: { min: 5000, max: 10000 }

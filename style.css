@@ -883,7 +883,6 @@ section h2 {
 #about {
     padding: 20px;
     position: relative;
-    overflow: hidden;
 }
 
 /* ==========================================================================
@@ -896,7 +895,7 @@ section h2 {
     bottom: 0;
     width: 15%;
     pointer-events: none;
-    overflow: hidden;
+    overflow: visible;
     z-index: 0;
 }
 
@@ -910,7 +909,7 @@ section h2 {
 
 .falling-hexagon {
     position: absolute;
-    top: -80px;
+    top: calc(var(--hex-size) * -1.5);
     left: var(--horizontal-pos);
     width: var(--hex-size);
     height: calc(var(--hex-size) * 1.1547);
@@ -958,7 +957,7 @@ section h2 {
 
 @keyframes hexagon-fall {
     0% {
-        top: -80px;
+        top: calc(var(--hex-size) * -1.5);
         opacity: 0;
     }
     5% {
@@ -1023,8 +1022,8 @@ section h2 {
 }
 
 /* Ensure content stays above hexagons */
-#about > .default-container,
-#about > .abilities-container {
+main > section,
+main > * {
     position: relative;
     z-index: 1;
 }
@@ -2290,6 +2289,8 @@ model-viewer .progress-bar {
     margin-left: -50vw;
     margin-right: -50vw;
     box-sizing: border-box;
+    z-index: 20;
+    background-color: var(--white);
 }
 
 .embedded-model-viewer {
