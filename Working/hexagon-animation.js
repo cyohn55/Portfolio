@@ -268,8 +268,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (mainSection) {
         mainSection.id = mainSection.id || 'main-content';
         window.hexagonAnimator = new HexagonAnimator(mainSection.id, {
-            spawnInterval: 200,
-            maxHexagons: 45,
+            spawnInterval: 600,
+            maxHexagons: 15,
             minSize: 15,
             maxSize: 50,
             fallDuration: { min: 5000, max: 10000 }

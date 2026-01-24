@@ -30,8 +30,6 @@
     <!-- Link to CSS -->
     <link rel="stylesheet" href="style.css">
     
-    <!-- Model Viewer for 3D models -->
-    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
 </head>
 <body>
     <div class="page-container">
@@ -57,7 +55,7 @@
 
  <!-- Carousel Section -->
  <div id="carousel">
-    <video id="carousel-video" autoplay muted loop playsinline loading="lazy" aria-label="Blender 3D animation showcase">
+    <video id="carousel-video" autoplay muted loop playsinline preload="metadata" aria-label="Blender 3D animation showcase">
         <source src="images/Blender Clip.mp4" type="video/mp4">
         Your browser does not support the video tag.
     </video>
@@ -367,6 +365,7 @@
 </div>
 
 <!-- Link to JavaScript -->
+<script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js" async></script>
 <script src="script.js"></script>
 <script src="Working/hexagon-animation.js"></script>
 </body>
