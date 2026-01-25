@@ -1984,7 +1984,7 @@ main > * {
     }
 
     [data-theme="dark"] header h2 {
-        font-size: calc(1.5em - 2px);
+        font-size: calc(1.5em - 4px);
     }
 
     .home-icon {
