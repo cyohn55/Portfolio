@@ -1983,6 +1983,10 @@ main > * {
         margin-left: -2px;
     }
 
+    [data-theme="dark"] header h2 {
+        font-size: calc(1.5em - 2px);
+    }
+
     .home-icon {
         left: 12px;
         height: 44px;
