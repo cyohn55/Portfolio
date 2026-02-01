@@ -29,7 +29,12 @@
     
     <!-- Link to CSS -->
     <link rel="stylesheet" href="../style.css">
-    
+
+    <style>
+        [data-theme="dark"] body {
+            background-color: #750000 !important;
+        }
+    </style>
 
 </head>
 <body>
@@ -54,11 +59,17 @@
     </header>
 
     <div class="content">
-        <div style="text-align: center; margin-bottom: 20px;">
-            <img src="../images/Blue_Cody.png" alt="Code" class="light-mode-img" style="max-width: 300px; height: auto; box-shadow: none;">
-            <img src="../images/Red_Cody.png" alt="Code" class="dark-mode-img" style="max-width: 300px; height: auto; box-shadow: none;">
+        <div class="light-mode-img profile-img-container" style="padding-top: 20px; padding-bottom: 10px; margin-bottom: 10px;">
+            <span style="display: flex; align-items: center; justify-content: center; background-color: #00486b; border-radius: 50%; width: 500px; height: 500px;">
+                <img src="../images/Blue_Cody.png" alt="Code" class="profile-img" style="max-width: 300px; height: auto; box-shadow: none !important;">
+            </span>
         </div>
-        <h1 class="article-title">About Code 🤓</h1>
+        <div class="dark-mode-img profile-img-container" style="padding-top: 20px; padding-bottom: 10px; margin-bottom: 10px;">
+            <span style="display: flex; align-items: center; justify-content: center; background-color: #8C2435; width: 450px; height: 450px; border: 3px solid #FFB800; box-shadow: 0 0 10px rgba(255, 184, 0, 0.8), inset 0 0 8px rgba(255, 184, 0, 0.5); clip-path: polygon(10% 0, 100% 0, 100% 90%, 90% 100%, 0 100%, 0 10%);">
+                <img src="../images/Red_Cody.png" alt="Code" class="profile-img" style="max-width: 345px; height: auto; box-shadow: none !important; margin-top: -20px; clip-path: inset(0 0 5px 0);">
+            </span>
+        </div>
+        <h1 class="article-title" style="padding-top: 15px;">About Code 🤓</h1>
         
         <div class="wrap-text-container">
             <p><strong>So... Who is Code?</strong></p>
