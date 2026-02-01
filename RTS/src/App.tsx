@@ -19,12 +19,49 @@ import { InstructionsPopup } from './components/screens/InstructionsPopup';
 export default function App() {
   const initialize = useGameStore((s) => s.initializeGame);
   const currentScreen = useGameStore((s) => s.currentScreen);
+  const transitionToScreen = useGameStore((s) => s.transitionToScreen);
   const unpauseGame = useGameStore((s) => s.unpauseGame);
   const [showInstructions, setShowInstructions] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Detect mobile device
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768 || 'ontouchstart' in window);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Prevent scrolling on mobile when playing
+  useEffect(() => {
+    if (currentScreen === 'playing' && !showInstructions && isMobile) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+      document.body.style.height = '100%';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.height = '';
+      document.documentElement.style.overflow = '';
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.height = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [currentScreen, showInstructions, isMobile]);
 
   // Reset instructions popup when going back to lobby
   useEffect(() => {
@@ -36,6 +73,10 @@ export default function App() {
   const handleCloseInstructions = () => {
     setShowInstructions(false);
     unpauseGame();
+  };
+
+  const handleExitGame = () => {
+    transitionToScreen('lobby');
   };
 
   // Render different screens based on state
@@ -62,6 +103,11 @@ export default function App() {
     <>
       <BackgroundMusic />
       {showInstructions && <InstructionsPopup onClose={handleCloseInstructions} />}
+      {isMobile && !showInstructions && (
+        <button className="mobile-exit-button" onClick={handleExitGame}>
+          Exit
+        </button>
+      )}
       <PostGameScreen />
       <KeyboardShortcuts />
       <div className="hud">
