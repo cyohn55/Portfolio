@@ -1617,19 +1617,19 @@ main > * {
 
 /* Theme-based image visibility */
 .light-mode-img {
-    display: inline-block;
+    display: inline-block !important;
 }
 
 .dark-mode-img {
-    display: none;
+    display: none !important;
 }
 
 [data-theme="dark"] .light-mode-img {
-    display: none;
+    display: none !important;
 }
 
 [data-theme="dark"] .dark-mode-img {
-    display: inline-block;
+    display: inline-block !important;
 }
 
 /* ==========================================================================
