@@ -424,3 +424,174 @@
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 768px) {
+  .animal-lobby {
+    padding: 10px;
+  }
+
+  .lobby-header {
+    flex-direction: column;
+    gap: 15px;
+    padding: 0 10px;
+    margin-bottom: 20px;
+  }
+
+  .lobby-header h1 {
+    font-size: 24px;
+    text-align: center;
+  }
+
+  .back-button {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+
+  .selection-count {
+    font-size: 18px;
+  }
+
+  .lobby-content {
+    gap: 20px;
+  }
+
+  .animal-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .animal-card {
+    padding: 12px;
+  }
+
+  .animal-name {
+    font-size: 16px;
+  }
+
+  .animal-role {
+    font-size: 10px;
+  }
+
+  .animal-description {
+    font-size: 10px;
+    min-height: 28px;
+  }
+
+  .stat-label {
+    font-size: 9px;
+    width: 28px;
+  }
+
+  .stat-bar {
+    height: 6px;
+  }
+
+  .stat-value {
+    font-size: 9px;
+    width: 28px;
+  }
+
+  .selected-badge {
+    width: 22px;
+    height: 22px;
+    font-size: 12px;
+  }
+
+  .selected-team-panel {
+    padding: 16px;
+  }
+
+  .selected-team-panel h2 {
+    font-size: 20px;
+    margin-bottom: 15px;
+  }
+
+  .selected-animals {
+    min-height: 120px;
+  }
+
+  .selected-animal {
+    padding: 10px;
+  }
+
+  .selected-animal .animal-name {
+    font-size: 14px;
+  }
+
+  .mini-stats {
+    font-size: 10px;
+    gap: 10px;
+  }
+
+  .team-analysis {
+    padding: 12px;
+  }
+
+  .analysis-title {
+    font-size: 14px;
+  }
+
+  .analysis-text {
+    font-size: 12px;
+  }
+
+  .start-game-button {
+    padding: 14px;
+    font-size: 14px;
+  }
+
+  .animal-details-panel {
+    padding: 12px;
+  }
+
+  .animal-details-panel h4 {
+    font-size: 14px;
+  }
+
+  .details-strengths h5,
+  .details-weaknesses h5 {
+    font-size: 11px;
+  }
+
+  .details-strengths li,
+  .details-weaknesses li {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .lobby-header h1 {
+    font-size: 20px;
+  }
+
+  .animal-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .animal-card {
+    padding: 10px;
+  }
+
+  .animal-name {
+    font-size: 14px;
+  }
+
+  .animal-description {
+    display: none;
+  }
+
+  .stat-row {
+    gap: 4px;
+  }
+
+  .stat-label {
+    font-size: 8px;
+    width: 24px;
+  }
+
+  .stat-value {
+    font-size: 8px;
+    width: 24px;
+  }
+}
