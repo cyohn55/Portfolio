@@ -1,0 +1,176 @@
+.instructions-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.instructions-popup {
+  background: linear-gradient(135deg, #1a1f35 0%, #0b0f1a 100%);
+  border: 3px solid #5a7cff;
+  border-radius: 16px;
+  padding: 40px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 0 40px rgba(88, 120, 255, 0.4), inset 0 0 20px rgba(88, 120, 255, 0.1);
+  animation: popupFadeIn 0.3s ease-out;
+}
+
+@keyframes popupFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.instructions-popup h2 {
+  font-size: 32px;
+  color: #ffffff;
+  text-align: center;
+  margin: 0 0 30px 0;
+  text-shadow: 0 0 20px rgba(88, 120, 255, 0.6);
+}
+
+.instructions-section {
+  margin-bottom: 25px;
+}
+
+.instructions-section h3 {
+  font-size: 20px;
+  color: #5a7cff;
+  margin: 0 0 12px 0;
+  border-bottom: 1px solid rgba(88, 120, 255, 0.3);
+  padding-bottom: 8px;
+}
+
+.instructions-section p {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.controls-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.controls-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.controls-list li:last-child {
+  border-bottom: none;
+}
+
+.control-key {
+  background: rgba(88, 120, 255, 0.2);
+  border: 1px solid rgba(88, 120, 255, 0.5);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8ea3ff;
+  min-width: 100px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.start-battle-btn {
+  width: 100%;
+  padding: 18px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #ffffff;
+  background: linear-gradient(135deg, #5a7cff 0%, #4a6cef 100%);
+  border: 2px solid #6a8cff;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(88, 120, 255, 0.4);
+  margin-top: 10px;
+}
+
+.start-battle-btn:hover {
+  background: linear-gradient(135deg, #6a8cff 0%, #5a7cff 100%);
+  box-shadow: 0 6px 30px rgba(88, 120, 255, 0.6);
+  transform: translateY(-2px);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .instructions-popup {
+    padding: 25px;
+    margin: 10px;
+  }
+
+  .instructions-popup h2 {
+    font-size: 24px;
+    margin-bottom: 20px;
+  }
+
+  .instructions-section h3 {
+    font-size: 16px;
+  }
+
+  .instructions-section p {
+    font-size: 14px;
+  }
+
+  .controls-list li {
+    padding: 8px 0;
+    font-size: 13px;
+  }
+
+  .control-key {
+    font-size: 11px;
+    padding: 5px 8px;
+    min-width: 80px;
+  }
+
+  .start-battle-btn {
+    padding: 14px;
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .instructions-popup {
+    padding: 20px;
+  }
+
+  .instructions-popup h2 {
+    font-size: 20px;
+  }
+
+  .control-key {
+    min-width: 70px;
+    font-size: 10px;
+  }
+
+  .controls-list li {
+    font-size: 12px;
+    gap: 8px;
+  }
+}

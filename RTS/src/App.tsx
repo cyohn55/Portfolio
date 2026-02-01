@@ -1,5 +1,5 @@
 import { Canvas } from '@react-three/fiber';
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import './App.css';
 import { BattleMap } from './components/HexGrid';
@@ -14,14 +14,23 @@ import { MainMenu } from './components/screens/MainMenu';
 import { AnimalSelectionLobby } from './components/screens/AnimalSelectionLobby';
 import { PostGameScreen } from './components/screens/PostGameScreen';
 import { BackgroundMusic } from './components/BackgroundMusic';
+import { InstructionsPopup } from './components/screens/InstructionsPopup';
 
 export default function App() {
   const initialize = useGameStore((s) => s.initializeGame);
   const currentScreen = useGameStore((s) => s.currentScreen);
+  const [showInstructions, setShowInstructions] = useState(true);
 
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Reset instructions popup when going back to lobby
+  useEffect(() => {
+    if (currentScreen === 'lobby') {
+      setShowInstructions(true);
+    }
+  }, [currentScreen]);
 
   // Render different screens based on state
   if (currentScreen === 'menu') {
@@ -46,6 +55,7 @@ export default function App() {
   return (
     <>
       <BackgroundMusic />
+      {showInstructions && <InstructionsPopup onClose={() => setShowInstructions(false)} />}
       <PostGameScreen />
       <KeyboardShortcuts />
       <div className="hud">
