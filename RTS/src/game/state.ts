@@ -96,6 +96,7 @@ type Store = GameState & {
   };
   // Game pause state
   isPaused: boolean;
+  unpauseGame: () => void;
   // Lighting settings
   lightingSettings: {
     sunBrightness: number;
@@ -144,6 +145,7 @@ export const useGameStore = create<Store>((set, get) => ({
     spawnOptimization: true,
   },
   isPaused: false,
+  unpauseGame: () => set({ isPaused: false }),
   lightingSettings: {
     sunBrightness: 5.0,
     moonBrightness: 5.0,
@@ -232,6 +234,7 @@ export const useGameStore = create<Store>((set, get) => ({
     set({
       units,
       matchStarted: true,
+      isPaused: true,
       gameOver: false,
       winner: null,
       selectedUnitIds: [],

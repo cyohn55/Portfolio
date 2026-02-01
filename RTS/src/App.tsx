@@ -19,6 +19,7 @@ import { InstructionsPopup } from './components/screens/InstructionsPopup';
 export default function App() {
   const initialize = useGameStore((s) => s.initializeGame);
   const currentScreen = useGameStore((s) => s.currentScreen);
+  const unpauseGame = useGameStore((s) => s.unpauseGame);
   const [showInstructions, setShowInstructions] = useState(true);
 
   useEffect(() => {
@@ -31,6 +32,11 @@ export default function App() {
       setShowInstructions(true);
     }
   }, [currentScreen]);
+
+  const handleCloseInstructions = () => {
+    setShowInstructions(false);
+    unpauseGame();
+  };
 
   // Render different screens based on state
   if (currentScreen === 'menu') {
@@ -55,7 +61,7 @@ export default function App() {
   return (
     <>
       <BackgroundMusic />
-      {showInstructions && <InstructionsPopup onClose={() => setShowInstructions(false)} />}
+      {showInstructions && <InstructionsPopup onClose={handleCloseInstructions} />}
       <PostGameScreen />
       <KeyboardShortcuts />
       <div className="hud">
