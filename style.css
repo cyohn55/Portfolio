@@ -2272,9 +2272,9 @@ main > * {
         clip-path: polygon(8% 0, 92% 0, 100% 2%, 100% 98%, 92% 100%, 8% 100%, 0 98%, 0 2%) !important;
     }
 
-    /* Dark mode - match header height to light mode (68.39px) */
-    [data-theme="dark"] header {
-        height: 68.39px !important;
+    /* Set header height on mobile for both light and dark mode */
+    header {
+        height: 68px !important;
         box-sizing: border-box !important;
     }
 }
