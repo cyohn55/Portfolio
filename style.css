@@ -2235,10 +2235,10 @@ main > * {
     [data-theme="dark"] #be-first-text {
         white-space: nowrap !important;
         font-size: 1.3rem !important;
-        text-align: center !important;
+        display: flex !important;
+        justify-content: center !important;
         width: 100% !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
+        box-sizing: border-box !important;
     }
 }
 
