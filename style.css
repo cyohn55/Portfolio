@@ -2256,6 +2256,14 @@ main > * {
         margin-right: auto !important;
         box-sizing: border-box !important;
     }
+
+    /* Dark mode - center typing-animation-container on mobile */
+    [data-theme="dark"] #typing-animation-container {
+        width: 100% !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        box-sizing: border-box !important;
+    }
 }
 
 .centered-who a.red-link.line-who .red-text {
