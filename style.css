@@ -1679,6 +1679,12 @@ main > * {
     max-width: 300px !important;
 }
 
+/* Light mode - Blue_Cody.png in circle with rounded bottom crop (desktop) */
+.light-mode-img.profile-img-container .profile-img {
+    border-radius: 0 0 46% 50% !important;
+    clip-path: ellipse(65% 60% at 50% 40%) !important;
+}
+
 /* ==========================================================================
    RESPONSIVE DESIGN - LARGE SCREENS
    ========================================================================== */
@@ -2207,6 +2213,7 @@ main > * {
     /* Dark mode - Red_Cody.png in square */
     .dark-mode-img.profile-img-container .profile-img {
         max-width: 230px !important;
+        clip-path: inset(0 0 26px 0) !important;
     }
 }
 
