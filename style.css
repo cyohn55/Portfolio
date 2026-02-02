@@ -1976,7 +1976,7 @@ main > * {
     /* Override for profile images - don't stretch */
     .profile-img-container .profile-img {
         width: auto !important;
-        max-width: 280px !important;
+        max-width: 200px !important;
     }
 
     .profile-img-container {
@@ -2185,6 +2185,20 @@ main > * {
 
     [title*="This Web Page was Created with an Email"] .content {
         padding-top: 20px !important;
+    }
+
+    /* Profile image - smaller on very small screens */
+    .profile-img-container .profile-img {
+        max-width: 120px !important;
+    }
+
+    .profile-img-container {
+        min-height: 260px !important;
+    }
+
+    .profile-img-container span {
+        width: 200px !important;
+        height: 200px !important;
     }
 }
 
