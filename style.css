@@ -1658,6 +1658,8 @@ main > * {
 [data-theme="dark"] .dark-mode-img {
     display: flex !important;
     justify-content: center;
+    position: relative !important;
+    z-index: 10000 !important;
 }
 
 /* Profile image container - override conflicting styles */
