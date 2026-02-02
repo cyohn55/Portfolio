@@ -2230,6 +2230,12 @@ main > * {
     .article-title {
         text-align: center !important;
     }
+
+    /* Dark mode - fit be-first-text on single line */
+    [data-theme="dark"] #be-first-text {
+        white-space: nowrap !important;
+        font-size: 0.9rem !important;
+    }
 }
 
 .centered-who a.red-link.line-who .red-text {
