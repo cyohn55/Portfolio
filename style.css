@@ -2188,17 +2188,23 @@ main > * {
     }
 
     /* Profile image - smaller on very small screens */
-    .profile-img-container .profile-img {
-        max-width: 120px !important;
-    }
-
     .profile-img-container {
-        min-height: 260px !important;
+        min-height: 320px !important;
     }
 
     .profile-img-container span {
-        width: 200px !important;
-        height: 200px !important;
+        width: 300px !important;
+        height: 300px !important;
+    }
+
+    /* Light mode - Blue_Cody.png in circle */
+    .light-mode-img.profile-img-container .profile-img {
+        max-width: 200px !important;
+    }
+
+    /* Dark mode - Red_Cody.png in square */
+    .dark-mode-img.profile-img-container .profile-img {
+        max-width: 230px !important;
     }
 }
 
