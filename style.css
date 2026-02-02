@@ -2197,9 +2197,11 @@ main > * {
         height: 300px !important;
     }
 
-    /* Light mode - Blue_Cody.png in circle */
+    /* Light mode - Blue_Cody.png in circle with rounded bottom crop */
     .light-mode-img.profile-img-container .profile-img {
         max-width: 200px !important;
+        border-radius: 0 0 50% 50% !important;
+        clip-path: ellipse(70% 85% at 50% 40%) !important;
     }
 
     /* Dark mode - Red_Cody.png in square */
