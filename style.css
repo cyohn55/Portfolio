@@ -2864,7 +2864,12 @@ model-viewer .progress-bar {
         font-size: 1rem;
         align-self: stretch;
     }
-    
+
+    /* Dark mode - remove stretch from contact submit button */
+    [data-theme="dark"] .contact-submit-btn {
+        align-self: auto !important;
+    }
+
     .success-message {
         padding: 20px;
         margin-bottom: 25px;
