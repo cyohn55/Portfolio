@@ -2264,6 +2264,11 @@ main > * {
         margin-right: auto !important;
         box-sizing: border-box !important;
     }
+
+    /* Dark mode - achievements-list with angled corners */
+    [data-theme="dark"] .achievements-list {
+        clip-path: polygon(8% 0, 92% 0, 100% 2%, 100% 98%, 92% 100%, 8% 100%, 0 98%, 0 2%) !important;
+    }
 }
 
 .centered-who a.red-link.line-who .red-text {
