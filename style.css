@@ -2234,7 +2234,7 @@ main > * {
     /* Dark mode - fit be-first-text on single line */
     [data-theme="dark"] #be-first-text {
         white-space: nowrap !important;
-        font-size: 1.1rem !important;
+        font-size: 1.3rem !important;
     }
 }
 
