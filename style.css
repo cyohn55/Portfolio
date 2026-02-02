@@ -2225,6 +2225,11 @@ main > * {
     [data-theme="dark"] .contact-form-section {
         clip-path: polygon(9% 0, 100% 0, 100% 95%, 90% 100%, 0 100%, 0 5%) !important;
     }
+
+    /* Center article title on mobile */
+    .article-title {
+        text-align: center !important;
+    }
 }
 
 .centered-who a.red-link.line-who .red-text {
@@ -2857,7 +2862,6 @@ model-viewer .progress-bar {
     .contact-submit-btn {
         padding: 12px 25px;
         font-size: 1rem;
-        align-self: stretch;
     }
 
     .success-message {
