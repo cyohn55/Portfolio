@@ -2240,6 +2240,22 @@ main > * {
         width: 100% !important;
         box-sizing: border-box !important;
     }
+
+    /* Dark mode - center intro-text on mobile */
+    [data-theme="dark"] .intro-text {
+        width: 100% !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Dark mode - center abilities-container on mobile */
+    [data-theme="dark"] .abilities-container {
+        width: 100% !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        box-sizing: border-box !important;
+    }
 }
 
 .centered-who a.red-link.line-who .red-text {
