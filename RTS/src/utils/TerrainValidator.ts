@@ -21,7 +21,8 @@ const BRIDGE_ZONES = {
 };
 
 export class TerrainValidator {
-  private battleMapScene: THREE.Scene | null = null;
+  // Accepts any Object3D (Scene or merged Group); only .traverse() is used.
+  private battleMapScene: THREE.Object3D | null = null;
   private waterMeshes: THREE.Mesh[] = [];
   private raycaster: THREE.Raycaster;
   private bridgeState: {
@@ -46,7 +47,7 @@ export class TerrainValidator {
   /**
    * Initialize the terrain validator with the battle map scene
    */
-  public initialize(scene: THREE.Scene) {
+  public initialize(scene: THREE.Object3D) {
     this.battleMapScene = scene;
     this.findWaterMeshes();
     console.log('✅ Terrain validator initialized');

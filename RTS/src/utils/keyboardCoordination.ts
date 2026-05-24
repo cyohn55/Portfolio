@@ -1,7 +1,9 @@
 // Simple global state to coordinate between keyboard shortcuts and camera controller
 class KeyboardCoordinator {
   private cameraInputBlocked = false;
-  private blockTimeout: NodeJS.Timeout | null = null;
+  // Browser setTimeout returns a number; ReturnType keeps this portable
+  // without depending on the NodeJS namespace.
+  private blockTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // Block camera input for specified duration (in milliseconds)
   blockCameraInput(duration: number = 1000) {

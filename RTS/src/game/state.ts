@@ -44,6 +44,25 @@ const ANIMALS: Record<AnimalId, { baseHp: number; dmg: number; speed: number }> 
   Yetti: { baseHp: 260, dmg: 30, speed: 7.48 },  // Reduced 15% from 8.8
 };
 
+// Full roster of playable animals, derived from the stats table so it stays in
+// sync automatically when animals are added or removed.
+const ALL_ANIMALS = Object.keys(ANIMALS) as AnimalId[];
+
+/**
+ * Returns `count` distinct animals chosen uniformly at random from the full
+ * roster. Used to give the AI opponent a varied lineup each match instead of a
+ * fixed set. Uses a partial Fisher-Yates shuffle so every animal has an equal
+ * chance of being picked without repeats.
+ */
+function pickRandomAnimals(count: number): AnimalId[] {
+  const roster = [...ALL_ANIMALS];
+  for (let i = roster.length - 1; i > 0; i--) {
+    const swapIndex = Math.floor(Math.random() * (i + 1));
+    [roster[i], roster[swapIndex]] = [roster[swapIndex], roster[i]];
+  }
+  return roster.slice(0, count);
+}
+
 const defaultConfig: GameConfig = {
   mapSize: 50,
   spawnIntervalMs: 5_000,
@@ -195,7 +214,8 @@ export const useGameStore = create<Store>((set, get) => ({
         id: aiId,
         name: 'AI',
         isAI: true,
-        animals: ['Owl', 'Pig', 'Turtle'],
+        // Randomized each match so the player faces a varied opponent lineup.
+        animals: pickRandomAnimals(3),
         basePositions: [{ x: 76.5, y: 0.25, z: -248 }, { x: 1, y: 0.25, z: -248 }, { x: -74, y: 0.25, z: -248 }],
       },
     ];
@@ -562,7 +582,7 @@ export const useGameStore = create<Store>((set, get) => ({
                 // Update wing phase (cycles 0-1 for wing flapping)
                 const flapSpeed = 3; // Flaps per second
                 unit.wingPhase = ((unit.wingPhase || 0) + (flapSpeed * dtSec)) % 1;
-              } else if (unit.animal !== 'Owl') {
+              } else {
                 unit.isFlying = false;
               }
 
@@ -746,7 +766,7 @@ export const useGameStore = create<Store>((set, get) => ({
               unit.isFlying = true;
               const flapSpeed = 3; // Flaps per second
               unit.wingPhase = ((unit.wingPhase || 0) + (flapSpeed * dtSec)) % 1;
-            } else if (unit.animal !== 'Owl') {
+            } else {
               unit.isFlying = false;
             }
 
@@ -1028,7 +1048,7 @@ export const useGameStore = create<Store>((set, get) => ({
               unit.isFlying = true;
               const flapSpeed = 3; // Flaps per second
               unit.wingPhase = ((unit.wingPhase || 0) + (flapSpeed * dtSec)) % 1;
-            } else if (unit.animal !== 'Owl') {
+            } else {
               unit.isFlying = false;
             }
           }
