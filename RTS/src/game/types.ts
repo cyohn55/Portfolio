@@ -45,6 +45,7 @@ export interface Unit {
   maxHp: number;
   attackDamage: number;
   moveSpeed: number; // units per second
+  attackRange: number; // world units; melee animals ~4, ranged animals reach further (enables kiting)
   attackCooldownMs: number;
   lastAttackAtMs: number;
   rotation: number; // rotation angle in radians around y-axis

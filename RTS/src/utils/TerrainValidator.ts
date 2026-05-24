@@ -24,6 +24,11 @@ export class TerrainValidator {
   // Accepts any Object3D (Scene or merged Group); only .traverse() is used.
   private battleMapScene: THREE.Object3D | null = null;
   private waterMeshes: THREE.Mesh[] = [];
+  // Combined xz bounding box of all water meshes (with a small margin). Used as a
+  // cheap broad-phase: a position outside this box cannot be over water, so the
+  // far more expensive per-position raycast is skipped. Most combat happens away
+  // from water, so this keeps the per-tick terrain cost negligible at scale.
+  private waterBounds: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
   private raycaster: THREE.Raycaster;
   private bridgeState: {
     right: 'Fully_Up' | 'Almost_Up' | 'Almost_Down' | 'Fully_Down';
@@ -88,6 +93,36 @@ export class TerrainValidator {
     });
 
     console.log(`✅ Found ${this.waterMeshes.length} water meshes`);
+    this.computeWaterBounds();
+  }
+
+  /**
+   * Compute the combined xz bounding box of all water meshes (plus a margin) so
+   * positions clearly inland can be ruled out without a raycast.
+   */
+  private computeWaterBounds() {
+    if (this.waterMeshes.length === 0) {
+      this.waterBounds = null;
+      return;
+    }
+
+    const combined = new THREE.Box3();
+    for (const mesh of this.waterMeshes) {
+      combined.expandByObject(mesh);
+    }
+
+    if (combined.isEmpty()) {
+      this.waterBounds = null;
+      return;
+    }
+
+    const margin = 5; // world units of slack around the water footprint
+    this.waterBounds = {
+      minX: combined.min.x - margin,
+      maxX: combined.max.x + margin,
+      minZ: combined.min.z - margin,
+      maxZ: combined.max.z + margin,
+    };
   }
 
   /**
@@ -106,6 +141,14 @@ export class TerrainValidator {
    */
   public isPositionOverWater(position: Position3D): boolean {
     if (this.waterMeshes.length === 0) return false;
+
+    // Cheap broad-phase: positions outside the water bounding box are inland and
+    // need no raycast.
+    if (this.waterBounds &&
+        (position.x < this.waterBounds.minX || position.x > this.waterBounds.maxX ||
+         position.z < this.waterBounds.minZ || position.z > this.waterBounds.maxZ)) {
+      return false;
+    }
 
     // Cast ray downward from position
     const origin = new THREE.Vector3(position.x, position.y + 100, position.z);

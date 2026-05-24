@@ -11,6 +11,7 @@ import { SpatialGrid } from '../utils/SpatialGrid';
 setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, GameConfig, GameState, Player, Unit, PatrolRoute } from './types';
+import { ANIMAL_MOVEMENT_TYPES } from './types';
 
 type BridgeAnimationState = 'up' | 'lowering' | 'down' | 'raising';
 type BridgeFrame = 'Fully_Up' | 'Almost_Up' | 'Almost_Down' | 'Fully_Down';
@@ -29,20 +30,41 @@ interface BridgeState {
 }
 
 
-const ANIMALS: Record<AnimalId, { baseHp: number; dmg: number; speed: number }> = {
-  Bee: { baseHp: 60, dmg: 10, speed: 20.4 },     // Reduced 15% from 24.0
-  Bear: { baseHp: 220, dmg: 40, speed: 8.16 },   // Reduced 15% from 9.6
-  Bunny: { baseHp: 75, dmg: 9, speed: 18.36 },   // Reduced 15% from 21.6
-  Chicken: { baseHp: 70, dmg: 8, speed: 19.04 }, // Reduced 15% from 22.4
-  Cat: { baseHp: 90, dmg: 12, speed: 16.32 },    // Reduced 15% from 19.2
-  Dolphin: { baseHp: 110, dmg: 18, speed: 13.6 }, // Reduced 15% from 16.0
-  Fox: { baseHp: 140, dmg: 20, speed: 14.28 },   // Reduced 15% from 16.8
-  Frog: { baseHp: 80, dmg: 10, speed: 17.68 },   // Reduced 15% from 20.8
-  Owl: { baseHp: 100, dmg: 16, speed: 14.96 },   // Reduced 15% from 17.6
-  Pig: { baseHp: 160, dmg: 18, speed: 12.24 },   // Reduced 15% from 14.4
-  Turtle: { baseHp: 240, dmg: 24, speed: 6.8 },  // Reduced 15% from 8.0
-  Yetti: { baseHp: 260, dmg: 30, speed: 7.48 },  // Reduced 15% from 8.8
+// Per-animal base stats across four combat axes: HP, per-hit damage, move speed,
+// attack range, and attack cooldown (attack speed). Damage-per-second is
+// dmg / (attackCooldownMs / 1000), so two animals with very different per-hit
+// numbers can share a DPS while feeling completely different (a fast flurry of
+// pecks vs a slow heavy slam).
+//
+// Every animal is tuned to the same overall power budget. Normalising attack
+// speed to an "effective damage per 1.5s" lets us reuse one index:
+//   effDmg      = dmg * 1500 / attackCooldownMs
+//   speedFactor = 1 + speed / 40            (mobility is a modest premium)
+//   rangeFactor = 1 + 0.085 * (range - 4)   (reach lets ranged units kite)
+//   index       = sqrt(HP * effDmg) * speedFactor * rangeFactor  ~= 60 for all.
+// Range and attack cooldown are real power, so they are paid for: ranged animals
+// (Bee, Frog, Owl) trade away HP/DPS for reach, and fast attackers trade per-hit
+// damage for cadence. Speed and range remain the identity axes; HP and per-hit
+// damage are the levers used to settle the budget.
+const ANIMALS: Record<AnimalId, { baseHp: number; dmg: number; speed: number; range: number; attackCooldownMs: number }> = {
+  Bee: { baseHp: 40, dmg: 11, speed: 20.4, range: 9, attackCooldownMs: 800 },      // Fastest: fragile flying ranged kiter, rapid stings
+  Bear: { baseHp: 95, dmg: 36, speed: 8.16, range: 4, attackCooldownMs: 2050 },    // Slow heavy slammer, biggest single hit
+  Bunny: { baseHp: 80, dmg: 14, speed: 18.36, range: 4, attackCooldownMs: 1000 },  // Fast evasive melee skirmisher
+  Chicken: { baseHp: 70, dmg: 14, speed: 19.04, range: 4, attackCooldownMs: 900 }, // Fast melee harasser, quick pecks
+  Cat: { baseHp: 65, dmg: 20, speed: 16.32, range: 4, attackCooldownMs: 1100 },    // Agile melee duelist, high DPS
+  Dolphin: { baseHp: 105, dmg: 19, speed: 13.6, range: 4, attackCooldownMs: 1500 },// Tanky aquatic all-rounder
+  Fox: { baseHp: 90, dmg: 19, speed: 14.28, range: 4, attackCooldownMs: 1300 },    // Balanced melee bruiser
+  Frog: { baseHp: 60, dmg: 14, speed: 17.68, range: 8, attackCooldownMs: 1300 },   // Amphibious ranged skirmisher (tongue)
+  Owl: { baseHp: 45, dmg: 15, speed: 14.96, range: 11, attackCooldownMs: 1400 },   // Longest-range flying sniper, fragile
+  Pig: { baseHp: 120, dmg: 20, speed: 12.24, range: 4, attackCooldownMs: 1700 },   // Sturdy slow tank, heavy hits
+  Turtle: { baseHp: 155, dmg: 23, speed: 6.8, range: 4, attackCooldownMs: 2000 },  // HP wall, slow weighty blows
+  Yetti: { baseHp: 120, dmg: 27, speed: 7.48, range: 4, attackCooldownMs: 1900 },  // Slow juggernaut, high HP and damage
 };
+
+// Attack range below which an animal is treated as melee. Above it, the combat
+// loop lets the unit attack from distance and back away from faster-closing melee
+// threats (kiting) instead of walking into their swing.
+const MELEE_RANGE = 5;
 
 // Full roster of playable animals, derived from the stats table so it stays in
 // sync automatically when animals are added or removed.
@@ -131,6 +153,21 @@ type Store = GameState & {
     dayNightSpeed: number;
   };
   updateLightingSettings: (settings: Partial<Store['lightingSettings']>) => void;
+  // Render quality
+  shadowsEnabled: boolean;
+  setShadowsEnabled: (enabled: boolean) => void;
+};
+
+// Persisted render-quality toggle. Shadows default OFF: enabling them adds a
+// full shadow-map render pass that hurts FPS most on the low-end / integrated
+// GPUs a portfolio visitor may be on. Players opt in from the pause menu.
+const SHADOWS_STORAGE_KEY = 'rts-shadows-enabled';
+const loadShadowsEnabled = (): boolean => {
+  try {
+    return localStorage.getItem(SHADOWS_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
 };
 
 export const useGameStore = create<Store>((set, get) => ({
@@ -181,6 +218,15 @@ export const useGameStore = create<Store>((set, get) => ({
   updateLightingSettings: (settings) => set((state) => ({
     lightingSettings: { ...state.lightingSettings, ...settings }
   })),
+  shadowsEnabled: loadShadowsEnabled(),
+  setShadowsEnabled: (enabled) => {
+    try {
+      localStorage.setItem(SHADOWS_STORAGE_KEY, String(enabled));
+    } catch {
+      /* localStorage unavailable (private mode); setting still applies for the session */
+    }
+    set({ shadowsEnabled: enabled });
+  },
   bridgeState: {
     rightBridge: {
       currentState: 'up',
@@ -969,6 +1015,8 @@ export const useGameStore = create<Store>((set, get) => ({
           // Process combat logic here (moved from below)
           // OPTIMIZED: Reduced distance calculations
           const distSquared = distanceSquared3D(unit.position, target.position);
+          const attackRangeSq = unit.attackRange * unit.attackRange;
+          const isRangedUnit = unit.attackRange > MELEE_RANGE;
 
           // Debug: Log target acquisition and movement (throttled to avoid spam)
           if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
@@ -982,10 +1030,10 @@ export const useGameStore = create<Store>((set, get) => ({
 
           // Debug: Check if player units are reaching combat logic
           if (tickDebug && isPlayerUnit && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
-            console.log(`PLAYER unit ${unit.animal} has TARGET: ${target.animal}, distance: ${Math.sqrt(distSquared).toFixed(1)}, attack range: 4`);
+            console.log(`PLAYER unit ${unit.animal} has TARGET: ${target.animal}, distance: ${Math.sqrt(distSquared).toFixed(1)}, attack range: ${unit.attackRange}`);
           }
 
-          if (distSquared <= 16) { // Attack range (4^2 = 16) - Close melee combat
+          if (distSquared <= attackRangeSq) { // Within this animal's attack range
             // Within attack range - attack AND continue moving closer for more aggressive behavior
             if (nowMs - unit.lastAttackAtMs >= unit.attackCooldownMs) {
               // Add to combat batch instead of immediate damage
@@ -1020,18 +1068,35 @@ export const useGameStore = create<Store>((set, get) => ({
             }
           }
 
-          // Move toward target if not in melee range
-          if (distSquared > 16) { // Move closer until within attack range (4 units)
-            const direction = normalize3D(subtract3D(target.position, unit.position));
+          // Combat movement: close the gap when out of range, or — for a ranged
+          // unit that a faster melee threat has closed in on — back away to keep
+          // shooting from distance (kiting). Player move orders stay authoritative,
+          // so kiting only kicks in when the unit has no active order.
+          let combatMoveDir: Position3D | null = null;
+          if (distSquared > attackRangeSq) {
+            // Out of range: advance toward the target.
+            combatMoveDir = normalize3D(subtract3D(target.position, unit.position));
+          } else if (isRangedUnit && !order && target.kind !== 'Base' &&
+                     unit.moveSpeed > target.moveSpeed) {
+            // In range but a mobile threat is too close: retreat to the standoff
+            // band (~85% of max range) so we keep firing without being meleed.
+            const standoff = unit.attackRange * 0.85;
+            if (distSquared < standoff * standoff) {
+              combatMoveDir = normalize3D(subtract3D(unit.position, target.position));
+            }
+          }
+
+          if (combatMoveDir) {
             const moveDistance = unit.moveSpeed * dtSec;
 
             const newPosition = {
-              x: unit.position.x + direction.x * moveDistance,
+              x: unit.position.x + combatMoveDir.x * moveDistance,
               y: unit.position.y,
-              z: unit.position.z + direction.z * moveDistance
+              z: unit.position.z + combatMoveDir.z * moveDistance
             };
 
-            // Apply collision detection with more lenient collision for combat units
+            // Apply collision detection with more lenient collision for combat units.
+            // Ground animals are also kept out of water here (see checkCollision).
             unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
 
             // Frog and Bunny hopping animation (AI units)
@@ -1318,9 +1383,13 @@ export const useGameStore = create<Store>((set, get) => ({
 
 // Dev-only debug handle for performance testing (stripped from production
 // builds, where import.meta.env.DEV is false). Lets tooling inspect/inject
-// game state to exercise high unit counts.
+// game state to exercise high unit counts. Also exposes the raw stats table and
+// melee threshold so automated balance tests can assert against the real data
+// instead of duplicating the numbers.
 if (import.meta.env.DEV && typeof window !== 'undefined') {
   (window as any).__rtsStore = useGameStore;
+  (window as any).__rtsAnimals = ANIMALS;
+  (window as any).__rtsMeleeRange = MELEE_RANGE;
 }
 
 function baseStats(animal: AnimalId) {
@@ -1339,7 +1408,8 @@ function createBase(ownerId: string, animal: AnimalId, position: Position3D, rot
     maxHp: stats.baseHp * 8,
     attackDamage: 0,
     moveSpeed: 0,
-    attackCooldownMs: 1500,
+    attackRange: stats.range,
+    attackCooldownMs: stats.attackCooldownMs,
     lastAttackAtMs: 0,
     rotation,
   };
@@ -1357,7 +1427,8 @@ function createQueen(ownerId: string, animal: AnimalId, position: Position3D, ro
     maxHp: stats.baseHp * 2,
     attackDamage: stats.dmg,
     moveSpeed: stats.speed * 1.53,
-    attackCooldownMs: 1500,
+    attackRange: stats.range,
+    attackCooldownMs: stats.attackCooldownMs,
     lastAttackAtMs: 0,
     rotation,
   };
@@ -1375,7 +1446,8 @@ function createKing(ownerId: string, animal: AnimalId, position: Position3D, rot
     maxHp: stats.baseHp * 3,
     attackDamage: stats.dmg * 3, // one-shot most standard units
     moveSpeed: stats.speed * 0.85,
-    attackCooldownMs: 1500,
+    attackRange: stats.range,
+    attackCooldownMs: stats.attackCooldownMs,
     lastAttackAtMs: 0,
     rotation,
   };
@@ -1393,7 +1465,8 @@ function createUnit(ownerId: string, animal: AnimalId, position: Position3D, rot
     maxHp: stats.baseHp,
     attackDamage: stats.dmg,
     moveSpeed: stats.speed,
-    attackCooldownMs: 1500,
+    attackRange: stats.range,
+    attackCooldownMs: stats.attackCooldownMs,
     lastAttackAtMs: 0,
     rotation,
   };
@@ -1555,6 +1628,16 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
   } else {
     // Reset collision attempts when movement is successful
     currentUnit.collisionAttempts = 0;
+  }
+
+  // Movement-type terrain rule: the only animals ever blocked are GROUND animals
+  // trying to enter water without a lowered bridge. Air and water animals are
+  // never blocked, so we skip the (raycast-backed) terrain query for them to keep
+  // the per-tick cost down at high unit counts. If the resolved step lands on
+  // forbidden water, the unit holds its position this frame.
+  if (ANIMAL_MOVEMENT_TYPES[currentUnit.animal] === 'ground' &&
+      !terrainValidator.canAnimalMoveTo(currentUnit.animal, adjustedPosition)) {
+    return currentUnit.position;
   }
 
   return adjustedPosition;

@@ -5,99 +5,115 @@ import './AnimalSelectionLobby.css';
 
 const ALL_ANIMALS: AnimalId[] = ['Bee', 'Bear', 'Bunny', 'Chicken', 'Cat', 'Dolphin', 'Fox', 'Frog', 'Owl', 'Pig', 'Turtle', 'Yetti'];
 
-// Animal stats and descriptions
+// Animal stats and descriptions. These mirror the gameplay ANIMALS table in
+// game/state.ts. Damage is per hit; how often a hit lands is set by
+// attackCooldownMs, so the player-facing damage bar shows DPS (see animalDps),
+// which is what actually matters in a fight.
 const ANIMAL_STATS: Record<AnimalId, {
   baseHp: number;
   dmg: number;
   speed: number;
+  range: number;
+  attackCooldownMs: number;
   role: string;
   description: string;
   strengths: string[];
   weaknesses: string[];
 }> = {
   Bee: {
-    baseHp: 60, dmg: 10, speed: 20.4, role: 'Fast',
-    description: 'Lightning fast scout with swarm tactics',
-    strengths: ['Fastest unit', 'Great for flanking', 'Hard to catch'],
-    weaknesses: ['Low HP', 'Weak damage', 'Fragile in direct combat']
+    baseHp: 40, dmg: 11, speed: 20.4, range: 9, attackCooldownMs: 800, role: 'Fast',
+    description: 'Fastest unit: a flying ranged kiter with rapid stings',
+    strengths: ['Fastest unit', 'Attacks from range', 'Flies over water'],
+    weaknesses: ['Lowest HP', 'Dies instantly if cornered', 'Low per-hit damage']
   },
   Bear: {
-    baseHp: 220, dmg: 40, speed: 8.16, role: 'Tank',
-    description: 'Devastating bruiser with massive damage',
-    strengths: ['Highest damage', 'High HP', 'Excellent frontline'],
-    weaknesses: ['Very slow', 'Easy to kite', 'Poor mobility']
+    baseHp: 95, dmg: 36, speed: 8.16, range: 4, attackCooldownMs: 2050, role: 'DPS',
+    description: 'Slow melee slammer with the biggest single hit in the game',
+    strengths: ['Highest per-hit damage', 'Punishing burst', 'Solid HP'],
+    weaknesses: ['Very slow', 'Slowest attack', 'Easily kited by ranged units']
   },
   Bunny: {
-    baseHp: 75, dmg: 9, speed: 18.36, role: 'Fast',
-    description: 'Agile hopper with quick strikes',
-    strengths: ['Very fast', 'Good mobility', 'Hard to pin down'],
-    weaknesses: ['Low HP', 'Weak damage', 'Fragile in combat']
+    baseHp: 80, dmg: 14, speed: 18.36, range: 4, attackCooldownMs: 1000, role: 'Fast',
+    description: 'Fast evasive melee skirmisher that is hard to pin down',
+    strengths: ['Very fast', 'Quick attacks', 'Good mobility'],
+    weaknesses: ['Low per-hit damage', 'Melee only', 'Loses prolonged duels']
   },
   Chicken: {
-    baseHp: 70, dmg: 8, speed: 19.04, role: 'Fast',
-    description: 'Nimble striker with hit-and-run potential',
-    strengths: ['Very fast', 'Good for harassment', 'Evasive'],
-    weaknesses: ['Low HP', 'Weak damage', 'Dies quickly']
+    baseHp: 70, dmg: 14, speed: 19.04, range: 4, attackCooldownMs: 900, role: 'Fast',
+    description: 'Nimble melee harasser with fast pecks for hit-and-run',
+    strengths: ['Very fast', 'Fast attack rate', 'Great for harassment'],
+    weaknesses: ['Low HP', 'Melee only', 'Weak head-on against tanks']
   },
   Cat: {
-    baseHp: 90, dmg: 12, speed: 16.32, role: 'Balanced',
-    description: 'Versatile fighter with balanced stats',
-    strengths: ['No major weaknesses', 'Reliable', 'Adaptable'],
-    weaknesses: ['No major strengths', 'Average at everything']
+    baseHp: 65, dmg: 20, speed: 16.32, range: 4, attackCooldownMs: 1100, role: 'DPS',
+    description: 'Agile melee duelist with the highest sustained DPS',
+    strengths: ['Highest DPS', 'Good speed', 'Strong 1v1'],
+    weaknesses: ['Low HP', 'Melee only', 'Fragile under focus fire']
   },
   Dolphin: {
-    baseHp: 110, dmg: 18, speed: 13.6, role: 'Balanced',
-    description: 'Solid all-rounder with good survivability',
-    strengths: ['Balanced stats', 'Good HP pool', 'Decent damage'],
-    weaknesses: ['Not exceptional at anything', 'Moderate speed']
+    baseHp: 105, dmg: 19, speed: 13.6, range: 4, attackCooldownMs: 1500, role: 'Balanced',
+    description: 'Tanky aquatic all-rounder that crosses water freely',
+    strengths: ['Good HP pool', 'Swims across water', 'Reliable frontline'],
+    weaknesses: ['Average everything else', 'Melee only', 'Moderate speed']
   },
   Fox: {
-    baseHp: 140, dmg: 20, speed: 14.28, role: 'DPS',
-    description: 'High damage dealer with decent mobility',
-    strengths: ['High damage', 'Good HP', 'Strong in skirmishes'],
-    weaknesses: ['Not as tanky as bears', 'Moderate speed']
+    baseHp: 90, dmg: 19, speed: 14.28, range: 4, attackCooldownMs: 1300, role: 'Balanced',
+    description: 'Well-rounded melee bruiser with no glaring weakness',
+    strengths: ['Balanced HP and DPS', 'Strong in skirmishes', 'Flexible'],
+    weaknesses: ['Out-tanked by true tanks', 'Out-ranged by fliers', 'Melee only']
   },
   Frog: {
-    baseHp: 80, dmg: 10, speed: 17.68, role: 'Fast',
-    description: 'Quick hopper excellent for scouting',
-    strengths: ['Fast movement', 'Good mobility', 'Hard to pin down'],
-    weaknesses: ['Low HP', 'Weak damage', 'Poor in sustained fights']
+    baseHp: 60, dmg: 14, speed: 17.68, range: 8, attackCooldownMs: 1300, role: 'Fast',
+    description: 'Fast amphibious skirmisher with a long tongue lash',
+    strengths: ['Attacks from range', 'Crosses water', 'Kites slow melee'],
+    weaknesses: ['Low HP', 'Slow attack', 'Fragile if caught']
   },
   Owl: {
-    baseHp: 100, dmg: 16, speed: 14.96, role: 'Balanced',
-    description: 'Well-rounded unit with consistent performance',
-    strengths: ['Balanced stats', 'Reliable', 'Versatile'],
-    weaknesses: ['Not specialized', 'Average speed']
+    baseHp: 45, dmg: 15, speed: 14.96, range: 11, attackCooldownMs: 1400, role: 'Balanced',
+    description: 'Longest-range flying sniper that picks targets apart',
+    strengths: ['Longest range', 'Flies over water', 'Excellent kiter'],
+    weaknesses: ['Very fragile', 'Slow attack', 'Falls fast if caught']
   },
   Pig: {
-    baseHp: 160, dmg: 18, speed: 12.24, role: 'Tank',
-    description: 'Durable tank with good staying power',
-    strengths: ['High HP', 'Good damage', 'Hard to kill'],
-    weaknesses: ['Slow movement', 'Easy to kite']
+    baseHp: 120, dmg: 20, speed: 12.24, range: 4, attackCooldownMs: 1700, role: 'Tank',
+    description: 'Sturdy slow tank that hits hard and holds the line',
+    strengths: ['High HP', 'Heavy hits', 'Hard to kill'],
+    weaknesses: ['Slow movement', 'Slow attack', 'Easily kited']
   },
   Turtle: {
-    baseHp: 240, dmg: 24, speed: 6.8, role: 'Tank',
-    description: 'Ultimate tank with massive health pool',
-    strengths: ['Highest HP', 'Great damage', 'Excellent survivability'],
-    weaknesses: ['Slowest unit', 'Very easy to kite']
+    baseHp: 155, dmg: 23, speed: 6.8, range: 4, attackCooldownMs: 2000, role: 'Tank',
+    description: 'Immovable HP wall that absorbs enormous punishment',
+    strengths: ['Highest HP', 'Outlasts almost anything', 'Anchors a push'],
+    weaknesses: ['Slowest unit', 'Slow attack', 'Very easily kited']
   },
   Yetti: {
-    baseHp: 260, dmg: 30, speed: 7.48, role: 'Tank',
-    description: 'Legendary powerhouse combining HP and damage',
-    strengths: ['Highest HP', 'Second highest damage', 'Dominant in melee'],
-    weaknesses: ['Very slow', 'Poor chase potential']
+    baseHp: 120, dmg: 27, speed: 7.48, range: 4, attackCooldownMs: 1900, role: 'Tank',
+    description: 'Slow juggernaut combining a big health pool with heavy damage',
+    strengths: ['High HP', 'Heavy hits', 'Dominant in a grind'],
+    weaknesses: ['Very slow', 'Slow attack', 'Easily kited']
   },
 };
 
-// Normalize stats for progress bars (0-100 scale)
+// Damage per second: the meaningful combat output once attack speed is folded in.
+function animalDps(dmg: number, attackCooldownMs: number): number {
+  return dmg / (attackCooldownMs / 1000);
+}
+
+// Normalize stats for progress bars (0-100 scale). Maxes track the current
+// roster leaders so the fullest bar always maps to 100%.
 function normalizeHp(hp: number): number {
-  const maxHp = 260; // Yetti
+  const maxHp = 155; // Turtle
   return (hp / maxHp) * 100;
 }
 
-function normalizeDmg(dmg: number): number {
-  const maxDmg = 40; // Bear
-  return (dmg / maxDmg) * 100;
+function normalizeDps(dps: number): number {
+  const maxDps = 18.2; // Cat (20 dmg / 1.1s)
+  return Math.min(100, (dps / maxDps) * 100);
+}
+
+function normalizeRange(range: number): number {
+  const maxRange = 11; // Owl
+  return (range / maxRange) * 100;
 }
 
 function normalizeSpeed(speed: number): number {
@@ -197,14 +213,25 @@ export function AnimalSelectionLobby() {
                   </div>
 
                   <div className="stat-row">
-                    <span className="stat-label">DMG</span>
+                    <span className="stat-label">DPS</span>
                     <div className="stat-bar">
                       <div
-                        className="stat-fill dmg"
-                        style={{ width: `${normalizeDmg(stats.dmg)}%` }}
+                        className="stat-fill dps"
+                        style={{ width: `${normalizeDps(animalDps(stats.dmg, stats.attackCooldownMs))}%` }}
                       />
                     </div>
-                    <span className="stat-value">{stats.dmg}</span>
+                    <span className="stat-value">{animalDps(stats.dmg, stats.attackCooldownMs).toFixed(1)}</span>
+                  </div>
+
+                  <div className="stat-row">
+                    <span className="stat-label">RNG</span>
+                    <div className="stat-bar">
+                      <div
+                        className="stat-fill rng"
+                        style={{ width: `${normalizeRange(stats.range)}%` }}
+                      />
+                    </div>
+                    <span className="stat-value">{stats.range}</span>
                   </div>
 
                   <div className="stat-row">
@@ -256,7 +283,8 @@ export function AnimalSelectionLobby() {
                   <div className="role-tag">{stats.role}</div>
                   <div className="mini-stats">
                     <div>HP: {stats.baseHp}</div>
-                    <div>DMG: {stats.dmg}</div>
+                    <div>DPS: {animalDps(stats.dmg, stats.attackCooldownMs).toFixed(1)}</div>
+                    <div>RNG: {stats.range}</div>
                     <div>SPD: {stats.speed.toFixed(1)}</div>
                   </div>
                 </div>
