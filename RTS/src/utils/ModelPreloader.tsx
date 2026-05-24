@@ -1,6 +1,4 @@
 import { useGLTF } from '@react-three/drei';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import type { AnimalId } from '../game/types';
 import * as THREE from 'three';
 
@@ -27,21 +25,19 @@ export const OWL_WING_MODELS = [
   'Owl_Wings_Glide.glb',
 ] as const;
 
-// Preload all animal models at module level
-const draco = new DRACOLoader();
-draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
-
-const loader = new GLTFLoader();
-loader.setDRACOLoader(draco);
+// Preload all animal models at module level. `useDraco: true` matches the
+// default DRACO config used by every other useGLTF call site (HexGrid,
+// UnitsLayer), so the preloaded cache entries are reused by the components.
+const USE_DRACO = true;
 
 // Preload each animal model immediately
 Object.values(ANIMAL_FILE_MAP).forEach(filename => {
-  useGLTF.preload(`${import.meta.env.BASE_URL}models/${filename}`, loader);
+  useGLTF.preload(`${import.meta.env.BASE_URL}models/${filename}`, USE_DRACO);
 });
 
 // Preload owl wing models
 OWL_WING_MODELS.forEach(filename => {
-  useGLTF.preload(`${import.meta.env.BASE_URL}models/${filename}`, loader);
+  useGLTF.preload(`${import.meta.env.BASE_URL}models/${filename}`, USE_DRACO);
 });
 
 // Get preloaded model with optimized cloning

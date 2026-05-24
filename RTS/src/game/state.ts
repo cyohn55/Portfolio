@@ -582,7 +582,7 @@ export const useGameStore = create<Store>((set, get) => ({
                 // Update wing phase (cycles 0-1 for wing flapping)
                 const flapSpeed = 3; // Flaps per second
                 unit.wingPhase = ((unit.wingPhase || 0) + (flapSpeed * dtSec)) % 1;
-              } else if (unit.animal !== 'Owl') {
+              } else {
                 unit.isFlying = false;
               }
 
@@ -766,7 +766,7 @@ export const useGameStore = create<Store>((set, get) => ({
               unit.isFlying = true;
               const flapSpeed = 3; // Flaps per second
               unit.wingPhase = ((unit.wingPhase || 0) + (flapSpeed * dtSec)) % 1;
-            } else if (unit.animal !== 'Owl') {
+            } else {
               unit.isFlying = false;
             }
 
@@ -1048,7 +1048,7 @@ export const useGameStore = create<Store>((set, get) => ({
               unit.isFlying = true;
               const flapSpeed = 3; // Flaps per second
               unit.wingPhase = ((unit.wingPhase || 0) + (flapSpeed * dtSec)) % 1;
-            } else if (unit.animal !== 'Owl') {
+            } else {
               unit.isFlying = false;
             }
           }
