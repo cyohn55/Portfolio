@@ -4,18 +4,16 @@ import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 
 export function Skybox() {
-  console.log('🌌 SKYBOX GLTF VERSION LOADING');
-
-  // Error handling for skybox loading
-  let scene;
-  try {
-    const gltf = useGLTF(`${import.meta.env.BASE_URL}models/nebula_skybox/scene.gltf`);
-    scene = gltf.scene;
-  } catch (error) {
-    console.error('❌ Failed to load skybox GLTF:', error);
-    // Return a simple fallback background color instead
-    return null;
-  }
+  // Load the skybox model. useGLTF suspends until the model is ready, and the
+  // <Suspense> boundary wrapping <BattleMap> (App.tsx) renders its fallback
+  // until then — exactly how every other model in the scene is loaded.
+  //
+  // Do NOT wrap this in try/catch: useGLTF signals "still loading" by throwing
+  // a promise for Suspense to catch. A try/catch swallows that promise, makes
+  // the component return null, and leaves rendering dependent on whether the
+  // module-level preload happened to finish first — a race the skybox loses
+  // depending on bundle/module ordering.
+  const { scene } = useGLTF(`${import.meta.env.BASE_URL}models/nebula_skybox/scene.gltf`);
 
   const groupRef = useRef<THREE.Group>(null);
 
