@@ -127,7 +127,12 @@ export default function App() {
           stencil: false,  // Disable stencil buffer if not needed
           depth: true  // Keep depth buffer for 3D rendering
         }}
-        onCreated={({ gl, scene }) => {
+        onCreated={({ gl, scene, camera }) => {
+          // Dev-only handles for performance testing (renderer stats + camera).
+          if (import.meta.env.DEV) {
+            (window as any).__rtsGL = gl;
+            (window as any).__rtsCamera = camera;
+          }
           console.log('🎮 RTS Game: WebGL context created successfully');
 
           // Access the WebGL context correctly from the renderer

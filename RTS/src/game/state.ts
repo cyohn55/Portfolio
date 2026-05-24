@@ -1,7 +1,14 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
-import { produce } from 'immer';
+import { produce, setAutoFreeze } from 'immer';
 import { SpatialGrid } from '../utils/SpatialGrid';
+
+// The per-frame `tick` mutates unit objects in place for performance (see the
+// comment on `tick`). The other store actions still use Immer's produce(), whose
+// default auto-freeze would deep-freeze the shared `units` objects and make the
+// next tick's in-place mutation throw. Disabling auto-freeze keeps both paths
+// compatible (and slightly speeds up the remaining produce() calls).
+setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, GameConfig, GameState, Player, Unit, PatrolRoute } from './types';
 
@@ -39,7 +46,7 @@ const ANIMALS: Record<AnimalId, { baseHp: number; dmg: number; speed: number }> 
 
 const defaultConfig: GameConfig = {
   mapSize: 50,
-  spawnIntervalMs: 10_000,
+  spawnIntervalMs: 5_000,
   regenPerSecondNearQueen: 5,
   regenRadius: 8,
 };
@@ -268,8 +275,14 @@ export const useGameStore = create<Store>((set, get) => ({
     });
   },
 
-  tick: (dtSec, nowMs) => set((prev) =>
-    produce(prev, (draft) => {
+  // Per-frame simulation runs OUTSIDE Immer. At hundreds of units, produce()
+  // clones the units array plus every mutated unit each tick, and that garbage
+  // causes periodic GC pauses (frame-time spikes). Here we read the live state
+  // via get(), mutate units/records in place, and republish a fresh `units`
+  // array reference at the end so ref-equality selectors still update. Other
+  // (infrequent, user-triggered) store actions keep using Immer.
+  tick: (dtSec, nowMs) => {
+      const draft = get();
       if (!draft.matchStarted || draft.isPaused) return;
 
       // DEBUG: Initialize tick counter
@@ -281,14 +294,34 @@ export const useGameStore = create<Store>((set, get) => ({
 
       draft.tickCounter++;
 
+      // Verbose AI/combat logging is gated behind a dev flag. Building these
+      // strings and writing to the console for hundreds of units every frame is
+      // itself a dominant cost — and the fixed-timestep catch-up loop multiplies
+      // it when a tick runs long. Off by default; enable in a dev session with
+      // `window.__rtsTickDebug = true`.
+      const tickDebug =
+        import.meta.env.DEV &&
+        typeof window !== 'undefined' &&
+        (window as any).__rtsTickDebug === true;
+
       // Debug: Log game is running (every 5 seconds)
-      if (draft.tickCounter % 300 === 0) {
+      if (tickDebug && draft.tickCounter % 300 === 0) {
         console.log(`Game tick ${draft.tickCounter}, units: ${draft.units.length}, started: ${draft.matchStarted}`);
       }
 
-      // Reuse spatial grid instead of rebuilding every tick (major optimization)
+      // Owner lookup built once per tick. Avoids a draft.players.find() scan per
+      // unit (cheap when players are few, but it ran for every unit every tick).
+      const isAiByOwnerId: Record<string, boolean> = {};
+      for (const player of draft.players) {
+        isAiByOwnerId[player.id] = player.isAI;
+      }
+
+      // Reuse spatial grid instead of rebuilding every tick (major optimization).
+      // A small cell size keeps neighbor queries cheap even when hundreds of
+      // units pile into the same area during dense melee — a large cell would
+      // return nearly every unit and collapse back toward O(n^2).
       if (!draft.spatialGrid) {
-        draft.spatialGrid = new SpatialGrid(1000, 50);
+        draft.spatialGrid = new SpatialGrid(1000, 16);
       }
       draft.spatialGrid.buildFromUnits(draft.units);
 
@@ -304,16 +337,21 @@ export const useGameStore = create<Store>((set, get) => ({
       // Single pass through units for all categorization
       const newUnitCountCache: Record<string, Record<AnimalId, number>> = {};
 
+      // id -> unit lookup, built once per tick so combat/targeting can resolve
+      // references in O(1) instead of scanning draft.units (was O(n^2)).
+      let unitById = new Map<string, Unit>();
+
       for (const unit of draft.units) {
+        unitById.set(unit.id, unit);
+
         // Type-based categorization
         if (unit.kind === 'Queen') unitCategories.queens.push(unit);
         if (unit.hp < unit.maxHp) unitCategories.unitsNeedingHealing.push(unit);
         if (unit.kind !== 'Base') unitCategories.movableUnits.push(unit);
 
         // Owner-based categorization for later use
-        const ownerPlayer = draft.players.find(p => p.id === unit.ownerId);
-        if (ownerPlayer) {
-          const category = ownerPlayer.isAI ? 'aiUnits' : 'playerUnits';
+        if (unit.ownerId in isAiByOwnerId) {
+          const category = isAiByOwnerId[unit.ownerId] ? 'aiUnits' : 'playerUnits';
           if (!unitCategories[category][unit.ownerId]) {
             unitCategories[category][unit.ownerId] = [];
           }
@@ -363,8 +401,8 @@ export const useGameStore = create<Store>((set, get) => ({
           // Use cached unit count instead of expensive filtering
           const existingCount = draft.unitCountCache[q.ownerId]?.[q.animal] || 0;
 
-          // Reduced max units from 33 to 20 for better performance
-          if (existingCount < 20) {
+          // Cap of 50 units per animal, per team (150 per team across 3 animals)
+          if (existingCount < 50) {
             // Pre-calculated spawn positions (much faster than random generation)
             const spawnIndex = existingCount % 8; // Cycle through 8 preset positions
             const presetAngles = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4, Math.PI, 5*Math.PI/4, 3*Math.PI/2, 7*Math.PI/4];
@@ -383,7 +421,7 @@ export const useGameStore = create<Store>((set, get) => ({
             const tempUnit = createUnit(q.ownerId, q.animal, tentativeSpawnPos, initialRotation);
 
             // Find a collision-free spawn position
-            const finalSpawnPos = checkCollision(tentativeSpawnPos, tempUnit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders);
+            const finalSpawnPos = checkCollision(tentativeSpawnPos, tempUnit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
             tempUnit.position = finalSpawnPos;
             draft.units.push(tempUnit);
           }
@@ -402,8 +440,7 @@ export const useGameStore = create<Store>((set, get) => ({
       // Execute movement orders and combat (process all units for proper AI)
       for (const unit of movableUnits) {
         // AI thinking throttling - each unit thinks on different frames
-        const ownerPlayer = draft.players.find(p => p.id === unit.ownerId);
-        const isPlayerUnit = ownerPlayer && !ownerPlayer.isAI;
+        const isPlayerUnit = unit.ownerId in isAiByOwnerId && !isAiByOwnerId[unit.ownerId];
         const shouldThinkThisTick = isPlayerUnit || !draft.optimizations.aiThrottling || (draft.tickCounter + (draft.aiThinkingOffset[unit.id] || 0)) % 2 === 0; // Reduced to 2 for better AI responsiveness
 
         // Initialize AI thinking offset for new units
@@ -421,7 +458,7 @@ export const useGameStore = create<Store>((set, get) => ({
         // Priority 3: Autonomous enemy detection when idle and not under attack
         if (isPlayerUnit) {
           // Debug: Check player unit detection
-          if (unit.id.endsWith('0') && draft.tickCounter % 120 === 0) {
+          if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 120 === 0) {
             console.log(`PLAYER unit ${unit.animal} (${unit.id}) - isPlayerUnit: ${isPlayerUnit}, currentAttackers: ${unit.currentAttackers?.length || 0}`);
           }
 
@@ -461,7 +498,7 @@ export const useGameStore = create<Store>((set, get) => ({
                 delete unit.movementPausedUntilMs;
                 delete unit.firstBlockedAtMs;
 
-                if (unit.id.endsWith('0')) {
+                if (tickDebug && unit.id.endsWith('0')) {
                   console.log(`PLAYER unit ${unit.animal} BLOCKED for ${(blockedDuration/1000).toFixed(1)}s - abandoning order and switching to IDLE state`);
                 }
               }
@@ -492,7 +529,7 @@ export const useGameStore = create<Store>((set, get) => ({
                 // Been near destination for 5+ seconds, land
                 unit.isFlying = false;
                 delete unit.nearDestinationSinceMs;
-                console.log(`Owl ${unit.id} landing after hovering near destination`);
+                if (tickDebug) console.log(`Owl ${unit.id} landing after hovering near destination`);
               }
             } else if (unit.animal === 'Owl' && distanceToOrder > 15) {
               // Reset timer if moved away from destination
@@ -536,10 +573,10 @@ export const useGameStore = create<Store>((set, get) => ({
               };
 
               // Always apply collision detection for player-ordered movement (highest priority)
-              unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders);
+              unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
 
               // Debug: Log movement for player units
-              if (unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
+              if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
                 console.log(`PLAYER unit ${unit.animal} executing order: distance ${distanceToOrder.toFixed(1)}`);
               }
             }
@@ -558,21 +595,21 @@ export const useGameStore = create<Store>((set, get) => ({
               if (unit.animal === 'Owl') {
                 unit.isFlying = false;
               }
-              console.log(`PLAYER unit ${unit.animal} reached destination - entering IDLE state`);
+              if (tickDebug) console.log(`PLAYER unit ${unit.animal} reached destination - entering IDLE state`);
             }
           }
 
           // PRIORITY 2: When idle (no movement orders), check for attack response
           else {
             // Debug: Log when entering Priority 2 (idle state) logic
-            if (unit.id.endsWith('0') && draft.tickCounter % 30 === 0) {
+            if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 30 === 0) {
               console.log(`📍 PLAYER ${unit.animal} entered IDLE state - no active movement orders`);
             }
 
             // ATTACK RESPONSE: When idle and under attack, fight back until enemy defeated or new order given
             if (unit.currentAttackers && unit.currentAttackers.length > 0) {
               // Debug: Log when player units are under attack while idle
-              if (unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
+              if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
                 console.log(`PLAYER unit ${unit.animal} IDLE but UNDER ATTACK by ${unit.currentAttackers.length} attackers`);
               }
 
@@ -581,13 +618,13 @@ export const useGameStore = create<Store>((set, get) => ({
 
               // First try to stick with current priority attacker if still attacking
               if (unit.priorityAttacker && unit.currentAttackers.includes(unit.priorityAttacker)) {
-                priorityAttacker = draft.units.find(u => u.id === unit.priorityAttacker) || null;
+                priorityAttacker = unitById.get(unit.priorityAttacker) || null;
               }
 
               // If no priority attacker or they're not attacking anymore, find closest attacker
               if (!priorityAttacker) {
                 const attackers = unit.currentAttackers
-                  .map(id => draft.units.find(u => u.id === id))
+                  .map(id => unitById.get(id))
                   .filter(u => u && u.hp > 0) as Unit[];
 
                 if (attackers.length > 0) {
@@ -603,10 +640,10 @@ export const useGameStore = create<Store>((set, get) => ({
               if (priorityAttacker) {
                 unit.unitState = 'pursuing_enemy';
                 target = priorityAttacker;
-                console.log(`✅ PLAYER ${unit.animal} IDLE → fighting back against ${target.animal} (focus-fire)`);
+                if (tickDebug) console.log(`✅ PLAYER ${unit.animal} IDLE → fighting back against ${target.animal} (focus-fire)`);
 
                 // Debug: Confirm target is set for combat
-                if (unit.id.endsWith('0')) {
+                if (tickDebug && unit.id.endsWith('0')) {
                   console.log(`PLAYER unit ${unit.animal} combat target: ${target.animal} - will fight until defeated or new order given`);
                 }
               }
@@ -615,7 +652,7 @@ export const useGameStore = create<Store>((set, get) => ({
             else if (unit.priorityAttacker) {
               delete unit.priorityAttacker;
               unit.unitState = 'idle';
-              console.log(`PLAYER unit ${unit.animal} defeated all attackers → returning to IDLE state`);
+              if (tickDebug) console.log(`PLAYER unit ${unit.animal} defeated all attackers → returning to IDLE state`);
             }
 
             // PRIORITY 3: Autonomous enemy detection when idle (enabled but with limited range)
@@ -626,10 +663,10 @@ export const useGameStore = create<Store>((set, get) => ({
 
               // If we have a priority attacker that was just defeated, clear it
               if (unit.priorityAttacker) {
-                const priorityAttackerUnit = draft.units.find(u => u.id === unit.priorityAttacker);
+                const priorityAttackerUnit = unitById.get(unit.priorityAttacker);
                 if (!priorityAttackerUnit || priorityAttackerUnit.hp <= 0) {
                   delete unit.priorityAttacker;
-                  console.log(`PLAYER unit ${unit.animal} defeated attacker - checking for other enemies`);
+                  if (tickDebug) console.log(`PLAYER unit ${unit.animal} defeated attacker - checking for other enemies`);
                 }
               }
 
@@ -637,7 +674,7 @@ export const useGameStore = create<Store>((set, get) => ({
               if (unit.lastCombatTargetId && unit.lastCombatEngagementMs &&
                   nowMs - unit.lastCombatEngagementMs < 3000 &&
                   unit.lastCombatTargetId !== unit.priorityAttacker) {
-                const lastTarget = draft.units.find(u => u.id === unit.lastCombatTargetId);
+                const lastTarget = unitById.get(unit.lastCombatTargetId);
                 if (lastTarget && lastTarget.ownerId !== unit.ownerId && lastTarget.hp > 0) {
                   const distToLastTarget = distanceSquared3D(unit.position, lastTarget.position);
                   if (distToLastTarget <= 100) { // 10 units - closer re-engagement
@@ -664,7 +701,7 @@ export const useGameStore = create<Store>((set, get) => ({
                 target = enemyTarget;
 
                 // Debug: Log enemy engagement
-                if (unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
+                if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
                   const distance = Math.sqrt(distanceSquared3D(unit.position, enemyTarget.position));
                   console.log(`PLAYER unit ${unit.animal} IDLE → pursuing enemy ${enemyTarget.animal}: distance ${distance.toFixed(1)}`);
                 }
@@ -719,7 +756,7 @@ export const useGameStore = create<Store>((set, get) => ({
               z: unit.position.z + direction.z * moveDistance
             };
 
-            unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders);
+            unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
           } else if (unit.animal === 'Owl') {
             // Owl landed when destination reached
             unit.isFlying = false;
@@ -771,7 +808,7 @@ export const useGameStore = create<Store>((set, get) => ({
             };
 
             // Apply collision detection
-            unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders);
+            unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
           } else {
             // Reached patrol point, switch to other end
             draft.queenPatrols[unit.id].currentTarget = patrol.currentTarget === 'end' ? 'start' : 'end';
@@ -789,7 +826,7 @@ export const useGameStore = create<Store>((set, get) => ({
             // COMBAT PERSISTENCE: First try to re-engage last combat target if still valid
             if (unit.lastCombatTargetId && unit.lastCombatEngagementMs &&
                 nowMs - unit.lastCombatEngagementMs < 3000) { // 3 second combat persistence
-              const lastTarget = draft.units.find(u => u.id === unit.lastCombatTargetId);
+              const lastTarget = unitById.get(unit.lastCombatTargetId);
               if (lastTarget && lastTarget.ownerId !== unit.ownerId && lastTarget.hp > 0) {
                 const distToLastTarget = distanceSquared3D(unit.position, lastTarget.position);
                 if (distToLastTarget <= 100) { // 10 units - closer re-engagement range
@@ -816,13 +853,13 @@ export const useGameStore = create<Store>((set, get) => ({
 
             // Check if we have a current focus target that's still alive and reachable
             if (unit.lastCombatTargetId) {
-              const focusTarget = draft.units.find(u => u.id === unit.lastCombatTargetId);
+              const focusTarget = unitById.get(unit.lastCombatTargetId);
               if (focusTarget && focusTarget.ownerId !== unit.ownerId && focusTarget.hp > 0) {
                 const distanceToFocus = Math.sqrt(distanceSquared3D(unit.position, focusTarget.position));
                 // Stick with current target if it's within reasonable range (50 units)
                 if (distanceToFocus <= 50) {
                   currentTarget = focusTarget;
-                  if (unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
+                  if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
                     console.log(`AI unit ${unit.animal} FOCUS-FIRE: sticking with ${focusTarget.animal}, distance: ${distanceToFocus.toFixed(1)}`);
                   }
                 }
@@ -831,16 +868,16 @@ export const useGameStore = create<Store>((set, get) => ({
 
             // Only find new target if current focus target is dead/invalid
             if (!currentTarget) {
-              currentTarget = findClosestEnemy(unit, draft.units);
+              currentTarget = findClosestEnemy(unit, draft.spatialGrid, draft.units);
               if (currentTarget) {
                 // Log new target acquisition
                 const distance = Math.sqrt(distanceSquared3D(unit.position, currentTarget.position));
-                if (unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
+                if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
                   console.log(`AI unit ${unit.animal} NEW TARGET: ${currentTarget.animal}, distance: ${distance.toFixed(1)} units`);
                 }
               } else {
                 // Log when no enemies found (should be rare)
-                if (unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
+                if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
                   console.log(`AI unit ${unit.animal} found no enemies on map`);
                 }
               }
@@ -857,13 +894,13 @@ export const useGameStore = create<Store>((set, get) => ({
               draft.targetCache[persistenceKey] = target.id;
             } else {
               // AGGRESSIVE AI FIX: If no target found anywhere on map, log this unusual situation
-              console.log(`AI unit ${unit.animal} (${unit.id}) found no enemies anywhere on map`);
+              if (tickDebug) console.log(`AI unit ${unit.animal} (${unit.id}) found no enemies anywhere on map`);
             }
           } else if (!isPlayerUnit) {
             // COMBAT PERSISTENCE: First try to re-engage last combat target if still valid
             if (unit.lastCombatTargetId && unit.lastCombatEngagementMs &&
                 nowMs - unit.lastCombatEngagementMs < 3000) { // 3 second combat persistence
-              const lastTarget = draft.units.find(u => u.id === unit.lastCombatTargetId);
+              const lastTarget = unitById.get(unit.lastCombatTargetId);
               if (lastTarget && lastTarget.ownerId !== unit.ownerId && lastTarget.hp > 0) {
                 const distToLastTarget = distanceSquared3D(unit.position, lastTarget.position);
                 if (distToLastTarget <= 100) { // 10 units - closer re-engagement range
@@ -877,7 +914,7 @@ export const useGameStore = create<Store>((set, get) => ({
             if (!target) {
               // First try to stick with last combat target (focus-fire)
               if (unit.lastCombatTargetId) {
-                const focusTarget = draft.units.find(u => u.id === unit.lastCombatTargetId);
+                const focusTarget = unitById.get(unit.lastCombatTargetId);
                 if (focusTarget && focusTarget.ownerId !== unit.ownerId && focusTarget.hp > 0) {
                   const distanceToFocus = Math.sqrt(distanceSquared3D(unit.position, focusTarget.position));
                   // Stick with focus target if within range
@@ -892,7 +929,8 @@ export const useGameStore = create<Store>((set, get) => ({
                 const cacheKey = `${unit.id}-target`;
                 const cachedTargetId = draft.targetCache[cacheKey];
                 if (cachedTargetId) {
-                  target = draft.units.find(u => u.id === cachedTargetId && u.hp > 0) || null;
+                  const cached = unitById.get(cachedTargetId);
+                  target = cached && cached.hp > 0 ? cached : null;
                   // Clear invalid cached targets
                   if (!target) {
                     delete draft.targetCache[cacheKey];
@@ -913,7 +951,7 @@ export const useGameStore = create<Store>((set, get) => ({
           const distSquared = distanceSquared3D(unit.position, target.position);
 
           // Debug: Log target acquisition and movement (throttled to avoid spam)
-          if (unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
+          if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
             const playerType = isPlayerUnit ? 'PLAYER' : 'AI';
             console.log(`${playerType} ${unit.animal} found target: ${target.animal}, distance: ${Math.sqrt(distSquared).toFixed(1)}`);
           }
@@ -923,7 +961,7 @@ export const useGameStore = create<Store>((set, get) => ({
           unit.rotation = Math.atan2(direction.x, direction.z);
 
           // Debug: Check if player units are reaching combat logic
-          if (isPlayerUnit && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
+          if (tickDebug && isPlayerUnit && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
             console.log(`PLAYER unit ${unit.animal} has TARGET: ${target.animal}, distance: ${Math.sqrt(distSquared).toFixed(1)}, attack range: 4`);
           }
 
@@ -948,11 +986,10 @@ export const useGameStore = create<Store>((set, get) => ({
               target.currentAttackers.push(unit.id);
 
               // DEBUG: Verify attacker tracking is working
-              const isTargetPlayer = target.ownerId === draft.localPlayerId;
-              if (isTargetPlayer) {
+              if (tickDebug && target.ownerId === draft.localPlayerId) {
                 console.log(`ATTACKER TRACKED: ${unit.animal} (${unit.ownerId}) -> ${target.animal} (PLAYER). Target now has ${target.currentAttackers.length} attackers: [${target.currentAttackers.map(id => draft.units.find(u => u.id === id)?.animal || id).join(', ')}]`);
               }
-              console.log(`Combat queued: ${unit.animal} vs ${target.animal}, distance: ${Math.sqrt(distSquared).toFixed(1)}`);
+              if (tickDebug) console.log(`Combat queued: ${unit.animal} vs ${target.animal}, distance: ${Math.sqrt(distSquared).toFixed(1)}`);
             }
 
             // Owl should keep flying even while attacking
@@ -975,7 +1012,7 @@ export const useGameStore = create<Store>((set, get) => ({
             };
 
             // Apply collision detection with more lenient collision for combat units
-            unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders);
+            unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
 
             // Frog and Bunny hopping animation (AI units)
             if (unit.animal === 'Frog' || unit.animal === 'Bunny') {
@@ -1007,7 +1044,7 @@ export const useGameStore = create<Store>((set, get) => ({
       // Note: Attacker tracking will be cleared at the end of the tick after all processing
 
       // Debug: Log combat pairs processing
-      if (combatPairs.length > 0 && draft.tickCounter % 60 === 0) {
+      if (tickDebug && combatPairs.length > 0 && draft.tickCounter % 60 === 0) {
         console.log(`Processing ${combatPairs.length} combat pairs this tick`);
       }
 
@@ -1015,15 +1052,13 @@ export const useGameStore = create<Store>((set, get) => ({
       for (const { attacker, target, damage } of combatPairs) {
 
         // Debug: Log when player units are being attacked
-        const targetOwner = draft.players.find(p => p.id === target.ownerId);
-        if (targetOwner && !targetOwner.isAI) {
+        if (tickDebug && !isAiByOwnerId[target.ownerId]) {
           console.log(`COMBAT: ${attacker.animal} (${attacker.ownerId}) attacking PLAYER ${target.animal} (${target.id})`);
         }
 
-        const oldHp = target.hp;
         target.hp -= damage;
         if (target.hp <= 0) {
-          console.log(`Unit ${target.animal} (${target.ownerId}) killed by ${attacker.animal} (${attacker.ownerId})`);
+          if (tickDebug) console.log(`Unit ${target.animal} (${target.ownerId}) killed by ${attacker.animal} (${attacker.ownerId})`);
           draft.deadUnitsToRemove.push(target.id);
         }
 
@@ -1040,45 +1075,50 @@ export const useGameStore = create<Store>((set, get) => ({
           };
 
           // Apply collision detection to the knockback position
-          target.position = checkCollision(newPosition, target, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders);
+          target.position = checkCollision(newPosition, target, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
         }
       }
 
       // Debug: Log dead unit removal
-      if (draft.deadUnitsToRemove.length > 0) {
+      if (tickDebug && draft.deadUnitsToRemove.length > 0) {
         console.log(`Removing ${draft.deadUnitsToRemove.length} dead units`);
       }
 
       // Immediate dead unit removal to prevent regeneration of dead units
       if (draft.deadUnitsToRemove.length > 0) {
-        // Clean up references to dead units
-        for (const deadUnitId of draft.deadUnitsToRemove) {
-          // Clear priority attacker references if the dead unit was a priority attacker
-          for (const unit of draft.units) {
-            if (unit.priorityAttacker === deadUnitId) {
-              delete unit.priorityAttacker;
-            }
-            // FOCUS-FIRE: Clear last combat target if it died (prevents AI from getting stuck)
-            if (unit.lastCombatTargetId === deadUnitId) {
-              delete unit.lastCombatTargetId;
-              delete unit.lastCombatEngagementMs;
-            }
-            // Remove from current attackers list
-            if (unit.currentAttackers) {
-              unit.currentAttackers = unit.currentAttackers.filter(id => id !== deadUnitId);
-            }
-          }
+        // Set-based membership test turns the cleanup from O(dead * units) into
+        // a single O(units) pass.
+        const deadSet = new Set(draft.deadUnitsToRemove);
 
-          // Also clear from target cache
-          for (const cacheKey in draft.targetCache) {
-            if (draft.targetCache[cacheKey] === deadUnitId) {
-              delete draft.targetCache[cacheKey];
-            }
+        // Clean up references to dead units in one pass.
+        for (const unit of draft.units) {
+          // Clear priority attacker reference if it died.
+          if (unit.priorityAttacker && deadSet.has(unit.priorityAttacker)) {
+            delete unit.priorityAttacker;
+          }
+          // FOCUS-FIRE: Clear last combat target if it died (prevents AI from getting stuck)
+          if (unit.lastCombatTargetId && deadSet.has(unit.lastCombatTargetId)) {
+            delete unit.lastCombatTargetId;
+            delete unit.lastCombatEngagementMs;
+          }
+          // Remove dead attackers from current attackers list.
+          if (unit.currentAttackers) {
+            unit.currentAttackers = unit.currentAttackers.filter(id => !deadSet.has(id));
           }
         }
 
-        draft.units = draft.units.filter((u) => u.hp > 0 && !draft.deadUnitsToRemove.includes(u.id));
+        // Clear dead units from the target cache in one pass.
+        for (const cacheKey in draft.targetCache) {
+          if (deadSet.has(draft.targetCache[cacheKey])) {
+            delete draft.targetCache[cacheKey];
+          }
+        }
+
+        draft.units = draft.units.filter((u) => u.hp > 0 && !deadSet.has(u.id));
         draft.deadUnitsToRemove = [];
+
+        // Rebuild the id lookup so post-removal cleanup uses live units only.
+        unitById = new Map(draft.units.map((u) => [u.id, u]));
 
         // Rebuild spatial grid after removing dead units (important for next tick)
         if (draft.spatialGrid) {
@@ -1087,7 +1127,7 @@ export const useGameStore = create<Store>((set, get) => ({
       }
 
       // DEBUG: Log game state after all processing (every 60 ticks to reduce spam)
-      if (draft.debugTickCount % 60 === 0) {
+      if (tickDebug && draft.debugTickCount % 60 === 0) {
         const playerUnits = draft.units.filter(u => u.ownerId === draft.localPlayerId);
         const aiUnits = draft.units.filter(u => u.ownerId !== draft.localPlayerId);
         const playerUnitsUnderAttack = draft.units.filter(u => u.ownerId === draft.localPlayerId && u.currentAttackers && u.currentAttackers.length > 0);
@@ -1103,7 +1143,7 @@ export const useGameStore = create<Store>((set, get) => ({
         if (unit.currentAttackers && unit.currentAttackers.length > 0) {
           // Remove dead attackers and attackers that are too far away
           unit.currentAttackers = unit.currentAttackers.filter(attackerId => {
-            const attacker = draft.units.find(u => u.id === attackerId);
+            const attacker = unitById.get(attackerId);
             if (!attacker || attacker.hp <= 0) return false; // Dead attacker
             const distance = Math.sqrt(distanceSquared3D(unit.position, attacker.position));
             return distance <= 50; // Remove if attacker is more than 50 units away
@@ -1127,8 +1167,12 @@ export const useGameStore = create<Store>((set, get) => ({
           draft.lastWinCheckMs = nowMs;
         }
       }
-    })
-  ),
+
+      // Publish a fresh `units` array reference so ref-equality selectors (minimap,
+      // HUD, interaction/keyboard layers) re-render this tick; every other field
+      // was mutated in place on the live state and is carried through unchanged.
+      set({ units: draft.units.slice() });
+  },
 
   moveCommand: (cmd) => set((prev) =>
     produce(prev, (draft) => {
@@ -1252,6 +1296,13 @@ export const useGameStore = create<Store>((set, get) => ({
   ),
 }));
 
+// Dev-only debug handle for performance testing (stripped from production
+// builds, where import.meta.env.DEV is false). Lets tooling inspect/inject
+// game state to exercise high unit counts.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  (window as any).__rtsStore = useGameStore;
+}
+
 function baseStats(animal: AnimalId) {
   return ANIMALS[animal];
 }
@@ -1328,7 +1379,25 @@ function createUnit(ownerId: string, animal: AnimalId, position: Position3D, rot
   };
 }
 
-function findClosestEnemy(unit: Unit, all: Unit[]): Unit | null {
+// Radii (world units) probed in order by the expanding-ring search below.
+// Tuned so dense melee resolves on the first ring while the early-game approach
+// phase still finds distant enemies. The widest ring spans the full battlefield
+// (bases sit ~500 units apart on the z axis).
+const ENEMY_SEARCH_RADII = [30, 80, 200, 600];
+
+// Finds the nearest enemy using the spatial grid. An expanding-ring search keeps
+// the common case (enemies already nearby) to a handful of cell lookups instead
+// of scanning every unit, which previously made this O(n^2) across the tick. The
+// full-scan fallback guarantees correctness if no enemy falls inside the widest
+// ring (e.g. the two armies are still further apart than expected).
+function findClosestEnemy(unit: Unit, grid: SpatialGrid | null, all: Unit[]): Unit | null {
+  if (grid) {
+    for (const radius of ENEMY_SEARCH_RADII) {
+      const enemy = grid.findClosestEnemy(unit, radius);
+      if (enemy) return enemy;
+    }
+  }
+
   let best: Unit | null = null;
   let bestDistSq = Infinity;
   for (const other of all) {
@@ -1343,7 +1412,7 @@ function findClosestEnemy(unit: Unit, all: Unit[]): Unit | null {
 }
 
 // Performance-optimized collision detection function
-function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Unit[], collisionRadius: number = 2.5, selectedUnitIds: string[] = [], localPlayerId: string | null = null, unitOrders: Record<string, any> = {}): Position3D {
+function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Unit[], collisionRadius: number = 2.5, selectedUnitIds: string[] = [], localPlayerId: string | null = null, unitOrders: Record<string, any> = {}, spatialGrid: SpatialGrid | null = null): Position3D {
   let adjustedPosition = { ...newPosition };
   let hasCollision = false;
 
@@ -1357,9 +1426,15 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
 
   // Use spatial grid if available for faster nearby unit lookup
   let nearbyUnits: Unit[];
-  if (allUnits.length > 50) {
-    // For large unit counts, only check units within a reasonable range
-    const checkRadius = collisionRadius * 3; // Check slightly larger area
+  const checkRadius = collisionRadius * 3; // Check slightly larger area
+  if (spatialGrid && allUnits.length > 50) {
+    // Spatial broad-phase: only the handful of units near the target position,
+    // instead of scanning every unit (was O(n) per call -> O(n^2) per tick).
+    nearbyUnits = spatialGrid
+      .getNearbyUnits(adjustedPosition, checkRadius)
+      .filter(other => other.id !== currentUnit.id && other.kind !== 'Base');
+  } else if (allUnits.length > 50) {
+    // Fallback broad-phase when no grid is available.
     nearbyUnits = allUnits.filter(other => {
       if (other.id === currentUnit.id || other.kind === 'Base') return false;
       const dx = other.position.x - adjustedPosition.x;

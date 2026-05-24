@@ -1,63 +1,69 @@
-import { Suspense, useMemo, useEffect } from 'react';
-import { useThree } from '@react-three/fiber';
+import { Suspense, useEffect, useMemo, useRef } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
+import { useGLTF } from '@react-three/drei';
+import { shallow } from 'zustand/shallow';
 import { useGameStore } from '../game/state';
 import type { AnimalId, Unit } from '../game/types';
-import { usePreloadedModel, createPreparedScene, useOwlWingModel } from '../utils/ModelPreloader';
-import { vector3Pool, matrix4Pool, frustumPool } from '../utils/ObjectPool';
+import {
+  ALL_ANIMAL_PATHS,
+  ANIMAL_FILE_MAP,
+  OWL_WING_MODELS,
+  baseVariantKey,
+  owlWingVariantKey,
+  getKindTargetScale,
+  getBakedAnimalParts,
+  getBakedOwlWingParts,
+  type BakedPart,
+} from '../utils/ModelPreloader';
 import * as THREE from 'three';
 import { clickState } from '../utils/clickState';
 
-// Shared selection ring geometries and materials (created once, reused for all units)
-const SELECTION_RING_OUTER_GEO = new THREE.RingGeometry(0.9, 1.5, 16);
-const SELECTION_RING_INNER_GEO = new THREE.RingGeometry(1.0, 1.4, 16);
-const OWNER_RING_GEO = new THREE.RingGeometry(0.7, 1.0, 16);
+// Maximum instances drawn for a single animal variant. Sized to comfortably
+// hold hundreds of units per team even if they all share one animal.
+const MAX_INSTANCES_PER_VARIANT = 1200;
+// Owner/selection rings are not per-variant, so they need room for every unit.
+const RING_CAPACITY = 4096;
+// Units beyond this distance from the camera are skipped (distance LOD).
+const MAX_RENDER_DISTANCE = 400;
 
-const SELECTION_RING_OUTER_MAT = new THREE.MeshStandardMaterial({
-  color: "#000080",
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const FLAT_ROTATION = -Math.PI / 2;
+
+const isMobileDevice = (): boolean =>
+  typeof window !== 'undefined' && (window.innerWidth <= 768 || 'ontouchstart' in window);
+
+// Flat (ground-plane) ring geometries, rotated once at module load so each
+// instance matrix only needs a translation.
+const ownerRingGeometry = new THREE.RingGeometry(0.7, 1.0, 16);
+ownerRingGeometry.rotateX(FLAT_ROTATION);
+const selectionOuterGeometry = new THREE.RingGeometry(0.9, 1.5, 16);
+selectionOuterGeometry.rotateX(FLAT_ROTATION);
+const selectionInnerGeometry = new THREE.RingGeometry(1.0, 1.4, 16);
+selectionInnerGeometry.rotateX(FLAT_ROTATION);
+
+const OWN_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#4169E1' });
+const ENEMY_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#DC143C' });
+const SELECTION_OUTER_MAT = new THREE.MeshStandardMaterial({
+  color: '#000080',
   transparent: true,
   opacity: 0.4,
-  emissive: "#000080",
+  emissive: '#000080',
   emissiveIntensity: 2.0,
   toneMapped: false,
 });
-
-const SELECTION_RING_INNER_MAT = new THREE.MeshStandardMaterial({
-  color: "#000080",
+const SELECTION_INNER_MAT = new THREE.MeshStandardMaterial({
+  color: '#000080',
   transparent: true,
   opacity: 0.8,
-  emissive: "#000080",
+  emissive: '#000080',
   emissiveIntensity: 3.0,
   toneMapped: false,
 });
 
-const OWNER_RING_MAT = new THREE.MeshBasicMaterial({
-  color: "#4169E1",
-});
-
-const AI_OWNER_RING_MAT = new THREE.MeshBasicMaterial({
-  color: "#DC143C", // Crimson red for AI units
-});
-
-// Optimized frustum culling using object pooling
-function isUnitInView(unit: Unit, camera: THREE.Camera): boolean {
-  const matrix = matrix4Pool.acquire();
-  const frustum = frustumPool.acquire();
-  const vector = vector3Pool.acquire();
-
-  try {
-    matrix.multiplyMatrices(
-      camera.projectionMatrix,
-      camera.matrixWorldInverse
-    );
-    frustum.setFromProjectionMatrix(matrix);
-    vector.set(unit.position.x, unit.position.y, unit.position.z);
-    return frustum.containsPoint(vector);
-  } finally {
-    matrix4Pool.release(matrix);
-    frustumPool.release(frustum);
-    vector3Pool.release(vector);
-  }
-}
+type VariantSpec = {
+  key: string;
+  parts: BakedPart[];
+};
 
 function BaseMarker({ x, y, z }: { x: number; y: number; z: number }) {
   const tileSize = 2; // Fixed size for bases
@@ -75,197 +81,305 @@ function BaseMarker({ x, y, z }: { x: number; y: number; z: number }) {
   );
 }
 
-function UnitModel({ unit }: { unit: Unit }) {
-  const gltf = usePreloadedModel(unit.animal);
-  const { x, y, z } = unit.position;
+// Bases are few (<=6) and effectively static, so they stay as plain meshes.
+// A shallow-compared selector keeps this from re-rendering on every game tick.
+function Bases() {
+  const bases = useGameStore((s) => s.units.filter((u) => u.kind === 'Base'), shallow);
+  return (
+    <group>
+      {bases.map((base) => (
+        <BaseMarker key={base.id} x={base.position.x} y={base.position.y} z={base.position.z} />
+      ))}
+    </group>
+  );
+}
 
-  // Always load owl wing model for Owl units (React hooks can't be conditional)
-  // We'll decide whether to use it based on isFlying state
-  const owlWingGltf = unit.animal === 'Owl'
-    ? useOwlWingModel(unit.wingPhase || 0)
-    : null;
-
-  // Debug owl animation
-  if (unit.animal === 'Owl' && Math.random() < 0.01) {
-    console.log(`Owl unit: isFlying=${unit.isFlying}, wingPhase=${unit.wingPhase?.toFixed(2)}, hasWingModel=${!!owlWingGltf}`);
+// Resolve the variant key for a unit's current visual state (owls swap to a
+// wing frame while flying).
+function variantKeyForUnit(unit: Unit): string {
+  if (unit.animal === 'Owl' && unit.isFlying) {
+    const wingFrameIndex = Math.floor((unit.wingPhase || 0) * 4) % OWL_WING_MODELS.length;
+    return owlWingVariantKey(wingFrameIndex);
   }
+  return baseVariantKey(unit.animal);
+}
 
-  // Calculate hop offset for Frog and Bunny units
-  const yOffset = (unit.animal === 'Frog' || unit.animal === 'Bunny') && unit.isHopping
-    ? Math.sin((unit.hopPhase || 0) * Math.PI) * 1.5
-    : 0;
-
-  // Calculate flying offset for Owl units (10 units up when flying - reduced from 20)
-  const flyingOffset = (unit.animal === 'Owl' && unit.isFlying) ? 10 : 0;
-
-  // Lower Yeti model by 0.9 units
-  const yetiOffset = unit.animal === 'Yetti' ? -0.9 : 0;
-
-  // Debug logging for Yeti positioning
-  if (unit.animal === 'Yetti' && Math.random() < 0.01) {
-    console.log('Yetti unit position:', { x, y, yOffset, yetiOffset, finalY: y + yOffset + yetiOffset });
+// Vertical animation/positioning offsets applied per unit (hop, flight, Yetti).
+function verticalOffset(unit: Unit): number {
+  let offset = 0;
+  if ((unit.animal === 'Frog' || unit.animal === 'Bunny') && unit.isHopping) {
+    offset += Math.sin((unit.hopPhase || 0) * Math.PI) * 1.5;
   }
+  if (unit.animal === 'Owl' && unit.isFlying) {
+    offset += 10;
+  }
+  if (unit.animal === 'Yetti') {
+    offset -= 0.9;
+  }
+  return offset;
+}
 
-  const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
-  const units = useGameStore((s) => s.units);
-  const localPlayerId = useGameStore((s) => s.localPlayerId);
-  const selectUnits = useGameStore((s) => s.selectUnits);
-  const addToSelection = useGameStore((s) => s.addToSelection);
-  const attackTarget = useGameStore((s) => s.attackTarget);
+function InstancedUnits() {
   const { camera } = useThree();
+  const isMobile = useMemo(isMobileDevice, []);
 
-  // Distance-based shadow optimization
-  const distanceFromCamera = useMemo(() => {
-    const cameraPos = camera.position;
-    const unitPos = new THREE.Vector3(x, y, z);
-    return cameraPos.distanceTo(unitPos);
-  }, [x, y, z, camera.position]);
+  // Load every animal + owl-wing model up front (stable hook call order).
+  const gltfs = useGLTF(ALL_ANIMAL_PATHS) as any[];
 
-  const shouldCastShadows = distanceFromCamera < 80; // Increased shadow distance for better quality
-  const shouldReceiveShadows = distanceFromCamera < 120; // More units receive shadows
+  // Which animals are actually fielded this match — limits how many instanced
+  // meshes we create. Recomputed only when players/selection change.
+  const players = useGameStore((s) => s.players);
+  const selectedAnimalPool = useGameStore((s) => s.selectedAnimalPool);
+  const inPlayAnimals = useMemo<AnimalId[]>(() => {
+    const set = new Set<AnimalId>();
+    players.forEach((p) => p.animals.forEach((a) => set.add(a)));
+    selectedAnimalPool.forEach((a) => set.add(a));
+    return Array.from(set);
+  }, [players, selectedAnimalPool]);
 
-  const isSelected = selectedUnitIds.includes(unit.id);
-  const isOwnUnit = unit.ownerId === localPlayerId;
+  // Build the baked variant specs (one entry per animal, plus owl wing frames
+  // when owls are present). Geometry baking itself is cached module-side.
+  const variants = useMemo<VariantSpec[]>(() => {
+    const animalIds = Object.keys(ANIMAL_FILE_MAP) as AnimalId[];
+    const gltfByAnimal = new Map<AnimalId, any>();
+    animalIds.forEach((animal, index) => gltfByAnimal.set(animal, gltfs[index]));
+    const wingGltfs = gltfs.slice(animalIds.length);
 
-  if (unit.kind === 'Base') {
-    return <BaseMarker x={x} y={y} z={z} />;
-  }
+    const specs: VariantSpec[] = [];
+    for (const animal of inPlayAnimals) {
+      const gltf = gltfByAnimal.get(animal);
+      if (!gltf) continue;
+      specs.push({ key: baseVariantKey(animal), parts: getBakedAnimalParts(gltf, animal) });
+    }
+    if (inPlayAnimals.includes('Owl')) {
+      for (let frame = 0; frame < OWL_WING_MODELS.length; frame++) {
+        specs.push({ key: owlWingVariantKey(frame), parts: getBakedOwlWingParts(wingGltfs[frame], frame) });
+      }
+    }
+    return specs;
+  }, [gltfs, inPlayAnimals]);
 
-  // Use owl wing model if flying, otherwise use base model
-  const activeGltf = (unit.animal === 'Owl' && unit.isFlying && owlWingGltf) ? owlWingGltf : gltf;
+  // Imperative handles, populated by ref callbacks. Not React state — updated
+  // directly each frame to avoid re-rendering the component tree.
+  const meshRefs = useRef<Map<string, THREE.InstancedMesh[]>>(new Map());
+  const ownRingRef = useRef<THREE.InstancedMesh>(null);
+  const enemyRingRef = useRef<THREE.InstancedMesh>(null);
+  const selectionOuterRef = useRef<THREE.InstancedMesh>(null);
+  const selectionInnerRef = useRef<THREE.InstancedMesh>(null);
+  // instanceId -> unitId per variant, rebuilt each frame for picking.
+  const variantUnitIds = useRef<Map<string, string[]>>(new Map());
 
-  // Determine which wing frame for cache key
-  const wingFrame = unit.animal === 'Owl' && unit.isFlying
-    ? `wing${Math.floor((unit.wingPhase || 0) * 4) % 4}`
-    : undefined;
+  // Reusable scratch objects (no per-frame allocation).
+  const scratch = useRef({
+    position: new THREE.Vector3(),
+    quaternion: new THREE.Quaternion(),
+    scale: new THREE.Vector3(),
+    matrix: new THREE.Matrix4(),
+    projScreen: new THREE.Matrix4(),
+    frustum: new THREE.Frustum(),
+  });
 
-  // Debug which model is being used
-  if (unit.animal === 'Owl' && Math.random() < 0.01) {
-    console.log(`Owl model selection: isFlying=${unit.isFlying}, wingPhase=${unit.wingPhase?.toFixed(2)}, wingFrame=${wingFrame}, usingWingModel=${activeGltf === owlWingGltf}`);
-  }
+  // Mark ring instance buffers as dynamic (updated every frame) for the GPU.
+  useEffect(() => {
+    [ownRingRef, enemyRingRef, selectionOuterRef, selectionInnerRef].forEach((ref) => {
+      ref.current?.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    });
+  }, []);
 
-  const preparedScene = useMemo(() => {
-    return createPreparedScene(activeGltf, unit.animal, unit.kind, wingFrame);
-  }, [activeGltf, unit.animal, unit.kind, wingFrame]);
+  useFrame(() => {
+    const s = useGameStore.getState();
+    const units = s.units;
+    const localPlayerId = s.localPlayerId;
+    const selected = s.selectedUnitIds;
+    const selectedSet = selected.length > 0 ? new Set(selected) : null;
 
-  const handlePointerDown = (e: any) => {
+    const { position, quaternion, scale, matrix, projScreen, frustum } = scratch.current;
+
+    // Build the camera frustum once per frame for cheap off-screen culling.
+    projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    frustum.setFromProjectionMatrix(projScreen);
+    const maxDistanceSq = MAX_RENDER_DISTANCE * MAX_RENDER_DISTANCE;
+
+    // Per-frame counters for each variant and each ring bucket.
+    const counts = new Map<string, number>();
+    for (const variant of variants) {
+      counts.set(variant.key, 0);
+      let ids = variantUnitIds.current.get(variant.key);
+      if (!ids) {
+        ids = [];
+        variantUnitIds.current.set(variant.key, ids);
+      }
+    }
+    let ownRingCount = 0;
+    let enemyRingCount = 0;
+    let selectionOuterCount = 0;
+    let selectionInnerCount = 0;
+
+    for (let i = 0; i < units.length; i++) {
+      const unit = units[i];
+      if (unit.kind === 'Base') continue;
+
+      const key = variantKeyForUnit(unit);
+      if (!counts.has(key)) continue; // not a currently-mounted variant
+      const meshes = meshRefs.current.get(key);
+      if (!meshes || meshes.length === 0) continue;
+
+      const renderY = unit.position.y + verticalOffset(unit);
+      position.set(unit.position.x, renderY, unit.position.z);
+
+      // Distance + frustum cull (units we can't see cost nothing).
+      if (camera.position.distanceToSquared(position) > maxDistanceSq) continue;
+      if (!frustum.containsPoint(position)) continue;
+
+      const variantCount = counts.get(key)!;
+      if (variantCount >= MAX_INSTANCES_PER_VARIANT) continue;
+
+      // Compose the per-instance transform: position, yaw, kind-based scale.
+      quaternion.setFromAxisAngle(Y_AXIS, unit.rotation);
+      const target = getKindTargetScale(unit.animal, unit.kind);
+      scale.set(target, target, target);
+      matrix.compose(position, quaternion, scale);
+      for (let p = 0; p < meshes.length; p++) {
+        if (meshes[p]) meshes[p].setMatrixAt(variantCount, matrix);
+      }
+      variantUnitIds.current.get(key)![variantCount] = unit.id;
+      counts.set(key, variantCount + 1);
+
+      // Owner ring sits on the ground beneath the unit (ignores flight lift).
+      const ringMesh = unit.ownerId === localPlayerId ? ownRingRef.current : enemyRingRef.current;
+      if (ringMesh) {
+        const ringIndex = unit.ownerId === localPlayerId ? ownRingCount : enemyRingCount;
+        if (ringIndex < RING_CAPACITY) {
+          matrix.makeTranslation(unit.position.x, unit.position.y + 0.02, unit.position.z);
+          ringMesh.setMatrixAt(ringIndex, matrix);
+          if (unit.ownerId === localPlayerId) ownRingCount++;
+          else enemyRingCount++;
+        }
+      }
+
+      // Selection rings only for currently selected units.
+      if (selectedSet && selectedSet.has(unit.id)) {
+        if (selectionOuterRef.current && selectionOuterCount < RING_CAPACITY) {
+          matrix.makeTranslation(unit.position.x, unit.position.y + 0.04, unit.position.z);
+          selectionOuterRef.current.setMatrixAt(selectionOuterCount++, matrix);
+        }
+        if (selectionInnerRef.current && selectionInnerCount < RING_CAPACITY) {
+          matrix.makeTranslation(unit.position.x, unit.position.y + 0.25, unit.position.z);
+          selectionInnerRef.current.setMatrixAt(selectionInnerCount++, matrix);
+        }
+      }
+    }
+
+    // Flush instance counts + matrix updates to the GPU.
+    for (const variant of variants) {
+      const meshes = meshRefs.current.get(variant.key);
+      if (!meshes) continue;
+      const count = counts.get(variant.key)!;
+      for (let p = 0; p < meshes.length; p++) {
+        if (!meshes[p]) continue;
+        meshes[p].count = count;
+        meshes[p].instanceMatrix.needsUpdate = true;
+      }
+    }
+    const flush = (mesh: THREE.InstancedMesh | null, count: number) => {
+      if (!mesh) return;
+      mesh.count = count;
+      mesh.instanceMatrix.needsUpdate = true;
+    };
+    flush(ownRingRef.current, ownRingCount);
+    flush(enemyRingRef.current, enemyRingCount);
+    flush(selectionOuterRef.current, selectionOuterCount);
+    flush(selectionInnerRef.current, selectionInnerCount);
+  });
+
+  // Pointer handling mirrors the previous per-unit behavior: left-click selects
+  // own units (shift adds), right-click on an enemy attacks with the selection.
+  const handlePointerDown = (variantKey: string, e: any) => {
+    const id = variantUnitIds.current.get(variantKey)?.[e.instanceId];
+    if (!id) return;
     e.stopPropagation();
-    console.log('🎯 Unit clicked:', unit.id, 'button:', e.button, 'isOwnUnit:', isOwnUnit);
 
-    // Right-click on enemy unit - attack target with selected units
+    const s = useGameStore.getState();
+    const unit = s.units.find((u) => u.id === id);
+    if (!unit) return;
+    const isOwnUnit = unit.ownerId === s.localPlayerId;
+
     if (e.button === 2 && !isOwnUnit) {
-      console.log('Right-clicked enemy unit:', unit.id);
-      const selectedUnits = units.filter(u => selectedUnitIds.includes(u.id) && u.ownerId === localPlayerId);
-
-      console.log('Selected units:', selectedUnits.length);
-
-      if (selectedUnits.length > 0) {
-        attackTarget({
-          unitIds: selectedUnits.map(u => u.id),
-          targetId: unit.id
-        });
+      const selectedOwn = s.units.filter(
+        (u) => s.selectedUnitIds.includes(u.id) && u.ownerId === s.localPlayerId
+      );
+      if (selectedOwn.length > 0) {
+        s.attackTarget({ unitIds: selectedOwn.map((u) => u.id), targetId: unit.id });
       }
       return;
     }
 
-    // Left-click on own unit - select it
     if (!isOwnUnit) return;
-
-    // Mark that a unit was clicked (for HexInteraction to know not to clear selection)
-    console.log('🔵 Setting clickState to TRUE');
     clickState.setUnitClicked();
-
-    if (e.shiftKey) {
-      addToSelection([unit.id]);
-    } else {
-      selectUnits([unit.id]);
-    }
+    if (e.shiftKey) s.addToSelection([id]);
+    else s.selectUnits([id]);
   };
 
-  if (!preparedScene) {
-    // Fallback placeholder if model fails to prepare
-    const color = unit.kind === 'King' ? '#ffd166' : unit.kind === 'Queen' ? '#ef476f' : '#8ecae6';
-    // Double the size for Yetti fallback sphere
-    const sphereRadius = unit.animal === 'Yetti' ? 1.2 : 0.6;
-    return (
-      <group position={[x, y + yOffset + flyingOffset, z]} rotation={[0, unit.rotation, 0]}>
-        <mesh position={[0, 0.6, 0]} castShadow onPointerDown={handlePointerDown}>
-          <sphereGeometry args={[sphereRadius, 16, 16]} />
-          <meshStandardMaterial color={color} />
-        </mesh>
-        {isSelected && (
-          <>
-            <mesh position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]} geometry={SELECTION_RING_OUTER_GEO} material={SELECTION_RING_OUTER_MAT} />
-            <mesh position={[0, 0.25, 0]} rotation={[-Math.PI / 2, 0, 0]} geometry={SELECTION_RING_INNER_GEO} material={SELECTION_RING_INNER_MAT} />
-          </>
-        )}
-      </group>
-    );
-  }
+  const registerPartRef = (variantKey: string, partIndex: number) => (mesh: THREE.InstancedMesh | null) => {
+    if (!mesh) return;
+    let meshes = meshRefs.current.get(variantKey);
+    if (!meshes) {
+      meshes = [];
+      meshRefs.current.set(variantKey, meshes);
+    }
+    meshes[partIndex] = mesh;
+    mesh.frustumCulled = false; // we cull per-instance ourselves
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.castShadow = !isMobile;
+    mesh.receiveShadow = !isMobile;
+    mesh.count = 0;
+  };
 
   return (
-    <group position={[x, y + yOffset + flyingOffset, z]} rotation={[0, unit.rotation, 0]} castShadow={shouldCastShadows} receiveShadow={shouldReceiveShadows} onPointerDown={handlePointerDown}>
-      {/* 3D Model with Yetti-specific vertical offset */}
-      <group position={[0, yetiOffset, 0]}>
-        <primitive object={preparedScene} />
-      </group>
-
-      {/* Selection rings on the ground (offset down when flying) */}
-      {isSelected && (
-        <>
-          <mesh position={[0, 0.04 - flyingOffset, 0]} rotation={[-Math.PI / 2, 0, 0]} geometry={SELECTION_RING_OUTER_GEO} material={SELECTION_RING_OUTER_MAT} />
-          <mesh position={[0, 0.25 - flyingOffset, 0]} rotation={[-Math.PI / 2, 0, 0]} geometry={SELECTION_RING_INNER_GEO} material={SELECTION_RING_INNER_MAT} />
-        </>
+    <group>
+      {variants.map((variant) =>
+        variant.parts.map((part, partIndex) => (
+          <instancedMesh
+            key={`${variant.key}-${partIndex}`}
+            ref={registerPartRef(variant.key, partIndex)}
+            args={[part.geometry, part.material, MAX_INSTANCES_PER_VARIANT]}
+            onPointerDown={(e) => handlePointerDown(variant.key, e)}
+          />
+        ))
       )}
-      {/* Owner ring - blue for player units, red for AI units */}
-      <mesh
-        position={[0, 0.02 - flyingOffset, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        geometry={OWNER_RING_GEO}
-        material={isOwnUnit ? OWNER_RING_MAT : AI_OWNER_RING_MAT}
+
+      {/* Owner rings — always visible, blue for the local player, red for AI. */}
+      <instancedMesh
+        ref={ownRingRef}
+        args={[ownerRingGeometry, OWN_OWNER_RING_MAT, RING_CAPACITY]}
+        frustumCulled={false}
+      />
+      <instancedMesh
+        ref={enemyRingRef}
+        args={[ownerRingGeometry, ENEMY_OWNER_RING_MAT, RING_CAPACITY]}
+        frustumCulled={false}
+      />
+
+      {/* Selection rings — only drawn for selected units. */}
+      <instancedMesh
+        ref={selectionOuterRef}
+        args={[selectionOuterGeometry, SELECTION_OUTER_MAT, RING_CAPACITY]}
+        frustumCulled={false}
+      />
+      <instancedMesh
+        ref={selectionInnerRef}
+        args={[selectionInnerGeometry, SELECTION_INNER_MAT, RING_CAPACITY]}
+        frustumCulled={false}
       />
     </group>
   );
 }
 
 export function UnitsLayer() {
-  const units = useGameStore((s) => s.units);
-  const { camera } = useThree();
-
-  // Debug: Log unit count
-  useEffect(() => {
-    console.log(`🎯 UnitsLayer rendering ${units.length} units`);
-    if (units.length > 0) {
-      console.log('Sample units:', units.slice(0, 3).map(u => ({ animal: u.animal, kind: u.kind, pos: u.position })));
-    }
-  }, [units.length]);
-
-  // Apply frustum culling to only render visible units
-  // Only update when units array changes significantly or camera moves substantially
-  const visibleUnits = useMemo(() => {
-    // Skip culling if too few units (overhead not worth it)
-    if (units.length < 50) return units;
-    return units.filter(unit => isUnitInView(unit, camera));
-  }, [units, camera.position, camera.rotation]);
-
-  function FallbackUnit({ unit }: { unit: Unit }) {
-    const { x, y, z } = unit.position;
-    const color = unit.kind === 'King' ? '#ffd166' : unit.kind === 'Queen' ? '#ef476f' : '#8ecae6';
-    return (
-      <mesh position={[x, y + 0.6, z]} castShadow>
-        <sphereGeometry args={[0.6, 16, 16]} />
-        <meshStandardMaterial color={color} />
-      </mesh>
-    );
-  }
-
   return (
-    <group>
-      {visibleUnits.map((u) => (
-        <Suspense key={u.id} fallback={<FallbackUnit unit={u} />}>
-          <UnitModel unit={u} />
-        </Suspense>
-      ))}
-    </group>
+    <Suspense fallback={null}>
+      <InstancedUnits />
+      <Bases />
+    </Suspense>
   );
 }

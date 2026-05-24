@@ -1,37 +1,49 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGameStore } from '../game/state';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
-// Dynamic performance optimization component
+// Dynamically adapts render resolution to keep the frame rate stable as unit
+// counts grow, with tighter caps on mobile where fill rate is the bottleneck.
 export function PerformanceOptimizer() {
-  const { gl, camera } = useThree();
-  const units = useGameStore((s) => s.units);
+  const { gl } = useThree();
+  const lastPixelRatio = useRef(-1);
 
-  // Adaptive shadow quality based on unit count
-  const shadowQuality = useMemo(() => {
-    const unitCount = units.length;
-    if (unitCount > 100) return 256; // Very low quality
-    if (unitCount > 60) return 512;  // Low quality
-    return 1024; // Normal quality
-  }, [units.length]);
+  const isMobile = useMemo(
+    () => typeof window !== 'undefined' && (window.innerWidth <= 768 || 'ontouchstart' in window),
+    []
+  );
 
-  // Adaptive render distance based on performance
-  const renderDistance = useMemo(() => {
-    const unitCount = units.length;
-    return unitCount > 80 ? 100 : 150; // Shorter distance with more units
-  }, [units.length]);
+  // Highest pixel ratio we'll ever request on this device. Mobile GPUs choke on
+  // native 3x framebuffers, so cap aggressively there.
+  const deviceMaxPixelRatio = useMemo(() => {
+    const native = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
+    return Math.min(native, isMobile ? 1.5 : 2);
+  }, [isMobile]);
+
+  useEffect(() => {
+    // No light in the scene casts shadows, so the shadow map is pure overhead on
+    // mobile — disable it to skip the renderer's shadow bookkeeping entirely.
+    if (isMobile) {
+      gl.shadowMap.enabled = false;
+    }
+  }, [gl, isMobile]);
 
   useFrame(() => {
-    // Dynamic LOD: disable shadows on distant units
-    const cameraPos = camera.position;
+    const unitCount = useGameStore.getState().units.length;
 
-    // Update WebGL settings based on performance needs
-    if (units.length > 80) {
-      // High unit count - aggressive optimizations
-      gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Reduce resolution
-    } else {
-      // Normal unit count - standard quality
-      gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Step the resolution down as the battlefield fills up.
+    let targetPixelRatio = deviceMaxPixelRatio;
+    if (unitCount > 150) {
+      targetPixelRatio = Math.min(deviceMaxPixelRatio, isMobile ? 1.0 : 1.25);
+    } else if (unitCount > 80) {
+      targetPixelRatio = Math.min(deviceMaxPixelRatio, isMobile ? 1.25 : 1.5);
+    }
+
+    // Only resize the drawing buffer when the target actually changes —
+    // calling setPixelRatio every frame needlessly reallocates buffers.
+    if (Math.abs(targetPixelRatio - lastPixelRatio.current) > 0.01) {
+      gl.setPixelRatio(targetPixelRatio);
+      lastPixelRatio.current = targetPixelRatio;
     }
   });
 

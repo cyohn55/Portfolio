@@ -5,8 +5,8 @@ import { useGameStore } from '../game/state';
 import { UnitsLayer } from './UnitsLayer';
 import { MapInteraction } from './HexInteraction';
 import { Skybox } from './Working/Skybox';
+import { buildOptimizedBattleMap } from './Working/mergeBattleMap';
 import { performanceMonitor } from '../utils/PerformanceMonitor';
-import { interpolationHelper } from '../utils/InterpolationHelper';
 import { terrainValidator } from '../utils/TerrainValidator';
 import * as THREE from 'three';
 
@@ -29,71 +29,29 @@ export function BattleMap() {
     Fully_Down: null
   });
 
-  // Process the battle map without centering
+  // Process the battle map: merge its ~3250 solid-color meshes by material into a
+  // handful of draw calls (see buildOptimizedBattleMap). Bridge frame meshes are
+  // kept separate so their raise/lower visibility animation still works, and water
+  // remains its own merged mesh so TerrainValidator can still detect it by color.
   const battleMapScene = useMemo(() => {
     if (!scene) {
       console.log('❌ Battle map scene not loaded yet');
       return null;
     }
 
-    console.log('✅ Battle map scene loaded, processing...');
-    // Clone the entire scene to avoid modifying the original
-    const clonedScene = scene.clone();
+    const optimized = buildOptimizedBattleMap(scene);
 
-    clonedScene.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.receiveShadow = true;
-        child.castShadow = true;
-      }
+    // Wire the preserved bridge frame meshes to the refs the animation uses.
+    rightBridgeRefs.current = optimized.rightBridge;
+    leftBridgeRefs.current = optimized.leftBridge;
 
-      // Check for bridge objects by name
-      if (child.name) {
-        // Hide Sketchfab model objects
-        if (child.name.toLowerCase().includes('sketchfab')) {
-          child.visible = false;
-          console.log('🙈 Hidden Sketchfab object:', child.name);
-        }
+    console.log(
+      `🗺️ Battle map optimized: ${optimized.stats.sourceMeshes} source meshes -> ` +
+      `${optimized.stats.mergedDrawCalls} merged draw calls ` +
+      `(+${optimized.stats.preservedMeshes} preserved bridge meshes)`
+    );
 
-        // Look for bridge objects by name
-        if (child.name.toLowerCase().includes('bridge')) {
-          console.log('Found bridge-related object:', child.name, 'Type:', child.type);
-        }
-
-        // Right bridge objects
-        if (child.name === 'Right_Bridge_Fully_Up') {
-          rightBridgeRefs.current.Fully_Up = child;
-          console.log('✓ Found Right_Bridge_Fully_Up');
-        } else if (child.name === 'Right_Bridge_Almost_Up') {
-          rightBridgeRefs.current.Almost_Up = child;
-          console.log('✓ Found Right_Bridge_Almost_Up');
-        } else if (child.name === 'Right_Bridge_Almost_Down') {
-          rightBridgeRefs.current.Almost_Down = child;
-          console.log('✓ Found Right_Bridge_Almost_Down');
-        } else if (child.name === 'Right_Bridge_Fully_Down') {
-          rightBridgeRefs.current.Fully_Down = child;
-          console.log('✓ Found Right_Bridge_Fully_Down');
-        }
-        // Left bridge objects
-        else if (child.name === 'Left_Bridge_Fully_Up') {
-          leftBridgeRefs.current.Fully_Up = child;
-          console.log('✓ Found Left_Bridge_Fully_Up');
-        } else if (child.name === 'Left_Bridge_Almost_Up') {
-          leftBridgeRefs.current.Almost_Up = child;
-          console.log('✓ Found Left_Bridge_Almost_Up');
-        } else if (child.name === 'Left_Bridge_Almost_Down') {
-          leftBridgeRefs.current.Almost_Down = child;
-          console.log('✓ Found Left_Bridge_Almost_Down');
-        } else if (child.name === 'Left_Bridge_Fully_Down') {
-          leftBridgeRefs.current.Fully_Down = child;
-          console.log('✓ Found Left_Bridge_Fully_Down');
-        }
-      }
-    });
-
-    // Keep the battle map at its original position - don't center it
-    // This ensures base coordinates align with terrain features
-
-    return clonedScene;
+    return optimized.root;
   }, [scene]);
 
   // Initialize terrain validator when battle map scene is ready
@@ -101,6 +59,11 @@ export function BattleMap() {
     if (battleMapScene) {
       console.log('🗺️ Initializing terrain validator with battle map scene');
       terrainValidator.initialize(battleMapScene);
+      // Dev-only handle for verifying water/bridge terrain queries after merge.
+      if (import.meta.env.DEV) {
+        (window as any).__rtsTerrain = terrainValidator;
+        (window as any).__rtsMap = battleMapScene;
+      }
     }
   }, [battleMapScene]);
 
@@ -119,22 +82,12 @@ export function BattleMap() {
     // Measure game logic performance
     const gameLogicStart = performance.now();
 
-    // SYNCHRONIZED: Game logic at 60 FPS matching rendering frequency
-    let logicUpdated = false;
+    // SYNCHRONIZED: Game logic at 60 FPS matching rendering frequency.
+    // Units render directly from store positions (logic already runs at 60 FPS),
+    // so no separate interpolation buffer is needed.
     while (accumulator.current >= FIXED_TIMESTEP) {
       tick(FIXED_TIMESTEP / 1000, now);
       accumulator.current -= FIXED_TIMESTEP;
-      logicUpdated = true;
-    }
-
-    // Update interpolation positions when game logic runs
-    if (logicUpdated) {
-      const units = useGameStore.getState().units;
-      const positions: Record<string, any> = {};
-      units.forEach(unit => {
-        positions[unit.id] = unit.position;
-      });
-      interpolationHelper.updatePositions(positions);
     }
 
 

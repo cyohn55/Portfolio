@@ -1,10 +1,14 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   base: './',  // Use relative paths for GitHub Pages deployment
   plugins: [react()],
   publicDir: 'public',  // Vite will copy public/ contents to dist/
+  // Strip console/debugger from production builds only. The game loop and unit
+  // rendering paths log heavily; removing them in the deployed bundle is a real
+  // mobile win, while dev keeps full logging for debugging.
+  esbuild: command === 'build' ? { drop: ['console', 'debugger'] } : {},
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
@@ -50,6 +54,6 @@ export default defineConfig({
       },
     },
   },
-});
+}));
 
 

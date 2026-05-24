@@ -24,9 +24,14 @@ export class SpatialGrid {
     return `${gridX},${gridZ}`;
   }
 
-  // Clear the grid
+  // Empty every cell while keeping the cell arrays (and Map keys) allocated.
+  // The grid is rebuilt every tick; units occupy a bounded, stable set of cells,
+  // so reusing the arrays avoids reallocating one array per occupied cell each
+  // tick — a major source of GC churn (and frame-time spikes) at high unit counts.
   clear(): void {
-    this.grid.clear();
+    for (const cellUnits of this.grid.values()) {
+      cellUnits.length = 0;
+    }
   }
 
   // Add unit to grid
@@ -46,10 +51,12 @@ export class SpatialGrid {
     units.forEach(unit => this.addUnit(unit));
   }
 
-  // Get nearby units within radius
+  // Get nearby units within radius. This is the single distance gate — callers
+  // refine by ownership/kind without recomputing distance.
   getNearbyUnits(position: Position3D, radius: number): Unit[] {
     const nearbyUnits: Unit[] = [];
     const coords = this.getGridCoords(position);
+    const radiusSquared = radius * radius;
 
     // Calculate how many cells to check based on radius
     const cellRadius = Math.ceil(radius / this.cellSize);
@@ -58,15 +65,13 @@ export class SpatialGrid {
       for (let dz = -cellRadius; dz <= cellRadius; dz++) {
         const key = this.getKey(coords.x + dx, coords.z + dz);
         const cellUnits = this.grid.get(key);
+        if (!cellUnits) continue;
 
-        if (cellUnits) {
-          // Filter by actual distance
-          cellUnits.forEach(unit => {
-            const distance = this.distance3D(position, unit.position);
-            if (distance <= radius) {
-              nearbyUnits.push(unit);
-            }
-          });
+        // Filter by actual (squared) distance — avoids Math.sqrt per unit.
+        for (const unit of cellUnits) {
+          if (this.distanceSquared3D(position, unit.position) <= radiusSquared) {
+            nearbyUnits.push(unit);
+          }
         }
       }
     }
@@ -79,7 +84,7 @@ export class SpatialGrid {
     const nearbyUnits = this.getNearbyUnits(unit.position, radius);
 
     let closestEnemy: Unit | null = null;
-    let closestDistance = Infinity;
+    let closestDistanceSquared = Infinity;
 
     for (const otherUnit of nearbyUnits) {
       // Skip same unit and allies
@@ -87,9 +92,9 @@ export class SpatialGrid {
         continue;
       }
 
-      const distance = this.distance3D(unit.position, otherUnit.position);
-      if (distance < closestDistance) {
-        closestDistance = distance;
+      const distanceSquared = this.distanceSquared3D(unit.position, otherUnit.position);
+      if (distanceSquared < closestDistanceSquared) {
+        closestDistanceSquared = distanceSquared;
         closestEnemy = otherUnit;
       }
     }
@@ -97,37 +102,30 @@ export class SpatialGrid {
     return closestEnemy;
   }
 
-  // Find all enemies within attack range
+  // Find all enemies within attack range (already distance-gated by getNearbyUnits)
   findEnemiesInRange(unit: Unit, range: number): Unit[] {
     const nearbyUnits = this.getNearbyUnits(unit.position, range);
 
-    return nearbyUnits.filter(otherUnit => {
-      if (otherUnit.id === unit.id || otherUnit.ownerId === unit.ownerId) {
-        return false;
-      }
-
-      const distance = this.distance3D(unit.position, otherUnit.position);
-      return distance <= range;
-    });
+    return nearbyUnits.filter(otherUnit =>
+      otherUnit.id !== unit.id && otherUnit.ownerId !== unit.ownerId
+    );
   }
 
-  // Find nearby queens for regeneration
+  // Find nearby queens for regeneration (already distance-gated by getNearbyUnits)
   findNearbyQueens(unit: Unit, radius: number): Unit[] {
     const nearbyUnits = this.getNearbyUnits(unit.position, radius);
 
-    return nearbyUnits.filter(otherUnit => {
-      return otherUnit.kind === 'Queen' &&
-             otherUnit.ownerId === unit.ownerId &&
-             this.distance3D(unit.position, otherUnit.position) <= radius;
-    });
+    return nearbyUnits.filter(otherUnit =>
+      otherUnit.kind === 'Queen' && otherUnit.ownerId === unit.ownerId
+    );
   }
 
-  // Helper method for 3D distance
-  private distance3D(a: Position3D, b: Position3D): number {
+  // Helper method for squared 3D distance (no Math.sqrt)
+  private distanceSquared3D(a: Position3D, b: Position3D): number {
     const dx = a.x - b.x;
     const dy = a.y - b.y;
     const dz = a.z - b.z;
-    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    return dx * dx + dy * dy + dz * dz;
   }
 
   // Debug: Get grid statistics

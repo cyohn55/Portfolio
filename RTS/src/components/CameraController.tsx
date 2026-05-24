@@ -22,13 +22,18 @@ export function CameraController({
   instanceCounter++;
   const instanceId = instanceCounter;
 
-  const { camera } = useThree();
+  const { camera, gl } = useThree();
   const keysPressed = useRef(new Set<string>());
   const target = useRef(new THREE.Vector3(0, 0, 225));
   const currentDistance = useRef(200);
   const forward = useRef(new THREE.Vector3());
   const right = useRef(new THREE.Vector3());
   const up = useRef(new THREE.Vector3(0, 1, 0));
+
+  // Touch handling refs
+  const lastTouchPos = useRef<{ x: number; y: number } | null>(null);
+  const lastPinchDistance = useRef<number | null>(null);
+  const isDragging = useRef(false);
 
   // Fixed camera angle - lower angle for better RTS view
   const CAMERA_ANGLE = Math.PI / 10; // 18 degrees
@@ -64,18 +69,94 @@ export function CameraController({
     currentDistance.current = newDistance;
   }, [zoomSpeed, minDistance, maxDistance, instanceId]);
 
+  // Touch event handlers for mobile
+  const handleTouchStart = useCallback((event: TouchEvent) => {
+    if (event.touches.length === 1) {
+      // Single touch - prepare for drag
+      lastTouchPos.current = {
+        x: event.touches[0].clientX,
+        y: event.touches[0].clientY
+      };
+      isDragging.current = true;
+    } else if (event.touches.length === 2) {
+      // Two finger touch - prepare for pinch zoom
+      isDragging.current = false;
+      const dx = event.touches[0].clientX - event.touches[1].clientX;
+      const dy = event.touches[0].clientY - event.touches[1].clientY;
+      lastPinchDistance.current = Math.sqrt(dx * dx + dy * dy);
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((event: TouchEvent) => {
+    event.preventDefault();
+
+    if (event.touches.length === 1 && isDragging.current && lastTouchPos.current) {
+      // Single finger drag - move camera
+      const touchX = event.touches[0].clientX;
+      const touchY = event.touches[0].clientY;
+
+      const deltaX = (touchX - lastTouchPos.current.x) * 0.5;
+      const deltaY = (touchY - lastTouchPos.current.y) * 0.5;
+
+      // Calculate camera direction vectors for movement
+      const cameraDirection = new THREE.Vector3();
+      camera.getWorldDirection(cameraDirection);
+      cameraDirection.y = 0;
+      cameraDirection.normalize();
+
+      const forwardVec = cameraDirection.clone();
+      const rightVec = new THREE.Vector3().crossVectors(forwardVec, up.current).normalize();
+
+      // Move target based on drag (inverted for natural feel)
+      target.current.add(rightVec.multiplyScalar(-deltaX * moveSpeed * 0.5));
+      target.current.add(forwardVec.multiplyScalar(deltaY * moveSpeed * 0.5));
+
+      lastTouchPos.current = { x: touchX, y: touchY };
+    } else if (event.touches.length === 2 && lastPinchDistance.current !== null) {
+      // Two finger pinch - zoom
+      const dx = event.touches[0].clientX - event.touches[1].clientX;
+      const dy = event.touches[0].clientY - event.touches[1].clientY;
+      const currentPinchDistance = Math.sqrt(dx * dx + dy * dy);
+
+      const pinchDelta = lastPinchDistance.current - currentPinchDistance;
+      const zoomDelta = pinchDelta * 0.5;
+
+      const newDistance = Math.max(minDistance, Math.min(maxDistance, currentDistance.current + zoomDelta));
+      currentDistance.current = newDistance;
+
+      lastPinchDistance.current = currentPinchDistance;
+    }
+  }, [camera, moveSpeed, minDistance, maxDistance]);
+
+  const handleTouchEnd = useCallback(() => {
+    lastTouchPos.current = null;
+    lastPinchDistance.current = null;
+    isDragging.current = false;
+  }, []);
+
   useEffect(() => {
     // Add event listeners to window for global key handling
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('wheel', handleWheel, { passive: false });
 
+    // Touch event listeners
+    const canvas = gl.domElement;
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('wheel', handleWheel);
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+      canvas.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [handleKeyDown, handleKeyUp, handleWheel, instanceId]);
+  }, [handleKeyDown, handleKeyUp, handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd, gl, instanceId]);
 
   useFrame((state, delta) => {
     // Set camera properties on first frame
