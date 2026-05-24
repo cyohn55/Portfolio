@@ -82,3 +82,6 @@ temp/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Unused uncompressed source map (runtime loads Battle_Map_compressed.glb); 80MB, keep out of git
+dist/models/Battle_Map.glb
