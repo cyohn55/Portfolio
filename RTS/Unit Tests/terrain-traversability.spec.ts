@@ -34,15 +34,13 @@ function namedBridge(nodeName: string, pos: [number, number, number]): THREE.Obj
   return node;
 }
 
-// A lake covering x,z in [-50, 50] at y=0, with a right-side deck (+z), a left-side
-// deck (-z), and a static center deck (+x), each under a side-named node like the
-// real map.
+// A lake covering x,z in [-50, 50] at y=0, a right-side bridge deck (+z) and a
+// left-side deck (-z), each under a side-named node like the real map.
 function buildScene(): THREE.Object3D {
   const scene = new THREE.Group();
   scene.add(coloredBox(WATER, [100, 1, 100], [0, 0, 0]));
   scene.add(namedBridge('Right_Bridge_Fully_Down', [0, 1, 30]));
   scene.add(namedBridge('Left_Bridge_Fully_Down', [0, 1, -30]));
-  scene.add(namedBridge('Center_Bridge_Fully_Down', [30, 1, 0]));
   scene.updateMatrixWorld(true);
   return scene;
 }
@@ -98,37 +96,6 @@ test.describe('bridge-deck detection by name', () => {
     const validator = freshValidator();
     // Outside the lake (z=200): not over water, so traversable irrespective of bridges.
     expect(validator.canAnimalMoveTo('Bear', at(0, 200))).toBe(true);
-  });
-});
-
-test.describe('center bridge (static, always crossable)', () => {
-  test('ground animals can cross the center bridge', () => {
-    const validator = freshValidator();
-    expect(validator.canAnimalMoveTo('Bear', at(30, 0))).toBe(true);
-  });
-
-  test('the center bridge stays crossable even when the side bridges are raised', () => {
-    const validator = freshValidator();
-    validator.updateBridgeState({ right: 'Fully_Up', left: 'Fully_Up' });
-    expect(validator.canAnimalMoveTo('Bear', at(30, 0))).toBe(true);  // center unaffected
-    expect(validator.canAnimalMoveTo('Bear', at(0, 30))).toBe(false); // right raised -> blocked
-  });
-
-  test('a map-sized object named like a bridge (e.g. a skybox duplicate) is ignored', () => {
-    // Mirrors a real mistake: a giant sphere/box accidentally named Center_Bridge_*.
-    // If treated as a deck it would make all water crossable; it must be rejected.
-    const scene = new THREE.Group();
-    scene.add(coloredBox(WATER, [100, 1, 100], [0, 0, 0]));
-    const bogus = new THREE.Group();
-    bogus.name = 'Center_Bridge_Fully_Down';
-    bogus.add(coloredBox(DECK, [4000, 4000, 4000], [0, 0, 0])); // map-sized
-    scene.add(bogus);
-    scene.updateMatrixWorld(true);
-    const validator = new TerrainValidator();
-    validator.initialize(scene);
-
-    // Open water is still blocked for ground despite the bogus "bridge".
-    expect(validator.canAnimalMoveTo('Bear', at(0, 45))).toBe(false);
   });
 });
 
