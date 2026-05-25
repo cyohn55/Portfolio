@@ -149,7 +149,7 @@ export class BridgeNavigator {
 
     const rawFromRegion = this.regionAt(from);
 
-    // On a bridge deck: head for the far mouth that makes progress toward `to`.
+    // On a bridge deck: track along it and off the far end toward `to` (see method).
     if (rawFromRegion === REGION_BRIDGE) {
       const wp = this.exitBridgeToward(from, to);
       return wp ?? to;
@@ -161,6 +161,17 @@ export class BridgeNavigator {
     const fromRegion = rawFromRegion === REGION_OUTSIDE ? this.resolveLandRegion(from) : rawFromRegion;
     if (fromRegion < 0) return to;
 
+    return this.routeFromRegion(from, fromRegion, to);
+  }
+
+  /**
+   * Steering waypoint for a unit standing in land region `fromRegion`. Heads for the
+   * nearest incident open portal that strictly reduces the bridge-hop distance to the
+   * destination's region; returns `to` (plain beeline) when already in that region or
+   * no open route exists. `from` is used only to pick the nearest qualifying portal, so
+   * this also serves bridge-exit routing where `from` is the deck mouth being left.
+   */
+  private routeFromRegion(from: Position3D, fromRegion: number, to: Position3D): Position3D {
     const toRegion = this.resolveLandRegion(to);
     if (toRegion < 0 || toRegion === fromRegion) return to; // same region or unknown -> beeline
 
@@ -168,22 +179,41 @@ export class BridgeNavigator {
     if (distFromTarget >= UNREACHABLE) return to; // no open route -> beeline
 
     // Among our region's open portals, head for the nearest one that gets us strictly
-    // closer (in bridge hops) to the destination region. Aiming at the entrance on our
-    // own side keeps the approach over land until we step onto the deck.
-    let bestMouth: Position3D | null = null;
+    // closer (in bridge hops) to the destination region. We track both that portal's
+    // near mouth (this side) and far mouth (the next region's side).
+    let bestNearMouth: Position3D | null = null;
+    let bestFarMouth: Position3D | null = null;
     let bestSq = Infinity;
     for (const portalIndex of this.regionPortals[fromRegion]) {
       const portal = this.portals[portalIndex];
-      const otherRegion = portal.regionA === fromRegion ? portal.regionB : portal.regionA;
+      const fromIsA = portal.regionA === fromRegion;
+      const otherRegion = fromIsA ? portal.regionB : portal.regionA;
       if (this.hopDist[otherRegion * this.regionCount + toRegion] >= distFromTarget) continue;
-      const mouth = portal.regionA === fromRegion ? portal.mouthA : portal.mouthB;
-      const sq = this.sqDist(from, mouth);
+      const nearMouth = fromIsA ? portal.mouthA : portal.mouthB;
+      const sq = this.sqDist(from, nearMouth);
       if (sq < bestSq) {
         bestSq = sq;
-        bestMouth = mouth;
+        bestNearMouth = nearMouth;
+        bestFarMouth = fromIsA ? portal.mouthB : portal.mouthA;
       }
     }
-    return bestMouth ?? to;
+    if (!bestNearMouth) return to;
+
+    // Aim a short way past the near mouth toward the far mouth — i.e. onto the deck —
+    // rather than at the deck-edge mouth itself. A mouth is the centroid of the deck
+    // cells touching this region and can sit right at (or just shy of) the deck edge; a
+    // unit told to stop there parks at the water's edge because arriving zeroes its
+    // steering. Aiming onto the deck makes it step on, after which exitBridgeToward
+    // takes over. Decks here are long, so a couple of cells along the axis stays on deck.
+    return this.pointToward(bestNearMouth, bestFarMouth!, this.step * 2);
+  }
+
+  // A point `distance` from `origin` along the direction toward `target`.
+  private pointToward(origin: Position3D, target: Position3D, distance: number): Position3D {
+    const dx = target.x - origin.x;
+    const dz = target.z - origin.z;
+    const length = Math.hypot(dx, dz) || 1;
+    return { x: origin.x + (dx / length) * distance, y: 0, z: origin.z + (dz / length) * distance };
   }
 
   /** Land region id at a position, or REGION_BRIDGE / REGION_OUTSIDE. */
@@ -343,7 +373,18 @@ export class BridgeNavigator {
     }
   }
 
-  // While on a bridge deck, choose the far mouth that advances toward `to`.
+  // Distance from a span's far mouth within which a unit is treated as having reached
+  // the deck end and should aim onward (past the deck) instead of at the mouth.
+  private static readonly EXIT_REACH = 6;
+
+  // While on a bridge deck, steer the unit along the deck to its far end and then off
+  // onto the land beyond. The far mouth (the deck end on the side that makes progress
+  // toward `to`) sits near the deck centerline, so steering at it keeps the unit tracking
+  // down the middle of a narrow deck instead of drifting onto an edge and stalling in the
+  // water beside it — which an oblique approach or a distant onward target would cause.
+  // Once near that far mouth we aim *past* it (never at it: arriving zeroes steering and
+  // would park the unit on the deck): onward to the next span's mouth for a multi-span
+  // route, or a few cells onto the destination region's land for the final span.
   private exitBridgeToward(from: Position3D, to: Position3D): Position3D | null {
     const index = this.cellIndexAt(from);
     if (index < 0) return null;
@@ -353,14 +394,38 @@ export class BridgeNavigator {
     const portal = this.portals[portalIndex];
 
     const toRegion = this.resolveLandRegion(to);
-    // Pick the portal endpoint whose region is closer to the destination region; if
-    // the destination is unknown, fall back to the geometrically farther mouth.
+    // Pick the portal endpoint whose region is closer to the destination region; if the
+    // destination is unknown, fall back to the geometrically farther mouth's region so
+    // the unit at least keeps leaving the deck the way it came on.
     const distA = this.regionDistance(portal.regionA, toRegion);
     const distB = this.regionDistance(portal.regionB, toRegion);
-    if (distA !== distB) return distA < distB ? portal.mouthA : portal.mouthB;
-    return this.sqDist(from, portal.mouthA) > this.sqDist(from, portal.mouthB)
-      ? portal.mouthA
-      : portal.mouthB;
+    const exitIsA =
+      distA !== distB
+        ? distA < distB
+        : this.sqDist(from, portal.mouthA) > this.sqDist(from, portal.mouthB);
+    const exitRegion = exitIsA ? portal.regionA : portal.regionB;
+    const exitMouth = exitIsA ? portal.mouthA : portal.mouthB;
+
+    // Mid-deck: track toward the far mouth (deck centerline at the far end).
+    const reach = BridgeNavigator.EXIT_REACH;
+    if (this.sqDist(from, exitMouth) > reach * reach) {
+      return exitMouth;
+    }
+
+    // At the deck end. More spans to cross: route on from the far region to the next
+    // span's mouth (which sits over land at the deck end, keeping the approach endwise).
+    if (exitRegion !== toRegion) {
+      return this.routeFromRegion(exitMouth, exitRegion, to);
+    }
+
+    // Final span — the far side is the destination region. Aim a few cells past the deck
+    // edge, straight along the span axis onto the land, rather than straight at `to`: a
+    // narrow deck means beelining toward an off-axis destination would step the unit
+    // sideways into the water. Leaving endwise clears the deck first, after which the
+    // in-region beeline (next tick, once on land) turns toward `to`.
+    const entryMouth = exitIsA ? portal.mouthB : portal.mouthA;
+    const beyondExit = { x: 2 * exitMouth.x - entryMouth.x, y: 0, z: 2 * exitMouth.z - entryMouth.z };
+    return this.pointToward(exitMouth, beyondExit, this.step * 4); // past the seam, onto solid land
   }
 
   // Hop count between regions using the precomputed table (0 same, UNREACHABLE if no

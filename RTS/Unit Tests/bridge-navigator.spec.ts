@@ -136,6 +136,116 @@ test.describe('targets and units beyond the grid', () => {
   });
 });
 
+test.describe('leaving a deck onto land', () => {
+  // A unit standing on a deck must be steered off the far end of the deck and onto the
+  // land beyond — never to the deck-edge mouth itself, which would leave it parked on
+  // the deck (arriving at a waypoint zeroes the steering direction).
+  test('toward an off-axis target, the unit exits along the deck axis before veering', () => {
+    const nav = freshNavigator();
+    // On the center deck (axis = +x), with a target that is east AND well north.
+    const wp = nav.nextWaypoint(at(0, 0), at(10, 12));
+    // It heads off the east end of the deck (past the channel), not diagonally toward
+    // the target's z, which would step it sideways off the narrow deck into the water.
+    expect(wp.x).toBeGreaterThan(CHANNEL_HALF_WIDTH);
+    expect(Math.abs(wp.z)).toBeLessThan(6);
+  });
+});
+
+/**
+ * A three-region terrain: west land, a central island, and east land, separated by two
+ * water channels, each spanned by an always-open center deck. This mirrors the real
+ * map's center crossing, which lands on a central island between two spans — the case a
+ * unit must traverse as span -> island -> span rather than a single bridge.
+ */
+const ISLAND_SHORES = { westShore: -10, islandWest: -4, islandEast: 4, eastShore: 10 };
+function makeIslandTerrain(): TerrainQuery {
+  const overWater = (x: number) =>
+    (x > ISLAND_SHORES.westShore && x < ISLAND_SHORES.islandWest) ||
+    (x > ISLAND_SHORES.islandEast && x < ISLAND_SHORES.eastShore);
+  return {
+    isPositionOverWater: (p) => overWater(p.x),
+    bridgeAt: (p) =>
+      overWater(p.x) && p.z >= -3 && p.z <= 3
+        ? { onBridge: true, side: 'center' as BridgeSide }
+        : { onBridge: false, side: null },
+    isSideOpen: () => true,
+  };
+}
+
+function freshIslandNavigator(): BridgeNavigator & { terrain: TerrainQuery } {
+  const terrain = makeIslandTerrain();
+  const nav = new BridgeNavigator() as BridgeNavigator & { terrain: TerrainQuery };
+  nav.build(terrain, { minX: -16, minZ: -16, maxX: 16, maxZ: 16 }, 2);
+  nav.terrain = terrain;
+  return nav;
+}
+
+// Whether a ground unit may occupy a position: land, or an open bridge deck. Mirrors the
+// game's terrain rule (state.ts checkCollision) so a simulated walk is realistic.
+function groundCanStand(terrain: TerrainQuery, p: Position3D): boolean {
+  if (!terrain.isPositionOverWater(p)) return true;
+  const bridge = terrain.bridgeAt(p);
+  return bridge.onBridge && bridge.side !== null && terrain.isSideOpen(bridge.side);
+}
+
+// Follow the navigator's waypoints from `start` to `target`, stepping in a straight line
+// toward each waypoint and refusing steps a ground unit could not make (into the water).
+// Returns whether the unit reaches the target — i.e. whether routing yields a path a
+// pure beeline-and-stop mover can actually complete.
+function reachesTarget(
+  nav: BridgeNavigator,
+  terrain: TerrainQuery,
+  start: Position3D,
+  target: Position3D,
+  maxSteps = 4000,
+): boolean {
+  let position = { ...start };
+  let stalledSteps = 0;
+  for (let step = 0; step < maxSteps; step++) {
+    if (Math.hypot(target.x - position.x, target.z - position.z) < 1) return true;
+    const waypoint = nav.nextWaypoint(position, target);
+    const dx = waypoint.x - position.x;
+    const dz = waypoint.z - position.z;
+    const length = Math.hypot(dx, dz) || 1;
+    const next = { x: position.x + (dx / length) * 0.5, y: 0, z: position.z + (dz / length) * 0.5 };
+    if (groundCanStand(terrain, next)) {
+      position = next;
+      stalledSteps = 0;
+    } else if (++stalledSteps > 50) {
+      return false;
+    }
+  }
+  return false;
+}
+
+test.describe('multi-span routing (region -> island -> region)', () => {
+  test('the island between the two spans is its own region', () => {
+    const nav = freshIslandNavigator();
+    const west = nav.regionAt(at(-14, 0));
+    const island = nav.regionAt(at(0, 0));
+    const east = nav.regionAt(at(14, 0));
+    expect(new Set([west, island, east]).size).toBe(3);
+  });
+
+  test('on the first span, the unit is steered onward, not parked at the seam', () => {
+    const nav = freshIslandNavigator();
+    const onFirstSpan = at(-7, 0); // deck of the west<->island span
+    const waypoint = nav.nextWaypoint(onFirstSpan, at(14, 0)); // far east, two spans away
+    expect(waypoint.x).toBeGreaterThan(onFirstSpan.x); // progressing across, not stuck
+  });
+
+  test('a unit walks span -> island -> span to reach the far region', () => {
+    const nav = freshIslandNavigator();
+    // Before the onward-routing fix this stalled on the first deck at the island seam.
+    expect(reachesTarget(nav, nav.terrain, at(-14, 0), at(14, 0))).toBe(true);
+  });
+
+  test('the same crossing completes in reverse', () => {
+    const nav = freshIslandNavigator();
+    expect(reachesTarget(nav, nav.terrain, at(14, 0), at(-14, 0))).toBe(true);
+  });
+});
+
 test.describe('graceful degradation', () => {
   test('an unbuilt navigator returns the target unchanged', () => {
     const nav = new BridgeNavigator();
