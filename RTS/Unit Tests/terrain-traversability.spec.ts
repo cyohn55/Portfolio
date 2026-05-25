@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import * as THREE from 'three';
 import { TerrainValidator } from '../src/utils/TerrainValidator';
+import { buildOptimizedBattleMap } from '../src/components/Working/mergeBattleMap';
 
 /**
  * Pure-logic tests for terrain traversability. These build a synthetic THREE scene
@@ -129,6 +130,52 @@ test.describe('center bridge (static, always crossable)', () => {
 
     // Open water is still blocked for ground despite the bogus "bridge".
     expect(validator.canAnimalMoveTo('Bear', at(0, 45))).toBe(false);
+  });
+});
+
+test.describe('center bridge survives the draw-call merge as a crossable deck', () => {
+  // Regression for: "ground animals cannot cross the Center_Bridge". The shipped
+  // Center_Bridge is a FLAT, single-sided (THREE.FrontSide) deck plane whose node
+  // carries a net-negative scale. The negative scale flips the deck's winding so its
+  // one rendered face points DOWN; TerrainValidator's straight-down traversability
+  // ray then hits a culled back-face and registers no hit, so a ground unit standing
+  // on the deck is treated as standing on open water and held in place. The earlier
+  // synthetic decks used upward-facing BoxGeometry and never reproduced this. These
+  // tests drive the real path (buildOptimizedBattleMap -> TerrainValidator), so they
+  // would fail without the merge step forcing deck materials double-sided.
+
+  // The shipped Center_Bridge as the GLB actually exports it: a single mesh named
+  // "Center_Bridge" (the glTF node has no children, so the loaded mesh carries the
+  // name itself), a FLAT single-sided (FrontSide) deck plane, with a net-negative
+  // node scale baked onto the mesh. The negative scale flips the deck's winding so
+  // its one rendered face points down.
+  function flippedSingleSidedCenterDeck(position: [number, number, number]): THREE.Object3D {
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    geometry.rotateX(-Math.PI / 2); // lay flat, front face up before the flip
+    const deck = new THREE.Mesh(
+      geometry,
+      new THREE.MeshStandardMaterial({ color: DECK, side: THREE.FrontSide }),
+    );
+    deck.name = 'Center_Bridge';
+    deck.position.set(position[0], position[1], position[2]);
+    deck.scale.set(-5.8, -5.8, -43.53); // net-negative scale flips the winding
+    return deck;
+  }
+
+  function buildMergedScene(): THREE.Object3D {
+    const source = new THREE.Group();
+    source.add(coloredBox(WATER, [100, 1, 100], [0, 0, 0]));
+    source.add(flippedSingleSidedCenterDeck([30, 1, 0]));
+    source.updateMatrixWorld(true);
+    return buildOptimizedBattleMap(source).root;
+  }
+
+  test('a ground unit can cross a flipped single-sided center deck after merge', () => {
+    const validator = new TerrainValidator();
+    validator.initialize(buildMergedScene());
+
+    expect(validator.canAnimalMoveTo('Bear', at(30, 0))).toBe(true);  // on the deck
+    expect(validator.canAnimalMoveTo('Bear', at(0, 45))).toBe(false); // open water still blocks
   });
 });
 

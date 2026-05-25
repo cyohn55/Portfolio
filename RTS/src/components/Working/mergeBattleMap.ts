@@ -14,9 +14,10 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
  * calls with identical appearance. Two things are deliberately kept separate:
  *
  *  - Bridge frames: 8 named meshes whose visibility is toggled at runtime for the
- *    raise/lower animation. Merging would make them un-toggleable.
+ *    raise/lower animation. Merging would make them un-toggleable, and TerrainValidator
+ *    detects the bridge decks by color, so they must stay as distinct colored meshes.
  *  - Water: it has its own color, so it naturally becomes its own merged mesh whose
- *    material color still matches — TerrainValidator.findWaterMeshes keeps working.
+ *    material color still matches — TerrainValidator.findTerrainMeshes keeps working.
  *
  * Geometry counts are unchanged (no triangles added/removed); only the number of
  * draw calls drops.
@@ -89,6 +90,32 @@ function isBridgeName(name: string): boolean {
   return /bridge/i.test(name);
 }
 
+// Bridge decks must be hit by TerrainValidator's straight-down traversability ray
+// cast from above. A raycast only registers a hit on a face the material actually
+// renders, so a single-sided (THREE.FrontSide) deck whose winding points away from
+// the ray is culled and never hit. The Center_Bridge ships with a net-negative node
+// scale (which flips its winding) AND a single-sided material, so the downward ray
+// passed straight through it and ground units saw only water there. Forcing deck
+// materials to render both sides makes the deck both visible from below and
+// raycast-hittable regardless of the source model's winding. Materials are cloned
+// first so unrelated meshes that share the same material instance keep their look.
+function makeDeckDoubleSided(object: THREE.Object3D): void {
+  object.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.material) return;
+    mesh.material = Array.isArray(mesh.material)
+      ? mesh.material.map((material) => toDoubleSided(material))
+      : toDoubleSided(mesh.material);
+  });
+}
+
+function toDoubleSided(material: THREE.Material): THREE.Material {
+  if (material.side === THREE.DoubleSide) return material;
+  const clone = material.clone();
+  clone.side = THREE.DoubleSide;
+  return clone;
+}
+
 function isHiddenName(name: string): boolean {
   return /sketchfab/i.test(name);
 }
@@ -136,11 +163,12 @@ export function buildOptimizedBattleMap(gltfScene: THREE.Object3D): OptimizedBat
     node.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh) {
-        m.castShadow = true;
+        m.castShadow = false; // receive-only, like the rest of the static map
         m.receiveShadow = true;
         preservedMeshes++;
       }
     });
+    makeDeckDoubleSided(node); // keep the deck raycast-hittable regardless of winding
     root.add(node); // re-parents out of `source`, so the merge pass below skips it
     return node;
   };
@@ -165,8 +193,9 @@ export function buildOptimizedBattleMap(gltfScene: THREE.Object3D): OptimizedBat
       mesh.matrixWorld.decompose(preserved.position, preserved.quaternion, preserved.scale);
       preserved.name = mesh.name;
       preserved.visible = mesh.visible;
-      preserved.castShadow = true;
+      preserved.castShadow = false; // receive-only, like the rest of the static map
       preserved.receiveShadow = true;
+      makeDeckDoubleSided(preserved); // keep the deck raycast-hittable regardless of winding
       root.add(preserved);
       preservedMeshes++;
       return;
@@ -195,9 +224,12 @@ export function buildOptimizedBattleMap(gltfScene: THREE.Object3D): OptimizedBat
     const material = materialBySignature.get(signature)!;
     const merged = mergeGeometries(geometries, false);
 
+    // Static map geometry receives unit shadows but does NOT cast: self-shadowing
+    // this large, dense mesh produces acne/shimmer that crawls as the day/night
+    // sun moves. Only units cast shadows onto the world (the standard RTS look).
     if (merged) {
       const mesh = new THREE.Mesh(merged, material);
-      mesh.castShadow = true;
+      mesh.castShadow = false;
       mesh.receiveShadow = true;
       mesh.name = `Merged_${signature}`;
       root.add(mesh);
@@ -207,7 +239,7 @@ export function buildOptimizedBattleMap(gltfScene: THREE.Object3D): OptimizedBat
       // is lost (should not happen given attributes are normalized).
       for (const geometry of geometries) {
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = true;
+        mesh.castShadow = false;
         mesh.receiveShadow = true;
         root.add(mesh);
         mergedDrawCalls++;
