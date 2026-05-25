@@ -89,6 +89,50 @@ test.describe('bridge-deck detection by color', () => {
   });
 });
 
+test.describe('performance: ground queries are cached', () => {
+  // Counts how many raycasts a sequence of ground queries triggers. Before
+  // caching, every per-tick movement step raycast against the water mesh; this
+  // guards that repeated queries in a cell collapse to a single raycast.
+  function countRaycasts(validator: TerrainValidator, run: () => void): number {
+    const raycaster = (validator as unknown as { raycaster: THREE.Raycaster }).raycaster;
+    const original = raycaster.intersectObjects.bind(raycaster);
+    let calls = 0;
+    raycaster.intersectObjects = ((...args: Parameters<typeof original>) => {
+      calls++;
+      return original(...args);
+    }) as typeof raycaster.intersectObjects;
+    run();
+    raycaster.intersectObjects = original;
+    return calls;
+  }
+
+  test('repeated queries in the same over-water cell raycast at most once', () => {
+    const validator = freshValidator();
+    const calls = countRaycasts(validator, () => {
+      for (let i = 0; i < 500; i++) validator.canAnimalMoveTo('Bear', at(0, 45));
+    });
+    // One water raycast for the cell; the rest are cache hits (no bridge raycast
+    // here because this cell is outside the bridge bounding box).
+    expect(calls).toBeLessThanOrEqual(2);
+  });
+
+  test('a bridge state change re-validates cells (cache invalidation works)', () => {
+    const validator = freshValidator();
+    // Warm the cache for an over-bridge cell.
+    validator.canAnimalMoveTo('Bear', at(0, 30));
+    const beforeChange = countRaycasts(validator, () => {
+      for (let i = 0; i < 100; i++) validator.canAnimalMoveTo('Bear', at(0, 30));
+    });
+    expect(beforeChange).toBe(0); // fully cached
+
+    validator.updateBridgeState({ right: 'Fully_Up', left: 'Fully_Down' });
+    const afterChange = countRaycasts(validator, () => {
+      validator.canAnimalMoveTo('Bear', at(0, 30));
+    });
+    expect(afterChange).toBeGreaterThan(0); // cache cleared -> recomputed
+  });
+});
+
 test.describe('graceful degradation', () => {
   test('an uninitialized validator allows all movement', () => {
     const validator = new TerrainValidator();

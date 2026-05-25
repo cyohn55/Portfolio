@@ -16,6 +16,11 @@ const BRIDGE_COLORS = [new THREE.Color(0xD7D7D7), new THREE.Color(0x9B9B9B)];
 // Reusable straight-down ray direction for terrain raycasts.
 const DOWN = new THREE.Vector3(0, -1, 0);
 
+// Side length (world units) of a ground-traversability cache cell. The per-tick
+// movement code queries terrain for every ground unit; caching the (raycast-backed)
+// result per cell keeps that query O(1) instead of casting a ray every step.
+const TERRAIN_CELL_SIZE = 1;
+
 export class TerrainValidator {
   // Accepts any Object3D (Scene or merged Group); only .traverse() is used.
   private battleMapScene: THREE.Object3D | null = null;
@@ -28,6 +33,10 @@ export class TerrainValidator {
   // Bridge deck meshes (all raise/lower frames) and their xz broad-phase box.
   private bridgeMeshes: THREE.Mesh[] = [];
   private bridgeBounds: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
+  // Memoized "can a ground unit stand here" per grid cell. Cleared whenever a
+  // bridge's raised/lowered state changes (which is the only thing that alters the
+  // answer for a fixed cell). Keeps per-tick terrain queries off the raycaster.
+  private groundTraversableCache = new Map<number, boolean>();
   private raycaster: THREE.Raycaster;
   private bridgeState: {
     right: 'Fully_Up' | 'Almost_Up' | 'Almost_Down' | 'Fully_Down';
@@ -61,6 +70,11 @@ export class TerrainValidator {
    * Update the bridge state
    */
   public updateBridgeState(state: typeof this.bridgeState) {
+    // Only the bridge up/down state changes a cell's ground-traversability, so
+    // invalidate the cache solely on an actual change (this runs every frame).
+    if (state.right !== this.bridgeState.right || state.left !== this.bridgeState.left) {
+      this.groundTraversableCache.clear();
+    }
     this.bridgeState = state;
   }
 
@@ -73,6 +87,7 @@ export class TerrainValidator {
 
     this.waterMeshes = [];
     this.bridgeMeshes = [];
+    this.groundTraversableCache.clear();
 
     this.battleMapScene.traverse((child) => {
       if (child instanceof THREE.Mesh && child.material) {
@@ -199,41 +214,43 @@ export class TerrainValidator {
 
     const movementType = ANIMAL_MOVEMENT_TYPES[animal];
 
-    // Air animals can go anywhere
-    if (movementType === 'air') {
+    // Air and water animals are never blocked (air flies over anything; water
+    // animals cross water and walk on land), so they skip the raycast entirely.
+    if (movementType === 'air' || movementType === 'water') {
       return true;
     }
 
-    // Check if position is over water
-    const overWater = this.isPositionOverWater(position);
+    // Ground animals: blocked by water unless standing on a lowered bridge deck.
+    // Cached per cell so the raycasts run at most once per cell between bridge
+    // state changes.
+    return this.isGroundTraversable(position);
+  }
 
-    if (!overWater) {
-      // Position is on land - all animals can move here
-      return true;
-    }
+  /**
+   * Whether a ground unit can stand at this position, memoized per grid cell.
+   * Only ground animals can be blocked, so this is the sole raycast path on the
+   * per-tick movement hot loop.
+   */
+  private isGroundTraversable(position: Position3D): boolean {
+    const cellX = Math.floor(position.x / TERRAIN_CELL_SIZE) + 32768;
+    const cellZ = Math.floor(position.z / TERRAIN_CELL_SIZE) + 32768;
+    const key = cellX * 65536 + cellZ;
 
-    // Position is over water
-    const { onBridge, bridgeSide } = this.isPositionOnBridge(position);
+    const cached = this.groundTraversableCache.get(key);
+    if (cached !== undefined) return cached;
 
-    if (onBridge && bridgeSide) {
-      // On a bridge - check if bridge is down
-      const bridgeTraversable = this.isBridgeTraversable(bridgeSide);
-
-      if (movementType === 'water') {
-        // Water animals can cross water regardless of bridge state
-        return true;
-      } else {
-        // Ground animals need bridge to be fully down
-        return bridgeTraversable;
-      }
+    let traversable: boolean;
+    if (!this.isPositionOverWater(position)) {
+      traversable = true; // on land
     } else {
-      // Over water but not on bridge
-      if (movementType === 'water') {
-        return true; // Water animals can cross
-      } else {
-        return false; // Ground animals cannot cross water
-      }
+      const { onBridge, bridgeSide } = this.isPositionOnBridge(position);
+      traversable = onBridge && bridgeSide ? this.isBridgeTraversable(bridgeSide) : false;
     }
+
+    // Guard against unbounded growth if units roam the whole map.
+    if (this.groundTraversableCache.size > 200_000) this.groundTraversableCache.clear();
+    this.groundTraversableCache.set(key, traversable);
+    return traversable;
   }
 
   /**
