@@ -15,6 +15,18 @@ const COLOR_TOLERANCE = 0.1; // Per-channel tolerance when matching terrain colo
 const BRIDGE_NAME_PATTERN = /bridge/i;
 const RIGHT_NAME_PATTERN = /right/i;
 const LEFT_NAME_PATTERN = /left/i;
+const CENTER_NAME_PATTERN = /center/i;
+
+// Which bridge a deck mesh belongs to. The right/left bridges raise and lower; the
+// center bridge is a static, always-down crossing.
+type BridgeSide = 'right' | 'left' | 'center';
+
+// Max world-space span (largest of x/y/z) a real bridge deck can have. Guards against
+// map-sized geometry that happens to be named like a bridge (e.g. a skybox sphere
+// accidentally duplicated and renamed) being treated as a crossable deck — which
+// would let ground units walk on water everywhere. Real decks are tens of units; the
+// longest current one is ~90.
+const MAX_BRIDGE_SPAN = 300;
 
 // Reusable straight-down ray direction for terrain raycasts.
 const DOWN = new THREE.Vector3(0, -1, 0);
@@ -37,6 +49,8 @@ export class TerrainValidator {
   // raised/lowered state can be checked, plus their combined xz broad-phase box.
   private rightBridgeMeshes: THREE.Mesh[] = [];
   private leftBridgeMeshes: THREE.Mesh[] = [];
+  // The center bridge is always traversable (static, no raise/lower state).
+  private centerBridgeMeshes: THREE.Mesh[] = [];
   private bridgeBounds: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
   // Memoized "can a ground unit stand here" per grid cell. Cleared whenever a
   // bridge's raised/lowered state changes (which is the only thing that alters the
@@ -93,7 +107,12 @@ export class TerrainValidator {
     this.waterMeshes = [];
     this.rightBridgeMeshes = [];
     this.leftBridgeMeshes = [];
+    this.centerBridgeMeshes = [];
     this.groundTraversableCache.clear();
+
+    // Ensure world matrices are current so mesh bounding boxes (size guard below)
+    // and the raycasts are computed against final world transforms.
+    this.battleMapScene.updateMatrixWorld(true);
 
     this.battleMapScene.traverse((child) => {
       if (!(child instanceof THREE.Mesh) || !child.material) return;
@@ -101,8 +120,21 @@ export class TerrainValidator {
       // Bridge decks are identified by name (covers the whole deck regardless of
       // its several grays), so check that before color.
       const side = this.bridgeSideOf(child);
-      if (side === 'right') { this.rightBridgeMeshes.push(child); return; }
-      if (side === 'left') { this.leftBridgeMeshes.push(child); return; }
+      if (side) {
+        const span = this.maxSpan(child);
+        if (span <= MAX_BRIDGE_SPAN) {
+          const bucket = side === 'right' ? this.rightBridgeMeshes
+            : side === 'left' ? this.leftBridgeMeshes
+            : this.centerBridgeMeshes;
+          bucket.push(child);
+        } else {
+          console.warn(
+            `⚠️ TerrainValidator: ignoring bridge-named "${child.name}" — ` +
+            `${span.toFixed(0)}u across, too large to be a deck (likely a mis-named/duplicated object).`
+          );
+        }
+        return; // bridge-named meshes never count as water
+      }
 
       const material = Array.isArray(child.material) ? child.material[0] : child.material;
       if (material instanceof THREE.MeshStandardMaterial ||
@@ -116,29 +148,43 @@ export class TerrainValidator {
 
     console.log(
       `✅ Found ${this.waterMeshes.length} water meshes, ` +
-      `${this.rightBridgeMeshes.length + this.leftBridgeMeshes.length} bridge meshes ` +
-      `(R:${this.rightBridgeMeshes.length} L:${this.leftBridgeMeshes.length})`
+      `${this.rightBridgeMeshes.length + this.leftBridgeMeshes.length + this.centerBridgeMeshes.length} bridge meshes ` +
+      `(R:${this.rightBridgeMeshes.length} L:${this.leftBridgeMeshes.length} C:${this.centerBridgeMeshes.length})`
     );
     this.waterBounds = this.computeBounds(this.waterMeshes);
-    this.bridgeBounds = this.computeBounds([...this.rightBridgeMeshes, ...this.leftBridgeMeshes]);
+    this.bridgeBounds = this.computeBounds([
+      ...this.rightBridgeMeshes, ...this.leftBridgeMeshes, ...this.centerBridgeMeshes,
+    ]);
   }
 
   /**
    * Which bridge a mesh belongs to, by walking its ancestor names, or null if the
    * mesh is not part of a bridge. Deck meshes sit under "Right_Bridge_<frame>" /
-   * "Left_Bridge_<frame>" nodes.
+   * "Left_Bridge_<frame>" / "Center_Bridge_<frame>" nodes.
    */
-  private bridgeSideOf(object: THREE.Object3D): 'right' | 'left' | null {
+  private bridgeSideOf(object: THREE.Object3D): BridgeSide | null {
     let isBridge = false;
-    let side: 'right' | 'left' | null = null;
+    let side: BridgeSide | null = null;
     for (let node: THREE.Object3D | null = object; node; node = node.parent) {
       const name = node.name;
       if (!name) continue;
       if (BRIDGE_NAME_PATTERN.test(name)) isBridge = true;
       if (RIGHT_NAME_PATTERN.test(name)) side = 'right';
       else if (LEFT_NAME_PATTERN.test(name)) side = 'left';
+      else if (CENTER_NAME_PATTERN.test(name)) side = 'center';
     }
     return isBridge ? side : null;
+  }
+
+  /**
+   * Largest world-space dimension (x, y, or z) of an object's bounding box. Used to
+   * reject map-sized geometry that is named like a bridge but clearly isn't a deck.
+   */
+  private maxSpan(object: THREE.Object3D): number {
+    const box = new THREE.Box3().setFromObject(object);
+    if (box.isEmpty()) return 0;
+    const size = box.getSize(new THREE.Vector3());
+    return Math.max(size.x, size.y, size.z);
   }
 
   /**
@@ -205,8 +251,10 @@ export class TerrainValidator {
    * crossable is gated separately by the bridge's raised/lowered state
    * (isBridgeTraversable).
    */
-  private isPositionOnBridge(position: Position3D): { onBridge: boolean; bridgeSide: 'right' | 'left' | null } {
-    if (this.rightBridgeMeshes.length === 0 && this.leftBridgeMeshes.length === 0) {
+  private isPositionOnBridge(position: Position3D): { onBridge: boolean; bridgeSide: BridgeSide | null } {
+    if (this.rightBridgeMeshes.length === 0 &&
+        this.leftBridgeMeshes.length === 0 &&
+        this.centerBridgeMeshes.length === 0) {
       return { onBridge: false, bridgeSide: null };
     }
 
@@ -228,15 +276,20 @@ export class TerrainValidator {
         this.raycaster.intersectObjects(this.leftBridgeMeshes, true).length > 0) {
       return { onBridge: true, bridgeSide: 'left' };
     }
+    if (this.centerBridgeMeshes.length > 0 &&
+        this.raycaster.intersectObjects(this.centerBridgeMeshes, true).length > 0) {
+      return { onBridge: true, bridgeSide: 'center' };
+    }
     return { onBridge: false, bridgeSide: null };
   }
 
   /**
-   * Check if a bridge is traversable for ground/water animals
+   * Check if a bridge is traversable for ground animals. The center bridge is static
+   * and always crossable; the right/left bridges must be fully lowered.
    */
-  private isBridgeTraversable(bridgeSide: 'right' | 'left'): boolean {
-    const state = this.bridgeState[bridgeSide];
-    return state === 'Fully_Down';
+  private isBridgeTraversable(bridgeSide: BridgeSide): boolean {
+    if (bridgeSide === 'center') return true;
+    return this.bridgeState[bridgeSide] === 'Fully_Down';
   }
 
   /**
