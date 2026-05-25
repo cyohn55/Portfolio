@@ -6,9 +6,15 @@ import { UnitsLayer } from './UnitsLayer';
 import { MapInteraction } from './HexInteraction';
 import { Skybox } from './Working/Skybox';
 import { buildOptimizedBattleMap } from './Working/mergeBattleMap';
+import { bridgeNavigator } from './Working/bridgeNavigator';
 import { performanceMonitor } from '../utils/PerformanceMonitor';
 import { terrainValidator } from '../utils/TerrainValidator';
 import * as THREE from 'three';
+
+// Land margin (world units) added around the bridge footprint when sizing the
+// navigation grid, so the grid covers the moat plus the shoreline units approach from.
+const NAV_GRID_MARGIN = 60;
+const NAV_GRID_STEP = 2; // grid cell size; ~half a unit body, fine enough to find bridge mouths
 
 export function BattleMap() {
   const tick = useGameStore((s) => s.tick);
@@ -59,10 +65,29 @@ export function BattleMap() {
     if (battleMapScene) {
       console.log('🗺️ Initializing terrain validator with battle map scene');
       terrainValidator.initialize(battleMapScene);
+
+      // Build the region+portal navigation grid so ground units funnel onto bridges
+      // instead of stalling at the shore. Sized to the bridge footprint plus a land
+      // margin (the moat and the approaches around it).
+      const bridgeBounds = terrainValidator.getBridgeBounds();
+      if (bridgeBounds) {
+        bridgeNavigator.build(
+          terrainValidator,
+          {
+            minX: bridgeBounds.minX - NAV_GRID_MARGIN,
+            minZ: bridgeBounds.minZ - NAV_GRID_MARGIN,
+            maxX: bridgeBounds.maxX + NAV_GRID_MARGIN,
+            maxZ: bridgeBounds.maxZ + NAV_GRID_MARGIN,
+          },
+          NAV_GRID_STEP,
+        );
+      }
+
       // Dev-only handle for verifying water/bridge terrain queries after merge.
       if (import.meta.env.DEV) {
         (window as any).__rtsTerrain = terrainValidator;
         (window as any).__rtsMap = battleMapScene;
+        (window as any).__rtsNav = bridgeNavigator;
       }
     }
   }, [battleMapScene]);
@@ -149,6 +174,12 @@ export function BattleMap() {
       right: rightFrame as 'Fully_Up' | 'Almost_Up' | 'Almost_Down' | 'Fully_Down',
       left: leftFrame as 'Fully_Up' | 'Almost_Up' | 'Almost_Down' | 'Fully_Down',
     });
+
+    // Re-open/-close navigation portals to match (cheap; only recomputes when a
+    // raise/lower bridge actually changes crossability).
+    if (bridgeNavigator.isReady()) {
+      bridgeNavigator.refreshPortals();
+    }
   };
 
 

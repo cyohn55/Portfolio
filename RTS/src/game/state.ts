@@ -10,6 +10,7 @@ import { SpatialGrid } from '../utils/SpatialGrid';
 // compatible (and slightly speeds up the remaining produce() calls).
 setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
+import { bridgeNavigator } from '../components/Working/bridgeNavigator';
 import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, GameConfig, GameState, Player, Unit, PatrolRoute } from './types';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 
@@ -604,7 +605,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
             // Move toward ordered position (but allow combat interruption)
             if (distanceToOrder > 0.5 && !isMovementPaused) {
-              const direction = normalize3D(subtract3D(order, unit.position));
+              const direction = normalize3D(subtract3D(steeringTarget(unit, order), unit.position));
               const moveDistance = unit.moveSpeed * dtSec;
 
               // Update rotation to face movement direction (unless in combat)
@@ -803,7 +804,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
           // Move toward ordered position
           if (distanceToOrder > 0.5 && !isMovementPaused) {
-            const direction = normalize3D(subtract3D(order, unit.position));
+            const direction = normalize3D(subtract3D(steeringTarget(unit, order), unit.position));
             const moveDistance = unit.moveSpeed * dtSec;
             unit.rotation = Math.atan2(direction.x, direction.z);
 
@@ -854,7 +855,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
           if (dist > 1) {
             // Move toward patrol target
-            const direction = normalize3D(subtract3D(targetPos, unit.position));
+            const direction = normalize3D(subtract3D(steeringTarget(unit, targetPos), unit.position));
             const moveDistance = unit.moveSpeed * dtSec;
 
             // Update rotation to face movement direction
@@ -1074,8 +1075,8 @@ export const useGameStore = create<Store>((set, get) => ({
           // so kiting only kicks in when the unit has no active order.
           let combatMoveDir: Position3D | null = null;
           if (distSquared > attackRangeSq) {
-            // Out of range: advance toward the target.
-            combatMoveDir = normalize3D(subtract3D(target.position, unit.position));
+            // Out of range: advance toward the target (ground units route via bridges).
+            combatMoveDir = normalize3D(subtract3D(steeringTarget(unit, target.position), unit.position));
           } else if (isRangedUnit && !order && target.kind !== 'Base' &&
                      unit.moveSpeed > target.moveSpeed) {
             // In range but a mobile threat is too close: retreat to the standoff
@@ -1718,6 +1719,18 @@ function distanceSquared3D(a: Position3D, b: Position3D): number {
   return dx * dx + dy * dy + dz * dz;
 }
 
+
+// Resolve the point a unit should actually steer toward to reach `destination`. For
+// ground units the bridge navigator may return an intermediate bridge entrance, so
+// they funnel onto a crossing instead of stalling at the water's edge. Air/water units
+// (which ignore water) and an un-built navigator fall through to the destination, so
+// callers can wrap any "advance toward" target unconditionally.
+function steeringTarget(unit: Unit, destination: Position3D): Position3D {
+  if (ANIMAL_MOVEMENT_TYPES[unit.animal] !== 'ground' || !bridgeNavigator.isReady()) {
+    return destination;
+  }
+  return bridgeNavigator.nextWaypoint(unit.position, destination);
+}
 
 function subtract3D(a: Position3D, b: Position3D): Position3D {
   return {

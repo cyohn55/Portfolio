@@ -19,7 +19,7 @@ const CENTER_NAME_PATTERN = /center/i;
 
 // Which bridge a deck mesh belongs to. The right/left bridges raise and lower; the
 // center bridge is a static, always-down crossing.
-type BridgeSide = 'right' | 'left' | 'center';
+export type BridgeSide = 'right' | 'left' | 'center';
 
 // Max world-space span (largest of x/y/z) a real bridge deck can have. Guards against
 // map-sized geometry that happens to be named like a bridge (e.g. a skybox sphere
@@ -290,6 +290,34 @@ export class TerrainValidator {
   private isBridgeTraversable(bridgeSide: BridgeSide): boolean {
     if (bridgeSide === 'center') return true;
     return this.bridgeState[bridgeSide] === 'Fully_Down';
+  }
+
+  /**
+   * Whether a position sits over a bridge deck, and which side, irrespective of
+   * whether that bridge is currently raised or lowered. Public so the bridge
+   * navigator can map out crossing geometry once at load (a deck's footprint is
+   * static; only its raised/lowered crossability changes — see isSideOpen).
+   */
+  public bridgeAt(position: Position3D): { onBridge: boolean; side: BridgeSide | null } {
+    const { onBridge, bridgeSide } = this.isPositionOnBridge(position);
+    return { onBridge, side: bridgeSide };
+  }
+
+  /**
+   * Whether a given bridge is currently crossable by ground units. Public wrapper
+   * over the raised/lowered rule so the navigator can open/close portals when the
+   * bridge state changes.
+   */
+  public isSideOpen(side: BridgeSide): boolean {
+    return this.isBridgeTraversable(side);
+  }
+
+  /**
+   * The xz footprint of all bridge decks (with margin), or null before init. Used
+   * by the navigator to bound the area it rasterizes into a navigation grid.
+   */
+  public getBridgeBounds(): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
+    return this.bridgeBounds;
   }
 
   /**
