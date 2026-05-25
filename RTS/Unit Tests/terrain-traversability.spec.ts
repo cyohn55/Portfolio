@@ -4,16 +4,17 @@ import { TerrainValidator } from '../src/utils/TerrainValidator';
 
 /**
  * Pure-logic tests for terrain traversability. These build a synthetic THREE scene
- * (water plane + bridge-deck meshes identified by color) and exercise the real
- * raycast-based detection in TerrainValidator. No browser, WebGL, or GLB needed —
- * raycasting is CPU geometry math — so these run in the Node test process.
+ * (a water plane identified by color, plus bridge decks identified by node name, as
+ * on the real map) and exercise the real raycast-based detection in TerrainValidator.
+ * No browser, WebGL, or GLB needed — raycasting is CPU geometry math — so these run
+ * in the Node test process.
  *
- * Water color: #4A99FF. Bridge-deck colors: #D7D7D7 and #9B9B9B.
+ * Water is detected by color (#4A99FF); bridge decks are detected by their
+ * "Right_Bridge_*" / "Left_Bridge_*" node names (deck colors are ambiguous grays).
  */
 
 const WATER = 0x4a99ff;
-const BRIDGE_LIGHT = 0xd7d7d7;
-const BRIDGE_DARK = 0x9b9b9b;
+const DECK = 0xa6a6a6; // a real deck gray — irrelevant to detection, which is by name
 
 function coloredBox(color: number, size: [number, number, number], pos: [number, number, number]): THREE.Mesh {
   const mesh = new THREE.Mesh(
@@ -24,13 +25,22 @@ function coloredBox(color: number, size: [number, number, number], pos: [number,
   return mesh;
 }
 
-// A lake covering x,z in [-50, 50] at y=0, a right-side bridge deck (+z) painted in
-// one bridge color and a left-side deck (-z) in the other.
+// A bridge deck wrapped in a named node, mirroring the real map's structure
+// (Right_Bridge_Fully_Down > deck meshes).
+function namedBridge(nodeName: string, pos: [number, number, number]): THREE.Object3D {
+  const node = new THREE.Group();
+  node.name = nodeName;
+  node.add(coloredBox(DECK, [12, 1, 12], pos));
+  return node;
+}
+
+// A lake covering x,z in [-50, 50] at y=0, a right-side bridge deck (+z) and a
+// left-side deck (-z), each under a side-named node like the real map.
 function buildScene(): THREE.Object3D {
   const scene = new THREE.Group();
   scene.add(coloredBox(WATER, [100, 1, 100], [0, 0, 0]));
-  scene.add(coloredBox(BRIDGE_LIGHT, [12, 1, 12], [0, 1, 30])); // right deck
-  scene.add(coloredBox(BRIDGE_DARK, [12, 1, 12], [0, 1, -30])); // left deck
+  scene.add(namedBridge('Right_Bridge_Fully_Down', [0, 1, 30]));
+  scene.add(namedBridge('Left_Bridge_Fully_Down', [0, 1, -30]));
   scene.updateMatrixWorld(true);
   return scene;
 }
@@ -59,11 +69,11 @@ test.describe('movement-type traversal over water', () => {
   });
 });
 
-test.describe('bridge-deck detection by color', () => {
+test.describe('bridge-deck detection by name', () => {
   test('a lowered bridge deck lets ground animals cross water', () => {
     const validator = freshValidator(); // bridges default to Fully_Down
-    expect(validator.canAnimalMoveTo('Bear', at(0, 30))).toBe(true);  // right deck (#D7D7D7)
-    expect(validator.canAnimalMoveTo('Bear', at(0, -30))).toBe(true); // left deck (#9B9B9B)
+    expect(validator.canAnimalMoveTo('Bear', at(0, 30))).toBe(true);  // right deck
+    expect(validator.canAnimalMoveTo('Bear', at(0, -30))).toBe(true); // left deck
   });
 
   test('raising a bridge blocks ground animals on that side only', () => {

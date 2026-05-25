@@ -6,12 +6,15 @@ import { ANIMAL_MOVEMENT_TYPES } from '../game/types';
 const WATER_COLOR = new THREE.Color(0x4A99FF);
 const COLOR_TOLERANCE = 0.1; // Per-channel tolerance when matching terrain colors
 
-// Bridge deck colors in the battle map (#D7D7D7FF and #9B9B9BFF). A position over a
-// mesh of one of these colors is on a bridge deck, which lets ground units cross
-// water there — provided that bridge is lowered (see isBridgeTraversable). Detecting
-// the deck by color matches the actual geometry instead of the previous hardcoded,
-// approximate rectangular zones.
-const BRIDGE_COLORS = [new THREE.Color(0xD7D7D7), new THREE.Color(0x9B9B9B)];
+// Bridge decks are identified by mesh name, not color: every deck mesh lives under a
+// node named "Right_Bridge_<frame>" / "Left_Bridge_<frame>". Color is unusable here —
+// the deck spans several grays (#a6a6a6, #676365, #c7c7c7, including the walkable
+// surface) and hundreds of unrelated map props share those same grays. A position
+// over a bridge deck lets ground units cross water there, provided that bridge is
+// lowered (see isBridgeTraversable).
+const BRIDGE_NAME_PATTERN = /bridge/i;
+const RIGHT_NAME_PATTERN = /right/i;
+const LEFT_NAME_PATTERN = /left/i;
 
 // Reusable straight-down ray direction for terrain raycasts.
 const DOWN = new THREE.Vector3(0, -1, 0);
@@ -30,8 +33,10 @@ export class TerrainValidator {
   // far more expensive per-position raycast is skipped. Most combat happens away
   // from water, so this keeps the per-tick terrain cost negligible at scale.
   private waterBounds: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
-  // Bridge deck meshes (all raise/lower frames) and their xz broad-phase box.
-  private bridgeMeshes: THREE.Mesh[] = [];
+  // Bridge deck meshes (all raise/lower frames), split by side so the bridge's
+  // raised/lowered state can be checked, plus their combined xz broad-phase box.
+  private rightBridgeMeshes: THREE.Mesh[] = [];
+  private leftBridgeMeshes: THREE.Mesh[] = [];
   private bridgeBounds: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
   // Memoized "can a ground unit stand here" per grid cell. Cleared whenever a
   // bridge's raised/lowered state changes (which is the only thing that alters the
@@ -79,38 +84,61 @@ export class TerrainValidator {
   }
 
   /**
-   * Find all water and bridge-deck meshes in the scene by color, in a single
+   * Find all water meshes (by color) and bridge-deck meshes (by name) in a single
    * traversal, and cache their broad-phase bounding boxes.
    */
   private findTerrainMeshes() {
     if (!this.battleMapScene) return;
 
     this.waterMeshes = [];
-    this.bridgeMeshes = [];
+    this.rightBridgeMeshes = [];
+    this.leftBridgeMeshes = [];
     this.groundTraversableCache.clear();
 
     this.battleMapScene.traverse((child) => {
-      if (child instanceof THREE.Mesh && child.material) {
-        const material = Array.isArray(child.material) ? child.material[0] : child.material;
+      if (!(child instanceof THREE.Mesh) || !child.material) return;
 
-        if (material instanceof THREE.MeshStandardMaterial ||
-            material instanceof THREE.MeshBasicMaterial ||
-            material instanceof THREE.MeshPhongMaterial) {
+      // Bridge decks are identified by name (covers the whole deck regardless of
+      // its several grays), so check that before color.
+      const side = this.bridgeSideOf(child);
+      if (side === 'right') { this.rightBridgeMeshes.push(child); return; }
+      if (side === 'left') { this.leftBridgeMeshes.push(child); return; }
 
-          const color = material.color;
-
-          if (this.colorsMatch(color, WATER_COLOR)) {
-            this.waterMeshes.push(child);
-          } else if (BRIDGE_COLORS.some((bridgeColor) => this.colorsMatch(color, bridgeColor))) {
-            this.bridgeMeshes.push(child);
-          }
+      const material = Array.isArray(child.material) ? child.material[0] : child.material;
+      if (material instanceof THREE.MeshStandardMaterial ||
+          material instanceof THREE.MeshBasicMaterial ||
+          material instanceof THREE.MeshPhongMaterial) {
+        if (this.colorsMatch(material.color, WATER_COLOR)) {
+          this.waterMeshes.push(child);
         }
       }
     });
 
-    console.log(`✅ Found ${this.waterMeshes.length} water meshes, ${this.bridgeMeshes.length} bridge meshes`);
+    console.log(
+      `✅ Found ${this.waterMeshes.length} water meshes, ` +
+      `${this.rightBridgeMeshes.length + this.leftBridgeMeshes.length} bridge meshes ` +
+      `(R:${this.rightBridgeMeshes.length} L:${this.leftBridgeMeshes.length})`
+    );
     this.waterBounds = this.computeBounds(this.waterMeshes);
-    this.bridgeBounds = this.computeBounds(this.bridgeMeshes);
+    this.bridgeBounds = this.computeBounds([...this.rightBridgeMeshes, ...this.leftBridgeMeshes]);
+  }
+
+  /**
+   * Which bridge a mesh belongs to, by walking its ancestor names, or null if the
+   * mesh is not part of a bridge. Deck meshes sit under "Right_Bridge_<frame>" /
+   * "Left_Bridge_<frame>" nodes.
+   */
+  private bridgeSideOf(object: THREE.Object3D): 'right' | 'left' | null {
+    let isBridge = false;
+    let side: 'right' | 'left' | null = null;
+    for (let node: THREE.Object3D | null = object; node; node = node.parent) {
+      const name = node.name;
+      if (!name) continue;
+      if (BRIDGE_NAME_PATTERN.test(name)) isBridge = true;
+      if (RIGHT_NAME_PATTERN.test(name)) side = 'right';
+      else if (LEFT_NAME_PATTERN.test(name)) side = 'left';
+    }
+    return isBridge ? side : null;
   }
 
   /**
@@ -170,15 +198,17 @@ export class TerrainValidator {
   }
 
   /**
-   * Check whether a position sits over a bridge deck, detected by raycasting against
-   * the bridge-colored meshes. All raise/lower frames are static meshes (only their
-   * visibility is toggled), so the lowered deck's footprint is always present for the
-   * raycast; whether it is actually crossable is gated separately by the bridge's
-   * raised/lowered state (isBridgeTraversable). The side is derived from z to match
-   * the convention used by the bridge animation/state system (right at +z, left at -z).
+   * Check whether a position sits over a bridge deck, by raycasting straight down
+   * against the deck meshes (which side is hit determines bridgeSide). All raise/
+   * lower frames are static meshes (only their visibility is toggled), so the lowered
+   * deck's footprint is always present for the raycast; whether it is actually
+   * crossable is gated separately by the bridge's raised/lowered state
+   * (isBridgeTraversable).
    */
   private isPositionOnBridge(position: Position3D): { onBridge: boolean; bridgeSide: 'right' | 'left' | null } {
-    if (this.bridgeMeshes.length === 0) return { onBridge: false, bridgeSide: null };
+    if (this.rightBridgeMeshes.length === 0 && this.leftBridgeMeshes.length === 0) {
+      return { onBridge: false, bridgeSide: null };
+    }
 
     // Cheap broad-phase: positions outside the bridge bounding box need no raycast.
     if (this.bridgeBounds &&
@@ -189,10 +219,16 @@ export class TerrainValidator {
 
     const origin = new THREE.Vector3(position.x, position.y + 100, position.z);
     this.raycaster.set(origin, DOWN);
-    const intersects = this.raycaster.intersectObjects(this.bridgeMeshes, true);
-    if (intersects.length === 0) return { onBridge: false, bridgeSide: null };
 
-    return { onBridge: true, bridgeSide: position.z >= 0 ? 'right' : 'left' };
+    if (this.rightBridgeMeshes.length > 0 &&
+        this.raycaster.intersectObjects(this.rightBridgeMeshes, true).length > 0) {
+      return { onBridge: true, bridgeSide: 'right' };
+    }
+    if (this.leftBridgeMeshes.length > 0 &&
+        this.raycaster.intersectObjects(this.leftBridgeMeshes, true).length > 0) {
+      return { onBridge: true, bridgeSide: 'left' };
+    }
+    return { onBridge: false, bridgeSide: null };
   }
 
   /**
