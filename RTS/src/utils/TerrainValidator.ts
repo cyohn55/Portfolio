@@ -70,19 +70,24 @@ export class TerrainValidator {
   // cache: without it, every ground unit pays multiple triangle-mesh raycasts per
   // tick, which dominates frame time once bridges are crossed by a crowd.
   private deckAtCache = new Map<number, { onDeck: boolean; side: BridgeSide | null }>();
-  // The walkable-deck primitive of each side's lowered frame, identified once at
-  // load by picking the bridge primitive whose triangles cover the largest
-  // up-facing area within that frame's group (so flat horizontal slabs beat
-  // arches/rails/posts). Used to classify navigation cells as walkable deck only
-  // when actually over the deck (not a rail), and to look up the deck top Y
-  // when lifting a ground unit onto it. Null when no traversable frame can be
-  // resolved for that side — in which case the navigator falls back to the
-  // broader bridgeAt detection for that side so behavior is preserved.
-  private rightDeckMesh: THREE.Mesh | null = null;
-  private leftDeckMesh: THREE.Mesh | null = null;
-  private centerDeckMesh: THREE.Mesh | null = null;
-  // World-space deck top Y for each deck mesh above (the bounding-box top), kept
-  // alongside the mesh so the per-tick elevation lookup is a constant-time read.
+  // The walkable-deck primitives of each side's lowered frame, identified once
+  // at load. The deck is generally a small set of horizontal slabs sharing a top
+  // Y — e.g. the right bridge ships as a main span with a multi-unit gap in the
+  // middle that two smaller slabs fill. Picking only the single largest mesh
+  // leaves the gap unclassified, so A* can't path across the bridge and routes
+  // via the center bridge even when it would be the longer crossing. We pick
+  // every primitive whose top up-facing surface sits at the dominant deck Y
+  // (within tolerance), so the navigator sees a continuous deck.
+  //
+  // An empty array means no traversable frame could be resolved for that side
+  // — in which case the navigator falls back to the broader bridgeAt detection
+  // for that side so behavior is preserved.
+  private rightDeckMeshes: THREE.Mesh[] = [];
+  private leftDeckMeshes: THREE.Mesh[] = [];
+  private centerDeckMeshes: THREE.Mesh[] = [];
+  // World-space deck top Y per side (max bbox top across the deck primitives
+  // chosen for that side). Kept alongside the mesh list so the per-tick
+  // elevation lookup is a constant-time read.
   private rightDeckSurfaceY: number | null = null;
   private leftDeckSurfaceY: number | null = null;
   private centerDeckSurfaceY: number | null = null;
@@ -207,25 +212,27 @@ export class TerrainValidator {
     const right = this.findDeckForSide(this.rightBridgeMeshes);
     const left = this.findDeckForSide(this.leftBridgeMeshes);
     const center = this.findDeckForSide(this.centerBridgeMeshes);
-    this.rightDeckMesh = right?.mesh ?? null;
+    this.rightDeckMeshes = right?.meshes ?? [];
     this.rightDeckSurfaceY = right?.surfaceY ?? null;
     // The left bridge's Fully_Down frame is missing from the current map export.
-    // The left mesh's own resolution may fall through (or land on Almost_Down),
-    // so fall back to the right deck's Y for elevation when no left frame yields
-    // a deck — units crossing whichever stand-in geometry exists still land at a
+    // findDeckForSide falls back to Almost_Down. If that still fails, lean on
+    // the right deck's Y for elevation (the moat is mirrored across the map),
+    // so a unit crossing whichever stand-in geometry exists still lands at a
     // plausible height rather than at water level.
-    this.leftDeckMesh = left?.mesh ?? null;
+    this.leftDeckMeshes = left?.meshes ?? [];
     this.leftDeckSurfaceY = left?.surfaceY ?? this.rightDeckSurfaceY;
-    this.centerDeckMesh = center?.mesh ?? null;
+    this.centerDeckMeshes = center?.meshes ?? [];
     this.centerDeckSurfaceY = center?.surfaceY ?? null;
   }
 
   // Group meshes by their enclosing frame node ("Right_Bridge_Fully_Down" etc.),
-  // pick the frame group at the lowest world Y (the lowered/static state), then pick
-  // the deck primitive within that group by up-facing area. Returns both the chosen
-  // primitive and its world bbox top Y so callers get the deck geometry (for cell
-  // classification raycasts) and the elevation Y in one pass.
-  private findDeckForSide(meshes: THREE.Mesh[]): { mesh: THREE.Mesh; surfaceY: number } | null {
+  // pick the frame group at the lowest world Y (the lowered/static state), then
+  // pick every primitive whose top up-facing surface sits at the dominant deck Y.
+  // A bridge's deck is typically a small set of horizontal slabs sharing a top Y
+  // (the right bridge has a main span with a gap in the middle that two smaller
+  // slabs fill); picking only the single largest mesh leaves the gap unclassified
+  // and breaks pathing through the bridge.
+  private findDeckForSide(meshes: THREE.Mesh[]): { meshes: THREE.Mesh[]; surfaceY: number } | null {
     if (meshes.length === 0) return null;
 
     // Bucket meshes by their frame ancestor (the node whose name contains "Bridge").
@@ -250,11 +257,7 @@ export class TerrainValidator {
       frames.sort((a, b) => a[1].pivotY - b[1].pivotY)[0];
     if (!preferred) return null;
 
-    const deckMesh = this.pickDeckPrimitive(preferred[1].meshes);
-    if (!deckMesh) return null;
-    const box = new THREE.Box3().setFromObject(deckMesh);
-    if (box.isEmpty()) return null;
-    return { mesh: deckMesh, surfaceY: box.max.y };
+    return this.pickDeckPrimitives(preferred[1].meshes);
   }
 
   // Closest ancestor (or the object itself) named "*_Bridge_*" — the frame group
@@ -266,29 +269,53 @@ export class TerrainValidator {
     return null;
   }
 
-  // The deck within a frame group is the primitive with the largest up-facing
-  // triangle area. Walls/rails/arches contribute little up-facing area (their
-  // surfaces face out, not up) and lose to a flat horizontal slab.
-  private pickDeckPrimitive(meshes: THREE.Mesh[]): THREE.Mesh | null {
-    let bestMesh: THREE.Mesh | null = null;
-    let bestArea = -1;
+  // Y tolerance for considering two primitives part of the same walking surface.
+  // Generous enough to include slabs with a small Z slope across them; tight enough
+  // that the deck's underside (a few units below the top) is excluded.
+  private static readonly DECK_TOP_Y_TOLERANCE = 0.5;
+
+  // Identify the deck within a frame group as the union of primitives whose top
+  // up-facing surface sits at the dominant deck Y. The "dominant" Y is the top Y
+  // of the primitive contributing the largest up-facing area; other primitives
+  // within DECK_TOP_Y_TOLERANCE are part of the same continuous walking surface.
+  // Returns the chosen primitives and their combined surface Y (max bbox top).
+  private pickDeckPrimitives(meshes: THREE.Mesh[]): { meshes: THREE.Mesh[]; surfaceY: number } | null {
+    const upTriangleThreshold = 0.7; // see computeUpFacingTopY
+    const candidates: { mesh: THREE.Mesh; upArea: number; topY: number }[] = [];
     for (const mesh of meshes) {
-      const area = this.computeUpFacingArea(mesh);
-      if (area > bestArea) {
-        bestArea = area;
-        bestMesh = mesh;
-      }
+      const { upArea, topY } = this.computeUpFacingTopY(mesh, upTriangleThreshold);
+      if (upArea <= 0) continue;
+      candidates.push({ mesh, upArea, topY });
     }
-    return bestMesh;
+    if (candidates.length === 0) return null;
+
+    // Dominant deck Y is the topY of the candidate with the largest up-facing area.
+    candidates.sort((a, b) => b.upArea - a.upArea);
+    const dominantY = candidates[0].topY;
+
+    // Include every candidate within tolerance of that Y. surfaceY is the max top
+    // (so a slightly higher gap-filler still elevates units fully onto it).
+    const kept: THREE.Mesh[] = [];
+    let surfaceY = -Infinity;
+    for (const candidate of candidates) {
+      if (Math.abs(candidate.topY - dominantY) > TerrainValidator.DECK_TOP_Y_TOLERANCE) continue;
+      kept.push(candidate.mesh);
+      if (candidate.topY > surfaceY) surfaceY = candidate.topY;
+    }
+    if (kept.length === 0) return null;
+    return { meshes: kept, surfaceY };
   }
 
-  // Sum the world-space area of all triangles in `mesh` whose face normal points
-  // mostly up. One-time cost at load; bridges are ~10 primitives totaling a few
-  // thousand triangles per side, well under a millisecond.
-  private computeUpFacingArea(mesh: THREE.Mesh): number {
+  // Compute the total up-facing area of `mesh` (triangles with world-space normal
+  // pointing mostly up, gated by `upDotThreshold`) and the world Y of those
+  // triangles' highest vertex — i.e. the top of the up-facing surface. Used by
+  // pickDeckPrimitives to identify which primitives sit at the same deck height.
+  // One-time cost at load; bridges are ~10 primitives per frame, a few thousand
+  // triangles total, well under a millisecond.
+  private computeUpFacingTopY(mesh: THREE.Mesh, upDotThreshold: number): { upArea: number; topY: number } {
     const geometry = mesh.geometry as THREE.BufferGeometry;
     const positionAttribute = geometry.getAttribute('position');
-    if (!positionAttribute) return 0;
+    if (!positionAttribute) return { upArea: 0, topY: -Infinity };
     const indexAttribute = geometry.index;
     const triangleCount = indexAttribute ? indexAttribute.count / 3 : positionAttribute.count / 3;
 
@@ -300,7 +327,8 @@ export class TerrainValidator {
     const edgeAC = new THREE.Vector3();
     const normal = new THREE.Vector3();
 
-    let totalArea = 0;
+    let upArea = 0;
+    let topY = -Infinity;
     for (let triangle = 0; triangle < triangleCount; triangle++) {
       const indexA = indexAttribute ? indexAttribute.getX(triangle * 3) : triangle * 3;
       const indexB = indexAttribute ? indexAttribute.getX(triangle * 3 + 1) : triangle * 3 + 1;
@@ -311,14 +339,14 @@ export class TerrainValidator {
       edgeAB.subVectors(vertexB, vertexA);
       edgeAC.subVectors(vertexC, vertexA);
       normal.crossVectors(edgeAB, edgeAC);
-      const length = normal.length();
-      if (length === 0) continue;
-      const area = length * 0.5;
-      // Normal Y / length is the cosine with world up; gate at 0.7 to count only
-      // surfaces a unit can actually stand on (rules out walls and arch undersides).
-      if (normal.y / length > 0.7) totalArea += area;
+      const normalLength = normal.length();
+      if (normalLength === 0) continue;
+      if (normal.y / normalLength <= upDotThreshold) continue;
+      upArea += normalLength * 0.5;
+      const triTopY = Math.max(vertexA.y, vertexB.y, vertexC.y);
+      if (triTopY > topY) topY = triTopY;
     }
-    return totalArea;
+    return { upArea, topY };
   }
 
   /**
@@ -507,11 +535,11 @@ export class TerrainValidator {
     this.raycaster.set(origin, DOWN);
 
     let result: { onDeck: boolean; side: BridgeSide | null };
-    if (this.isOverDeckForSide(this.rightDeckMesh, this.rightBridgeMeshes)) {
+    if (this.isOverDeckForSide(this.rightDeckMeshes, this.rightBridgeMeshes)) {
       result = { onDeck: true, side: 'right' };
-    } else if (this.isOverDeckForSide(this.leftDeckMesh, this.leftBridgeMeshes)) {
+    } else if (this.isOverDeckForSide(this.leftDeckMeshes, this.leftBridgeMeshes)) {
       result = { onDeck: true, side: 'left' };
-    } else if (this.isOverDeckForSide(this.centerDeckMesh, this.centerBridgeMeshes)) {
+    } else if (this.isOverDeckForSide(this.centerDeckMeshes, this.centerBridgeMeshes)) {
       result = { onDeck: true, side: 'center' };
     } else {
       result = DECK_AT_MISS;
@@ -522,14 +550,14 @@ export class TerrainValidator {
     return result;
   }
 
-  // Strict deck test for one side: raycast against the identified deck primitive,
-  // or — if that side has no deck primitive (broken model export) — fall back to
+  // Strict deck test for one side: raycast against the identified deck primitives,
+  // or — if that side has no deck primitives (broken model export) — fall back to
   // any bridge mesh on that side so the navigator still classifies a crossing.
   // Uses the raycaster already configured by the caller, so it must be set up
   // first (see deckAt).
-  private isOverDeckForSide(deck: THREE.Mesh | null, fallback: THREE.Mesh[]): boolean {
-    if (deck) {
-      return this.raycaster.intersectObject(deck, true).length > 0;
+  private isOverDeckForSide(deck: THREE.Mesh[], fallback: THREE.Mesh[]): boolean {
+    if (deck.length > 0) {
+      return this.raycaster.intersectObjects(deck, true).length > 0;
     }
     return fallback.length > 0 && this.raycaster.intersectObjects(fallback, true).length > 0;
   }
