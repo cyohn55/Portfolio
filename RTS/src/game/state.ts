@@ -1280,25 +1280,29 @@ export const useGameStore = create<Store>((set, get) => ({
         const u = draft.units.find((x) => x.id === id);
         if (!u || u.ownerId !== draft.localPlayerId) continue; // Only allow moving own units
 
-        // Validate terrain before issuing move order (if terrain validator is ready)
-        // Gracefully allow movement if validator isn't initialized yet
+        // Validate the destination tile only — whether the unit can actually
+        // reach it is the pathfinder's job (grid A* routes around water/bridges),
+        // not a per-unit straight-line raster precheck.
+        //
+        // The old straight-line `isPathValid(u.animal, u.position, cmd.target)`
+        // precheck silently dropped this unit's order whenever the line from its
+        // current position to the click happened to cross water — even though
+        // A* would have routed it around. Because the verdict depended on each
+        // unit's own position, units in the same selection got different answers
+        // once they had spread out across the map: members on one side of a
+        // river would ignore an order across it while members on the other side
+        // accepted it. To the player: "some clusters listen, others don't,
+        // especially after they reach their destination" (because that's when
+        // the group is spread out enough for the straight lines to diverge).
+        // The destination check below is shared by every unit in the command,
+        // so it can't cause that asymmetry.
         try {
-          const canMove = terrainValidator.canAnimalMoveTo(u.animal, cmd.target);
-
-          if (!canMove) {
+          if (!terrainValidator.canAnimalMoveTo(u.animal, cmd.target)) {
             console.log(`❌ ${u.animal} cannot move to target position (blocked by water/terrain)`);
             continue; // Skip this unit
           }
-
-          // Validate path to target
-          const pathValid = terrainValidator.isPathValid(u.animal, u.position, cmd.target);
-
-          if (!pathValid) {
-            console.log(`❌ ${u.animal} path to target is blocked by water/terrain`);
-            continue; // Skip this unit
-          }
         } catch (error) {
-          // If terrain validation fails (validator not initialized), allow movement
+          // Validator not initialized yet — allow movement (graceful degradation).
           console.warn(`⚠️ Terrain validator not ready, allowing movement for ${u.animal}`);
         }
 
