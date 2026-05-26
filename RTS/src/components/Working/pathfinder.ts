@@ -415,9 +415,13 @@ export class GridPathfinder {
         let deckSide: BridgeSide | null = null;
         for (const p of probes) {
           if (!this.terrain!.isPositionOverWater(p)) continue; // land probe
-          const bridge = this.terrain!.bridgeAt(p);
-          if (bridge.onBridge && bridge.side) {
-            deckSide = deckSide ?? bridge.side; // over a deck — walkable when that side is open
+          // Restrict deck classification to the walkable deck primitive's XZ
+          // footprint, so rails/walls/posts over water (broader bridge volume
+          // but not the surface) classify as water — keeping A* from routing
+          // a unit into the side of the bridge through the railing.
+          const deck = this.terrain!.deckAt(p);
+          if (deck.onDeck && deck.side) {
+            deckSide = deckSide ?? deck.side; // over a deck — walkable when that side is open
           } else {
             anyWater = true; // open water touches this cell
             break;

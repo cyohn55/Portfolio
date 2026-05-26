@@ -1139,6 +1139,11 @@ export const useGameStore = create<Store>((set, get) => ({
           const flapSpeed = 3; // Flaps per second
           unit.wingPhase = ((unit.wingPhase || 0) + (flapSpeed * dtSec)) % 1;
         }
+
+        // After all XZ movement/collision/combat for this unit is settled, snap Y to
+        // the terrain so a ground unit on an arched bridge walks on top of the deck
+        // instead of clipping through its walls at water level.
+        applyDeckElevation(unit, dtSec);
       }
 
       // Note: Attacker tracking will be cleared at the end of the tick after all processing
@@ -1813,6 +1818,36 @@ function steeringTarget(unit: Unit, destination: Position3D): Position3D {
     return destination;
   }
   return pathfinder.nextWaypoint(unit, destination);
+}
+
+// Vertical speed (world units per second) at which a ground unit's Y closes toward the
+// terrain target Y. Fast enough that crossing onto the deck reads as stepping up rather
+// than levitating, slow enough that one frame of sampling a slightly-higher rail edge
+// doesn't pop the unit. ~30 covers the right/left bridge's ~5u deck rise in a sixth of
+// a second.
+const DECK_LIFT_RATE = 30;
+
+// Snap-distance below which the unit's Y is set directly to the target rather than
+// lerped — avoids residual floating-point chatter once basically at deck height.
+const DECK_LIFT_SNAP = 0.02;
+
+// Match a ground unit's Y to the terrain it's standing on so an arched bridge's deck
+// (Right_Bridge_Fully_Down sits ~5u above the water with a tall arch above) is walked
+// across on top rather than clipped through at water level. Off-bridge positions return
+// to base ground (y=0). Smooths the transition so stepping onto/off the deck reads as a
+// brief ramp instead of an instant jump. Ground-only: air units already manage their own
+// flight Y via the rendering offset, and water units swim at base level.
+function applyDeckElevation(unit: Unit, dtSec: number): void {
+  if (ANIMAL_MOVEMENT_TYPES[unit.animal] !== 'ground') return;
+  const targetY = terrainValidator.getBridgeSurfaceY(unit.position) ?? 0;
+  const currentY = unit.position.y;
+  const delta = targetY - currentY;
+  if (Math.abs(delta) < DECK_LIFT_SNAP) {
+    unit.position.y = targetY;
+    return;
+  }
+  const maxStep = DECK_LIFT_RATE * dtSec;
+  unit.position.y = currentY + Math.sign(delta) * Math.min(Math.abs(delta), maxStep);
 }
 
 function subtract3D(a: Position3D, b: Position3D): Position3D {

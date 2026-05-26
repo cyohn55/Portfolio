@@ -43,11 +43,14 @@ const UNREACHABLE = 1 << 29;
 /**
  * The slice of terrain queries the navigator depends on. Keeping this narrow lets the
  * navigator be tested against a synthetic terrain without a THREE scene, and keeps it
- * decoupled from TerrainValidator's internals.
+ * decoupled from TerrainValidator's internals. `deckAt` restricts the bridge detection
+ * to the walkable deck primitive (so rails/walls/posts don't count as walkable cells);
+ * `bridgeAt` is kept available for callers that need broad bridge-volume detection.
  */
 export interface TerrainQuery {
   isPositionOverWater(position: Position3D): boolean;
   bridgeAt(position: Position3D): { onBridge: boolean; side: BridgeSide | null };
+  deckAt(position: Position3D): { onDeck: boolean; side: BridgeSide | null };
   isSideOpen(side: BridgeSide): boolean;
 }
 
@@ -237,8 +240,12 @@ export class BridgeNavigator {
         if (!terrain.isPositionOverWater(position)) {
           this.cellType[cx * this.rows + cz] = CELL_LAND;
         } else {
-          const bridge = terrain.bridgeAt(position);
-          this.cellType[cx * this.rows + cz] = bridge.onBridge ? CELL_BRIDGE : CELL_WATER;
+          // Restrict bridge cells to the walkable deck primitive, so a rail-cell
+          // over water (broader bridge volume but not the surface) is treated as
+          // water — preventing a route from corner-cutting onto the deck through
+          // the railing.
+          const deck = terrain.deckAt(position);
+          this.cellType[cx * this.rows + cz] = deck.onDeck ? CELL_BRIDGE : CELL_WATER;
         }
       }
     }
@@ -302,7 +309,7 @@ export class BridgeNavigator {
 
     for (const cell of runCells) {
       if (side === null) {
-        const sampled = this.terrain!.bridgeAt(this.cellCenterOf(cell)).side;
+        const sampled = this.terrain!.deckAt(this.cellCenterOf(cell)).side;
         if (sampled) side = sampled;
       }
       for (const neighbor of this.neighbors8(cell)) {
