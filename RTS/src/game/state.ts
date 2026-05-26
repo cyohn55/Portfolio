@@ -550,7 +550,15 @@ export const useGameStore = create<Store>((set, get) => ({
             // BLOCKING DETECTION: Track when unit gets blocked
             const isCurrentlyBlocked = isMovementPaused || (unit.collisionAttempts && unit.collisionAttempts >= 3);
 
-            if (isCurrentlyBlocked) {
+            // On a bridge deck there is no good "give up here" position: dropping the
+            // order leaves the unit idling on a narrow chokepoint where it will be
+            // killed in place. Hold the order — the unwedge/pass-through logic in
+            // checkCollision is what lets it actually complete the crossing.
+            const onBridgeMidCrossing =
+              ANIMAL_MOVEMENT_TYPES[unit.animal] === 'ground' &&
+              terrainValidator.bridgeAt(unit.position).onBridge;
+
+            if (isCurrentlyBlocked && !onBridgeMidCrossing) {
               // Start tracking block time if not already tracking
               if (!unit.firstBlockedAtMs) {
                 unit.firstBlockedAtMs = nowMs;
@@ -574,7 +582,7 @@ export const useGameStore = create<Store>((set, get) => ({
                 }
               }
             } else {
-              // Unit is not blocked - clear block tracking
+              // Unit is not blocked (or is mid-crossing) - clear block tracking
               delete unit.firstBlockedAtMs;
             }
 
@@ -1076,9 +1084,11 @@ export const useGameStore = create<Store>((set, get) => ({
           // Combat movement: close the gap when out of range, or — for a ranged
           // unit that a faster melee threat has closed in on — back away to keep
           // shooting from distance (kiting). Player move orders stay authoritative,
-          // so kiting only kicks in when the unit has no active order.
+          // so neither advance-to-engage nor kiting kicks in while an order is set:
+          // without this guard the order step (south toward dest) and the engage step
+          // (north toward target) cancel out and the unit freezes mid-bridge.
           let combatMoveDir: Position3D | null = null;
-          if (distSquared > attackRangeSq) {
+          if (distSquared > attackRangeSq && !order) {
             // Out of range: advance toward the target (ground units route via bridges).
             combatMoveDir = normalize3D(subtract3D(steeringTarget(unit, target.position), unit.position));
           } else if (isRangedUnit && !order && target.kind !== 'Base' &&
@@ -1574,6 +1584,24 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
     // friendly units so it can squeeze along its valid path and escape. Water is still
     // enforced below, so it never ghosts into the moat — it just passes through teammates.
     if (isFriendly && (currentUnit.pathStuckTicks ?? 0) > UNWEDGE_STUCK_TICKS) {
+      continue;
+    }
+
+    // Bridge pass-through: a ground unit with an active move order that is currently on
+    // a bridge deck ignores enemy *collision push* (combat damage is still applied below
+    // by the combat phase). Without this, an enemy parked on the narrow Center_Bridge
+    // shoves the player unit sideways off the deck centerline until every adjacent step
+    // hits water and the unit is terrain-trapped at the chokepoint — the user-visible
+    // "frozen on the deck" symptom. Letting it slip past the enemy lets it complete the
+    // crossing and re-engage on open ground. Scoped to bridge + ordered ground units so
+    // open-field combat positioning is unaffected.
+    if (
+      isEnemy &&
+      currentUnit.kind === 'Unit' &&
+      ANIMAL_MOVEMENT_TYPES[currentUnit.animal] === 'ground' &&
+      unitOrders[currentUnit.id] !== undefined &&
+      terrainValidator.bridgeAt(currentUnit.position).onBridge
+    ) {
       continue;
     }
 
