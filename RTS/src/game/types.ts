@@ -65,6 +65,19 @@ export interface Unit {
   firstBlockedAtMs?: number; // timestamp when unit first became blocked
   currentAttackers?: string[]; // IDs of units currently attacking this unit
   priorityAttacker?: string; // ID of the attacker this unit is focusing on
+  // A* path cache (ground units only) — see GridPathfinder. The waypoints to follow, the
+  // current index into them, the destination the path was built for, and the bridge-state
+  // version it assumed (so it is recomputed when a bridge opens or closes).
+  pathWaypoints?: Position3D[];
+  pathIndex?: number;
+  pathDestX?: number;
+  pathDestZ?: number;
+  pathVersion?: number;
+  pathStall?: number;
+  pathProgressDist?: number;
+  pathStuckTicks?: number;
+  pathLastX?: number;
+  pathLastZ?: number;
 }
 
 export interface Player {

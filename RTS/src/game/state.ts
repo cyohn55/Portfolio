@@ -10,7 +10,7 @@ import { SpatialGrid } from '../utils/SpatialGrid';
 // compatible (and slightly speeds up the remaining produce() calls).
 setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
-import { bridgeNavigator } from '../components/Working/bridgeNavigator';
+import { pathfinder } from '../components/Working/pathfinder';
 import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, GameConfig, GameState, Player, Unit, PatrolRoute } from './types';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 
@@ -360,6 +360,10 @@ export const useGameStore = create<Store>((set, get) => ({
       draft.debugTickCount++;
 
       draft.tickCounter++;
+
+      // Reset the pathfinder's per-tick A* compute budget so bursts of new cross-map
+      // orders are spread over a few ticks instead of hitching a single frame.
+      pathfinder.beginTick(draft.tickCounter);
 
       // Verbose AI/combat logging is gated behind a dev flag. Building these
       // strings and writing to the console for hundreds of units every frame is
@@ -1506,6 +1510,10 @@ function findClosestEnemy(unit: Unit, grid: SpatialGrid | null, all: Unit[]): Un
 }
 
 // Performance-optimized collision detection function
+// Ticks a ground unit may be wedged (essentially motionless while trying to move) before
+// it is allowed to pass through friendly units to free itself. At 60 Hz this is ~1s.
+const UNWEDGE_STUCK_TICKS = 60;
+
 function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Unit[], collisionRadius: number = 2.5, selectedUnitIds: string[] = [], localPlayerId: string | null = null, unitOrders: Record<string, any> = {}, spatialGrid: SpatialGrid | null = null): Position3D {
   let adjustedPosition = { ...newPosition };
   let hasCollision = false;
@@ -1558,6 +1566,14 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
     const isFriendly = currentUnit.ownerId === other.ownerId;
 
     if (isEnemy && distanceSquared <= 4) { // Within 2 units, allow very close combat
+      continue;
+    }
+
+    // Unwedge: a unit that has been physically stuck for a while (crowd-pinned against
+    // terrain at a chokepoint, even after the pathfinder re-routes it) temporarily ignores
+    // friendly units so it can squeeze along its valid path and escape. Water is still
+    // enforced below, so it never ghosts into the moat — it just passes through teammates.
+    if (isFriendly && (currentUnit.pathStuckTicks ?? 0) > UNWEDGE_STUCK_TICKS) {
       continue;
     }
 
@@ -1634,11 +1650,22 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
   // Movement-type terrain rule: the only animals ever blocked are GROUND animals
   // trying to enter water without a lowered bridge. Air and water animals are
   // never blocked, so we skip the (raycast-backed) terrain query for them to keep
-  // the per-tick cost down at high unit counts. If the resolved step lands on
-  // forbidden water, the unit holds its position this frame.
+  // the per-tick cost down at high unit counts.
   if (ANIMAL_MOVEMENT_TYPES[currentUnit.animal] === 'ground' &&
       !terrainValidator.canAnimalMoveTo(currentUnit.animal, adjustedPosition)) {
-    return currentUnit.position;
+    // The resolved step lands on forbidden water — usually because a friendly push shoved
+    // the unit diagonally off a bridge deck. Rather than dead-stall (which jams crowds at
+    // the chokepoint, with units pinned against the water's edge), slide along whichever
+    // single axis stays on walkable ground, so the unit keeps flowing down the deck.
+    const slideAlongX = { x: adjustedPosition.x, y: currentUnit.position.y, z: currentUnit.position.z };
+    if (terrainValidator.canAnimalMoveTo(currentUnit.animal, slideAlongX)) {
+      return slideAlongX;
+    }
+    const slideAlongZ = { x: currentUnit.position.x, y: currentUnit.position.y, z: adjustedPosition.z };
+    if (terrainValidator.canAnimalMoveTo(currentUnit.animal, slideAlongZ)) {
+      return slideAlongZ;
+    }
+    return currentUnit.position; // boxed in on all sides this frame — hold
   }
 
   return adjustedPosition;
@@ -1721,15 +1748,16 @@ function distanceSquared3D(a: Position3D, b: Position3D): number {
 
 
 // Resolve the point a unit should actually steer toward to reach `destination`. For
-// ground units the bridge navigator may return an intermediate bridge entrance, so
-// they funnel onto a crossing instead of stalling at the water's edge. Air/water units
-// (which ignore water) and an un-built navigator fall through to the destination, so
-// callers can wrap any "advance toward" target unconditionally.
+// ground units the A* pathfinder returns the next waypoint of a route around the water
+// moat (a straight beeline when the way is clear), so they cross on a bridge and reach
+// the destination instead of stalling at the water's edge. Air/water units (which ignore
+// water) and an un-built pathfinder fall through to the destination, so callers can wrap
+// any "advance toward" target unconditionally.
 function steeringTarget(unit: Unit, destination: Position3D): Position3D {
-  if (ANIMAL_MOVEMENT_TYPES[unit.animal] !== 'ground' || !bridgeNavigator.isReady()) {
+  if (ANIMAL_MOVEMENT_TYPES[unit.animal] !== 'ground' || !pathfinder.isReady()) {
     return destination;
   }
-  return bridgeNavigator.nextWaypoint(unit.position, destination);
+  return pathfinder.nextWaypoint(unit, destination);
 }
 
 function subtract3D(a: Position3D, b: Position3D): Position3D {

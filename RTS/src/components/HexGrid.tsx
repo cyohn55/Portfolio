@@ -7,6 +7,7 @@ import { MapInteraction } from './HexInteraction';
 import { Skybox } from './Working/Skybox';
 import { buildOptimizedBattleMap } from './Working/mergeBattleMap';
 import { bridgeNavigator } from './Working/bridgeNavigator';
+import { pathfinder } from './Working/pathfinder';
 import { performanceMonitor } from '../utils/PerformanceMonitor';
 import { terrainValidator } from '../utils/TerrainValidator';
 import * as THREE from 'three';
@@ -15,6 +16,19 @@ import * as THREE from 'three';
 // navigation grid, so the grid covers the moat plus the shoreline units approach from.
 const NAV_GRID_MARGIN = 60;
 const NAV_GRID_STEP = 2; // grid cell size; ~half a unit body, fine enough to find bridge mouths
+
+// A* pathfinding grid spans the whole playable map (units and targets sit anywhere on it,
+// not just near the moat). Margin pads past the outermost spawn so edge positions stay
+// in-grid. The Battle_Map GLB carries far-flung decorative geometry, so the raw scene
+// bounding box is many times the playable area; clamp to the region units actually
+// occupy (spawns sit at |x| < 80, |z| ~ 252) to keep the grid compact and A* cheap.
+const PATH_GRID_MARGIN = 20;
+// Cell size must be fine enough to resolve thin shoreline water (e.g. the slivers beside a
+// bridge mouth); a coarser grid routes units straight through water the fine collision then
+// blocks, deadlocking them. 2 matches the bridge grid's proven moat resolution.
+const PATH_GRID_STEP = 2;
+const PATH_PLAY_HALF_X = 180;
+const PATH_PLAY_HALF_Z = 290;
 
 export function BattleMap() {
   const tick = useGameStore((s) => s.tick);
@@ -83,11 +97,28 @@ export function BattleMap() {
         );
       }
 
+      // Build the full-map A* pathfinding grid so ground units route around the moat to
+      // any destination, not just funnel onto the nearest bridge. Sized to the whole map
+      // (the merged scene's xz bounding box) plus a margin, since units and their targets
+      // can be anywhere — well beyond the moat the bridge grid covers.
+      const mapBox = new THREE.Box3().setFromObject(battleMapScene);
+      pathfinder.build(
+        terrainValidator,
+        {
+          minX: Math.max(mapBox.min.x - PATH_GRID_MARGIN, -PATH_PLAY_HALF_X),
+          minZ: Math.max(mapBox.min.z - PATH_GRID_MARGIN, -PATH_PLAY_HALF_Z),
+          maxX: Math.min(mapBox.max.x + PATH_GRID_MARGIN, PATH_PLAY_HALF_X),
+          maxZ: Math.min(mapBox.max.z + PATH_GRID_MARGIN, PATH_PLAY_HALF_Z),
+        },
+        PATH_GRID_STEP,
+      );
+
       // Dev-only handle for verifying water/bridge terrain queries after merge.
       if (import.meta.env.DEV) {
         (window as any).__rtsTerrain = terrainValidator;
         (window as any).__rtsMap = battleMapScene;
         (window as any).__rtsNav = bridgeNavigator;
+        (window as any).__rtsPath = pathfinder;
       }
     }
   }, [battleMapScene]);
@@ -179,6 +210,10 @@ export function BattleMap() {
     // raise/lower bridge actually changes crossability).
     if (bridgeNavigator.isReady()) {
       bridgeNavigator.refreshPortals();
+    }
+    // Invalidate cached A* paths that assumed the old bridge openness.
+    if (pathfinder.isReady()) {
+      pathfinder.refresh();
     }
   };
 
