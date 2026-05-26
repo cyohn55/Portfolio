@@ -1322,6 +1322,19 @@ export const useGameStore = create<Store>((set, get) => ({
         // Clear owl landing timer
         delete u.nearDestinationSinceMs;
 
+        // Drop any cached A* path. hasUsablePath() reuses a stored path whose goal is
+        // within ~12 units of the new destination, so a unit that just finished its
+        // previous order at A and is then ordered to a nearby B would keep steering
+        // toward A — its current position — and not move until the stall detector
+        // eventually re-paths (~0.75s). Looks to the player like the order was ignored.
+        delete u.pathWaypoints;
+        delete u.pathIndex;
+        delete u.pathDestX;
+        delete u.pathDestZ;
+        delete u.pathVersion;
+        delete u.pathStall;
+        delete u.pathProgressDist;
+
         console.log(`✅ PLAYER issued new order to ${u.animal} - switching to MOVING_TO_ORDER state`);
       }
     })
@@ -1368,6 +1381,16 @@ export const useGameStore = create<Store>((set, get) => ({
 
         // Clear owl landing timer
         delete unit.nearDestinationSinceMs;
+
+        // Drop any cached A* path (see moveCommand for why — same stale-route trap
+        // applies when right-click attack picks a target near the unit's last goal).
+        delete unit.pathWaypoints;
+        delete unit.pathIndex;
+        delete unit.pathDestX;
+        delete unit.pathDestZ;
+        delete unit.pathVersion;
+        delete unit.pathStall;
+        delete unit.pathProgressDist;
 
         console.log(`Unit ${unit.animal} targeting enemy ${cmd.targetId}`);
       }
