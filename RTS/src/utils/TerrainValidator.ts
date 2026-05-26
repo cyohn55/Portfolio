@@ -36,6 +36,13 @@ const DOWN = new THREE.Vector3(0, -1, 0);
 // result per cell keeps that query O(1) instead of casting a ray every step.
 const TERRAIN_CELL_SIZE = 1;
 
+// Single shared "no deck here" object returned by deckAt for misses and stored in
+// the deckAtCache, so the hot path (every ground unit, every tick) doesn't allocate.
+const DECK_AT_MISS: { onDeck: boolean; side: BridgeSide | null } = Object.freeze({
+  onDeck: false,
+  side: null,
+}) as { onDeck: boolean; side: BridgeSide | null };
+
 export class TerrainValidator {
   // Accepts any Object3D (Scene or merged Group); only .traverse() is used.
   private battleMapScene: THREE.Object3D | null = null;
@@ -56,6 +63,13 @@ export class TerrainValidator {
   // bridge's raised/lowered state changes (which is the only thing that alters the
   // answer for a fixed cell). Keeps per-tick terrain queries off the raycaster.
   private groundTraversableCache = new Map<number, boolean>();
+  // Memoized deckAt per grid cell. Constant for the session — the deck primitive
+  // doesn't move (raise/lower frames swap visibility, but the raycaster ignores
+  // visibility, so the geometric answer is stable). The per-tick deck-elevation
+  // lookup (applyDeckElevation in state.ts) is the hot path that necessitates this
+  // cache: without it, every ground unit pays multiple triangle-mesh raycasts per
+  // tick, which dominates frame time once bridges are crossed by a crowd.
+  private deckAtCache = new Map<number, { onDeck: boolean; side: BridgeSide | null }>();
   // The walkable-deck primitive of each side's lowered frame, identified once at
   // load by picking the bridge primitive whose triangles cover the largest
   // up-facing area within that frame's group (so flat horizontal slabs beat
@@ -475,26 +489,37 @@ export class TerrainValidator {
    * is currently shown — the cell classifier callers can run at load time.
    */
   public deckAt(position: Position3D): { onDeck: boolean; side: BridgeSide | null } {
-    // Broad-phase: outside any bridge's bounding box, no need to raycast.
+    // Broad-phase: outside any bridge's bounding box, no need to raycast or cache.
     if (this.bridgeBounds &&
         (position.x < this.bridgeBounds.minX || position.x > this.bridgeBounds.maxX ||
          position.z < this.bridgeBounds.minZ || position.z > this.bridgeBounds.maxZ)) {
-      return { onDeck: false, side: null };
+      return DECK_AT_MISS;
     }
+
+    // Memoize per grid cell — see deckAtCache.
+    const cellX = Math.floor(position.x / TERRAIN_CELL_SIZE) + 32768;
+    const cellZ = Math.floor(position.z / TERRAIN_CELL_SIZE) + 32768;
+    const key = cellX * 65536 + cellZ;
+    const cached = this.deckAtCache.get(key);
+    if (cached !== undefined) return cached;
 
     const origin = new THREE.Vector3(position.x, position.y + 100, position.z);
     this.raycaster.set(origin, DOWN);
 
+    let result: { onDeck: boolean; side: BridgeSide | null };
     if (this.isOverDeckForSide(this.rightDeckMesh, this.rightBridgeMeshes)) {
-      return { onDeck: true, side: 'right' };
+      result = { onDeck: true, side: 'right' };
+    } else if (this.isOverDeckForSide(this.leftDeckMesh, this.leftBridgeMeshes)) {
+      result = { onDeck: true, side: 'left' };
+    } else if (this.isOverDeckForSide(this.centerDeckMesh, this.centerBridgeMeshes)) {
+      result = { onDeck: true, side: 'center' };
+    } else {
+      result = DECK_AT_MISS;
     }
-    if (this.isOverDeckForSide(this.leftDeckMesh, this.leftBridgeMeshes)) {
-      return { onDeck: true, side: 'left' };
-    }
-    if (this.isOverDeckForSide(this.centerDeckMesh, this.centerBridgeMeshes)) {
-      return { onDeck: true, side: 'center' };
-    }
-    return { onDeck: false, side: null };
+
+    if (this.deckAtCache.size > 200_000) this.deckAtCache.clear();
+    this.deckAtCache.set(key, result);
+    return result;
   }
 
   // Strict deck test for one side: raycast against the identified deck primitive,

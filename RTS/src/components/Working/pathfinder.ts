@@ -43,11 +43,6 @@ const SQRT2 = Math.SQRT2;
 // a frame; a reachable goal on this map settles in far fewer expansions.
 const MAX_EXPANSIONS = 60_000;
 
-// Extra cost (in cell-steps) for stepping onto a deck cell that sits at the water's edge.
-// High enough to keep routes off the rails of a wide deck, low enough that a narrow deck
-// (all edge cells) is still crossed rather than treated as impassable.
-const EDGE_DECK_PENALTY = 2.5;
-
 // How many A* searches may run in one tick. Units that need a path but miss the budget
 // follow a stale path or a coarse fallback this tick and get a real path within a few.
 // Kept low so a whole group ordered across the map at once spreads its routing cost over
@@ -98,10 +93,6 @@ export class GridPathfinder {
 
   private cellType: Int8Array = new Int8Array(0);
   private cellSide: Int8Array = new Int8Array(0);
-  // Deck cells touching the water's edge. A* pays a surcharge to use these so routes run
-  // down the middle of a deck rather than hugging the shortest-side rail — which would
-  // funnel a whole group onto one edge and jam there. See EDGE_DECK_PENALTY.
-  private cellDeckEdge: Uint8Array = new Uint8Array(0);
 
   // Live side-bridge openness, refreshed when the bridge state changes. `version` bumps
   // on any change so cached unit paths computed under the old openness are recomputed.
@@ -142,9 +133,7 @@ export class GridPathfinder {
     const count = this.cols * this.rows;
     this.cellType = new Int8Array(count);
     this.cellSide = new Int8Array(count);
-    this.cellDeckEdge = new Uint8Array(count);
     this.classifyCells();
-    this.markDeckEdges();
 
     this.gScore = new Float32Array(count);
     this.gStamp = new Int32Array(count); // 0 = "no search has touched this cell"
@@ -342,8 +331,7 @@ export class GridPathfinder {
           }
           if (this.closedStamp[neighbor] === sid) continue;
 
-          let tentative = g + (diagonal ? SQRT2 : 1);
-          if (this.cellDeckEdge[neighbor]) tentative += EDGE_DECK_PENALTY;
+          const tentative = g + (diagonal ? SQRT2 : 1);
           if (this.gStamp[neighbor] === sid && tentative >= this.gScore[neighbor]) continue;
           this.setG(neighbor, sid, tentative);
           this.cameFrom[neighbor] = current;
@@ -435,29 +423,6 @@ export class GridPathfinder {
         } else {
           this.cellType[index] = CELL_LAND;
         }
-      }
-    }
-  }
-
-  // A deck cell is an "edge" cell if any orthogonal neighbour is open water or off-grid,
-  // i.e. a unit standing there is one step from the drink. Used to bias routes to the
-  // deck interior so groups don't all crowd the same rail.
-  private markDeckEdges(): void {
-    for (let index = 0; index < this.cellType.length; index++) {
-      if (this.cellType[index] !== CELL_DECK) continue;
-      const cx = Math.floor(index / this.rows);
-      const cz = index % this.rows;
-      const offGridOrWater = (nx: number, nz: number): boolean => {
-        if (nx < 0 || nz < 0 || nx >= this.cols || nz >= this.rows) return true;
-        return this.cellType[nx * this.rows + nz] === CELL_WATER;
-      };
-      if (
-        offGridOrWater(cx - 1, cz) ||
-        offGridOrWater(cx + 1, cz) ||
-        offGridOrWater(cx, cz - 1) ||
-        offGridOrWater(cx, cz + 1)
-      ) {
-        this.cellDeckEdge[index] = 1;
       }
     }
   }
