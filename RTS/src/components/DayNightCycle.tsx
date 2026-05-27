@@ -10,6 +10,7 @@ interface DayNightCycleProps {
 export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps) {
   const lightingSettings = useGameStore((s) => s.lightingSettings);
   const isPaused = useGameStore((s) => s.isPaused);
+  const shadowsEnabled = useGameStore((s) => s.shadowsEnabled);
   const sunRef = useRef<THREE.DirectionalLight>(null);
   const moonRef = useRef<THREE.DirectionalLight>(null);
   const hemisphereRef = useRef<THREE.HemisphereLight>(null);
@@ -216,13 +217,27 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
         args={[0x87CEEB, 0x222233, 0.8]}
       />
 
-      {/* Sun directional light */}
+      {/* Sun directional light. Casts shadows only when the player enables them
+          from the pause menu. The orthographic shadow frustum is sized to span
+          the whole battlefield (units run roughly z ∈ [-260, 260]); on mobile
+          PerformanceOptimizer keeps shadowMap.enabled false, so this no-ops. */}
       <directionalLight
         ref={sunRef}
         position={[50, 50, 30]}
         intensity={2.5}
         color={0xFFFAF0}
-        castShadow={false}
+        castShadow={shadowsEnabled}
+        shadow-mapSize-width={4096}
+        shadow-mapSize-height={4096}
+        shadow-camera-near={0.5}
+        shadow-camera-far={1000}
+        shadow-camera-left={-300}
+        shadow-camera-right={300}
+        shadow-camera-top={300}
+        shadow-camera-bottom={-300}
+        shadow-bias={-0.0002}
+        shadow-normalBias={0.05}
+        shadow-radius={4}
       />
 
       {/* Moon directional light */}
