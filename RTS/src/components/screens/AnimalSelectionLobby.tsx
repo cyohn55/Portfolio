@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useGameStore } from '../../game/state';
 import type { AnimalId } from '../../game/types';
+import { AnimalModelPreview } from '../../../Working/AnimalModelPreview';
 import './AnimalSelectionLobby.css';
 
 const ALL_ANIMALS: AnimalId[] = ['Bee', 'Bear', 'Bunny', 'Chicken', 'Cat', 'Dolphin', 'Fox', 'Frog', 'Owl', 'Pig', 'Turtle', 'Yetti'];
@@ -196,6 +197,9 @@ export function AnimalSelectionLobby() {
                 onMouseEnter={() => setHoveredAnimal(animal)}
                 onMouseLeave={() => setHoveredAnimal(null)}
               >
+                <div className="animal-model-preview">
+                  <AnimalModelPreview animal={animal} />
+                </div>
                 <div className="animal-name">{animal}</div>
                 <div className="animal-role">{stats.role}</div>
                 <div className="animal-description">{stats.description}</div>
