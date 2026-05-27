@@ -25,12 +25,32 @@
 .postgame-container {
   max-width: 800px;
   width: 90%;
+  /* Cap to the viewport so the container never extends past the screen.
+     Combined with overflow-y: auto, anything that doesn't fit becomes
+     scrollable instead of being clipped under the bottom edge. */
+  max-height: 92vh;
+  overflow-y: auto;
   background: linear-gradient(135deg, #0b0f1a 0%, #1a1f35 100%);
   border: 2px solid rgba(88, 120, 255, 0.5);
   border-radius: 16px;
-  padding: 40px;
+  padding: 28px 32px;
   animation: slideUp 0.6s ease-out;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+  /* Slimmer custom scrollbar so the scroll affordance reads as part of the
+     panel rather than the default browser chrome. */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(88, 120, 255, 0.5) transparent;
+}
+
+.postgame-container::-webkit-scrollbar {
+  width: 8px;
+}
+.postgame-container::-webkit-scrollbar-thumb {
+  background: rgba(88, 120, 255, 0.5);
+  border-radius: 4px;
+}
+.postgame-container::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 @keyframes slideUp {
@@ -47,8 +67,8 @@
 /* Victory/Defeat Banner */
 .postgame-banner {
   text-align: center;
-  margin-bottom: 40px;
-  padding: 30px;
+  margin-bottom: 24px;
+  padding: 20px 24px;
   border-radius: 12px;
   position: relative;
   overflow: hidden;
@@ -65,8 +85,8 @@
 }
 
 .banner-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
+  font-size: 48px;
+  margin-bottom: 8px;
   animation: bounce 1s ease-in-out infinite;
 }
 
@@ -80,42 +100,42 @@
 }
 
 .postgame-banner h1 {
-  font-size: 48px;
-  margin: 0 0 12px 0;
+  font-size: 36px;
+  margin: 0 0 6px 0;
   color: #ffffff;
   text-shadow: 0 0 20px rgba(88, 120, 255, 0.8);
-  letter-spacing: 4px;
+  letter-spacing: 3px;
 }
 
 .postgame-banner p {
-  font-size: 18px;
+  font-size: 15px;
   color: rgba(255, 255, 255, 0.8);
   margin: 0;
 }
 
 /* Battle Statistics */
 .postgame-stats {
-  margin-bottom: 40px;
+  margin-bottom: 24px;
 }
 
 .postgame-stats h2 {
-  font-size: 28px;
+  font-size: 22px;
   color: #ffffff;
   text-align: center;
-  margin: 0 0 30px 0;
+  margin: 0 0 16px 0;
 }
 
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 30px;
-  margin-bottom: 30px;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
 .stats-column {
   background: rgba(17, 23, 38, 0.6);
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 10px;
+  padding: 14px 16px;
 }
 
 .stats-column.player {
@@ -127,8 +147,8 @@
 }
 
 .stats-column h3 {
-  font-size: 20px;
-  margin: 0 0 20px 0;
+  font-size: 17px;
+  margin: 0 0 10px 0;
   color: #ffffff;
   text-align: center;
 }
@@ -137,8 +157,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
+  padding: 6px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 12px;
 }
 
 .stat-row:last-child {
@@ -146,15 +167,22 @@
 }
 
 .stat-label {
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(255, 255, 255, 0.7);
   font-weight: 600;
 }
 
 .stat-value {
-  font-size: 16px;
+  font-size: 14px;
   color: #ffffff;
   font-weight: 700;
+  /* Keep long team strings like "Bee, Bear, Fox" from forcing the column to
+     widen past the stats-grid track. Truncates with an ellipsis if the value
+     would otherwise overflow. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .stat-value.alive {
@@ -170,44 +198,45 @@
   background: rgba(88, 120, 255, 0.1);
   border: 1px solid rgba(88, 120, 255, 0.3);
   border-radius: 8px;
-  padding: 16px;
+  padding: 10px 14px;
   text-align: center;
 }
 
 .victory-condition p {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(255, 255, 255, 0.9);
 }
 
 /* Score Breakdown */
 .postgame-score {
-  margin-bottom: 32px;
+  margin-bottom: 20px;
 }
 
 .postgame-score h2 {
-  font-size: 24px;
+  font-size: 20px;
   color: #ffffff;
   text-align: center;
-  margin: 0 0 20px 0;
+  margin: 0 0 12px 0;
 }
 
 .score-breakdown {
   background: rgba(17, 23, 38, 0.6);
   border: 1px solid rgba(88, 120, 255, 0.3);
-  border-radius: 12px;
-  padding: 16px 20px;
+  border-radius: 10px;
+  padding: 10px 14px;
 }
 
 .score-row {
   display: grid;
   grid-template-columns: 1fr auto auto;
   align-items: center;
-  gap: 16px;
-  padding: 8px 0;
+  gap: 12px;
+  padding: 5px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(255, 255, 255, 0.85);
+  min-width: 0;
 }
 
 .score-row:last-child {
@@ -222,7 +251,7 @@
 .score-count {
   font-variant-numeric: tabular-nums;
   color: rgba(255, 255, 255, 0.65);
-  min-width: 40px;
+  min-width: 32px;
   text-align: right;
 }
 
@@ -230,15 +259,24 @@
   font-variant-numeric: tabular-nums;
   color: #ffffff;
   font-weight: 700;
-  min-width: 56px;
+  min-width: 48px;
   text-align: right;
+}
+
+.score-label {
+  /* Allow long labels like "Bridges held down (per 5s)" to wrap or truncate
+     instead of pushing the count/points columns past the panel edge. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .score-total {
   margin-top: 4px;
-  padding-top: 12px;
+  padding-top: 10px;
   border-top: 2px solid rgba(88, 120, 255, 0.5);
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .score-total .score-label {
@@ -250,35 +288,35 @@
 
 .score-total .score-points {
   color: #ffd76a;
-  font-size: 22px;
+  font-size: 20px;
   text-shadow: 0 0 12px rgba(255, 215, 106, 0.4);
 }
 
 /* Leaderboard */
 .postgame-leaderboard {
-  margin-bottom: 32px;
+  margin-bottom: 20px;
 }
 
 .postgame-leaderboard h2 {
-  font-size: 24px;
+  font-size: 20px;
   color: #ffffff;
   text-align: center;
-  margin: 0 0 16px 0;
+  margin: 0 0 10px 0;
 }
 
 .leaderboard-form {
   background: rgba(17, 23, 38, 0.6);
   border: 1px solid rgba(88, 120, 255, 0.3);
   border-radius: 10px;
-  padding: 14px 16px;
-  margin-bottom: 16px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
 }
 
 .leaderboard-form-label {
   display: block;
-  font-size: 13px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.7);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .leaderboard-form-row {
@@ -288,8 +326,9 @@
 
 .leaderboard-input {
   flex: 1;
-  padding: 10px 12px;
-  font-size: 14px;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 13px;
   background: rgba(11, 15, 26, 0.8);
   border: 1px solid rgba(88, 120, 255, 0.4);
   border-radius: 6px;
@@ -308,8 +347,8 @@
 }
 
 .leaderboard-submit {
-  padding: 10px 18px;
-  font-size: 13px;
+  padding: 8px 16px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -346,9 +385,24 @@
   background: rgba(17, 23, 38, 0.6);
   border: 1px solid rgba(88, 120, 255, 0.3);
   border-radius: 10px;
-  overflow: hidden;
-  max-height: 260px;
+  /* Cap the visible rows and scroll the rest internally so a long top-10
+     doesn't push the action buttons below the container. Reduced from 260px
+     because the outer container is now itself scrollable as a safety net. */
+  max-height: 200px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(88, 120, 255, 0.5) transparent;
+}
+
+.leaderboard-list::-webkit-scrollbar {
+  width: 6px;
+}
+.leaderboard-list::-webkit-scrollbar-thumb {
+  background: rgba(88, 120, 255, 0.5);
+  border-radius: 3px;
+}
+.leaderboard-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .leaderboard-empty {
@@ -361,12 +415,12 @@
 
 .leaderboard-row {
   display: grid;
-  grid-template-columns: 48px 1fr 32px 72px;
+  grid-template-columns: 40px minmax(0, 1fr) 28px 64px;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: 10px;
+  padding: 7px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(255, 255, 255, 0.85);
 }
 
@@ -433,9 +487,9 @@
 }
 
 .postgame-button {
-  min-width: 180px;
-  padding: 16px 32px;
-  font-size: 16px;
+  min-width: 160px;
+  padding: 12px 28px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 2px;
   text-transform: uppercase;
@@ -477,28 +531,32 @@
 /* Responsive Design */
 @media (max-width: 768px) {
   .postgame-container {
-    padding: 24px;
+    padding: 18px 16px;
+    max-height: 94vh;
   }
 
   .postgame-banner h1 {
-    font-size: 36px;
+    font-size: 28px;
+    letter-spacing: 2px;
   }
 
   .banner-icon {
-    font-size: 48px;
+    font-size: 36px;
   }
 
   .stats-grid {
     grid-template-columns: 1fr;
-    gap: 20px;
+    gap: 12px;
   }
 
   .postgame-actions {
     flex-direction: column;
+    gap: 10px;
   }
 
   .postgame-button {
     width: 100%;
+    min-width: 0;
   }
 
   .leaderboard-form-row {
@@ -510,8 +568,13 @@
   }
 
   .leaderboard-row {
-    grid-template-columns: 36px 1fr 28px 60px;
-    font-size: 13px;
-    padding: 8px 12px;
+    grid-template-columns: 32px minmax(0, 1fr) 26px 56px;
+    font-size: 12px;
+    padding: 6px 10px;
+    gap: 8px;
+  }
+
+  .leaderboard-list {
+    max-height: 160px;
   }
 }
