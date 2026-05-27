@@ -171,7 +171,9 @@
   align-items: center;
   padding: 5px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  gap: 12px;
+  /* 8px (was 12px) so longer labels like "Bridge Capture Time:" have a few
+     more pixels of room before they hit the value column on a narrow card. */
+  gap: 8px;
 }
 
 .stat-row:last-child {
@@ -192,23 +194,24 @@
   font-size: 12px;
   color: rgba(255, 255, 255, 0.7);
   font-weight: 600;
-  /* Keep multi-word labels like "Bridge Capture Time:" and
-     "Queens Eliminated:" on a single line. The flex row has a 12px gap to
-     the value; if the combined width ever exceeded the card we'd ellipsis-
-     truncate the label rather than wrap it, but the renamed labels all fit
-     within the per-card content width at this font size. */
+  /* The label is the part the user needs to read in full — never let flex
+     shrink it. white-space: nowrap keeps it on one line; no ellipsis,
+     because we don't want "Bases Destroyed:" collapsing to "Bas...". If a
+     card ever genuinely can't fit label + gap + value, the value (a short
+     number) is the one that gives up space via its own min-width: 0.
+     flex-shrink: 0 is the key bit. */
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
+  flex-shrink: 0;
 }
 
 .stat-value {
   font-size: 14px;
   color: #ffffff;
   font-weight: 700;
-  /* Numeric stat values stay on one line — they're always short ("3/3", "27").
-     The Team row opts out via .stat-value-team. */
+  /* Values are short numbers ("3/3", "27", "36s") so they essentially never
+     need to shrink — but they have the ellipsis fallback (and flex-shrink: 1
+     by default) so the label never does. The Team row opts out via
+     .stat-value-team. */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

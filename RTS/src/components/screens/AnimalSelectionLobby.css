@@ -136,13 +136,24 @@
   gap: 8px;
 }
 
-.stat-row {
+/*
+ * Lobby stat rows are scoped under .stat-bars on purpose.
+ *
+ * Vite concatenates every imported component CSS file into one global
+ * stylesheet, so unscoped `.stat-row` / `.stat-label` / `.stat-value` rules
+ * here used to collide with the post-game Forces cards — which then
+ * inherited the lobby's `width: 35px` clamp and truncated labels like
+ * "Bases Destroyed:" down to "Bas...". Descendant-scoping to `.stat-bars`
+ * (their actual parent in AnimalSelectionLobby.tsx) keeps each component's
+ * layout self-contained without renaming the markup.
+ */
+.stat-bars .stat-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.stat-label {
+.stat-bars .stat-label {
   font-size: 11px;
   font-weight: 600;
   color: #8ea3ff;
@@ -151,7 +162,7 @@
   flex-shrink: 0;
 }
 
-.stat-bar {
+.stat-bars .stat-bar {
   flex: 1;
   height: 8px;
   background: rgba(255, 255, 255, 0.1);
@@ -159,33 +170,33 @@
   overflow: hidden;
 }
 
-.stat-fill {
+.stat-bars .stat-fill {
   height: 100%;
   border-radius: 4px;
   transition: width 0.3s ease;
 }
 
-.stat-fill.hp {
+.stat-bars .stat-fill.hp {
   background: linear-gradient(90deg, #4ade80 0%, #22c55e 100%);
 }
 
-.stat-fill.dmg {
+.stat-bars .stat-fill.dmg {
   background: linear-gradient(90deg, #f87171 0%, #ef4444 100%);
 }
 
-.stat-fill.spd {
+.stat-bars .stat-fill.spd {
   background: linear-gradient(90deg, #60a5fa 0%, #3b82f6 100%);
 }
 
-.stat-fill.dps {
+.stat-bars .stat-fill.dps {
   background: linear-gradient(90deg, #f87171 0%, #ef4444 100%);
 }
 
-.stat-fill.rng {
+.stat-bars .stat-fill.rng {
   background: linear-gradient(90deg, #c084fc 0%, #a855f7 100%);
 }
 
-.stat-value {
+.stat-bars .stat-value {
   font-size: 11px;
   font-weight: 600;
   color: #ffffff;
@@ -524,22 +535,22 @@
     min-height: 28px;
   }
 
-  .stat-row {
+  .stat-bars .stat-row {
     gap: 4px;
   }
 
-  .stat-label {
+  .stat-bars .stat-label {
     font-size: 8px;
     width: 24px;
     flex-shrink: 0;
   }
 
-  .stat-bar {
+  .stat-bars .stat-bar {
     height: 5px;
     min-width: 0;
   }
 
-  .stat-value {
+  .stat-bars .stat-value {
     font-size: 8px;
     width: 20px;
     flex-shrink: 0;
@@ -640,21 +651,21 @@
     display: none;
   }
 
-  .stat-row {
+  .stat-bars .stat-row {
     gap: 3px;
   }
 
-  .stat-label {
+  .stat-bars .stat-label {
     font-size: 7px;
     width: 22px;
     flex-shrink: 0;
   }
 
-  .stat-bar {
+  .stat-bars .stat-bar {
     height: 4px;
   }
 
-  .stat-value {
+  .stat-bars .stat-value {
     font-size: 7px;
     width: 18px;
     flex-shrink: 0;
