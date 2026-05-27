@@ -1838,14 +1838,21 @@ const DECK_LIFT_RATE = 30;
 // lerped — avoids residual floating-point chatter once basically at deck height.
 const DECK_LIFT_SNAP = 0.02;
 
-// Match a ground unit's Y to the terrain it's standing on so an arched bridge's deck
-// (Right_Bridge_Fully_Down sits ~5u above the water with a tall arch above) is walked
-// across on top rather than clipped through at water level. Off-bridge positions return
-// to base ground (y=0). Smooths the transition so stepping onto/off the deck reads as a
-// brief ramp instead of an instant jump. Ground-only: air units already manage their own
-// flight Y via the rendering offset, and water units swim at base level.
+// Match a surface-traversing unit's Y to the terrain it's standing on so an arched
+// bridge's deck (Right_Bridge_Fully_Down sits ~5u above the water with a tall arch
+// above) is walked across on top rather than clipped through at water level. Off-bridge
+// positions return to base ground (y=0). Smooths the transition so stepping onto/off
+// the deck reads as a brief ramp instead of an instant jump.
+//
+// Applies to ground AND water units: ground units must use bridges to cross the moat,
+// and water units — which beeline straight through the moat — would otherwise swim
+// through bridge pillars/rails/decks at y=0 whenever their path passes under a span.
+// Lifting them onto the deck while their XZ is over a (traversable) deck cell makes
+// them walk across the bridge surface for that span and drop back into the water on
+// the far side, so they never clip the bridge geometry. Air units are excluded because
+// they manage their own flight Y via the render-time vertical offset (Owl's +10 lift).
 function applyDeckElevation(unit: Unit, dtSec: number): void {
-  if (ANIMAL_MOVEMENT_TYPES[unit.animal] !== 'ground') return;
+  if (ANIMAL_MOVEMENT_TYPES[unit.animal] === 'air') return;
   const targetY = terrainValidator.getBridgeSurfaceY(unit.position) ?? 0;
   const currentY = unit.position.y;
   const delta = targetY - currentY;
