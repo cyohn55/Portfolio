@@ -385,24 +385,32 @@
   background: rgba(17, 23, 38, 0.6);
   border: 1px solid rgba(88, 120, 255, 0.3);
   border-radius: 10px;
-  /* Cap the visible rows and scroll the rest internally so a long top-10
-     doesn't push the action buttons below the container. Reduced from 260px
-     because the outer container is now itself scrollable as a safety net. */
-  max-height: 200px;
+  /* Cap the inner list height so a full top-10 (MAX_ENTRIES in leaderboard.ts)
+     comfortably fits on a normal desktop without internal scrolling, but if
+     the row height grows (long names, larger fonts, mobile) or the viewport
+     is short, the list scrolls instead of clipping. The outer postgame
+     container also has overflow-y: auto as a safety net. */
+  max-height: 360px;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(88, 120, 255, 0.5) transparent;
+  /* Use the OS-default scrollbar width (not "thin") so the scroll affordance
+     is obviously discoverable when the leaderboard fills up. */
+  scrollbar-color: rgba(106, 140, 255, 0.9) rgba(17, 23, 38, 0.4);
 }
 
 .leaderboard-list::-webkit-scrollbar {
-  width: 6px;
+  width: 10px;
 }
 .leaderboard-list::-webkit-scrollbar-thumb {
-  background: rgba(88, 120, 255, 0.5);
-  border-radius: 3px;
+  background: rgba(106, 140, 255, 0.9);
+  border-radius: 5px;
+  border: 2px solid rgba(17, 23, 38, 0.4);
+}
+.leaderboard-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(130, 160, 255, 1);
 }
 .leaderboard-list::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(17, 23, 38, 0.4);
+  border-radius: 5px;
 }
 
 .leaderboard-empty {
@@ -575,6 +583,8 @@
   }
 
   .leaderboard-list {
-    max-height: 160px;
+    /* On narrow viewports, force the inner list to scroll so the action
+       buttons stay reachable without scrolling the whole container. */
+    max-height: 200px;
   }
 }
