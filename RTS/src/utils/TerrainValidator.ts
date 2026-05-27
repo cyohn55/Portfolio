@@ -43,6 +43,12 @@ const DECK_AT_MISS: { onDeck: boolean; side: BridgeSide | null } = Object.freeze
   side: null,
 }) as { onDeck: boolean; side: BridgeSide | null };
 
+// Shared miss object for bridgeAtCache (same rationale as DECK_AT_MISS).
+const BRIDGE_AT_MISS: { onBridge: boolean; side: BridgeSide | null } = Object.freeze({
+  onBridge: false,
+  side: null,
+}) as { onBridge: boolean; side: BridgeSide | null };
+
 export class TerrainValidator {
   // Accepts any Object3D (Scene or merged Group); only .traverse() is used.
   private battleMapScene: THREE.Object3D | null = null;
@@ -70,6 +76,14 @@ export class TerrainValidator {
   // cache: without it, every ground unit pays multiple triangle-mesh raycasts per
   // tick, which dominates frame time once bridges are crossed by a crowd.
   private deckAtCache = new Map<number, { onDeck: boolean; side: BridgeSide | null }>();
+  // Memoized bridgeAt per grid cell. Stable for the same reason as deckAtCache:
+  // every raise/lower frame is a static mesh and the raycaster ignores visibility,
+  // so the geometric answer never changes. This is the hot-path equivalent of
+  // deckAtCache for callers that need the broader bridge-volume predicate
+  // (e.g. the collision pass-through rule in state.ts, which is called once per
+  // nearby unit per tick — N units in a bridge crowd would otherwise pay O(N^2)
+  // raycasts every frame against the bridge mesh arrays).
+  private bridgeAtCache = new Map<number, { onBridge: boolean; side: BridgeSide | null }>();
   // The walkable-deck primitives of each side's lowered frame, identified once
   // at load. The deck is generally a small set of horizontal slabs sharing a top
   // Y — e.g. the right bridge ships as a main span with a multi-unit gap in the
@@ -144,6 +158,8 @@ export class TerrainValidator {
     this.leftBridgeMeshes = [];
     this.centerBridgeMeshes = [];
     this.groundTraversableCache.clear();
+    this.deckAtCache.clear();
+    this.bridgeAtCache.clear();
 
     // Ensure world matrices are current so mesh bounding boxes (size guard below)
     // and the raycasts are computed against final world transforms.
@@ -497,8 +513,30 @@ export class TerrainValidator {
    * deckAt(), which restricts to the deck primitive's XZ footprint.
    */
   public bridgeAt(position: Position3D): { onBridge: boolean; side: BridgeSide | null } {
+    // Broad-phase: outside any bridge's bounding box, no need to raycast or cache.
+    if (this.bridgeBounds &&
+        (position.x < this.bridgeBounds.minX || position.x > this.bridgeBounds.maxX ||
+         position.z < this.bridgeBounds.minZ || position.z > this.bridgeBounds.maxZ)) {
+      return BRIDGE_AT_MISS;
+    }
+
+    // Memoize per grid cell — bridge frame meshes are static (only visibility
+    // toggles, which the raycaster ignores) so the geometric answer is stable.
+    // Without this cache, checkCollision in state.ts re-raycasts the bridge mesh
+    // arrays once per nearby unit, causing the cliff users see when a crowd
+    // crosses the bridge.
+    const cellX = Math.floor(position.x / TERRAIN_CELL_SIZE) + 32768;
+    const cellZ = Math.floor(position.z / TERRAIN_CELL_SIZE) + 32768;
+    const key = cellX * 65536 + cellZ;
+    const cached = this.bridgeAtCache.get(key);
+    if (cached !== undefined) return cached;
+
     const { onBridge, bridgeSide } = this.isPositionOnBridge(position);
-    return { onBridge, side: bridgeSide };
+    const result = onBridge ? { onBridge, side: bridgeSide } : BRIDGE_AT_MISS;
+
+    if (this.bridgeAtCache.size > 200_000) this.bridgeAtCache.clear();
+    this.bridgeAtCache.set(key, result);
+    return result;
   }
 
   /**

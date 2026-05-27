@@ -1568,6 +1568,18 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
   // SIMPLIFIED: Use localPlayerId to identify human player units
   const isCurrentUnitPlayer = currentUnit.ownerId === localPlayerId;
 
+  // Precompute the bridge pass-through predicate ONCE per call — it depends only on
+  // currentUnit.position (constant for this checkCollision pass), not on `other`. The
+  // raycast-backed bridgeAt() is now cached per grid cell, but the cheap preconditions
+  // here also let us skip even the hashmap lookup for the common case (non-ground unit
+  // without an order, or any non-Unit kind). Without this hoist, N units crowded on a
+  // bridge paid an O(N) per-neighbor query each — the perf cliff users see on crossings.
+  const canPassThroughEnemyOnBridge =
+    currentUnit.kind === 'Unit' &&
+    ANIMAL_MOVEMENT_TYPES[currentUnit.animal] === 'ground' &&
+    unitOrders[currentUnit.id] !== undefined &&
+    terrainValidator.bridgeAt(currentUnit.position).onBridge;
+
   // Use spatial grid if available for faster nearby unit lookup
   let nearbyUnits: Unit[];
   const checkRadius = collisionRadius * 3; // Check slightly larger area
@@ -1626,14 +1638,9 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
     // hits water and the unit is terrain-trapped at the chokepoint — the user-visible
     // "frozen on the deck" symptom. Letting it slip past the enemy lets it complete the
     // crossing and re-engage on open ground. Scoped to bridge + ordered ground units so
-    // open-field combat positioning is unaffected.
-    if (
-      isEnemy &&
-      currentUnit.kind === 'Unit' &&
-      ANIMAL_MOVEMENT_TYPES[currentUnit.animal] === 'ground' &&
-      unitOrders[currentUnit.id] !== undefined &&
-      terrainValidator.bridgeAt(currentUnit.position).onBridge
-    ) {
+    // open-field combat positioning is unaffected. The bridge predicate is hoisted to
+    // canPassThroughEnemyOnBridge above so this loop body stays O(1) per neighbor.
+    if (isEnemy && canPassThroughEnemyOnBridge) {
       continue;
     }
 
