@@ -247,20 +247,31 @@ test.describe('leaderboard persistence', () => {
     expect(ranked.map((e: any) => e.name)).toEqual(['Fast', 'Medium', 'Slow']);
   });
 
-  test('a legacy entry without matchTimeMs loses any tie to a timed entry', async ({ page }) => {
+  test('entries without matchTimeMs are dropped on read', async ({ page }) => {
     await openGame(page);
 
-    // Legacy entries persisted before the matchTimeMs field existed must
-    // still load (backwards compat) but should lose tie-breaks to any
-    // newer timed entry — the comparator treats them as Infinity.
-    const ranked = await page.evaluate(() => {
+    // matchTimeMs is required: any entry missing one is rejected by
+    // isWellFormedEntry and getLeaderboard re-persists the cleaned list,
+    // so the stale entry vanishes from storage too — not just from the
+    // returned list. Two assertions cover both halves of that contract.
+    const result = await page.evaluate(() => {
       const lb = (window as any).__rtsLeaderboard;
-      lb.addLeaderboardEntry({ name: 'Legacy', score: 200, dateMs: 1, result: 'victory' }); // no matchTimeMs
-      lb.addLeaderboardEntry({ name: 'Timed',  score: 200, dateMs: 2, result: 'victory', matchTimeMs: 120_000 });
-      return lb.getLeaderboard();
+      // Seed storage directly with a mix of timed and untimed entries so
+      // we exercise the cleanup path, not the addLeaderboardEntry path
+      // (which itself goes through getLeaderboard before writing).
+      const seeded = [
+        { name: 'Legacy', score: 200, dateMs: 1, result: 'victory' },                          // no matchTimeMs
+        { name: 'Timed',  score: 200, dateMs: 2, result: 'victory', matchTimeMs: 120_000 },
+        { name: 'AlsoLegacy', score: 50, dateMs: 3, result: 'defeat' },                        // no matchTimeMs
+      ];
+      localStorage.setItem('rts-leaderboard', JSON.stringify(seeded));
+      const returned = lb.getLeaderboard();
+      const persisted = JSON.parse(localStorage.getItem('rts-leaderboard') ?? '[]');
+      return { returned, persisted };
     });
 
-    expect(ranked.map((e: any) => e.name)).toEqual(['Timed', 'Legacy']);
+    expect(result.returned.map((e: any) => e.name)).toEqual(['Timed']);
+    expect(result.persisted.map((e: any) => e.name)).toEqual(['Timed']);
   });
 
   test('score still beats matchTimeMs — a faster but lower-score entry ranks below', async ({ page }) => {

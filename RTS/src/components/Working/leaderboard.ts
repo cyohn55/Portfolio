@@ -48,11 +48,12 @@ export interface LeaderboardEntry {
   result: 'victory' | 'defeat';
   // Wall-clock match duration in milliseconds. Used as the leaderboard
   // tie-break: with two equal scores the lower matchTimeMs ranks higher
-  // (a faster win is better). Optional on the type so leaderboards
-  // persisted before this field existed still load without losing entries —
-  // missing values are treated as `Infinity` by the comparator so a new
-  // timed run beats every old un-timed run on a tie.
-  matchTimeMs?: number;
+  // (a faster win is better). Required — entries without a matchTimeMs are
+  // dropped on load by isWellFormedEntry, and getLeaderboard re-persists
+  // the cleaned list. (Earlier versions accepted untimed entries as a
+  // back-compat measure, but they rendered as "—" in the Time column and
+  // were never going to be comparable, so we now garbage-collect them.)
+  matchTimeMs: number;
 }
 
 /**
@@ -194,10 +195,17 @@ export function validateName(raw: string): NameValidation {
 // ---------------------------------------------------------------------------
 
 /**
- * Read the leaderboard from localStorage and return the top entries sorted by
- * score descending, then by oldest dateMs (so the original record holder keeps
- * the tie). Tolerates a corrupt/absent store by returning an empty list —
- * preserving the player's score takes priority over throwing on bad JSON.
+ * Read the leaderboard from localStorage and return the top entries sorted
+ * by score → matchTimeMs → dateMs (see compareEntries). Tolerates corrupt
+ * or absent storage by returning an empty list rather than throwing.
+ *
+ * Self-healing cleanup: any persisted entry that fails isWellFormedEntry
+ * (today: entries missing matchTimeMs, persisted before the field was
+ * required) is dropped. If that filter removed anything OR the on-disk
+ * representation wasn't already in the canonical sorted/trimmed form, we
+ * write the cleaned list back to storage so it doesn't have to be cleaned
+ * again on the next read. Callers see a clean list; subsequent reads are
+ * cheaper; the cleanup is a one-time cost per stale leaderboard.
  */
 export function getLeaderboard(): LeaderboardEntry[] {
   if (typeof localStorage === 'undefined') return [];
@@ -209,15 +217,34 @@ export function getLeaderboard(): LeaderboardEntry[] {
   }
   if (!raw) return [];
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(isWellFormedEntry)
-      .sort(compareEntries);
+    parsed = JSON.parse(raw);
   } catch {
     return [];
   }
+  if (!Array.isArray(parsed)) return [];
+
+  const cleaned = parsed
+    .filter(isWellFormedEntry)
+    .sort(compareEntries)
+    .slice(0, MAX_ENTRIES);
+
+  // If anything was filtered or the order/length is out of date, rewrite
+  // storage so the malformed entries vanish for good. JSON.stringify
+  // round-tripped vs the raw read is the cheapest "is it already canonical"
+  // check available without diffing.
+  try {
+    const canonical = JSON.stringify(cleaned);
+    if (canonical !== raw) {
+      localStorage.setItem(STORAGE_KEY, canonical);
+    }
+  } catch {
+    // Storage write failed (quota / disabled) — caller still gets the
+    // cleaned in-memory list; we just can't persist it this turn.
+  }
+
+  return cleaned;
 }
 
 /**
@@ -257,14 +284,14 @@ function compareEntries(a: LeaderboardEntry, b: LeaderboardEntry): number {
 function isWellFormedEntry(value: unknown): value is LeaderboardEntry {
   if (!value || typeof value !== 'object') return false;
   const entry = value as Partial<LeaderboardEntry>;
-  // matchTimeMs is optional (legacy entries persisted before this field
-  // existed should still load). When present it must be a finite, non-
-  // negative number so the comparator never sees NaN.
+  // matchTimeMs is required. Entries without one — either persisted before
+  // the field existed, or constructed by hand without it — are filtered out
+  // here; getLeaderboard() re-persists the cleaned list so they don't
+  // resurface on subsequent reads.
   const matchTimeOk =
-    entry.matchTimeMs === undefined ||
-    (typeof entry.matchTimeMs === 'number' &&
-      Number.isFinite(entry.matchTimeMs) &&
-      entry.matchTimeMs >= 0);
+    typeof entry.matchTimeMs === 'number' &&
+    Number.isFinite(entry.matchTimeMs) &&
+    entry.matchTimeMs >= 0;
   return (
     typeof entry.name === 'string' &&
     typeof entry.score === 'number' &&
