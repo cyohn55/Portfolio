@@ -395,9 +395,13 @@
 
 .leaderboard-row {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 28px 64px;
+  /* 5 columns: rank, name, W/L, score, time. The Time column is fixed-width
+     and tabular-numeric so M:SS values line up vertically. The name column
+     keeps the only flexible 1fr — everything else is a fixed budget so the
+     row never reflows the score/time positions when names get longer. */
+  grid-template-columns: 36px minmax(0, 1fr) 24px 56px 48px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 7px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   font-size: 13px;
@@ -406,6 +410,29 @@
 
 .leaderboard-row:last-child {
   border-bottom: none;
+}
+
+/* Header row — same column geometry as the data rows so headers align with
+   their values. Visually de-emphasized (no W/L badge styling, smaller font,
+   uppercase, sticky to the top of the scroll container so it remains visible
+   while the list scrolls). */
+.leaderboard-row-header {
+  position: sticky;
+  top: 0;
+  background: rgba(11, 15, 26, 0.96);
+  z-index: 1;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 700;
+  border-bottom: 1px solid rgba(88, 120, 255, 0.3);
+}
+.leaderboard-row-header .leaderboard-result {
+  /* Header cell shouldn't render with the green/red W/L pill background. */
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
 }
 
 .leaderboard-row-mine {
@@ -456,6 +483,18 @@
 }
 
 .leaderboard-row-mine .leaderboard-score {
+  color: #ffd76a;
+}
+
+.leaderboard-time {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+}
+
+.leaderboard-row-mine .leaderboard-time {
   color: #ffd76a;
 }
 
@@ -555,10 +594,15 @@
   }
 
   .leaderboard-row {
-    grid-template-columns: 32px minmax(0, 1fr) 26px 56px;
+    /* 5 columns on mobile too — tightened widths so the name still gets the
+       flexible 1fr after rank/W-L/score/time take their share. */
+    grid-template-columns: 28px minmax(0, 1fr) 22px 48px 44px;
     font-size: 12px;
     padding: 6px 10px;
-    gap: 8px;
+    gap: 6px;
+  }
+  .leaderboard-time {
+    font-size: 11px;
   }
 
   .leaderboard-list {

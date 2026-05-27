@@ -108,6 +108,7 @@ function createEmptyMatchStats(): MatchStats {
     playerBasesDestroyed: 0,
     playerKingsKilled: 0,
     playerQueensKilled: 0,
+    matchDurationMs: 0,
     rightBridgeDownMs: 0,
     leftBridgeDownMs: 0,
     enemyRightBridgeDownMs: 0,
@@ -1341,6 +1342,13 @@ export const useGameStore = create<Store>((set, get) => ({
       // "stealing" credit from the other, and the leaderboard score still
       // rewards being there.
       const dtMs = dtSec * 1000;
+
+      // Wall-clock match duration. The tick() function early-returns at the
+      // top of the function when gameOver is true (see line ~384), so this
+      // counter naturally freezes the instant the match is decided — exactly
+      // what we want for the post-game "Match Time" stat and the leaderboard
+      // tie-break.
+      draft.matchStats.matchDurationMs += dtMs;
       if (draft.bridgeState.rightBridge.currentFrame === 'Fully_Down') {
         if (bridgePresence.playerInRightZone) draft.matchStats.rightBridgeDownMs       += dtMs;
         if (bridgePresence.enemyInRightZone)  draft.matchStats.enemyRightBridgeDownMs  += dtMs;

@@ -127,6 +127,13 @@ export interface MatchStats {
   playerKingsKilled: number;     // AI killed one of the local player's Kings
   playerQueensKilled: number;    // AI killed one of the local player's Queens
 
+  // Wall-clock match duration in milliseconds. Accumulates `dtMs` each tick
+  // while the match is running and freezes the moment `gameOver` flips true
+  // (tick() returns early on gameOver). Used both to display "Match Time" on
+  // the post-game cards and as the leaderboard's tie-break: with two equal
+  // scores, the lower matchTimeMs ranks higher (a faster win is better).
+  matchDurationMs: number;
+
   // Per-side bridge control. Either team can position a King/Queen on the
   // bridge trigger and hold it down; the elapsed Fully_Down time is credited
   // to whichever side has a K/Q inside the trigger zone that tick (both, if

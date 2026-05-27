@@ -66,6 +66,7 @@ export function PostGameScreen() {
     playerQueensKilled:    matchStats.enemyQueensKilled,
     enemyRightBridgeDownMs: matchStats.rightBridgeDownMs,
     enemyLeftBridgeDownMs:  matchStats.leftBridgeDownMs,
+    matchDurationMs:        matchStats.matchDurationMs,
   });
 
   // Only render when game is actually over AND we have a winner
@@ -101,6 +102,12 @@ export function PostGameScreen() {
     (matchStats.enemyRightBridgeDownMs + matchStats.enemyLeftBridgeDownMs) / 1000,
   );
 
+  // Wall-clock match duration is shared (both cards show the same value).
+  // matchTimeDisplay is a human-readable "M:SS" string; matchTimeMs is the raw
+  // value persisted on leaderboard entries for tie-break sorting.
+  const matchTimeMs = matchStats.matchDurationMs;
+  const matchTimeDisplay = formatMatchTime(matchTimeMs);
+
   const handlePlayAgain = () => {
     // Replay with same animals
     initializeGame();
@@ -128,6 +135,8 @@ export function PostGameScreen() {
       score: score.total,
       dateMs: Date.now(),
       result: matchResult,
+      // Persist the match duration so equal scores break by faster-win-first.
+      matchTimeMs,
     };
     const next = addLeaderboardEntry(entry);
     setLeaderboard(next);
@@ -190,6 +199,7 @@ export function PostGameScreen() {
               kingsKilled={matchStats.enemyKingsKilled}
               queensKilled={matchStats.enemyQueensKilled}
               bridgeSeconds={playerBridgeSeconds}
+              matchTimeDisplay={matchTimeDisplay}
               total={score.total}
             />
             <ForcesCard
@@ -205,6 +215,7 @@ export function PostGameScreen() {
               kingsKilled={matchStats.playerKingsKilled}
               queensKilled={matchStats.playerQueensKilled}
               bridgeSeconds={enemyBridgeSeconds}
+              matchTimeDisplay={matchTimeDisplay}
               total={aiScore.total}
             />
           </div>
@@ -244,6 +255,17 @@ export function PostGameScreen() {
           </form>
 
           <ol className="leaderboard-list">
+            {/* Column header. Sits inside the same scroll container as the
+                rows so it shares column widths exactly; styled as a header
+                row via leaderboard-row-header (no border-bottom, dimmer
+                text, won't be highlighted as the player's own row). */}
+            <li className="leaderboard-row leaderboard-row-header" aria-hidden="true">
+              <span className="leaderboard-rank">#</span>
+              <span className="leaderboard-name">Name</span>
+              <span className="leaderboard-result">W/L</span>
+              <span className="leaderboard-score">Score</span>
+              <span className="leaderboard-time">Time</span>
+            </li>
             {leaderboard.length === 0 ? (
               <li className="leaderboard-empty">No scores yet — be the first!</li>
             ) : (
@@ -261,6 +283,7 @@ export function PostGameScreen() {
                       {entry.result === 'victory' ? 'W' : 'L'}
                     </span>
                     <span className="leaderboard-score">{entry.score}</span>
+                    <span className="leaderboard-time">{formatMatchTime(entry.matchTimeMs)}</span>
                   </li>
                 );
               })
@@ -299,10 +322,12 @@ interface ForcesCardProps {
   kingsKilled: number;
   queensKilled: number;
   // Shared/derived stats shown at the bottom of each card so both sides end
-  // on a comparable totals strip. `bridgeSeconds` is shared map state (the
-  // same value for both cards); `total` is the score computed with this
-  // side's counters via computeScore.
+  // on a comparable totals strip. `bridgeSeconds` is this side's bridge-down
+  // time (see PostGameScreen for the per-side accounting); `matchTimeDisplay`
+  // is the wall-clock match length, identical for both cards; `total` is
+  // the score computed with this side's counters via computeScore.
   bridgeSeconds: number;
+  matchTimeDisplay: string;
   total: number;
 }
 
@@ -322,7 +347,7 @@ function ForcesCard(props: ForcesCardProps) {
     variant, heading, team,
     basesRemaining, queensRemaining, kingsRemaining,
     unitsGenerated, unitsKilled, basesDestroyed, kingsKilled, queensKilled,
-    bridgeSeconds, total,
+    bridgeSeconds, matchTimeDisplay, total,
   } = props;
   return (
     <div className={`stats-column ${variant}`}>
@@ -373,6 +398,10 @@ function ForcesCard(props: ForcesCardProps) {
         <span className="stat-label">Bridge Capture Time:</span>
         <span className="stat-value">{bridgeSeconds}s</span>
       </div>
+      <div className="stat-row">
+        <span className="stat-label">Match Time:</span>
+        <span className="stat-value">{matchTimeDisplay}</span>
+      </div>
       {/* Final Total row — visually weighted (separator above, gold accent)
           so it reads as the headline number, not just another stat. */}
       <div className="stat-row stat-row-total">
@@ -381,4 +410,27 @@ function ForcesCard(props: ForcesCardProps) {
       </div>
     </div>
   );
+}
+
+/**
+ * Format a millisecond duration as M:SS (or H:MM:SS once a match runs past an
+ * hour — defensive, but the RTS isn't designed for hour-long matches). Pads
+ * the seconds field so "1:05" doesn't show as "1:5". Returns "—" when no
+ * value is present so legacy leaderboard entries persisted before match
+ * time existed still render a stable, non-empty cell.
+ */
+function formatMatchTime(matchTimeMs: number | undefined): string {
+  if (matchTimeMs === undefined || !Number.isFinite(matchTimeMs) || matchTimeMs < 0) {
+    return '—';
+  }
+  const totalSeconds = Math.floor(matchTimeMs / 1000);
+  const hours   = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const ss = seconds.toString().padStart(2, '0');
+  if (hours > 0) {
+    const mm = minutes.toString().padStart(2, '0');
+    return `${hours}:${mm}:${ss}`;
+  }
+  return `${minutes}:${ss}`;
 }

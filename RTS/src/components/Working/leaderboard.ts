@@ -44,8 +44,15 @@ export interface ScoreBreakdown {
 export interface LeaderboardEntry {
   name: string;
   score: number;
-  dateMs: number;     // epoch ms when the score was added (for stable sorting/display)
+  dateMs: number;       // epoch ms when the score was added (for stable sorting/display)
   result: 'victory' | 'defeat';
+  // Wall-clock match duration in milliseconds. Used as the leaderboard
+  // tie-break: with two equal scores the lower matchTimeMs ranks higher
+  // (a faster win is better). Optional on the type so leaderboards
+  // persisted before this field existed still load without losing entries —
+  // missing values are treated as `Infinity` by the comparator so a new
+  // timed run beats every old un-timed run on a tie.
+  matchTimeMs?: number;
 }
 
 /**
@@ -235,19 +242,36 @@ export function addLeaderboardEntry(entry: LeaderboardEntry): LeaderboardEntry[]
 }
 
 function compareEntries(a: LeaderboardEntry, b: LeaderboardEntry): number {
+  // Primary: higher score ranks first.
   if (b.score !== a.score) return b.score - a.score;
-  return a.dateMs - b.dateMs; // older entry wins the tie
+  // Tie-break #1: a faster win (lower matchTimeMs) ranks higher. Entries
+  // persisted before matchTimeMs existed are treated as Infinity so a
+  // freshly timed run still beats a legacy un-timed run on a tied score.
+  const aTime = a.matchTimeMs ?? Number.POSITIVE_INFINITY;
+  const bTime = b.matchTimeMs ?? Number.POSITIVE_INFINITY;
+  if (aTime !== bTime) return aTime - bTime;
+  // Tie-break #2: older entry keeps the record on a true tie.
+  return a.dateMs - b.dateMs;
 }
 
 function isWellFormedEntry(value: unknown): value is LeaderboardEntry {
   if (!value || typeof value !== 'object') return false;
   const entry = value as Partial<LeaderboardEntry>;
+  // matchTimeMs is optional (legacy entries persisted before this field
+  // existed should still load). When present it must be a finite, non-
+  // negative number so the comparator never sees NaN.
+  const matchTimeOk =
+    entry.matchTimeMs === undefined ||
+    (typeof entry.matchTimeMs === 'number' &&
+      Number.isFinite(entry.matchTimeMs) &&
+      entry.matchTimeMs >= 0);
   return (
     typeof entry.name === 'string' &&
     typeof entry.score === 'number' &&
     Number.isFinite(entry.score) &&
     typeof entry.dateMs === 'number' &&
     Number.isFinite(entry.dateMs) &&
-    (entry.result === 'victory' || entry.result === 'defeat')
+    (entry.result === 'victory' || entry.result === 'defeat') &&
+    matchTimeOk
   );
 }

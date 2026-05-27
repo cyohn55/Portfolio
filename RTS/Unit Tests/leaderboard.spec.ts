@@ -228,4 +228,54 @@ test.describe('leaderboard persistence', () => {
     expect(top10[0].score).toBe(140); // highest survives
     expect(top10[top10.length - 1].score).toBe(50); // 5-14 inclusive => min 50
   });
+
+  test('ties on score break by faster matchTimeMs (lower wins)', async ({ page }) => {
+    await openGame(page);
+
+    // All three entries share score=200 — the only differentiator is
+    // matchTimeMs. The fastest win (90s) should rank first, the slowest
+    // (300s) last. dateMs is set so it would sort wrong if matchTimeMs
+    // were ignored — proving the tie-break engages.
+    const ranked = await page.evaluate(() => {
+      const lb = (window as any).__rtsLeaderboard;
+      lb.addLeaderboardEntry({ name: 'Slow',   score: 200, dateMs: 1, result: 'victory', matchTimeMs: 300_000 });
+      lb.addLeaderboardEntry({ name: 'Medium', score: 200, dateMs: 2, result: 'victory', matchTimeMs: 180_000 });
+      lb.addLeaderboardEntry({ name: 'Fast',   score: 200, dateMs: 3, result: 'victory', matchTimeMs:  90_000 });
+      return lb.getLeaderboard();
+    });
+
+    expect(ranked.map((e: any) => e.name)).toEqual(['Fast', 'Medium', 'Slow']);
+  });
+
+  test('a legacy entry without matchTimeMs loses any tie to a timed entry', async ({ page }) => {
+    await openGame(page);
+
+    // Legacy entries persisted before the matchTimeMs field existed must
+    // still load (backwards compat) but should lose tie-breaks to any
+    // newer timed entry — the comparator treats them as Infinity.
+    const ranked = await page.evaluate(() => {
+      const lb = (window as any).__rtsLeaderboard;
+      lb.addLeaderboardEntry({ name: 'Legacy', score: 200, dateMs: 1, result: 'victory' }); // no matchTimeMs
+      lb.addLeaderboardEntry({ name: 'Timed',  score: 200, dateMs: 2, result: 'victory', matchTimeMs: 120_000 });
+      return lb.getLeaderboard();
+    });
+
+    expect(ranked.map((e: any) => e.name)).toEqual(['Timed', 'Legacy']);
+  });
+
+  test('score still beats matchTimeMs — a faster but lower-score entry ranks below', async ({ page }) => {
+    await openGame(page);
+
+    // The user's spec is explicit: higher score takes precedence; matchTime
+    // only matters when scores are tied. Verify the high-scoring slow run
+    // outranks a faster but lower-scoring one.
+    const ranked = await page.evaluate(() => {
+      const lb = (window as any).__rtsLeaderboard;
+      lb.addLeaderboardEntry({ name: 'FasterButLower', score: 100, dateMs: 1, result: 'victory', matchTimeMs:  60_000 });
+      lb.addLeaderboardEntry({ name: 'SlowerHigher',   score: 200, dateMs: 2, result: 'victory', matchTimeMs: 600_000 });
+      return lb.getLeaderboard();
+    });
+
+    expect(ranked.map((e: any) => e.name)).toEqual(['SlowerHigher', 'FasterButLower']);
+  });
 });
