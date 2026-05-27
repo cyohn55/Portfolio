@@ -4,6 +4,7 @@ import { Minimap } from './screens/Minimap';
 import { AnimalSelectionButtons } from './AnimalSelectionButtons';
 import { PauseMenu } from './PauseMenu';
 import { computeScore } from './Working/leaderboard';
+import { FullscreenToggle } from './Working/FullscreenToggle';
 import { useState, useEffect } from 'react';
 
 /**
@@ -195,6 +196,12 @@ export function HUD() {
         >
           <span role="img" aria-hidden="true">{musicEnabled ? '🔊' : '🔇'}</span>
         </button>
+
+        {/* Fullscreen toggle, sits to the right of the music button so the
+            bottom-left cluster reads left-to-right: pause → music → fullscreen.
+            Same component is used on the title screen (MainMenu.tsx) so the
+            affordance is identical across the two screens. */}
+        <FullscreenToggle />
       </div>
     )}
 
