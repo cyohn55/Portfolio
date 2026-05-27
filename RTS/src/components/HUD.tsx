@@ -3,12 +3,40 @@ import { performanceMonitor } from '../utils/PerformanceMonitor';
 import { Minimap } from './screens/Minimap';
 import { AnimalSelectionButtons } from './AnimalSelectionButtons';
 import { PauseMenu } from './PauseMenu';
+import { computeScore } from './Working/leaderboard';
 import { useState, useEffect } from 'react';
+
+/**
+ * Format a millisecond match duration as "M:SS" (or "H:MM:SS" past the hour).
+ * Mirrors the post-game card's formatter so the in-game timer and the final
+ * card read identically when the match ends. Kept colocated with the HUD
+ * because this is the only place that consumes a live duration.
+ */
+function formatMatchTime(matchTimeMs: number): string {
+  if (!Number.isFinite(matchTimeMs) || matchTimeMs < 0) return '0:00';
+  const totalSeconds = Math.floor(matchTimeMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const ss = seconds.toString().padStart(2, '0');
+  if (hours > 0) {
+    const mm = minutes.toString().padStart(2, '0');
+    return `${hours}:${mm}:${ss}`;
+  }
+  return `${minutes}:${ss}`;
+}
 
 export function HUD() {
   const matchStarted = useGameStore((s) => s.matchStarted);
   const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
+  // `units` gets a fresh array reference at the end of every tick (state.ts
+  // `set({ units: draft.units.slice() })`), so subscribing to it drives the
+  // re-render that picks up the freshly mutated matchStats below. See
+  // `rts-mutated-state-ui-trap` memory.
   const units = useGameStore((s) => s.units);
+  const matchStats = useGameStore((s) => s.matchStats);
+  const musicEnabled = useGameStore((s) => s.musicEnabled);
+  const setMusicEnabled = useGameStore((s) => s.setMusicEnabled);
 
   // FPS monitoring state
   const [fps, setFps] = useState({ current: 0, average: 0, min: 0, max: 0 });
@@ -31,48 +59,147 @@ export function HUD() {
 
   const selectedUnits = units.filter(u => selectedUnitIds.includes(u.id));
 
+  // Live score using the same scoring contract the post-game screen uses, so
+  // the in-game total matches what gets persisted to the leaderboard.
+  const playerScore = computeScore(matchStats).total;
+  const matchTimeDisplay = formatMatchTime(matchStats.matchDurationMs);
+
   return (
     <>
     {/* Pause Menu */}
     {isPaused && <PauseMenu onClose={() => setIsPaused(false)} />}
 
-    {/* Settings Gear Icon - Bottom Left */}
-    <button
-      onClick={() => setIsPaused(true)}
-      style={{
+    {/* Top-left HUD cluster: Score + Match Time on top, then the pause-menu
+        gear and the music toggle. Grouped in a single flex column so the two
+        rows align flush against the screen edge regardless of the digit width
+        of the score/timer text. */}
+    {matchStarted && (
+      <div style={{
         position: 'fixed',
-        bottom: '20px',
+        top: '20px',
         left: '20px',
-        width: '56px',
-        height: '56px',
-        borderRadius: '50%',
-        background: 'linear-gradient(135deg, rgba(88,120,255,0.9) 0%, rgba(118,75,162,0.9) 100%)',
-        border: '2px solid rgba(255,255,255,0.3)',
-        cursor: 'pointer',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        transition: 'all 0.3s ease',
+        flexDirection: 'column',
+        gap: '12px',
         zIndex: 1000,
-        boxShadow: '0 4px 15px rgba(88,120,255,0.4)',
-        backdropFilter: 'blur(10px)'
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = 'scale(1.1) rotate(90deg)';
-        e.currentTarget.style.boxShadow = '0 6px 20px rgba(88,120,255,0.6)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
-        e.currentTarget.style.boxShadow = '0 4px 15px rgba(88,120,255,0.4)';
-      }}
-    >
-      {/* Gear Icon SVG */}
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-        <circle cx="12" cy="12" r="3" />
-        <path d="M12 1v6m0 6v6m9-9h-6m-6 0H3" />
-        <path d="M17.657 6.343l-4.243 4.243m0 3.536l4.243 4.243M6.343 6.343l4.243 4.243m3.536 0l4.243 4.243" />
-      </svg>
-    </button>
+        pointerEvents: 'none', // children opt in individually for clicks
+      }}>
+        {/* Score + Match Time panel */}
+        <div style={{
+          background: 'rgba(17,23,38,0.85)',
+          border: '1px solid rgba(88,120,255,0.4)',
+          borderRadius: '8px',
+          padding: '12px 16px',
+          backdropFilter: 'blur(10px)',
+          fontFamily: 'monospace',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px',
+          fontSize: '12px',
+          color: '#fff',
+          minWidth: '140px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+            <span style={{ color: '#94a3b8' }}>Score:</span>
+            <span style={{ color: '#facc15', fontWeight: 'bold', fontSize: '14px' }}>
+              {playerScore}
+            </span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+            <span style={{ color: '#94a3b8' }}>Time:</span>
+            <span style={{ color: '#4ade80', fontWeight: 'bold', fontSize: '14px' }}>
+              {matchTimeDisplay}
+            </span>
+          </div>
+        </div>
+
+        {/* Gear + Music toggle row */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'row',
+          gap: '8px',
+          alignItems: 'center',
+        }}>
+          {/* Pause-menu trigger. The gear used to be a custom SVG; per the UX
+              request it's now the ⚙️ glyph so it reads visually consistent with
+              the speaker emoji beside it. */}
+          <button
+            type="button"
+            aria-label="Open pause menu"
+            onClick={() => setIsPaused(true)}
+            style={{
+              pointerEvents: 'auto',
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, rgba(88,120,255,0.9) 0%, rgba(118,75,162,0.9) 100%)',
+              border: '2px solid rgba(255,255,255,0.3)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+              boxShadow: '0 4px 15px rgba(88,120,255,0.4)',
+              backdropFilter: 'blur(10px)',
+              fontSize: '24px',
+              lineHeight: 1,
+              padding: 0,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.1) rotate(90deg)';
+              e.currentTarget.style.boxShadow = '0 6px 20px rgba(88,120,255,0.6)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+              e.currentTarget.style.boxShadow = '0 4px 15px rgba(88,120,255,0.4)';
+            }}
+          >
+            <span role="img" aria-hidden="true">⚙️</span>
+          </button>
+
+          {/* Background-music toggle. 🔊 (U+1F50A) = on, 🔇 (U+1F507) = off.
+              Persisted via the store so the choice survives reloads (see
+              MUSIC_STORAGE_KEY in state.ts). */}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={musicEnabled}
+            aria-label={musicEnabled ? 'Mute background music' : 'Unmute background music'}
+            onClick={() => setMusicEnabled(!musicEnabled)}
+            style={{
+              pointerEvents: 'auto',
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              background: musicEnabled
+                ? 'linear-gradient(135deg, rgba(88,120,255,0.9) 0%, rgba(118,75,162,0.9) 100%)'
+                : 'rgba(60,68,90,0.85)',
+              border: '2px solid rgba(255,255,255,0.3)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease',
+              boxShadow: musicEnabled
+                ? '0 4px 15px rgba(88,120,255,0.4)'
+                : '0 4px 15px rgba(0,0,0,0.4)',
+              backdropFilter: 'blur(10px)',
+              fontSize: '22px',
+              lineHeight: 1,
+              padding: 0,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.1)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            <span role="img" aria-hidden="true">{musicEnabled ? '🔊' : '🔇'}</span>
+          </button>
+        </div>
+      </div>
+    )}
 
     {/* Top bar with FPS */}
     <div style={{
@@ -148,5 +275,3 @@ export function HUD() {
     </>
   );
 }
-
-

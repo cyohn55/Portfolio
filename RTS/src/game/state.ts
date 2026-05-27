@@ -180,6 +180,9 @@ type Store = GameState & {
   // Render quality
   shadowsEnabled: boolean;
   setShadowsEnabled: (enabled: boolean) => void;
+  // Background music on/off (persisted across sessions)
+  musicEnabled: boolean;
+  setMusicEnabled: (enabled: boolean) => void;
 };
 
 // Persisted render-quality toggle. Shadows default OFF: enabling them adds a
@@ -191,6 +194,21 @@ const loadShadowsEnabled = (): boolean => {
     return localStorage.getItem(SHADOWS_STORAGE_KEY) === 'true';
   } catch {
     return false;
+  }
+};
+
+// Persisted background-music toggle. Defaults ON so first-time visitors hear
+// the soundtrack; the speaker icon in the HUD flips it and the choice survives
+// page reloads. Stored as a string so the absence of the key (first visit)
+// resolves to the default rather than a forced "off".
+const MUSIC_STORAGE_KEY = 'rts-music-enabled';
+const loadMusicEnabled = (): boolean => {
+  try {
+    const raw = localStorage.getItem(MUSIC_STORAGE_KEY);
+    if (raw === null) return true; // default on
+    return raw === 'true';
+  } catch {
+    return true;
   }
 };
 
@@ -251,6 +269,15 @@ export const useGameStore = create<Store>((set, get) => ({
       /* localStorage unavailable (private mode); setting still applies for the session */
     }
     set({ shadowsEnabled: enabled });
+  },
+  musicEnabled: loadMusicEnabled(),
+  setMusicEnabled: (enabled) => {
+    try {
+      localStorage.setItem(MUSIC_STORAGE_KEY, String(enabled));
+    } catch {
+      /* localStorage unavailable; setting still applies for the session */
+    }
+    set({ musicEnabled: enabled });
   },
   bridgeState: {
     rightBridge: {

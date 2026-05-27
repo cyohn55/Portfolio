@@ -5,6 +5,7 @@ export function BackgroundMusic() {
   const menuMusicRef = useRef<HTMLAudioElement | null>(null);
   const gameMusicRef = useRef<HTMLAudioElement | null>(null);
   const currentScreen = useGameStore((s) => s.currentScreen);
+  const musicEnabled = useGameStore((s) => s.musicEnabled);
   const [isPageVisible, setIsPageVisible] = useState(!document.hidden);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const menuMusicPlayCountRef = useRef<number>(0);
@@ -135,6 +136,16 @@ export function BackgroundMusic() {
       return;
     }
 
+    // User-controlled mute toggle in the HUD. Keep the audio elements loaded so
+    // re-enabling resumes instantly, but stop both tracks while muted so the
+    // soundtrack doesn't continue inaudibly when the user toggles off mid-game.
+    if (!musicEnabled) {
+      console.log('Music disabled by user - all tracks paused');
+      menuMusic.pause();
+      gameMusic.pause();
+      return;
+    }
+
     if (!hasUserInteracted) {
       console.log('Waiting for user interaction to enable audio playback');
       return;
@@ -175,7 +186,7 @@ export function BackgroundMusic() {
       menuMusic.pause();
       gameMusic.pause();
     }
-  }, [currentScreen, isPageVisible, hasUserInteracted]);
+  }, [currentScreen, isPageVisible, hasUserInteracted, musicEnabled]);
 
   return null; // This component doesn't render anything
 }
