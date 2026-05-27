@@ -13,6 +13,7 @@ import { useGameStore } from './game/state';
 import { MainMenu } from './components/screens/MainMenu';
 import { AnimalSelectionLobby } from './components/screens/AnimalSelectionLobby';
 import { PostGameScreen } from './components/screens/PostGameScreen';
+import { LeaderboardScreen } from './components/Working/LeaderboardScreen';
 import { BackgroundMusic } from './components/BackgroundMusic';
 import { InstructionsPopup } from './components/screens/InstructionsPopup';
 
@@ -94,6 +95,15 @@ export default function App() {
       <>
         <BackgroundMusic />
         <AnimalSelectionLobby />
+      </>
+    );
+  }
+
+  if (currentScreen === 'leaderboard') {
+    return (
+      <>
+        <BackgroundMusic />
+        <LeaderboardScreen />
       </>
     );
   }

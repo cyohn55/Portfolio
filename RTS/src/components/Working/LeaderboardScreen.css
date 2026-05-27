@@ -1,0 +1,52 @@
+/* Standalone leaderboard screen reached from the title-screen "LEADER BOARD"
+   button. Visually consistent with the main menu (same background gradient and
+   pulse) so it feels like a peer screen rather than a modal overlay. The
+   list/row styling itself is reused from PostGameScreen.css (.leaderboard-*)
+   to keep a single source of truth for row layout. */
+
+.leaderboard-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0b0f1a 0%, #1a1f35 100%);
+  z-index: 2000;
+  overflow: hidden;
+}
+
+.leaderboard-screen-content {
+  width: min(560px, 92vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: center;
+  z-index: 1;
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.leaderboard-screen-title {
+  font-size: 56px;
+  font-weight: 900;
+  color: #ffffff;
+  margin: 0 0 24px 0;
+  letter-spacing: 6px;
+  text-shadow: 0 0 30px rgba(88, 120, 255, 0.7);
+}
+
+/* Override the list's max-height for the standalone view — give the full
+   top-10 room without forcing a scroll on tall viewports, but cap it so we
+   don't run off the bottom on shorter screens. */
+.leaderboard-screen-list {
+  max-height: min(60vh, 480px);
+  margin-bottom: 24px;
+}
+
+.leaderboard-screen-actions {
+  display: flex;
+  justify-content: center;
+}

@@ -151,8 +151,11 @@ export function BackgroundMusic() {
       return;
     }
 
-    // Play appropriate music based on screen
-    if (currentScreen === 'menu' || currentScreen === 'lobby') {
+    // Play appropriate music based on screen. The leaderboard screen is a
+    // peer of the main menu (reached from the title-screen LEADER BOARD
+    // button), so it shares the menu soundtrack — otherwise the music
+    // would cut out the moment the player navigated there.
+    if (currentScreen === 'menu' || currentScreen === 'lobby' || currentScreen === 'leaderboard') {
       console.log('Switching to menu music... (screen:', currentScreen, ')');
       // Stop game music
       gameMusic.pause();

@@ -116,7 +116,7 @@ function createEmptyMatchStats(): MatchStats {
   };
 }
 
-type GameScreen = 'menu' | 'lobby' | 'playing' | 'postgame';
+type GameScreen = 'menu' | 'lobby' | 'playing' | 'postgame' | 'leaderboard';
 
 type Store = GameState & {
   // Screen management
