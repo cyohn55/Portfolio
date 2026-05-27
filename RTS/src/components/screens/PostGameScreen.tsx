@@ -52,16 +52,21 @@ export function PostGameScreen() {
   const playerUnits = units.filter(u => u.ownerId === localPlayerId);
   const enemyUnits = units.filter(u => u.ownerId !== localPlayerId);
 
-  // Count remaining units by type
+  // Count remaining units by type. Used for the "X/3" survival rows in each
+  // Forces card.
   const playerBases = playerUnits.filter(u => u.kind === 'Base').length;
   const playerQueens = playerUnits.filter(u => u.kind === 'Queen').length;
   const playerKings = playerUnits.filter(u => u.kind === 'King').length;
-  const playerRegular = playerUnits.filter(u => u.kind === 'Unit').length;
 
   const enemyBases = enemyUnits.filter(u => u.kind === 'Base').length;
   const enemyQueens = enemyUnits.filter(u => u.kind === 'Queen').length;
   const enemyKings = enemyUnits.filter(u => u.kind === 'King').length;
-  const enemyRegular = enemyUnits.filter(u => u.kind === 'Unit').length;
+
+  // Total bridge-down seconds (shared map state — not per-side). Displayed in
+  // its own row below the cards because it doesn't attribute to either team.
+  const bridgeDownSeconds = Math.floor(
+    (matchStats.rightBridgeDownMs + matchStats.leftBridgeDownMs) / 1000,
+  );
 
   const handlePlayAgain = () => {
     // Replay with same animals
@@ -121,74 +126,39 @@ export function PostGameScreen() {
           )}
         </div>
 
-        {/* Battle Statistics */}
+        {/* Battle Statistics — symmetric per-side cards so the player can
+            directly compare what they accomplished vs the AI. Both cards
+            render the same row shape via ForcesCard. */}
         <div className="postgame-stats">
           <h2>Battle Summary</h2>
 
           <div className="stats-grid">
-            {/* Player Stats */}
-            <div className="stats-column player">
-              <h3>Your Forces</h3>
-              <div className="stat-row">
-                <span className="stat-label">Team:</span>
-                <span className="stat-value">{selectedAnimalPool.join(', ')}</span>
-              </div>
-              <div className="stat-row">
-                <span className="stat-label">Bases:</span>
-                <span className={`stat-value ${playerBases > 0 ? 'alive' : 'destroyed'}`}>
-                  {playerBases}/3
-                </span>
-              </div>
-              <div className="stat-row">
-                <span className="stat-label">Queens:</span>
-                <span className={`stat-value ${playerQueens > 0 ? 'alive' : 'destroyed'}`}>
-                  {playerQueens}/3
-                </span>
-              </div>
-              <div className="stat-row">
-                <span className="stat-label">Kings:</span>
-                <span className={`stat-value ${playerKings > 0 ? 'alive' : 'destroyed'}`}>
-                  {playerKings}/3
-                </span>
-              </div>
-              <div className="stat-row">
-                <span className="stat-label">Units:</span>
-                <span className="stat-value">{playerRegular}</span>
-              </div>
-            </div>
-
-            {/* Enemy Stats */}
-            <div className="stats-column enemy">
-              <h3>Enemy Forces</h3>
-              <div className="stat-row">
-                <span className="stat-label">Team:</span>
-                <span className="stat-value">
-                  {players.find(p => p.id !== localPlayerId)?.animals.join(', ')}
-                </span>
-              </div>
-              <div className="stat-row">
-                <span className="stat-label">Bases:</span>
-                <span className={`stat-value ${enemyBases > 0 ? 'alive' : 'destroyed'}`}>
-                  {enemyBases}/3
-                </span>
-              </div>
-              <div className="stat-row">
-                <span className="stat-label">Queens:</span>
-                <span className={`stat-value ${enemyQueens > 0 ? 'alive' : 'destroyed'}`}>
-                  {enemyQueens}/3
-                </span>
-              </div>
-              <div className="stat-row">
-                <span className="stat-label">Kings:</span>
-                <span className={`stat-value ${enemyKings > 0 ? 'alive' : 'destroyed'}`}>
-                  {enemyKings}/3
-                </span>
-              </div>
-              <div className="stat-row">
-                <span className="stat-label">Units:</span>
-                <span className="stat-value">{enemyRegular}</span>
-              </div>
-            </div>
+            <ForcesCard
+              variant="player"
+              heading="Your Forces"
+              team={selectedAnimalPool.join(', ')}
+              basesRemaining={playerBases}
+              queensRemaining={playerQueens}
+              kingsRemaining={playerKings}
+              unitsGenerated={matchStats.unitsGenerated}
+              unitsKilled={matchStats.enemyUnitsKilled}
+              basesDestroyed={matchStats.enemyBasesDestroyed}
+              kingsKilled={matchStats.enemyKingsKilled}
+              queensKilled={matchStats.enemyQueensKilled}
+            />
+            <ForcesCard
+              variant="enemy"
+              heading="Enemy Forces"
+              team={players.find(p => p.id !== localPlayerId)?.animals.join(', ') ?? ''}
+              basesRemaining={enemyBases}
+              queensRemaining={enemyQueens}
+              kingsRemaining={enemyKings}
+              unitsGenerated={matchStats.aiUnitsGenerated}
+              unitsKilled={matchStats.playerUnitsKilled}
+              basesDestroyed={matchStats.playerBasesDestroyed}
+              kingsKilled={matchStats.playerKingsKilled}
+              queensKilled={matchStats.playerQueensKilled}
+            />
           </div>
 
           {/* Victory Condition Met */}
@@ -201,20 +171,18 @@ export function PostGameScreen() {
           </div>
         </div>
 
-        {/* Score Breakdown */}
+        {/* Score — shared map stat (bridge control) plus the final total.
+            The per-action breakdown lives in the Forces cards above; this
+            section is only the contribution the cards can't show
+            symmetrically and the final score. */}
         <div className="postgame-score">
           <h2>Your Score</h2>
           <div className="score-breakdown">
-            <ScoreRow label="Units generated"     count={matchStats.unitsGenerated}      points={score.unitsGeneratedPoints} />
-            <ScoreRow label="Enemy units killed"  count={matchStats.enemyUnitsKilled}    points={score.enemyUnitsKilledPoints} />
-            <ScoreRow label="Enemy bases destroyed" count={matchStats.enemyBasesDestroyed} points={score.enemyBasesDestroyedPoints} />
-            <ScoreRow label="Enemy kings killed"  count={matchStats.enemyKingsKilled}    points={score.enemyKingsKilledPoints} />
-            <ScoreRow label="Enemy queens killed" count={matchStats.enemyQueensKilled}   points={score.enemyQueensKilledPoints} />
-            <ScoreRow
-              label="Bridges held down (per 5s)"
-              count={Math.floor(matchStats.rightBridgeDownMs / 5000) + Math.floor(matchStats.leftBridgeDownMs / 5000)}
-              points={score.bridgeHeldPoints}
-            />
+            <div className="score-row">
+              <span className="score-label">Bridges held down</span>
+              <span className="score-count">{bridgeDownSeconds}s</span>
+              <span className="score-points">{score.bridgeHeldPoints}</span>
+            </div>
             <div className="score-row score-total">
               <span className="score-label">Total</span>
               <span className="score-points">{score.total}</span>
@@ -294,19 +262,86 @@ export function PostGameScreen() {
   );
 }
 
-interface ScoreRowProps {
-  label: string;
-  count: number;
-  points: number;
+interface ForcesCardProps {
+  variant: 'player' | 'enemy';
+  heading: string;
+  team: string;
+  basesRemaining: number;
+  queensRemaining: number;
+  kingsRemaining: number;
+  unitsGenerated: number;
+  // Counts of the *other* side's assets this side took out. Labels are kept
+  // ambiguous on purpose ("Units killed", "Bases destroyed") so the same
+  // component renders correctly under either heading — context comes from the
+  // surrounding card title.
+  unitsKilled: number;
+  basesDestroyed: number;
+  kingsKilled: number;
+  queensKilled: number;
 }
 
-/** Single row in the score breakdown table: "Units generated   12 × 5 = 60". */
-function ScoreRow({ label, count, points }: ScoreRowProps) {
+/**
+ * One side of the Battle Summary. Renders the same row shape for both player
+ * and AI so the two cards are visually comparable; the only variant-specific
+ * styling is the accent border color, applied via `variant` on the outer
+ * stats-column class.
+ *
+ * The Team row uses a stacked label/value layout (`stat-row-stacked`) so the
+ * full animal list ("Bear, Bunny, Frog") can wrap to a second line instead of
+ * getting ellipsis-truncated to "Be..." like it did when it shared the
+ * inline-row layout with the short numeric stats.
+ */
+function ForcesCard(props: ForcesCardProps) {
+  const {
+    variant, heading, team,
+    basesRemaining, queensRemaining, kingsRemaining,
+    unitsGenerated, unitsKilled, basesDestroyed, kingsKilled, queensKilled,
+  } = props;
   return (
-    <div className="score-row">
-      <span className="score-label">{label}</span>
-      <span className="score-count">{count}</span>
-      <span className="score-points">{points}</span>
+    <div className={`stats-column ${variant}`}>
+      <h3>{heading}</h3>
+      <div className="stat-row stat-row-stacked">
+        <span className="stat-label">Team:</span>
+        <span className="stat-value stat-value-team">{team}</span>
+      </div>
+      <div className="stat-row">
+        <span className="stat-label">Bases:</span>
+        <span className={`stat-value ${basesRemaining > 0 ? 'alive' : 'destroyed'}`}>
+          {basesRemaining}/3
+        </span>
+      </div>
+      <div className="stat-row">
+        <span className="stat-label">Queens:</span>
+        <span className={`stat-value ${queensRemaining > 0 ? 'alive' : 'destroyed'}`}>
+          {queensRemaining}/3
+        </span>
+      </div>
+      <div className="stat-row">
+        <span className="stat-label">Kings:</span>
+        <span className={`stat-value ${kingsRemaining > 0 ? 'alive' : 'destroyed'}`}>
+          {kingsRemaining}/3
+        </span>
+      </div>
+      <div className="stat-row">
+        <span className="stat-label">Units:</span>
+        <span className="stat-value">{unitsGenerated}</span>
+      </div>
+      <div className="stat-row">
+        <span className="stat-label">Units killed:</span>
+        <span className="stat-value">{unitsKilled}</span>
+      </div>
+      <div className="stat-row">
+        <span className="stat-label">Bases destroyed:</span>
+        <span className="stat-value">{basesDestroyed}</span>
+      </div>
+      <div className="stat-row">
+        <span className="stat-label">Kings killed:</span>
+        <span className="stat-value">{kingsKilled}</span>
+      </div>
+      <div className="stat-row">
+        <span className="stat-label">Queens killed:</span>
+        <span className="stat-value">{queensKilled}</span>
+      </div>
     </div>
   );
 }

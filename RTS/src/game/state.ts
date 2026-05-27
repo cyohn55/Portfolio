@@ -103,6 +103,11 @@ function createEmptyMatchStats(): MatchStats {
     enemyBasesDestroyed: 0,
     enemyKingsKilled: 0,
     enemyQueensKilled: 0,
+    aiUnitsGenerated: 0,
+    playerUnitsKilled: 0,
+    playerBasesDestroyed: 0,
+    playerKingsKilled: 0,
+    playerQueensKilled: 0,
     rightBridgeDownMs: 0,
     leftBridgeDownMs: 0,
   };
@@ -520,10 +525,14 @@ export const useGameStore = create<Store>((set, get) => ({
             tempUnit.position = finalSpawnPos;
             draft.units.push(tempUnit);
 
-            // Leaderboard scoring: count units the local player generates. The
-            // AI's spawns don't contribute — only the human team's queens.
+            // Scoring + post-game stats: count units generated per side. Only
+            // the local player's unitsGenerated feeds the leaderboard score
+            // (see computeScore); the AI mirror is for the side-by-side
+            // comparison on the post-game screen.
             if (q.ownerId === draft.localPlayerId) {
               draft.matchStats.unitsGenerated++;
+            } else {
+              draft.matchStats.aiUnitsGenerated++;
             }
           }
 
@@ -1196,18 +1205,31 @@ export const useGameStore = create<Store>((set, get) => ({
           if (tickDebug) console.log(`Unit ${target.animal} (${target.ownerId}) killed by ${attacker.animal} (${attacker.ownerId})`);
           draft.deadUnitsToRemove.push(target.id);
 
-          // Leaderboard scoring: credit the local player only for kills they
-          // landed on an enemy. Attribution keys off the killing-blow attacker,
-          // so an enemy chipped down by allied AI doesn't double-count.
+          // Attribution keys off the killing-blow attacker, so a target chipped
+          // down by allied damage doesn't double-count. Track both sides:
+          // - Player→enemy kills feed the leaderboard score AND the Your
+          //   Forces card.
+          // - AI→player kills are non-scoring but populate the Enemy Forces
+          //   card so players can see how the AI fared against them.
           const isPlayerKillingEnemy =
             attacker.ownerId === draft.localPlayerId &&
             target.ownerId !== draft.localPlayerId;
+          const isAiKillingPlayer =
+            attacker.ownerId !== draft.localPlayerId &&
+            target.ownerId === draft.localPlayerId;
           if (isPlayerKillingEnemy) {
             switch (target.kind) {
               case 'Base':  draft.matchStats.enemyBasesDestroyed++; break;
               case 'King':  draft.matchStats.enemyKingsKilled++;    break;
               case 'Queen': draft.matchStats.enemyQueensKilled++;   break;
               case 'Unit':  draft.matchStats.enemyUnitsKilled++;    break;
+            }
+          } else if (isAiKillingPlayer) {
+            switch (target.kind) {
+              case 'Base':  draft.matchStats.playerBasesDestroyed++; break;
+              case 'King':  draft.matchStats.playerKingsKilled++;    break;
+              case 'Queen': draft.matchStats.playerQueensKilled++;   break;
+              case 'Unit':  draft.matchStats.playerUnitsKilled++;    break;
             }
           }
         }

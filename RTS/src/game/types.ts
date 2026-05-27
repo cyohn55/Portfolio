@@ -101,15 +101,34 @@ export interface PatrolRoute {
   currentTarget: 'start' | 'end'; // which position the queen is currently moving toward
 }
 
-// Per-match scoring counters for the local player. Reset on every startMatch so
-// each round produces an independent leaderboard score. Tracked inside the tick
-// loop where the relevant events fire (spawn, combat kill, bridge animation).
+// Per-match scoring counters for the local player and a mirrored set for the
+// AI, so the post-game screen can show a symmetric comparison. Reset on every
+// startMatch so each round produces an independent leaderboard score. Tracked
+// inside the tick loop where the relevant events fire (spawn, combat kill,
+// bridge animation).
+//
+// Field naming convention: the `enemy*` / `player*` fields describe the
+// *target* of the action, not the actor. So `enemyUnitsKilled` is "enemy units
+// killed (by the local player)" and `playerUnitsKilled` is "local-player units
+// killed (by the AI)" — i.e. the mirror image used for the Enemy Forces card.
 export interface MatchStats {
+  // Local player's accomplishments (used by computeScore and the Your Forces card)
   unitsGenerated: number;        // Local player's queens have spawned a Unit
   enemyUnitsKilled: number;      // Local player killed an enemy Unit
   enemyBasesDestroyed: number;   // Local player destroyed an enemy Base
   enemyKingsKilled: number;      // Local player killed an enemy King
   enemyQueensKilled: number;     // Local player killed an enemy Queen
+
+  // AI's accomplishments (used by the Enemy Forces card for side-by-side
+  // comparison; not scored toward the leaderboard).
+  aiUnitsGenerated: number;      // AI's queens have spawned a Unit
+  playerUnitsKilled: number;     // AI killed one of the local player's Units
+  playerBasesDestroyed: number;  // AI destroyed one of the local player's Bases
+  playerKingsKilled: number;     // AI killed one of the local player's Kings
+  playerQueensKilled: number;    // AI killed one of the local player's Queens
+
+  // Shared map state — not per-side. Bridges down benefit whoever has units
+  // about to cross, so attribution to a single side isn't meaningful.
   rightBridgeDownMs: number;     // Total ms the right bridge has been Fully_Down this match
   leftBridgeDownMs: number;      // Total ms the left bridge has been Fully_Down this match
 }
