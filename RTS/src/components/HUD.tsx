@@ -69,135 +69,132 @@ export function HUD() {
     {/* Pause Menu */}
     {isPaused && <PauseMenu onClose={() => setIsPaused(false)} />}
 
-    {/* Top-left HUD cluster: Score + Match Time on top, then the pause-menu
-        gear and the music toggle. Grouped in a single flex column so the two
-        rows align flush against the screen edge regardless of the digit width
-        of the score/timer text. */}
+    {/* Top-left: Score + Match Time panel. */}
     {matchStarted && (
       <div style={{
         position: 'fixed',
         top: '20px',
         left: '20px',
+        zIndex: 1000,
+        pointerEvents: 'none',
+        background: 'rgba(17,23,38,0.85)',
+        border: '1px solid rgba(88,120,255,0.4)',
+        borderRadius: '8px',
+        padding: '12px 16px',
+        backdropFilter: 'blur(10px)',
+        fontFamily: 'monospace',
         display: 'flex',
         flexDirection: 'column',
-        gap: '12px',
-        zIndex: 1000,
-        pointerEvents: 'none', // children opt in individually for clicks
+        gap: '4px',
+        fontSize: '12px',
+        color: '#fff',
+        minWidth: '140px',
       }}>
-        {/* Score + Match Time panel */}
-        <div style={{
-          background: 'rgba(17,23,38,0.85)',
-          border: '1px solid rgba(88,120,255,0.4)',
-          borderRadius: '8px',
-          padding: '12px 16px',
-          backdropFilter: 'blur(10px)',
-          fontFamily: 'monospace',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '4px',
-          fontSize: '12px',
-          color: '#fff',
-          minWidth: '140px',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-            <span style={{ color: '#94a3b8' }}>Score:</span>
-            <span style={{ color: '#facc15', fontWeight: 'bold', fontSize: '14px' }}>
-              {playerScore}
-            </span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-            <span style={{ color: '#94a3b8' }}>Time:</span>
-            <span style={{ color: '#4ade80', fontWeight: 'bold', fontSize: '14px' }}>
-              {matchTimeDisplay}
-            </span>
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+          <span style={{ color: '#94a3b8' }}>Score:</span>
+          <span style={{ color: '#facc15', fontWeight: 'bold', fontSize: '14px' }}>
+            {playerScore}
+          </span>
         </div>
-
-        {/* Gear + Music toggle row */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'row',
-          gap: '8px',
-          alignItems: 'center',
-        }}>
-          {/* Pause-menu trigger. The gear used to be a custom SVG; per the UX
-              request it's now the ⚙️ glyph so it reads visually consistent with
-              the speaker emoji beside it. */}
-          <button
-            type="button"
-            aria-label="Open pause menu"
-            onClick={() => setIsPaused(true)}
-            style={{
-              pointerEvents: 'auto',
-              width: '48px',
-              height: '48px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, rgba(88,120,255,0.9) 0%, rgba(118,75,162,0.9) 100%)',
-              border: '2px solid rgba(255,255,255,0.3)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-              boxShadow: '0 4px 15px rgba(88,120,255,0.4)',
-              backdropFilter: 'blur(10px)',
-              fontSize: '24px',
-              lineHeight: 1,
-              padding: 0,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'scale(1.1) rotate(90deg)';
-              e.currentTarget.style.boxShadow = '0 6px 20px rgba(88,120,255,0.6)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
-              e.currentTarget.style.boxShadow = '0 4px 15px rgba(88,120,255,0.4)';
-            }}
-          >
-            <span role="img" aria-hidden="true">⚙️</span>
-          </button>
-
-          {/* Background-music toggle. 🔊 (U+1F50A) = on, 🔇 (U+1F507) = off.
-              Persisted via the store so the choice survives reloads (see
-              MUSIC_STORAGE_KEY in state.ts). */}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={musicEnabled}
-            aria-label={musicEnabled ? 'Mute background music' : 'Unmute background music'}
-            onClick={() => setMusicEnabled(!musicEnabled)}
-            style={{
-              pointerEvents: 'auto',
-              width: '48px',
-              height: '48px',
-              borderRadius: '50%',
-              background: musicEnabled
-                ? 'linear-gradient(135deg, rgba(88,120,255,0.9) 0%, rgba(118,75,162,0.9) 100%)'
-                : 'rgba(60,68,90,0.85)',
-              border: '2px solid rgba(255,255,255,0.3)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease',
-              boxShadow: musicEnabled
-                ? '0 4px 15px rgba(88,120,255,0.4)'
-                : '0 4px 15px rgba(0,0,0,0.4)',
-              backdropFilter: 'blur(10px)',
-              fontSize: '22px',
-              lineHeight: 1,
-              padding: 0,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'scale(1.1)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-          >
-            <span role="img" aria-hidden="true">{musicEnabled ? '🔊' : '🔇'}</span>
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+          <span style={{ color: '#94a3b8' }}>Time:</span>
+          <span style={{ color: '#4ade80', fontWeight: 'bold', fontSize: '14px' }}>
+            {matchTimeDisplay}
+          </span>
         </div>
+      </div>
+    )}
+
+    {/* Bottom-left: pause-menu gear + music toggle. Kept separate from the
+        top-left Score/Time panel so the two clusters can live at independent
+        screen edges. Bottom-right is the minimap and bottom-center is the
+        animal-selection bar, so the bottom-left corner is the only open
+        quadrant for these controls. */}
+    {matchStarted && (
+      <div style={{
+        position: 'fixed',
+        bottom: '20px',
+        left: '20px',
+        display: 'flex',
+        flexDirection: 'row',
+        gap: '8px',
+        alignItems: 'center',
+        zIndex: 1000,
+      }}>
+        {/* Pause-menu trigger using the ⚙️ glyph so it reads visually
+            consistent with the speaker emoji beside it. */}
+        <button
+          type="button"
+          aria-label="Open pause menu"
+          onClick={() => setIsPaused(true)}
+          style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, rgba(88,120,255,0.9) 0%, rgba(118,75,162,0.9) 100%)',
+            border: '2px solid rgba(255,255,255,0.3)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+            boxShadow: '0 4px 15px rgba(88,120,255,0.4)',
+            backdropFilter: 'blur(10px)',
+            fontSize: '24px',
+            lineHeight: 1,
+            padding: 0,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.1) rotate(90deg)';
+            e.currentTarget.style.boxShadow = '0 6px 20px rgba(88,120,255,0.6)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+            e.currentTarget.style.boxShadow = '0 4px 15px rgba(88,120,255,0.4)';
+          }}
+        >
+          <span role="img" aria-hidden="true">⚙️</span>
+        </button>
+
+        {/* Background-music toggle. 🔊 (U+1F50A) = on, 🔇 (U+1F507) = off.
+            Persisted via the store so the choice survives reloads (see
+            MUSIC_STORAGE_KEY in state.ts). */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={musicEnabled}
+          aria-label={musicEnabled ? 'Mute background music' : 'Unmute background music'}
+          onClick={() => setMusicEnabled(!musicEnabled)}
+          style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '50%',
+            background: musicEnabled
+              ? 'linear-gradient(135deg, rgba(88,120,255,0.9) 0%, rgba(118,75,162,0.9) 100%)'
+              : 'rgba(60,68,90,0.85)',
+            border: '2px solid rgba(255,255,255,0.3)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease',
+            boxShadow: musicEnabled
+              ? '0 4px 15px rgba(88,120,255,0.4)'
+              : '0 4px 15px rgba(0,0,0,0.4)',
+            backdropFilter: 'blur(10px)',
+            fontSize: '22px',
+            lineHeight: 1,
+            padding: 0,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.1)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          <span role="img" aria-hidden="true">{musicEnabled ? '🔊' : '🔇'}</span>
+        </button>
       </div>
     )}
 
