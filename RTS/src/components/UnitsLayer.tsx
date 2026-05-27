@@ -113,6 +113,12 @@ function verticalOffset(unit: Unit): number {
   if (unit.animal === 'Owl' && unit.isFlying) {
     offset += 10;
   }
+  // Bees have no land/takeoff state — they're always airborne, so apply the
+  // same +10 lift as a flying Owl unconditionally to keep flight altitudes
+  // consistent across air units.
+  if (unit.animal === 'Bee') {
+    offset += 10;
+  }
   if (unit.animal === 'Yetti') {
     offset -= 0.9;
   }
