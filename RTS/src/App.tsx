@@ -14,6 +14,7 @@ import { MainMenu } from './components/screens/MainMenu';
 import { AnimalSelectionLobby } from './components/screens/AnimalSelectionLobby';
 import { PostGameScreen } from './components/screens/PostGameScreen';
 import { LeaderboardScreen } from './components/Working/LeaderboardScreen';
+import { useParentScrollBridge } from './components/Working/parentScrollBridge';
 import { BackgroundMusic } from './components/BackgroundMusic';
 import { InstructionsPopup } from './components/screens/InstructionsPopup';
 
@@ -28,6 +29,12 @@ export default function App() {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // When embedded in the portfolio page, broadcast screen transitions to the
+  // host so it can scroll the iframe into view and lock the page's wheel
+  // scroll while the player is in-game. See parentScrollBridge.ts and the
+  // `rts:screen` listener in Portfolio/script.js for the contract.
+  useParentScrollBridge();
 
   // Detect mobile device
   useEffect(() => {
