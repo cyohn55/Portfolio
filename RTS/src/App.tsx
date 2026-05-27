@@ -156,8 +156,18 @@ export default function App() {
           scene.background = new THREE.Color(0x1a1f35);
           console.log('✅ Initial background set');
 
-          // Handle context loss with recovery
+          // Handle context loss with recovery.
+          // NOTE: When the user navigates back to the menu/lobby, React unmounts the
+          // <Canvas> and R3F intentionally drops the WebGL context as part of disposal —
+          // that fires `webglcontextlost` even though nothing is wrong. We treat it as
+          // a real failure only when we're still on the playing screen.
           gl.domElement.addEventListener('webglcontextlost', (e) => {
+            const screen = useGameStore.getState().currentScreen;
+            if (screen !== 'playing') {
+              console.log('🧹 WebGL context released during screen transition (expected)');
+              return;
+            }
+
             console.error('❌❌❌ CRITICAL: WebGL context lost!', e);
             console.error('This usually happens when too many WebGL contexts are created');
             e.preventDefault(); // Prevent default to allow recovery
