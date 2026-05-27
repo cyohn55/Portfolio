@@ -64,14 +64,18 @@
   }
 }
 
-/* Victory/Defeat Banner */
+/* Victory/Defeat Banner. Single row of [side icon] [text] [side icon] so
+   the banner is shorter than the previous stacked icon-above-text layout. */
 .postgame-banner {
-  text-align: center;
-  margin-bottom: 24px;
-  padding: 20px 24px;
+  margin-bottom: 20px;
+  padding: 14px 24px;
   border-radius: 12px;
   position: relative;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
 }
 
 .postgame-banner.victory {
@@ -84,31 +88,39 @@
   border: 2px solid rgba(248, 113, 113, 0.5);
 }
 
-.banner-icon {
-  font-size: 48px;
-  margin-bottom: 8px;
-  animation: bounce 1s ease-in-out infinite;
+.banner-icon-side {
+  font-size: 44px;
+  line-height: 1;
+  flex: 0 0 auto;
+  animation: bounce 1.4s ease-in-out infinite;
+  /* Stagger the two icons so they don't bob in lockstep — gives the banner a
+     subtle livelier feel without being distracting. The right-side icon uses
+     a negative delay so both start mid-animation rather than from rest. */
+}
+.banner-icon-side:last-of-type {
+  animation-delay: -0.7s;
 }
 
 @keyframes bounce {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+
+.banner-text {
+  text-align: center;
+  min-width: 0;
 }
 
 .postgame-banner h1 {
-  font-size: 36px;
-  margin: 0 0 6px 0;
+  font-size: 32px;
+  margin: 0 0 4px 0;
   color: #ffffff;
   text-shadow: 0 0 20px rgba(88, 120, 255, 0.8);
   letter-spacing: 3px;
 }
 
 .postgame-banner p {
-  font-size: 15px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.8);
   margin: 0;
 }
@@ -491,13 +503,20 @@
     max-height: 94vh;
   }
 
+  .postgame-banner {
+    /* Tighter gap on narrow screens so the text block keeps as much width as
+       possible between the two side icons. */
+    gap: 12px;
+    padding: 12px 14px;
+  }
+
   .postgame-banner h1 {
-    font-size: 28px;
+    font-size: 24px;
     letter-spacing: 2px;
   }
 
-  .banner-icon {
-    font-size: 36px;
+  .banner-icon-side {
+    font-size: 32px;
   }
 
   .stats-grid {

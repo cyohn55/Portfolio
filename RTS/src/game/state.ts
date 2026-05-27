@@ -110,6 +110,8 @@ function createEmptyMatchStats(): MatchStats {
     playerQueensKilled: 0,
     rightBridgeDownMs: 0,
     leftBridgeDownMs: 0,
+    enemyRightBridgeDownMs: 0,
+    enemyLeftBridgeDownMs: 0,
   };
 }
 
@@ -1328,18 +1330,24 @@ export const useGameStore = create<Store>((set, get) => ({
       }
 
 
-      // Update bridge animations
-      updateBridgeAnimations(draft, nowMs);
+      // Update bridge animations and capture who's currently holding each
+      // trigger so we can credit Fully_Down time per side.
+      const bridgePresence = updateBridgeAnimations(draft, nowMs);
 
-      // Leaderboard scoring: accumulate the wall time each bridge spends in the
-      // Fully_Down frame. Sampled by dtSec so it reflects real elapsed seconds
-      // independent of frame rate. Scored in 5-second slices in computeScore().
+      // Bridge time is scored independently per side. Sampled by dtSec so it
+      // reflects real elapsed seconds independent of frame rate; scored in
+      // 5-second slices in computeScore(). When both sides have a K/Q in the
+      // zone simultaneously (contested), both sides accrue time — neither is
+      // "stealing" credit from the other, and the leaderboard score still
+      // rewards being there.
       const dtMs = dtSec * 1000;
       if (draft.bridgeState.rightBridge.currentFrame === 'Fully_Down') {
-        draft.matchStats.rightBridgeDownMs += dtMs;
+        if (bridgePresence.playerInRightZone) draft.matchStats.rightBridgeDownMs       += dtMs;
+        if (bridgePresence.enemyInRightZone)  draft.matchStats.enemyRightBridgeDownMs  += dtMs;
       }
       if (draft.bridgeState.leftBridge.currentFrame === 'Fully_Down') {
-        draft.matchStats.leftBridgeDownMs += dtMs;
+        if (bridgePresence.playerInLeftZone)  draft.matchStats.leftBridgeDownMs        += dtMs;
+        if (bridgePresence.enemyInLeftZone)   draft.matchStats.enemyLeftBridgeDownMs   += dtMs;
       }
 
       // Throttled win condition checks (every 5 seconds instead of every tick)
@@ -1963,55 +1971,78 @@ function normalize3D(vec: Position3D): Position3D {
   };
 }
 
+/**
+ * Snapshot of which side's King/Queen is inside each bridge trigger zone on
+ * this tick. Used by the tick loop to (a) drive the bridge open/close state
+ * (it lowers if either side is in the zone) and (b) credit Fully_Down time
+ * to whichever side is currently holding the trigger.
+ */
+interface BridgeZonePresence {
+  playerInRightZone: boolean;
+  playerInLeftZone: boolean;
+  enemyInRightZone: boolean;
+  enemyInLeftZone: boolean;
+}
+
 // Bridge animation system
-function updateBridgeAnimations(draft: GameState & { bridgeState: BridgeState }, nowMs: number): void {
+function updateBridgeAnimations(
+  draft: GameState & { bridgeState: BridgeState },
+  nowMs: number,
+): BridgeZonePresence {
   // Define bridge trigger zones (center-right and center-left of map)
-  const MAP_CENTER = { x: 0, z: 0 }; // Assuming map center is at origin
   const RIGHT_TRIGGER_ZONE = { x: 15, z: 0 }; // Center-right of map
   const LEFT_TRIGGER_ZONE = { x: -15, z: 0 }; // Center-left of map
   const TRIGGER_RADIUS = 10; // Units within 10 units of trigger zone
 
-  // Find player's kings and queens
-  const playerUnits = draft.units.filter(unit =>
-    unit.ownerId === draft.localPlayerId &&
-    (unit.kind === 'King' || unit.kind === 'Queen')
-  );
-
-  // Log player units for debugging (every 5 seconds)
-  if (Math.floor(nowMs / 5000) !== Math.floor((nowMs - 16) / 5000)) {
-    console.log(`Bridge debug: Found ${playerUnits.length} player kings/queens`,
-      playerUnits.map(u => `${u.kind} ${u.animal} at (${u.position.x.toFixed(1)}, ${u.position.z.toFixed(1)})`));
+  // Find every King/Queen on the field, partitioned by side. Both sides can
+  // capture a bridge by putting a K/Q in the trigger zone; the bridge stays
+  // down as long as anyone holds it.
+  const playerKQs: typeof draft.units = [];
+  const enemyKQs: typeof draft.units = [];
+  for (const unit of draft.units) {
+    if (unit.kind !== 'King' && unit.kind !== 'Queen') continue;
+    if (unit.ownerId === draft.localPlayerId) {
+      playerKQs.push(unit);
+    } else {
+      enemyKQs.push(unit);
+    }
   }
 
-  // Check if any player king/queen is in right trigger zone
-  const isPlayerInRightZone = playerUnits.some(unit => {
-    const distance = Math.sqrt(
-      Math.pow(unit.position.x - RIGHT_TRIGGER_ZONE.x, 2) +
-      Math.pow(unit.position.z - RIGHT_TRIGGER_ZONE.z, 2)
-    );
-    if (distance <= TRIGGER_RADIUS) {
-      console.log(`${unit.kind} ${unit.animal} in RIGHT trigger zone! Distance: ${distance.toFixed(1)}`);
+  const inZone = (
+    units: typeof draft.units,
+    zone: { x: number; z: number },
+  ): boolean => {
+    for (const unit of units) {
+      const dx = unit.position.x - zone.x;
+      const dz = unit.position.z - zone.z;
+      if (dx * dx + dz * dz <= TRIGGER_RADIUS * TRIGGER_RADIUS) return true;
     }
-    return distance <= TRIGGER_RADIUS;
-  });
+    return false;
+  };
 
-  // Check if any player king/queen is in left trigger zone
-  const isPlayerInLeftZone = playerUnits.some(unit => {
-    const distance = Math.sqrt(
-      Math.pow(unit.position.x - LEFT_TRIGGER_ZONE.x, 2) +
-      Math.pow(unit.position.z - LEFT_TRIGGER_ZONE.z, 2)
-    );
-    if (distance <= TRIGGER_RADIUS) {
-      console.log(`${unit.kind} ${unit.animal} in LEFT trigger zone! Distance: ${distance.toFixed(1)}`);
-    }
-    return distance <= TRIGGER_RADIUS;
-  });
+  const presence: BridgeZonePresence = {
+    playerInRightZone: inZone(playerKQs, RIGHT_TRIGGER_ZONE),
+    playerInLeftZone:  inZone(playerKQs, LEFT_TRIGGER_ZONE),
+    enemyInRightZone:  inZone(enemyKQs,  RIGHT_TRIGGER_ZONE),
+    enemyInLeftZone:   inZone(enemyKQs,  LEFT_TRIGGER_ZONE),
+  };
 
-  // Update right bridge
-  updateSingleBridgeAnimation(draft.bridgeState.rightBridge, isPlayerInRightZone, nowMs, 'right');
+  // The bridge animation only needs to know whether anyone is in the zone —
+  // attribution for scoring happens at the caller.
+  updateSingleBridgeAnimation(
+    draft.bridgeState.rightBridge,
+    presence.playerInRightZone || presence.enemyInRightZone,
+    nowMs,
+    'right',
+  );
+  updateSingleBridgeAnimation(
+    draft.bridgeState.leftBridge,
+    presence.playerInLeftZone || presence.enemyInLeftZone,
+    nowMs,
+    'left',
+  );
 
-  // Update left bridge
-  updateSingleBridgeAnimation(draft.bridgeState.leftBridge, isPlayerInLeftZone, nowMs, 'left');
+  return presence;
 }
 
 function updateSingleBridgeAnimation(

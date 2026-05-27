@@ -127,10 +127,17 @@ export interface MatchStats {
   playerKingsKilled: number;     // AI killed one of the local player's Kings
   playerQueensKilled: number;    // AI killed one of the local player's Queens
 
-  // Shared map state — not per-side. Bridges down benefit whoever has units
-  // about to cross, so attribution to a single side isn't meaningful.
-  rightBridgeDownMs: number;     // Total ms the right bridge has been Fully_Down this match
-  leftBridgeDownMs: number;      // Total ms the left bridge has been Fully_Down this match
+  // Per-side bridge control. Either team can position a King/Queen on the
+  // bridge trigger and hold it down; the elapsed Fully_Down time is credited
+  // to whichever side has a K/Q inside the trigger zone that tick (both, if
+  // both sides are contesting). The legacy `rightBridgeDownMs` /
+  // `leftBridgeDownMs` names are retained for the LOCAL player's contribution
+  // so the existing computeScore signature and its unit tests keep working
+  // unchanged — the AI's mirror lives on `enemy*BridgeDownMs`.
+  rightBridgeDownMs: number;       // Local-player time holding the right bridge down (ms)
+  leftBridgeDownMs: number;        // Local-player time holding the left bridge down (ms)
+  enemyRightBridgeDownMs: number;  // AI time holding the right bridge down (ms)
+  enemyLeftBridgeDownMs: number;   // AI time holding the left bridge down (ms)
 }
 
 export interface GameState {

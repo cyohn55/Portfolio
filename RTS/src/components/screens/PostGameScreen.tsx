@@ -53,15 +53,19 @@ export function PostGameScreen() {
     enemyBasesDestroyed: matchStats.playerBasesDestroyed,
     enemyKingsKilled:    matchStats.playerKingsKilled,
     enemyQueensKilled:   matchStats.playerQueensKilled,
-    rightBridgeDownMs:   matchStats.rightBridgeDownMs,
-    leftBridgeDownMs:    matchStats.leftBridgeDownMs,
+    // Slot the AI's bridge time into the legacy fields that computeScore
+    // already reads, so the same formula applies to both sides.
+    rightBridgeDownMs:   matchStats.enemyRightBridgeDownMs,
+    leftBridgeDownMs:    matchStats.enemyLeftBridgeDownMs,
     // Re-pass the local-side fields so the shape matches MatchStats; they're
     // unused by computeScore but required by the type.
-    aiUnitsGenerated:     matchStats.unitsGenerated,
-    playerUnitsKilled:    matchStats.enemyUnitsKilled,
-    playerBasesDestroyed: matchStats.enemyBasesDestroyed,
-    playerKingsKilled:    matchStats.enemyKingsKilled,
-    playerQueensKilled:   matchStats.enemyQueensKilled,
+    aiUnitsGenerated:      matchStats.unitsGenerated,
+    playerUnitsKilled:     matchStats.enemyUnitsKilled,
+    playerBasesDestroyed:  matchStats.enemyBasesDestroyed,
+    playerKingsKilled:     matchStats.enemyKingsKilled,
+    playerQueensKilled:    matchStats.enemyQueensKilled,
+    enemyRightBridgeDownMs: matchStats.rightBridgeDownMs,
+    enemyLeftBridgeDownMs:  matchStats.leftBridgeDownMs,
   });
 
   // Only render when game is actually over AND we have a winner
@@ -85,10 +89,16 @@ export function PostGameScreen() {
   const enemyQueens = enemyUnits.filter(u => u.kind === 'Queen').length;
   const enemyKings = enemyUnits.filter(u => u.kind === 'King').length;
 
-  // Total bridge-down seconds (shared map state — not per-side). Displayed in
-  // its own row below the cards because it doesn't attribute to either team.
-  const bridgeDownSeconds = Math.floor(
+  // Per-side bridge-down seconds. Each side accumulates time independently
+  // while it holds a King/Queen on the trigger; when both sides are
+  // contesting the same bridge, both accrue time. The Forces card shows
+  // the side's own contribution, and the corresponding raw ms are fed into
+  // computeScore so each Total reflects only that side's effort.
+  const playerBridgeSeconds = Math.floor(
     (matchStats.rightBridgeDownMs + matchStats.leftBridgeDownMs) / 1000,
+  );
+  const enemyBridgeSeconds = Math.floor(
+    (matchStats.enemyRightBridgeDownMs + matchStats.enemyLeftBridgeDownMs) / 1000,
   );
 
   const handlePlayAgain = () => {
@@ -132,21 +142,30 @@ export function PostGameScreen() {
   return (
     <div className="postgame-overlay">
       <div className="postgame-container">
-        {/* Victory/Defeat Banner */}
+        {/* Victory/Defeat Banner. Icons flank the text on the left and right
+            (vertically centered) rather than stacking above it — keeps the
+            banner shorter so more of the Battle Summary is visible without
+            scrolling. */}
         <div className={`postgame-banner ${isLocalWinner ? 'victory' : 'defeat'}`}>
-          {isLocalWinner ? (
-            <>
-              <div className="banner-icon">🏆</div>
-              <h1>VICTORY!</h1>
-              <p>You have defeated {winnerPlayer?.name === 'You' ? 'the AI' : winnerPlayer?.name}!</p>
-            </>
-          ) : (
-            <>
-              <div className="banner-icon">⚔️</div>
-              <h1>DEFEAT</h1>
-              <p>{winnerPlayer?.name} has won the battle</p>
-            </>
-          )}
+          <span className="banner-icon-side" aria-hidden="true">
+            {isLocalWinner ? '🏆' : '⚔️'}
+          </span>
+          <div className="banner-text">
+            {isLocalWinner ? (
+              <>
+                <h1>VICTORY!</h1>
+                <p>You have defeated {winnerPlayer?.name === 'You' ? 'the AI' : winnerPlayer?.name}!</p>
+              </>
+            ) : (
+              <>
+                <h1>DEFEAT</h1>
+                <p>{winnerPlayer?.name} has won the battle</p>
+              </>
+            )}
+          </div>
+          <span className="banner-icon-side" aria-hidden="true">
+            {isLocalWinner ? '🏆' : '⚔️'}
+          </span>
         </div>
 
         {/* Battle Statistics — symmetric per-side cards so the player can
@@ -170,7 +189,7 @@ export function PostGameScreen() {
               basesDestroyed={matchStats.enemyBasesDestroyed}
               kingsKilled={matchStats.enemyKingsKilled}
               queensKilled={matchStats.enemyQueensKilled}
-              bridgeSeconds={bridgeDownSeconds}
+              bridgeSeconds={playerBridgeSeconds}
               total={score.total}
             />
             <ForcesCard
@@ -185,7 +204,7 @@ export function PostGameScreen() {
               basesDestroyed={matchStats.playerBasesDestroyed}
               kingsKilled={matchStats.playerKingsKilled}
               queensKilled={matchStats.playerQueensKilled}
-              bridgeSeconds={bridgeDownSeconds}
+              bridgeSeconds={enemyBridgeSeconds}
               total={aiScore.total}
             />
           </div>
