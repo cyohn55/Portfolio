@@ -59,6 +59,17 @@ export function CameraController({
   }, []);
 
   const handleWheel = useCallback((event: WheelEvent) => {
+    // The listener is attached to `window` so we receive every wheel event on
+    // the page. Only treat the wheel as a camera-zoom input when the event
+    // originated over the WebGL canvas — otherwise let the browser scroll
+    // whatever UI surface the cursor is over (post-game leaderboard, HUD
+    // panels, modal overlays). Calling preventDefault() unconditionally was
+    // suppressing scroll in those overlays.
+    const target = event.target as Node | null;
+    if (!target || !gl.domElement.contains(target)) {
+      return;
+    }
+
     event.preventDefault();
 
     // Determine zoom direction and apply
@@ -67,7 +78,7 @@ export function CameraController({
     // Apply zoom with constraints
     const newDistance = Math.max(minDistance, Math.min(maxDistance, currentDistance.current + zoomDelta));
     currentDistance.current = newDistance;
-  }, [zoomSpeed, minDistance, maxDistance, instanceId]);
+  }, [zoomSpeed, minDistance, maxDistance, instanceId, gl]);
 
   // Touch event handlers for mobile
   const handleTouchStart = useCallback((event: TouchEvent) => {
