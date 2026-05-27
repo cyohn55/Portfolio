@@ -189,9 +189,18 @@
 }
 
 .stat-label {
-  font-size: 13px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.7);
   font-weight: 600;
+  /* Keep multi-word labels like "Bridge Capture Time:" and
+     "Queens Eliminated:" on a single line. The flex row has a 12px gap to
+     the value; if the combined width ever exceeded the card we'd ellipsis-
+     truncate the label rather than wrap it, but the renamed labels all fit
+     within the per-card content width at this font size. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .stat-value {

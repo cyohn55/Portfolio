@@ -350,27 +350,27 @@ function ForcesCard(props: ForcesCardProps) {
         </span>
       </div>
       <div className="stat-row">
-        <span className="stat-label">Units:</span>
+        <span className="stat-label">Units Generated:</span>
         <span className="stat-value">{unitsGenerated}</span>
       </div>
       <div className="stat-row">
-        <span className="stat-label">Units killed:</span>
+        <span className="stat-label">Units Eliminated:</span>
         <span className="stat-value">{unitsKilled}</span>
       </div>
       <div className="stat-row">
-        <span className="stat-label">Bases destroyed:</span>
+        <span className="stat-label">Bases Destroyed:</span>
         <span className="stat-value">{basesDestroyed}</span>
       </div>
       <div className="stat-row">
-        <span className="stat-label">Kings killed:</span>
+        <span className="stat-label">Kings Eliminated:</span>
         <span className="stat-value">{kingsKilled}</span>
       </div>
       <div className="stat-row">
-        <span className="stat-label">Queens killed:</span>
+        <span className="stat-label">Queens Eliminated:</span>
         <span className="stat-value">{queensKilled}</span>
       </div>
       <div className="stat-row">
-        <span className="stat-label">Bridges held down:</span>
+        <span className="stat-label">Bridge Capture Time:</span>
         <span className="stat-value">{bridgeSeconds}s</span>
       </div>
       {/* Final Total row — visually weighted (separator above, gold accent)
