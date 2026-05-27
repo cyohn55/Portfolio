@@ -49,6 +49,14 @@ const BRIDGE_AT_MISS: { onBridge: boolean; side: BridgeSide | null } = Object.fr
   side: null,
 }) as { onBridge: boolean; side: BridgeSide | null };
 
+// Extra Y added to the center bridge's reported surface so a unit standing on it
+// sits slightly above the deck primitive's top — clearing the trim/planks/rails
+// that sit a fraction of a unit above the picked deck slab on the center bridge.
+// The right/left bridges' deck primitives already include the walking surface at
+// their top Y, so no headroom is needed for them. Tunable: increase if visible
+// clipping persists, decrease if units appear to hover.
+const CENTER_DECK_HEADROOM = 0.5;
+
 export class TerrainValidator {
   // Accepts any Object3D (Scene or merged Group); only .traverse() is used.
   private battleMapScene: THREE.Object3D | null = null;
@@ -636,7 +644,9 @@ export class TerrainValidator {
 
     if (side === 'right') return this.rightDeckSurfaceY;
     if (side === 'left') return this.leftDeckSurfaceY;
-    return this.centerDeckSurfaceY;
+    // Add a small headroom on the center bridge so the unit clears the deck
+    // trim sitting just above the picked deck primitive's top surface.
+    return this.centerDeckSurfaceY === null ? null : this.centerDeckSurfaceY + CENTER_DECK_HEADROOM;
   }
 
   /**
