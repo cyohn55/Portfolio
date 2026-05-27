@@ -367,7 +367,14 @@ export const useGameStore = create<Store>((set, get) => ({
   // (infrequent, user-triggered) store actions keep using Immer.
   tick: (dtSec, nowMs) => {
       const draft = get();
-      if (!draft.matchStarted || draft.isPaused) return;
+      // Halt simulation once the match has been decided. Otherwise queens keep
+      // spawning, surviving units keep landing kills, and bridge-down time
+      // keeps ticking — all of which accumulate into matchStats and inflate
+      // the post-game score while the player is staring at it. (PostGameScreen
+      // subscribes to `units`, which still gets a fresh array reference from
+      // the set() at the end of tick, so the screen re-renders every frame
+      // and the numbers visibly climb.)
+      if (!draft.matchStarted || draft.isPaused || draft.gameOver) return;
 
       // DEBUG: Initialize tick counter
       if (!draft.debugTickCount) {
