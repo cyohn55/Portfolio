@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useGameStore } from '../../game/state';
 import {
   addLeaderboardEntry,
@@ -31,9 +31,15 @@ export function PostGameScreen() {
   const [submittedEntryKey, setSubmittedEntryKey] = useState<string | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(() => getLeaderboard());
 
-  // The breakdown is a pure function of matchStats — memoized so React doesn't
-  // recompute it on every keystroke into the name field.
-  const score = useMemo(() => computeScore(matchStats), [matchStats]);
+  // The breakdown is a pure function of matchStats. We deliberately recompute
+  // it on every render rather than caching by `[matchStats]` reference: the
+  // game's tick loop mutates the same matchStats object in place for perf
+  // (see state.ts `tick()`), so a ref-keyed useMemo would lock in the zeros
+  // from the first render (which happens during gameplay, while this screen
+  // is mounted but returning null) and never update once the game ends.
+  // computeScore is a handful of multiplies — recomputing on a name keystroke
+  // is free.
+  const score = computeScore(matchStats);
 
   // Only render when game is actually over AND we have a winner
   if (!gameOver || !winner) return null;
