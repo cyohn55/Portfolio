@@ -38,6 +38,14 @@ export function CameraController({
   // Fixed camera angle - lower angle for better RTS view
   const CAMERA_ANGLE = Math.PI / 10; // 18 degrees
 
+  // Clearing the pressed-key set is needed in any situation where a `keyup`
+  // event might be missed (window blur, tab hidden, OS-level hotkey swallows
+  // the release, focus jumping to an input). Without this the camera would
+  // drift forever in the last-held direction once that happens.
+  const clearPressedKeys = useCallback(() => {
+    keysPressed.current.clear();
+  }, []);
+
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
     const key = event.key.toLowerCase();
 
@@ -57,6 +65,12 @@ export function CameraController({
       keysPressed.current.delete(key);
     }
   }, []);
+
+  const handleVisibilityChange = useCallback(() => {
+    if (document.hidden) {
+      clearPressedKeys();
+    }
+  }, [clearPressedKeys]);
 
   const handleWheel = useCallback((event: WheelEvent) => {
     // The listener is attached to `window` so we receive every wheel event on
@@ -151,6 +165,13 @@ export function CameraController({
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('wheel', handleWheel, { passive: false });
 
+    // Drop any "still pressed" keys whenever the window/tab loses the ability
+    // to deliver the matching keyup. Otherwise the camera drifts forever in
+    // the last-held direction after alt-tabbing, opening dev tools, or any
+    // OS hotkey that steals focus mid-press.
+    window.addEventListener('blur', clearPressedKeys);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     // Touch event listeners
     const canvas = gl.domElement;
     canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
@@ -162,12 +183,14 @@ export function CameraController({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('blur', clearPressedKeys);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       canvas.removeEventListener('touchstart', handleTouchStart);
       canvas.removeEventListener('touchmove', handleTouchMove);
       canvas.removeEventListener('touchend', handleTouchEnd);
       canvas.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [handleKeyDown, handleKeyUp, handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd, gl, instanceId]);
+  }, [handleKeyDown, handleKeyUp, handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd, clearPressedKeys, handleVisibilityChange, gl, instanceId]);
 
   useFrame((state, delta) => {
     // Set camera properties on first frame
