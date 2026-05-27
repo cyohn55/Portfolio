@@ -204,6 +204,29 @@
   line-height: 1.35;
 }
 
+/* Per-card Total row: heavier separator and gold accent so the final
+   score reads as the headline number, not just another stat row. */
+.stat-row-total {
+  margin-top: 4px;
+  padding-top: 9px;
+  border-top: 2px solid rgba(88, 120, 255, 0.5);
+  border-bottom: none;
+}
+
+.stat-row-total .stat-label {
+  font-size: 14px;
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.stat-value-total {
+  font-size: 20px;
+  color: #ffd76a;
+  text-shadow: 0 0 12px rgba(255, 215, 106, 0.4);
+}
+
 .stat-value.alive {
   color: #4ade80;
 }
@@ -212,104 +235,10 @@
   color: #f87171;
 }
 
-/* Victory Condition */
-.victory-condition {
-  background: rgba(88, 120, 255, 0.1);
-  border: 1px solid rgba(88, 120, 255, 0.3);
-  border-radius: 8px;
-  padding: 10px 14px;
-  text-align: center;
-}
-
-.victory-condition p {
-  margin: 0;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-/* Score Breakdown */
-.postgame-score {
-  margin-bottom: 20px;
-}
-
-.postgame-score h2 {
-  font-size: 20px;
-  color: #ffffff;
-  text-align: center;
-  margin: 0 0 12px 0;
-}
-
-.score-breakdown {
-  background: rgba(17, 23, 38, 0.6);
-  border: 1px solid rgba(88, 120, 255, 0.3);
-  border-radius: 10px;
-  padding: 10px 14px;
-}
-
-.score-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 12px;
-  padding: 5px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.85);
-  min-width: 0;
-}
-
-.score-row:last-child {
-  border-bottom: none;
-}
-
-.score-label {
-  color: rgba(255, 255, 255, 0.75);
-  font-weight: 600;
-}
-
-.score-count {
-  font-variant-numeric: tabular-nums;
-  color: rgba(255, 255, 255, 0.65);
-  min-width: 32px;
-  text-align: right;
-}
-
-.score-points {
-  font-variant-numeric: tabular-nums;
-  color: #ffffff;
-  font-weight: 700;
-  min-width: 48px;
-  text-align: right;
-}
-
-.score-label {
-  /* Allow long labels like "Bridges held down (per 5s)" to wrap or truncate
-     instead of pushing the count/points columns past the panel edge. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.score-total {
-  margin-top: 4px;
-  padding-top: 10px;
-  border-top: 2px solid rgba(88, 120, 255, 0.5);
-  font-size: 16px;
-}
-
-.score-total .score-label {
-  color: #ffffff;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-
-.score-total .score-points {
-  color: #ffd76a;
-  font-size: 20px;
-  text-shadow: 0 0 12px rgba(255, 215, 106, 0.4);
-}
+/* (Victory-condition banner and standalone Score Breakdown panel removed:
+   the per-side Total now lives inside each ForcesCard via .stat-row-total,
+   and the victory/defeat outcome is already conveyed by the banner at the
+   top plus the per-card numbers.) */
 
 /* Leaderboard */
 .postgame-leaderboard {

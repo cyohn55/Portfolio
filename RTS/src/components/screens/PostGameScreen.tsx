@@ -41,6 +41,29 @@ export function PostGameScreen() {
   // is free.
   const score = computeScore(matchStats);
 
+  // The AI's "score" reuses the same scoring formula, fed the mirror counters
+  // recorded for the AI side. This keeps a single source of truth for point
+  // values (SCORE_POINTS in leaderboard.ts) instead of duplicating the math.
+  // Bridge time is shared map state, so both sides receive the same bridge
+  // contribution. Only the local player's score feeds the leaderboard
+  // submission — this is purely for the side-by-side comparison.
+  const aiScore = computeScore({
+    unitsGenerated:      matchStats.aiUnitsGenerated,
+    enemyUnitsKilled:    matchStats.playerUnitsKilled,
+    enemyBasesDestroyed: matchStats.playerBasesDestroyed,
+    enemyKingsKilled:    matchStats.playerKingsKilled,
+    enemyQueensKilled:   matchStats.playerQueensKilled,
+    rightBridgeDownMs:   matchStats.rightBridgeDownMs,
+    leftBridgeDownMs:    matchStats.leftBridgeDownMs,
+    // Re-pass the local-side fields so the shape matches MatchStats; they're
+    // unused by computeScore but required by the type.
+    aiUnitsGenerated:     matchStats.unitsGenerated,
+    playerUnitsKilled:    matchStats.enemyUnitsKilled,
+    playerBasesDestroyed: matchStats.enemyBasesDestroyed,
+    playerKingsKilled:    matchStats.enemyKingsKilled,
+    playerQueensKilled:   matchStats.enemyQueensKilled,
+  });
+
   // Only render when game is actually over AND we have a winner
   if (!gameOver || !winner) return null;
 
@@ -128,7 +151,9 @@ export function PostGameScreen() {
 
         {/* Battle Statistics — symmetric per-side cards so the player can
             directly compare what they accomplished vs the AI. Both cards
-            render the same row shape via ForcesCard. */}
+            render the same row shape via ForcesCard, including the final
+            Total computed via computeScore so the comparison ends on a
+            single headline number per side. */}
         <div className="postgame-stats">
           <h2>Battle Summary</h2>
 
@@ -145,6 +170,8 @@ export function PostGameScreen() {
               basesDestroyed={matchStats.enemyBasesDestroyed}
               kingsKilled={matchStats.enemyKingsKilled}
               queensKilled={matchStats.enemyQueensKilled}
+              bridgeSeconds={bridgeDownSeconds}
+              total={score.total}
             />
             <ForcesCard
               variant="enemy"
@@ -158,35 +185,9 @@ export function PostGameScreen() {
               basesDestroyed={matchStats.playerBasesDestroyed}
               kingsKilled={matchStats.playerKingsKilled}
               queensKilled={matchStats.playerQueensKilled}
+              bridgeSeconds={bridgeDownSeconds}
+              total={aiScore.total}
             />
-          </div>
-
-          {/* Victory Condition Met */}
-          <div className="victory-condition">
-            <p>
-              {isLocalWinner
-                ? '✓ All enemy Bases, Queens, and Kings have been eliminated!'
-                : '✗ Your Bases, Queens, and Kings have been eliminated'}
-            </p>
-          </div>
-        </div>
-
-        {/* Score — shared map stat (bridge control) plus the final total.
-            The per-action breakdown lives in the Forces cards above; this
-            section is only the contribution the cards can't show
-            symmetrically and the final score. */}
-        <div className="postgame-score">
-          <h2>Your Score</h2>
-          <div className="score-breakdown">
-            <div className="score-row">
-              <span className="score-label">Bridges held down</span>
-              <span className="score-count">{bridgeDownSeconds}s</span>
-              <span className="score-points">{score.bridgeHeldPoints}</span>
-            </div>
-            <div className="score-row score-total">
-              <span className="score-label">Total</span>
-              <span className="score-points">{score.total}</span>
-            </div>
           </div>
         </div>
 
@@ -278,6 +279,12 @@ interface ForcesCardProps {
   basesDestroyed: number;
   kingsKilled: number;
   queensKilled: number;
+  // Shared/derived stats shown at the bottom of each card so both sides end
+  // on a comparable totals strip. `bridgeSeconds` is shared map state (the
+  // same value for both cards); `total` is the score computed with this
+  // side's counters via computeScore.
+  bridgeSeconds: number;
+  total: number;
 }
 
 /**
@@ -296,6 +303,7 @@ function ForcesCard(props: ForcesCardProps) {
     variant, heading, team,
     basesRemaining, queensRemaining, kingsRemaining,
     unitsGenerated, unitsKilled, basesDestroyed, kingsKilled, queensKilled,
+    bridgeSeconds, total,
   } = props;
   return (
     <div className={`stats-column ${variant}`}>
@@ -341,6 +349,16 @@ function ForcesCard(props: ForcesCardProps) {
       <div className="stat-row">
         <span className="stat-label">Queens killed:</span>
         <span className="stat-value">{queensKilled}</span>
+      </div>
+      <div className="stat-row">
+        <span className="stat-label">Bridges held down:</span>
+        <span className="stat-value">{bridgeSeconds}s</span>
+      </div>
+      {/* Final Total row — visually weighted (separator above, gold accent)
+          so it reads as the headline number, not just another stat. */}
+      <div className="stat-row stat-row-total">
+        <span className="stat-label">Total</span>
+        <span className="stat-value stat-value-total">{total}</span>
       </div>
     </div>
   );
