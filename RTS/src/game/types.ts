@@ -101,6 +101,19 @@ export interface PatrolRoute {
   currentTarget: 'start' | 'end'; // which position the queen is currently moving toward
 }
 
+// Per-match scoring counters for the local player. Reset on every startMatch so
+// each round produces an independent leaderboard score. Tracked inside the tick
+// loop where the relevant events fire (spawn, combat kill, bridge animation).
+export interface MatchStats {
+  unitsGenerated: number;        // Local player's queens have spawned a Unit
+  enemyUnitsKilled: number;      // Local player killed an enemy Unit
+  enemyBasesDestroyed: number;   // Local player destroyed an enemy Base
+  enemyKingsKilled: number;      // Local player killed an enemy King
+  enemyQueensKilled: number;     // Local player killed an enemy Queen
+  rightBridgeDownMs: number;     // Total ms the right bridge has been Fully_Down this match
+  leftBridgeDownMs: number;      // Total ms the left bridge has been Fully_Down this match
+}
+
 export interface GameState {
   config: GameConfig;
   players: Player[];
@@ -115,6 +128,7 @@ export interface GameState {
   selectedUnitIds: string[]; // currently selected units
   unitOrders: Record<string, Position3D>; // unit id -> target position for movement orders
   queenPatrols: Record<string, PatrolRoute>; // queen id -> patrol route
+  matchStats: MatchStats; // scoring counters for the current match (local player)
 }
 
 export interface CommandMoveUnits {

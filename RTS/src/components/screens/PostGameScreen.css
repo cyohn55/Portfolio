@@ -180,6 +180,251 @@
   color: rgba(255, 255, 255, 0.9);
 }
 
+/* Score Breakdown */
+.postgame-score {
+  margin-bottom: 32px;
+}
+
+.postgame-score h2 {
+  font-size: 24px;
+  color: #ffffff;
+  text-align: center;
+  margin: 0 0 20px 0;
+}
+
+.score-breakdown {
+  background: rgba(17, 23, 38, 0.6);
+  border: 1px solid rgba(88, 120, 255, 0.3);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.score-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.score-row:last-child {
+  border-bottom: none;
+}
+
+.score-label {
+  color: rgba(255, 255, 255, 0.75);
+  font-weight: 600;
+}
+
+.score-count {
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.65);
+  min-width: 40px;
+  text-align: right;
+}
+
+.score-points {
+  font-variant-numeric: tabular-nums;
+  color: #ffffff;
+  font-weight: 700;
+  min-width: 56px;
+  text-align: right;
+}
+
+.score-total {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 2px solid rgba(88, 120, 255, 0.5);
+  font-size: 18px;
+}
+
+.score-total .score-label {
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.score-total .score-points {
+  color: #ffd76a;
+  font-size: 22px;
+  text-shadow: 0 0 12px rgba(255, 215, 106, 0.4);
+}
+
+/* Leaderboard */
+.postgame-leaderboard {
+  margin-bottom: 32px;
+}
+
+.postgame-leaderboard h2 {
+  font-size: 24px;
+  color: #ffffff;
+  text-align: center;
+  margin: 0 0 16px 0;
+}
+
+.leaderboard-form {
+  background: rgba(17, 23, 38, 0.6);
+  border: 1px solid rgba(88, 120, 255, 0.3);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.leaderboard-form-label {
+  display: block;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 8px;
+}
+
+.leaderboard-form-row {
+  display: flex;
+  gap: 10px;
+}
+
+.leaderboard-input {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: rgba(11, 15, 26, 0.8);
+  border: 1px solid rgba(88, 120, 255, 0.4);
+  border-radius: 6px;
+  color: #ffffff;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.leaderboard-input:focus {
+  border-color: rgba(106, 140, 255, 0.9);
+}
+
+.leaderboard-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.leaderboard-submit {
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #5a7cff 0%, #4a6cef 100%);
+  border: 1px solid #6a8cff;
+  border-radius: 6px;
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.leaderboard-submit:hover:not(:disabled) {
+  background: linear-gradient(135deg, #6a8cff 0%, #5a7cff 100%);
+  box-shadow: 0 4px 12px rgba(88, 120, 255, 0.4);
+}
+
+.leaderboard-submit:disabled {
+  background: rgba(60, 70, 100, 0.6);
+  border-color: rgba(88, 120, 255, 0.2);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.leaderboard-error {
+  margin: 10px 0 0 0;
+  font-size: 13px;
+  color: #f87171;
+}
+
+.leaderboard-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  background: rgba(17, 23, 38, 0.6);
+  border: 1px solid rgba(88, 120, 255, 0.3);
+  border-radius: 10px;
+  overflow: hidden;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.leaderboard-empty {
+  padding: 16px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 14px;
+  font-style: italic;
+}
+
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 48px 1fr 32px 72px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.leaderboard-row:last-child {
+  border-bottom: none;
+}
+
+.leaderboard-row-mine {
+  background: rgba(88, 120, 255, 0.18);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.leaderboard-rank {
+  color: rgba(255, 255, 255, 0.55);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.leaderboard-row-mine .leaderboard-rank {
+  color: #ffd76a;
+}
+
+.leaderboard-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-result {
+  text-align: center;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 2px 0;
+  border-radius: 4px;
+}
+
+.leaderboard-result-victory {
+  background: rgba(74, 222, 128, 0.18);
+  color: #4ade80;
+}
+
+.leaderboard-result-defeat {
+  background: rgba(248, 113, 113, 0.18);
+  color: #f87171;
+}
+
+.leaderboard-score {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.leaderboard-row-mine .leaderboard-score {
+  color: #ffd76a;
+}
+
 /* Action Buttons */
 .postgame-actions {
   display: flex;
@@ -254,5 +499,19 @@
 
   .postgame-button {
     width: 100%;
+  }
+
+  .leaderboard-form-row {
+    flex-direction: column;
+  }
+
+  .leaderboard-submit {
+    width: 100%;
+  }
+
+  .leaderboard-row {
+    grid-template-columns: 36px 1fr 28px 60px;
+    font-size: 13px;
+    padding: 8px 12px;
   }
 }

@@ -11,8 +11,9 @@ import { SpatialGrid } from '../utils/SpatialGrid';
 setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import { pathfinder } from '../components/Working/pathfinder';
-import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, GameConfig, GameState, Player, Unit, PatrolRoute } from './types';
+import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute } from './types';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
+import * as leaderboardModule from '../components/Working/leaderboard';
 
 type BridgeAnimationState = 'up' | 'lowering' | 'down' | 'raising';
 type BridgeFrame = 'Fully_Up' | 'Almost_Up' | 'Almost_Down' | 'Fully_Down';
@@ -92,6 +93,20 @@ const defaultConfig: GameConfig = {
   regenPerSecondNearQueen: 5,
   regenRadius: 8,
 };
+
+// Zero-valued match scoring counters. Used as the starting point on every new
+// match and re-exported as a factory so callers don't share a mutable reference.
+function createEmptyMatchStats(): MatchStats {
+  return {
+    unitsGenerated: 0,
+    enemyUnitsKilled: 0,
+    enemyBasesDestroyed: 0,
+    enemyKingsKilled: 0,
+    enemyQueensKilled: 0,
+    rightBridgeDownMs: 0,
+    leftBridgeDownMs: 0,
+  };
+}
 
 type GameScreen = 'menu' | 'lobby' | 'playing' | 'postgame';
 
@@ -198,6 +213,7 @@ export const useGameStore = create<Store>((set, get) => ({
   targetCache: {},
   lastWinCheckMs: 0,
   deadUnitsToRemove: [],
+  matchStats: createEmptyMatchStats(),
   ultraPerformanceMode: true, // Enable ultra mode by default
   optimizations: {
     aiThrottling: true,
@@ -267,7 +283,7 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
@@ -323,6 +339,7 @@ export const useGameStore = create<Store>((set, get) => ({
       targetCache: {},
       lastWinCheckMs: 0,
       deadUnitsToRemove: [],
+      matchStats: createEmptyMatchStats(),
       bridgeState: {
         rightBridge: {
           currentState: 'up',
@@ -495,6 +512,12 @@ export const useGameStore = create<Store>((set, get) => ({
             const finalSpawnPos = checkCollision(tentativeSpawnPos, tempUnit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
             tempUnit.position = finalSpawnPos;
             draft.units.push(tempUnit);
+
+            // Leaderboard scoring: count units the local player generates. The
+            // AI's spawns don't contribute — only the human team's queens.
+            if (q.ownerId === draft.localPlayerId) {
+              draft.matchStats.unitsGenerated++;
+            }
           }
 
           draft.lastSpawnAtMsByQueenId[q.id] = nowMs;
@@ -1165,6 +1188,21 @@ export const useGameStore = create<Store>((set, get) => ({
         if (target.hp <= 0) {
           if (tickDebug) console.log(`Unit ${target.animal} (${target.ownerId}) killed by ${attacker.animal} (${attacker.ownerId})`);
           draft.deadUnitsToRemove.push(target.id);
+
+          // Leaderboard scoring: credit the local player only for kills they
+          // landed on an enemy. Attribution keys off the killing-blow attacker,
+          // so an enemy chipped down by allied AI doesn't double-count.
+          const isPlayerKillingEnemy =
+            attacker.ownerId === draft.localPlayerId &&
+            target.ownerId !== draft.localPlayerId;
+          if (isPlayerKillingEnemy) {
+            switch (target.kind) {
+              case 'Base':  draft.matchStats.enemyBasesDestroyed++; break;
+              case 'King':  draft.matchStats.enemyKingsKilled++;    break;
+              case 'Queen': draft.matchStats.enemyQueensKilled++;   break;
+              case 'Unit':  draft.matchStats.enemyUnitsKilled++;    break;
+            }
+          }
         }
 
         // Apply knockback effect (but not to Bases - they should stay stationary)
@@ -1263,6 +1301,17 @@ export const useGameStore = create<Store>((set, get) => ({
 
       // Update bridge animations
       updateBridgeAnimations(draft, nowMs);
+
+      // Leaderboard scoring: accumulate the wall time each bridge spends in the
+      // Fully_Down frame. Sampled by dtSec so it reflects real elapsed seconds
+      // independent of frame rate. Scored in 5-second slices in computeScore().
+      const dtMs = dtSec * 1000;
+      if (draft.bridgeState.rightBridge.currentFrame === 'Fully_Down') {
+        draft.matchStats.rightBridgeDownMs += dtMs;
+      }
+      if (draft.bridgeState.leftBridge.currentFrame === 'Fully_Down') {
+        draft.matchStats.leftBridgeDownMs += dtMs;
+      }
 
       // Throttled win condition checks (every 5 seconds instead of every tick)
       const WIN_CHECK_INTERVAL = 5000; // 5 seconds
@@ -1437,6 +1486,9 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
   (window as any).__rtsStore = useGameStore;
   (window as any).__rtsAnimals = ANIMALS;
   (window as any).__rtsMeleeRange = MELEE_RANGE;
+  // Expose leaderboard utilities so the spec in Unit Tests/ can exercise the
+  // real scoring / profanity-filter / persistence code rather than a copy.
+  (window as any).__rtsLeaderboard = leaderboardModule;
 }
 
 function baseStats(animal: AnimalId) {
