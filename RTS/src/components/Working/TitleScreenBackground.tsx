@@ -1,5 +1,5 @@
-import { Suspense, useMemo, useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Suspense, useEffect, useMemo, useRef } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 
@@ -13,8 +13,10 @@ import * as THREE from 'three';
  *    main Canvas). The two never coexist — App.tsx only mounts the menu OR the
  *    game Canvas at a time, so we don't risk hitting the browser's WebGL
  *    context cap.
- *  - Auto-fits the camera to the model's bounding sphere so the GLB looks the
- *    same regardless of how the artist scaled it in Blender.
+ *  - If the GLB ships with its own camera node (authored in Blender), that
+ *    camera is promoted to the active render camera so the menu shows the
+ *    exact framing the artist set up. Otherwise we fall back to auto-fitting
+ *    a camera around the model's bounding sphere.
  *  - DPR capped at 2 and antialias enabled only on wider viewports, matching
  *    the perf posture used by the main game Canvas in App.tsx.
  *
@@ -24,55 +26,82 @@ import * as THREE from 'three';
 
 const TITLE_MODEL_URL = `${import.meta.env.BASE_URL}models/Title_Screen.glb`;
 
-// Distance multiplier applied to the model's bounding-sphere radius when
-// placing the camera. Lower = camera sits closer, model appears larger.
-// Was 2.2 (model framed with padding); 0.55 = 1/4 of that distance, which
-// makes the model fill the frame roughly 4× larger on-screen.
+// Distance multiplier applied to the model's bounding-sphere radius when the
+// fallback auto-fit camera has to frame the model itself (i.e. the GLB does
+// not carry a camera node). Lower = camera sits closer, model appears larger.
 const CAMERA_DISTANCE_FACTOR = 0.55;
 
-// Static yaw applied to the model around the world Y axis. 0 = present the
-// model in its native exported orientation (the artist's pose, set via the
-// model's origin in Blender). Adjust if the menu needs a stylized angle.
-// NOTE: the auto-fit camera sits off-axis at (+X, +Y, +Z) looking at the
-// origin, so positive/negative rotation.y does NOT cleanly map to "viewer's
-// right/left" — pick the sign empirically.
-const TITLE_YAW_RADIANS = (5 * Math.PI) / 18; // +50°
+/**
+ * Walks the cloned scene graph and returns the first perspective camera node
+ * found. Authored cameras come through gltf nodes with isPerspectiveCamera
+ * set; orthographic cameras are intentionally ignored because the rest of the
+ * pipeline (FOV-based culling, post fx if any) assumes a perspective camera.
+ */
+function findEmbeddedCamera(root: THREE.Object3D): THREE.PerspectiveCamera | undefined {
+  let found: THREE.PerspectiveCamera | undefined;
+  root.traverse((obj) => {
+    if (found) return;
+    const cam = obj as THREE.PerspectiveCamera;
+    if (cam.isCamera && cam.isPerspectiveCamera) found = cam;
+  });
+  return found;
+}
 
 function TitleModel() {
   const { scene } = useGLTF(TITLE_MODEL_URL);
+  const setDefaults = useThree((s) => s.set);
+  const size = useThree((s) => s.size);
 
-  // Center the model at the origin and capture its size so the parent camera
-  // can frame it. We mutate a clone of the loaded scene so re-mounting the
-  // menu (e.g. after exiting a match) doesn't accumulate offsets on the cached
-  // GLTF scene that useGLTF returns by reference.
-  const { centered, radius } = useMemo(() => {
+  // Clone so re-mounting the menu (e.g. after exiting a match) doesn't
+  // accumulate mutations on the cached GLTF scene that useGLTF returns by
+  // reference. We also branch here on whether the GLB carries its own camera:
+  // if it does, we present the model in its native pose so the authored camera
+  // transform frames it correctly; if not, we recenter the model and emit a
+  // bounding-sphere radius for AutoFitCamera to consume.
+  const { sceneClone, embeddedCamera, fallbackRadius } = useMemo(() => {
     const root = scene.clone(true);
+    const camera = findEmbeddedCamera(root);
+
+    if (camera) {
+      return { sceneClone: root, embeddedCamera: camera, fallbackRadius: 0 };
+    }
+
     const box = new THREE.Box3().setFromObject(root);
     const center = new THREE.Vector3();
     const sphere = new THREE.Sphere();
     box.getCenter(center);
     box.getBoundingSphere(sphere);
-
-    // Translate so the model sits centered on (0, 0, 0).
     root.position.sub(center);
 
-    return { centered: root, radius: sphere.radius || 1 };
+    return { sceneClone: root, embeddedCamera: undefined, fallbackRadius: sphere.radius || 1 };
   }, [scene]);
 
-  // Expose the computed radius via userData on the group so AutoFitCamera can
-  // read it off the mounted scene. Cheaper than threading callbacks through props.
+  // Promote the authored camera to the active render camera. Re-applying on
+  // size changes keeps the projection matrix in sync when the window resizes
+  // (the GLB stores a fixed aspect from Blender that won't match the canvas).
+  useEffect(() => {
+    if (!embeddedCamera) return;
+    embeddedCamera.updateMatrixWorld(true);
+    embeddedCamera.aspect = size.width / Math.max(size.height, 1);
+    embeddedCamera.updateProjectionMatrix();
+    setDefaults({ camera: embeddedCamera });
+  }, [embeddedCamera, size.width, size.height, setDefaults]);
+
+  // userData.radius is read by AutoFitCamera only in the fallback path; when
+  // an embedded camera is present we set it to 0 so AutoFitCamera bails out.
   return (
-    <group userData={{ radius }} rotation={[0, TITLE_YAW_RADIANS, 0]}>
-      <primitive object={centered} />
+    <group userData={{ radius: fallbackRadius }}>
+      <primitive object={sceneClone} />
     </group>
   );
 }
 
 /**
- * Camera placed at a distance proportional to the loaded model's bounding
- * sphere. We can't read that radius until after Suspense resolves, so this
- * sits inside the same Suspense boundary as TitleModel and reads it off the
- * mounted group's userData on the first useFrame.
+ * Fallback framing for GLBs that do NOT ship a camera. Places a camera at a
+ * distance proportional to the loaded model's bounding sphere. We can't read
+ * that radius until after Suspense resolves, so this sits inside the same
+ * Suspense boundary as TitleModel and reads it off the mounted group's
+ * userData on the first useFrame.
  */
 function AutoFitCamera() {
   const fittedRef = useRef(false);
