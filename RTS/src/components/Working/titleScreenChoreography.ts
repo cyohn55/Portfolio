@@ -52,6 +52,12 @@ export interface ChasePairConfig {
    * after travelling `leadIn`.
    */
   readonly leadIn?: number;
+  /**
+   * Optional scale on the chaser's follow distance (default 1). Use values > 1
+   * to stretch the gap for a slow pursuer that should trail well behind its
+   * quarry (e.g. the Turtle plodding after the Bunny).
+   */
+  readonly lagMultiplier?: number;
 }
 
 /**
@@ -62,7 +68,7 @@ export interface ChasePairConfig {
  */
 export const CHASE_PAIRS: readonly ChasePairConfig[] = [
   { chaser: 'Bee', leader: 'Bear' },
-  { chaser: 'Turtle', leader: 'Bunny', aimAt: 'Pig' },
+  { chaser: 'Turtle', leader: 'Bunny', aimAt: 'Pig', lagMultiplier: 2 },
   { chaser: 'Chicken', leader: 'Pig', leadIn: 60 },
   { chaser: 'Fox', leader: 'Kitty' },
 ];
@@ -114,7 +120,20 @@ const HOP_STRIDE = 9;
 const FLY_BOB_AMPLITUDE = 1.1;
 const FLY_BOB_FREQUENCY = 2.4; // radians / second
 
+/**
+ * Walk gait rock: a grounded animal pitches its nose up by this angle and back
+ * to level once per WALK_STRIDE travelled, so it appears to stride rather than
+ * slide. Tilt is applied about the animal's local X axis, on top of its
+ * authored facing.
+ */
+const WALK_TILT_RADIANS = THREE.MathUtils.degToRad(15);
+/** Distance covered by one full up-and-back-down rock, world units. */
+const WALK_STRIDE = 6;
+
 const LOCAL_FORWARD = new THREE.Vector3(0, 0, 1);
+const LOCAL_X_AXIS = new THREE.Vector3(1, 0, 0);
+/** Scratch quaternion for composing the per-frame walk tilt; never aliased. */
+const tiltQuaternion = new THREE.Quaternion();
 
 interface AnimalRoute {
   readonly group: THREE.Object3D;
@@ -123,6 +142,8 @@ interface AnimalRoute {
   readonly startX: number;
   readonly startY: number;
   readonly startZ: number;
+  /** Authored facing; the walk tilt is composed onto this so eyes still point right. */
+  readonly startQuaternion: THREE.Quaternion;
   /** Distance this animal lags behind the leader along the travel line. */
   readonly lagDistance: number;
   /** Constant phase so two flyers don't bob in lockstep. */
@@ -256,9 +277,10 @@ export class TitleChaseChoreographer {
     const baseX = leaderStart.x - dir.x * leadIn;
     const baseZ = leaderStart.z - dir.y * leadIn;
 
-    // Keep at least MIN_CHASE_GAP behind, or the authored spacing if larger.
+    // Keep at least MIN_CHASE_GAP behind (or the authored spacing if larger),
+    // then stretch by the pair's lag multiplier for a deliberately slow pursuer.
     const authoredGap = Math.hypot(leaderStart.x - chaserStart.x, leaderStart.z - chaserStart.z);
-    const lagDistance = Math.max(authoredGap * CHASE_GAP_FACTOR, MIN_CHASE_GAP);
+    const lagDistance = Math.max(authoredGap * CHASE_GAP_FACTOR, MIN_CHASE_GAP) * (config.lagMultiplier ?? 1);
 
     // Re-parent to the (identity) scene root so local space equals world space;
     // attach() preserves the authored world transform, including scale.
@@ -271,6 +293,7 @@ export class TitleChaseChoreographer {
       startX: baseX,
       startY: leaderStart.y,
       startZ: baseZ,
+      startQuaternion: leaderGroup.quaternion.clone(),
       lagDistance: 0,
       bobPhase: 0,
       lastPosition: new THREE.Vector3(),
@@ -283,6 +306,7 @@ export class TitleChaseChoreographer {
       startX: baseX,
       startY: chaserStart.y,
       startZ: baseZ,
+      startQuaternion: chaserGroup.quaternion.clone(),
       lagDistance,
       bobPhase: Math.PI,
       lastPosition: new THREE.Vector3(),
@@ -384,7 +408,24 @@ export class TitleChaseChoreographer {
     route.lastPosition.set(x, y, z);
     route.group.position.set(x, y, z);
     route.group.visible = visible;
-    // Position only — the authored rotation (where the eyes face) is preserved.
+    this.applyGaitRotation(route, distance);
+  }
+
+  /**
+   * Re-applies the authored facing each frame, adding a stride-synced nose-up
+   * rock for walkers so they appear to stride instead of slide. Flyers and
+   * hoppers keep their authored rotation untouched.
+   */
+  private applyGaitRotation(route: AnimalRoute, distance: number): void {
+    if (route.gait !== 'walk') {
+      route.group.quaternion.copy(route.startQuaternion);
+      return;
+    }
+    // 0 -> 15deg -> 0 once per stride; abs(sin) keeps the pitch nose-up only.
+    const strideProgress = ((distance / WALK_STRIDE) % 1 + 1) % 1;
+    const tilt = Math.sin(strideProgress * Math.PI) * WALK_TILT_RADIANS;
+    tiltQuaternion.setFromAxisAngle(LOCAL_X_AXIS, -tilt); // negative pitches the nose up
+    route.group.quaternion.copy(route.startQuaternion).multiply(tiltQuaternion);
   }
 
   /** Vertical gait offset above the baseline for the current frame. */
