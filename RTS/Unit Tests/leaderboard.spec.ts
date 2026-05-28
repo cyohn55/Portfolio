@@ -290,3 +290,57 @@ test.describe('leaderboard persistence', () => {
     expect(ranked.map((e: any) => e.name)).toEqual(['SlowerHigher', 'FasterButLower']);
   });
 });
+
+test.describe('leaderboard cache write-through', () => {
+  // cacheLeaderboard is how the remote (Firestore) layer pushes an
+  // authoritative server list into the local cache. It must apply the same
+  // clean → sort → trim pipeline as a normal read so an offline reload shows a
+  // valid board, and it must persist what it returns.
+
+  test('sorts, trims to 10, persists, and returns the canonical list', async ({ page }) => {
+    await openGame(page);
+
+    const result = await page.evaluate(() => {
+      const lb = (window as any).__rtsLeaderboard;
+      // Hand in 13 well-formed but unsorted entries — simulating a raw server
+      // payload — and let cacheLeaderboard rank and cap them.
+      const incoming = Array.from({ length: 13 }, (_, i) => ({
+        name: `Remote${i}`,
+        score: i * 10, // 0..120, intentionally ascending so sort has work to do
+        dateMs: 1000 + i,
+        result: i % 2 === 0 ? 'victory' : 'defeat',
+        matchTimeMs: 60_000 + i,
+      }));
+      const returned = lb.cacheLeaderboard(incoming);
+      const persisted = lb.getLeaderboard();
+      return { returned, persisted };
+    });
+
+    // Capped at 10, highest score first, and the read-back from storage equals
+    // the returned list — the two responsibilities (return, persist) agree.
+    expect(result.returned.length).toBe(10);
+    expect(result.returned[0].score).toBe(120);
+    expect(result.returned[result.returned.length - 1].score).toBe(30);
+    expect(result.persisted.map((e: any) => e.score)).toEqual(
+      result.returned.map((e: any) => e.score),
+    );
+  });
+
+  test('drops malformed server rows before caching', async ({ page }) => {
+    await openGame(page);
+
+    const persisted = await page.evaluate(() => {
+      const lb = (window as any).__rtsLeaderboard;
+      // A mix of valid and malformed rows (missing matchTimeMs, wrong result
+      // value) — only the well-formed one should survive into the cache.
+      lb.cacheLeaderboard([
+        { name: 'Valid', score: 100, dateMs: 1, result: 'victory', matchTimeMs: 90_000 },
+        { name: 'NoTime', score: 200, dateMs: 2, result: 'victory' },
+        { name: 'BadResult', score: 300, dateMs: 3, result: 'draw', matchTimeMs: 90_000 },
+      ]);
+      return lb.getLeaderboard();
+    });
+
+    expect(persisted.map((e: any) => e.name)).toEqual(['Valid']);
+  });
+});

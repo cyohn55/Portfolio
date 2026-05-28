@@ -14,6 +14,7 @@ import { pathfinder } from '../components/Working/pathfinder';
 import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute } from './types';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 import * as leaderboardModule from '../components/Working/leaderboard';
+import * as leaderboardRemoteModule from '../components/Working/leaderboardRemote';
 
 type BridgeAnimationState = 'up' | 'lowering' | 'down' | 'raising';
 type BridgeFrame = 'Fully_Up' | 'Almost_Up' | 'Almost_Down' | 'Fully_Down';
@@ -1561,6 +1562,9 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
   // Expose leaderboard utilities so the spec in Unit Tests/ can exercise the
   // real scoring / profanity-filter / persistence code rather than a copy.
   (window as any).__rtsLeaderboard = leaderboardModule;
+  // Remote (Firestore-backed) leaderboard layer, exposed so the spec in
+  // Unit Tests/ can exercise the real fetch/submit-with-cache-fallback code.
+  (window as any).__rtsLeaderboardRemote = leaderboardRemoteModule;
 }
 
 function baseStats(animal: AnimalId) {

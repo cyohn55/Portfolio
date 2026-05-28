@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGameStore } from '../../game/state';
 import {
-  addLeaderboardEntry,
   computeScore,
   getLeaderboard,
   NAME_MAX_LENGTH,
   validateName,
   type LeaderboardEntry,
 } from '../Working/leaderboard';
+import { fetchLeaderboard, submitScore, type LeaderboardSource } from '../Working/leaderboardRemote';
 import './PostGameScreen.css';
 
 export function PostGameScreen() {
@@ -29,7 +29,29 @@ export function PostGameScreen() {
   const [nameInput, setNameInput] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submittedEntryKey, setSubmittedEntryKey] = useState<string | null>(null);
+  // Seed from the local cache so the table paints immediately, then refresh
+  // from the global board. `source` flags when we're showing a cached copy
+  // because the backend was unreachable; `submitting` gates the form while a
+  // score write is in flight.
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(() => getLeaderboard());
+  const [source, setSource] = useState<LeaderboardSource>('cache');
+  const [submitting, setSubmitting] = useState(false);
+
+  // Pull the live global board once the match has actually ended. Gated on
+  // gameOver/winner because this component is mounted (rendering null) during
+  // gameplay, and we don't want a network read until there's a result to show.
+  useEffect(() => {
+    if (!gameOver || !winner) return;
+    let active = true;
+    fetchLeaderboard().then((result) => {
+      if (!active) return;
+      setLeaderboard(result.entries);
+      setSource(result.source);
+    });
+    return () => {
+      active = false;
+    };
+  }, [gameOver, winner]);
 
   // The breakdown is a pure function of matchStats. We deliberately recompute
   // it on every render rather than caching by `[matchStats]` reference: the
@@ -120,9 +142,9 @@ export function PostGameScreen() {
     transitionToScreen('menu');
   };
 
-  const handleSubmitScore = (event: React.FormEvent) => {
+  const handleSubmitScore = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (submittedEntryKey) return; // already submitted this match
+    if (submittedEntryKey || submitting) return; // already submitted / in flight
 
     const validation = validateName(nameInput);
     if (!validation.ok) {
@@ -138,15 +160,22 @@ export function PostGameScreen() {
       // Persist the match duration so equal scores break by faster-win-first.
       matchTimeMs,
     };
-    const next = addLeaderboardEntry(entry);
-    setLeaderboard(next);
+
     setSubmitError(null);
+    setSubmitting(true);
+    // submitScore never rejects: it writes to the global board and falls back
+    // to the local cache if the backend is unreachable, so the entry always
+    // lands and the player always gets an updated list.
+    const result = await submitScore(entry);
+    setLeaderboard(result.entries);
+    setSource(result.source);
+    setSubmitting(false);
     // Build a stable key that uniquely identifies this submission so we can
     // highlight the player's own row even when other names share the score.
     setSubmittedEntryKey(`${entry.name}|${entry.score}|${entry.dateMs}`);
   };
 
-  const submitDisabled = submittedEntryKey !== null;
+  const submitDisabled = submittedEntryKey !== null || submitting;
 
   return (
     <div className="postgame-overlay">
@@ -248,10 +277,17 @@ export function PostGameScreen() {
                 className="leaderboard-submit"
                 disabled={submitDisabled || nameInput.trim().length === 0}
               >
-                {submitDisabled ? 'Submitted' : 'Submit'}
+                {submitting ? 'Submitting…' : submittedEntryKey ? 'Submitted' : 'Submit'}
               </button>
             </div>
             {submitError && <p className="leaderboard-error">{submitError}</p>}
+            {/* Honest signal: the score saved locally but the global board was
+                unreachable. Only shown once a submission has completed. */}
+            {submittedEntryKey && source === 'cache' && (
+              <p className="leaderboard-error">
+                Saved locally — couldn’t reach the global leaderboard. It’ll sync next time you’re online.
+              </p>
+            )}
           </form>
 
           <ol className="leaderboard-list">

@@ -1,0 +1,52 @@
+// Firestore security rules for the RTS global leaderboard.
+//
+// HOW TO APPLY:
+//   Firebase console -> Firestore Database -> Rules tab -> paste -> Publish.
+//   (Project: rts-leader-board.)
+//
+// SECURITY MODEL:
+//   The Firebase web apiKey ships in the client bundle, so the database is
+//   reachable by anyone. These rules are the actual access control:
+//     * Anyone may READ the leaderboard (it is public by design).
+//     * Anyone may CREATE a score, but only if the document is well-formed and
+//       within sane bounds — this blocks junk rows and absurd scores.
+//     * No client may ever UPDATE or DELETE — the board cannot be tampered with
+//       or wiped from the browser.
+//
+//   This stops tampering and obvious garbage. It does NOT prove a score was
+//   honestly earned (a determined user can still POST a within-bounds fake),
+//   because a static site has no trusted server to validate the match. That
+//   trade-off was accepted for the portfolio build; moving validation
+//   server-side would require a Cloud Function / Worker.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /scores/{scoreId} {
+      allow read: if true;
+      allow create: if isValidScore(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    // Mirrors the client-side contract in leaderboard.ts (isWellFormedEntry +
+    // validateName bounds): exactly these five fields, correct types, and
+    // ranges that keep the board sane. SCORE_CEILING is a generous upper bound
+    // — comfortably above any honest match total, low enough to reject an
+    // obviously bogus submission.
+    function isValidScore(data) {
+      return data.keys().hasOnly(['name', 'score', 'dateMs', 'result', 'matchTimeMs'])
+        && data.name is string
+        && data.name.size() >= 2
+        && data.name.size() <= 16
+        && data.score is number
+        && data.score >= 0
+        && data.score <= 100000
+        && data.dateMs is number
+        && data.matchTimeMs is number
+        && data.matchTimeMs >= 0
+        && (data.result == 'victory' || data.result == 'defeat');
+    }
+  }
+}
