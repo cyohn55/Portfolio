@@ -26,7 +26,10 @@ export const SCORE_POINTS = {
 const BRIDGE_INTERVAL_MS = 5_000;
 
 const STORAGE_KEY = 'rts-leaderboard';
-const MAX_ENTRIES = 10;
+// Exported so the remote layer (leaderboardRemote.ts) trims the Firestore
+// result to the same depth as the local cache — one source of truth for "how
+// many rows is a leaderboard".
+export const MAX_ENTRIES = 10;
 
 export const NAME_MIN_LENGTH = 2;
 export const NAME_MAX_LENGTH = 16;
@@ -268,7 +271,33 @@ export function addLeaderboardEntry(entry: LeaderboardEntry): LeaderboardEntry[]
   return next;
 }
 
-function compareEntries(a: LeaderboardEntry, b: LeaderboardEntry): number {
+/**
+ * Replace the local cache with a freshly fetched leaderboard (e.g. the
+ * authoritative list returned by Firestore). The list is run through the same
+ * clean → sort → trim pipeline as a normal read so the cache can never hold a
+ * malformed or over-long list, then persisted. Returns the canonical list the
+ * caller should render. Used by the remote layer to "write through" a server
+ * result so an offline reload still shows the last-seen global board.
+ */
+export function cacheLeaderboard(entries: LeaderboardEntry[]): LeaderboardEntry[] {
+  const cleaned = entries
+    .filter(isWellFormedEntry)
+    .sort(compareEntries)
+    .slice(0, MAX_ENTRIES);
+
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+    } catch {
+      // Quota / disabled storage — caller still gets the cleaned in-memory list.
+    }
+  }
+  return cleaned;
+}
+
+// Exported for the remote layer so Firestore results are ranked by the exact
+// same score → matchTimeMs → dateMs rule the local cache uses.
+export function compareEntries(a: LeaderboardEntry, b: LeaderboardEntry): number {
   // Primary: higher score ranks first.
   if (b.score !== a.score) return b.score - a.score;
   // Tie-break #1: a faster win (lower matchTimeMs) ranks higher. Entries
@@ -281,7 +310,10 @@ function compareEntries(a: LeaderboardEntry, b: LeaderboardEntry): number {
   return a.dateMs - b.dateMs;
 }
 
-function isWellFormedEntry(value: unknown): value is LeaderboardEntry {
+// Exported so the remote layer can reject malformed Firestore documents with
+// the same gate the cache uses — a row that wouldn't survive a local read
+// shouldn't be trusted just because it came from the server.
+export function isWellFormedEntry(value: unknown): value is LeaderboardEntry {
   if (!value || typeof value !== 'object') return false;
   const entry = value as Partial<LeaderboardEntry>;
   // matchTimeMs is required. Entries without one — either persisted before

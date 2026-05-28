@@ -50,3 +50,12 @@
   display: flex;
   justify-content: center;
 }
+
+/* Shown when the global board couldn't be reached and we're rendering the
+   local cache instead. Amber rather than the red error color — it's an
+   informational fallback, not a failure the player needs to act on. */
+.leaderboard-offline-note {
+  margin: -8px 0 20px 0;
+  font-size: 14px;
+  color: #fbbf24;
+}

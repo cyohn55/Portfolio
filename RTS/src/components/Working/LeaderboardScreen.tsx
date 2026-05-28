@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useGameStore } from '../../game/state';
 import { getLeaderboard, type LeaderboardEntry } from './leaderboard';
+import { fetchLeaderboard, type LeaderboardSource } from './leaderboardRemote';
 // Reuse the existing leaderboard list/row styling from the post-game screen.
 // CSS classes in this project are loaded globally (Vite concatenates), so
 // importing the stylesheet anywhere is enough to make .leaderboard-row,
@@ -22,11 +23,28 @@ import './LeaderboardScreen.css';
 export function LeaderboardScreen() {
   const transitionToScreen = useGameStore((s) => s.transitionToScreen);
 
-  // Read once per mount — the list only changes via addLeaderboardEntry in
-  // the post-game flow, and that flow can only fire after this screen
-  // unmounts (transition → playing → postgame). Recomputing on every render
-  // would just thrash localStorage for no reader benefit.
-  const leaderboard = useMemo<LeaderboardEntry[]>(() => getLeaderboard(), []);
+  // Seed from the local cache so the table paints instantly with the last-seen
+  // global board, then refresh from Firestore in the background. `loading`
+  // gates the spinner only while there is nothing cached to show; `source`
+  // lets us flag when we're displaying a cached (offline) copy.
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(() => getLeaderboard());
+  const [loading, setLoading] = useState(true);
+  const [source, setSource] = useState<LeaderboardSource>('cache');
+
+  useEffect(() => {
+    // Guards against a state update after unmount if the player backs out
+    // before the network resolves.
+    let active = true;
+    fetchLeaderboard().then((result) => {
+      if (!active) return;
+      setLeaderboard(result.entries);
+      setSource(result.source);
+      setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleBack = () => {
     transitionToScreen('menu');
@@ -36,6 +54,14 @@ export function LeaderboardScreen() {
     <div className="leaderboard-screen">
       <div className="leaderboard-screen-content">
         <h1 className="leaderboard-screen-title">Leaderboard</h1>
+
+        {/* Honest signal when we couldn't reach the global board and are
+            showing the last-known cached copy instead. */}
+        {!loading && source === 'cache' && (
+          <p className="leaderboard-offline-note">
+            Showing your last saved scores — couldn’t reach the global leaderboard.
+          </p>
+        )}
 
         <ol className="leaderboard-list leaderboard-screen-list">
           {/* Column header row — same shape as the data rows so columns line
@@ -49,7 +75,9 @@ export function LeaderboardScreen() {
             <span className="leaderboard-time">Time</span>
           </li>
           {leaderboard.length === 0 ? (
-            <li className="leaderboard-empty">No scores yet — be the first!</li>
+            <li className="leaderboard-empty">
+              {loading ? 'Loading leaderboard…' : 'No scores yet — be the first!'}
+            </li>
           ) : (
             leaderboard.map((entry, index) => {
               const key = `${entry.name}|${entry.score}|${entry.dateMs}`;
