@@ -36,7 +36,7 @@ const CAMERA_DISTANCE_FACTOR = 0.55;
 // NOTE: the auto-fit camera sits off-axis at (+X, +Y, +Z) looking at the
 // origin, so positive/negative rotation.y does NOT cleanly map to "viewer's
 // right/left" — pick the sign empirically.
-const TITLE_YAW_RADIANS = (53 * Math.PI) / 180; // +53°
+const TITLE_YAW_RADIANS = (50.2 * Math.PI) / 180; // +50.2°
 
 function TitleModel() {
   const { scene } = useGLTF(TITLE_MODEL_URL);
