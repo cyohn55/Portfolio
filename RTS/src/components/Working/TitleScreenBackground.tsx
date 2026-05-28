@@ -30,11 +30,13 @@ const TITLE_MODEL_URL = `${import.meta.env.BASE_URL}models/Title_Screen.glb`;
 // makes the model fill the frame roughly 4× larger on-screen.
 const CAMERA_DISTANCE_FACTOR = 0.55;
 
-// Static yaw applied to the model so its front face is angled 20° to the
-// viewer's left. Negative because Three.js uses a right-handed coord system
-// (thumb along +Y, fingers curl +Z → +X), so positive rotation.y swings the
-// front toward the viewer's RIGHT; negating it gives "to the left".
-const TITLE_YAW_RADIANS = -(2 * Math.PI) / 3; // -120°
+// Static yaw applied to the model around the world Y axis. 0 = present the
+// model in its native exported orientation (the artist's pose, set via the
+// model's origin in Blender). Adjust if the menu needs a stylized angle.
+// NOTE: the auto-fit camera sits off-axis at (+X, +Y, +Z) looking at the
+// origin, so positive/negative rotation.y does NOT cleanly map to "viewer's
+// right/left" — pick the sign empirically.
+const TITLE_YAW_RADIANS = 0;
 
 function TitleModel() {
   const { scene } = useGLTF(TITLE_MODEL_URL);
