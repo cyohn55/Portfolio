@@ -34,7 +34,7 @@ const CAMERA_DISTANCE_FACTOR = 0.55;
 // viewer's left. Negative because Three.js uses a right-handed coord system
 // (thumb along +Y, fingers curl +Z → +X), so positive rotation.y swings the
 // front toward the viewer's RIGHT; negating it gives "to the left".
-const TITLE_YAW_RADIANS = -Math.PI / 3; // -60°
+const TITLE_YAW_RADIANS = Math.PI / 3; // +60° (front swings to viewer's right)
 
 function TitleModel() {
   const { scene } = useGLTF(TITLE_MODEL_URL);
