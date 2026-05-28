@@ -6,8 +6,8 @@ import * as THREE from 'three';
 /**
  * TitleScreenBackground
  * ---------------------
- * Renders Title_Screen.glb as a slowly rotating 3D backdrop behind the main
- * menu (Quick Play / Leader Board buttons). Kept intentionally self-contained:
+ * Renders Title_Screen.glb as a static 3D backdrop behind the main menu
+ * (Quick Play / Leader Board buttons). Kept intentionally self-contained:
  *
  *  - Its own React Three Fiber Canvas (separate WebGL context from the game's
  *    main Canvas). The two never coexist — App.tsx only mounts the menu OR the
@@ -24,16 +24,13 @@ import * as THREE from 'three';
 
 const TITLE_MODEL_URL = `${import.meta.env.BASE_URL}models/Title_Screen.glb`;
 
-// Rotation speed in radians/second. Slow enough to feel ambient, not a
-// turntable demo. Tune here, not at the call site.
-const ROTATION_SPEED = 0.06;
-
 // Distance multiplier applied to the model's bounding-sphere radius when
-// placing the camera. Larger = more padding around the model in frame.
-const CAMERA_DISTANCE_FACTOR = 2.2;
+// placing the camera. Lower = camera sits closer, model appears larger.
+// Was 2.2 (model framed with padding); 0.55 = 1/4 of that distance, which
+// makes the model fill the frame roughly 4× larger on-screen.
+const CAMERA_DISTANCE_FACTOR = 0.55;
 
 function TitleModel() {
-  const groupRef = useRef<THREE.Group>(null);
   const { scene } = useGLTF(TITLE_MODEL_URL);
 
   // Center the model at the origin and capture its size so the parent camera
@@ -54,16 +51,10 @@ function TitleModel() {
     return { centered: root, radius: sphere.radius || 1 };
   }, [scene]);
 
-  useFrame((_, delta) => {
-    if (groupRef.current) {
-      groupRef.current.rotation.y += delta * ROTATION_SPEED;
-    }
-  });
-
-  // Expose the computed radius via a ref attribute on the group so the parent
-  // can position its camera. Cheaper than threading callbacks through props.
+  // Expose the computed radius via userData on the group so AutoFitCamera can
+  // read it off the mounted scene. Cheaper than threading callbacks through props.
   return (
-    <group ref={groupRef} userData={{ radius }}>
+    <group userData={{ radius }}>
       <primitive object={centered} />
     </group>
   );
