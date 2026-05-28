@@ -4,8 +4,9 @@ import * as THREE from 'three';
  * titleScreenChoreography
  * -----------------------
  * Animates the animals embedded in Title_Screen.glb so each pair reads as a
- * chase, reusing the same gaits the animals use in-match (UnitsLayer's
- * verticalOffset / state.ts tick):
+ * chase: the two animals travel in a straight line along the direction the
+ * leader is facing, with the chaser lagging a fixed gap behind. Gaits reuse the
+ * in-match motion (UnitsLayer's verticalOffset / state.ts tick):
  *
  *   - hop  : a single vertical arch per stride (Bunny / Frog in-game)
  *   - fly  : held aloft with a gentle bob (Bee / Owl in-game)
@@ -14,16 +15,16 @@ import * as THREE from 'three';
  * The choreographer is intentionally free of any React / R3F dependency so it
  * can be unit-tested with plain three.js objects.
  *
- * Pathing: each pair shares one circular loop. The two animals are authored
- * almost on top of each other, so the loop is anchored on the *leader's*
- * authored position and sent off along the chaser→leader heading; the chaser
- * trails by a fixed gap angle, so it is forever a step behind — a chase that
- * never resolves.
+ * Heading: the two animals in a pair are authored almost on top of each other,
+ * so their relative offset is too small to define a reliable direction. Instead
+ * the travel direction is read from the LEADER's authored facing — its world
+ * quaternion applied to the model's local forward axis (+Z, matching the game's
+ * `rotation = atan2(dir.x, dir.z)` convention). Animals therefore travel exactly
+ * the way their eyes point, and their authored rotation is left untouched.
  *
- * Height: the title-screen play area (the lawn) is flat, and the artist already
- * placed each animal at the right height, so each animal keeps its authored Y as
- * a constant baseline and the gait only adds to it. This avoids per-frame ground
- * raycasts and the drift they caused when a loop crossed a decorative mound.
+ * Height: the lawn is flat and the artist placed each animal at the right
+ * height, so each keeps its authored Y as a constant baseline; the gait only
+ * adds to it.
  */
 
 export type Gait = 'hop' | 'fly' | 'walk';
@@ -31,14 +32,14 @@ export type Gait = 'hop' | 'fly' | 'walk';
 export interface ChasePairConfig {
   /** Group-name fragment of the pursuer (matched case-insensitively). */
   readonly chaser: string;
-  /** Group-name fragment of the pursued. */
+  /** Group-name fragment of the pursued, whose facing sets the travel line. */
   readonly leader: string;
 }
 
 /**
  * Who chases whom. Names are matched case-insensitively as substrings so the
  * ".001" suffixes Blender appends on export still resolve ("Black_Bear" matches
- * "Bear"). The pursued animal anchors the loop at its authored position.
+ * "Bear").
  */
 export const CHASE_PAIRS: readonly ChasePairConfig[] = [
   { chaser: 'Bee', leader: 'Bear' },
@@ -64,54 +65,53 @@ export const ANIMAL_GAITS: Readonly<Record<string, Gait>> = {
   chicken: 'walk',
 };
 
+/**
+ * Models whose local forward is -Z rather than +Z. Mirrors the Math.PI Y-flip
+ * applied to these models in ModelPreloader.createPreparedScene, so the travel
+ * direction matches the way the model visually faces. Keyed by name fragment.
+ */
+const FLIPPED_FORWARD_MODELS: readonly string[] = ['bunny', 'yetti', 'yeti'];
+
 // --- Tuning constants -------------------------------------------------------
 // Grouped here so the chase can be re-tuned in one place.
 
-/** Loop radius as a multiple of the pair's authored separation. */
-const LOOP_RADIUS_FACTOR = 1.15;
-/** Hard floor / ceiling on loop radius in world units, regardless of spacing. */
-const MIN_LOOP_RADIUS = 14;
-const MAX_LOOP_RADIUS = 70;
-/** Angular speed of the chase around the loop (radians / second). */
-const ANGULAR_SPEED = 0.32;
-/** How far behind the leader the chaser rides, in radians of arc. */
-const CHASE_GAP_ANGLE = THREE.MathUtils.degToRad(38);
-/**
- * Fallback heading when the two animals are authored almost on top of each other
- * (separation ~0), so there is no reliable chaser→leader direction to read.
- */
-const DEFAULT_CHASE_DIR = new THREE.Vector2(1, 0);
+/** Forward travel speed along the facing line, world units / second. */
+const TRAVEL_SPEED = 4;
+/** Distance travelled before the pair loops back to its start, world units. */
+const TRAVEL_DISTANCE = 40;
+/** How far behind the leader the chaser lags, world units. */
+const MIN_CHASE_GAP = 4;
+/** If the pair was authored further apart than MIN_CHASE_GAP, keep that gap. */
+const CHASE_GAP_FACTOR = 1.0;
 
 /** Peak height of a hop above the baseline, world units. */
 const HOP_HEIGHT = 2.2;
-/** Arc length of one full hop stride, world units (one arch per stride). */
+/** Distance covered by one full hop stride, world units (one arch per stride). */
 const HOP_STRIDE = 9;
 
 /** Vertical bob applied to a flyer so it never looks frozen mid-air. */
 const FLY_BOB_AMPLITUDE = 1.1;
 const FLY_BOB_FREQUENCY = 2.4; // radians / second
 
-const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const LOCAL_FORWARD = new THREE.Vector3(0, 0, 1);
 
 interface AnimalRoute {
   readonly group: THREE.Object3D;
   readonly gait: Gait;
-  /** Authored world-space height; gait offsets are added on top of this. */
-  readonly baselineY: number;
-  /** Angular lead relative to the leader (0 for the leader, negative for chaser). */
-  readonly angleLead: number;
-  /** Per-animal yaw correction in radians (authored facing is unknown). */
-  readonly yawOffset: number;
+  /** Authored world position; the travel offset is added to this each frame. */
+  readonly startX: number;
+  readonly startY: number;
+  readonly startZ: number;
+  /** Distance this animal lags behind the leader along the travel line. */
+  readonly lagDistance: number;
   /** Constant phase so two flyers don't bob in lockstep. */
   readonly bobPhase: number;
 }
 
 interface PreparedPair {
-  readonly centerX: number;
-  readonly centerZ: number;
-  readonly radius: number;
-  /** Angle (radians) of the leader's authored position around the loop. */
-  readonly leaderStartAngle: number;
+  /** Unit travel direction in the XZ plane (from the leader's facing). */
+  readonly dirX: number;
+  readonly dirZ: number;
   readonly leader: AnimalRoute;
   readonly chaser: AnimalRoute;
 }
@@ -153,13 +153,31 @@ function gaitForName(name: string): Gait {
   return 'walk';
 }
 
+function hasFlippedForward(name: string): boolean {
+  const lower = name.toLowerCase();
+  return FLIPPED_FORWARD_MODELS.some((key) => lower.includes(key));
+}
+
+/**
+ * World-space forward direction (XZ, normalized) the group's eyes point, derived
+ * from its authored rotation. Flipped models negate the axis so the result is
+ * the visual front, not the back.
+ */
+function facingDirectionXZ(group: THREE.Object3D, name: string): THREE.Vector2 {
+  const quaternion = group.getWorldQuaternion(new THREE.Quaternion());
+  const forward = LOCAL_FORWARD.clone().applyQuaternion(quaternion);
+  if (hasFlippedForward(name)) forward.negate();
+  const dir = new THREE.Vector2(forward.x, forward.z);
+  if (dir.length() < 1e-5) dir.set(0, -1); // degenerate (looking straight up/down)
+  return dir.normalize();
+}
+
 /**
  * Drives the title-screen chase. Construct once with the loaded scene root, then
  * call `update(elapsedSeconds)` every frame.
  */
 export class TitleChaseChoreographer {
   private readonly pairs: PreparedPair[] = [];
-  private readonly scratchQuaternion = new THREE.Quaternion();
 
   constructor(sceneRoot: THREE.Object3D) {
     sceneRoot.updateMatrixWorld(true);
@@ -189,29 +207,12 @@ export class TitleChaseChoreographer {
     const leaderStart = leaderGroup.getWorldPosition(new THREE.Vector3());
     const chaserStart = chaserGroup.getWorldPosition(new THREE.Vector3());
 
-    const separation = Math.hypot(leaderStart.x - chaserStart.x, leaderStart.z - chaserStart.z);
-    const radius = THREE.MathUtils.clamp(
-      separation * LOOP_RADIUS_FACTOR,
-      MIN_LOOP_RADIUS,
-      MAX_LOOP_RADIUS,
-    );
+    // Travel direction = the way the leader's eyes point.
+    const dir = facingDirectionXZ(leaderGroup, config.leader);
 
-    // Chase heading = from the chaser toward the leader (the leader flees ahead).
-    // Authored pairs sit nearly on top of each other, so anchor the loop on the
-    // leader's authored spot and let it set off along this heading — otherwise
-    // both animals would pop ~radius units away the instant animation starts.
-    const heading = new THREE.Vector2(
-      leaderStart.x - chaserStart.x,
-      leaderStart.z - chaserStart.z,
-    );
-    if (heading.length() < 1e-3) heading.copy(DEFAULT_CHASE_DIR);
-    heading.normalize();
-
-    // Place the loop centre so the leader lies on the circle and its tangent
-    // (counter-clockwise) points along `heading`. radial = R·rotate(heading,-90°).
-    const centerX = leaderStart.x - radius * heading.y;
-    const centerZ = leaderStart.z + radius * heading.x;
-    const leaderStartAngle = Math.atan2(leaderStart.z - centerZ, leaderStart.x - centerX);
+    // Keep at least MIN_CHASE_GAP behind, or the authored spacing if larger.
+    const authoredGap = Math.hypot(leaderStart.x - chaserStart.x, leaderStart.z - chaserStart.z);
+    const lagDistance = Math.max(authoredGap * CHASE_GAP_FACTOR, MIN_CHASE_GAP);
 
     // Re-parent to the (identity) scene root so local space equals world space;
     // attach() preserves the authored world transform, including scale.
@@ -221,59 +222,59 @@ export class TitleChaseChoreographer {
     const leader: AnimalRoute = {
       group: leaderGroup,
       gait: gaitForName(config.leader),
-      baselineY: leaderStart.y,
-      angleLead: 0,
-      yawOffset: 0,
+      startX: leaderStart.x,
+      startY: leaderStart.y,
+      startZ: leaderStart.z,
+      lagDistance: 0,
       bobPhase: 0,
     };
     const chaser: AnimalRoute = {
       group: chaserGroup,
       gait: gaitForName(config.chaser),
-      baselineY: chaserStart.y,
-      angleLead: -CHASE_GAP_ANGLE,
-      yawOffset: 0,
+      // Anchor the chaser on the leader's line, a clean gap behind, so the two
+      // form a straight procession regardless of their tiny authored offset.
+      startX: leaderStart.x,
+      startY: chaserStart.y,
+      startZ: leaderStart.z,
+      lagDistance,
       bobPhase: Math.PI,
     };
 
-    return { centerX, centerZ, radius, leaderStartAngle, leader, chaser };
+    return { dirX: dir.x, dirZ: dir.y, leader, chaser };
   }
 
   /** Advance the chase. `elapsedSeconds` is monotonic wall-clock since start. */
   update(elapsedSeconds: number): void {
-    const leaderAngle = ANGULAR_SPEED * elapsedSeconds;
+    // Distance the leader has travelled along its line, wrapping so the pair
+    // loops back to the start instead of drifting away forever.
+    const leaderDistance = (TRAVEL_SPEED * elapsedSeconds) % TRAVEL_DISTANCE;
     for (const pair of this.pairs) {
-      this.placeAnimal(pair, pair.leader, leaderAngle, elapsedSeconds);
-      this.placeAnimal(pair, pair.chaser, leaderAngle, elapsedSeconds);
+      this.placeAnimal(pair, pair.leader, leaderDistance, elapsedSeconds);
+      this.placeAnimal(pair, pair.chaser, leaderDistance, elapsedSeconds);
     }
   }
 
   private placeAnimal(
     pair: PreparedPair,
     route: AnimalRoute,
-    leaderAngle: number,
+    leaderDistance: number,
     elapsedSeconds: number,
   ): void {
-    const angle = pair.leaderStartAngle + leaderAngle + route.angleLead;
-    const x = pair.centerX + pair.radius * Math.cos(angle);
-    const z = pair.centerZ + pair.radius * Math.sin(angle);
-    const y = route.baselineY + this.gaitHeight(route, angle, pair.radius, elapsedSeconds);
+    const distance = leaderDistance - route.lagDistance;
+    const x = route.startX + pair.dirX * distance;
+    const z = route.startZ + pair.dirZ * distance;
+    const y = route.startY + this.gaitHeight(route, distance, elapsedSeconds);
 
-    // Tangent of a counter-clockwise circle: derivative of (cos, sin) is
-    // (-sin, cos). yaw is measured from +Z toward +X to match three.js.
-    const yaw = Math.atan2(-Math.sin(angle), Math.cos(angle)) + route.yawOffset;
-
+    // Position only — the authored rotation (where the eyes face) is preserved.
     route.group.position.set(x, y, z);
-    this.scratchQuaternion.setFromAxisAngle(Y_AXIS, yaw);
-    route.group.quaternion.copy(this.scratchQuaternion);
   }
 
   /** Vertical gait offset above the baseline for the current frame. */
-  private gaitHeight(route: AnimalRoute, angle: number, radius: number, elapsedSeconds: number): number {
+  private gaitHeight(route: AnimalRoute, distance: number, elapsedSeconds: number): number {
     switch (route.gait) {
       case 'hop': {
-        // One upward arch per HOP_STRIDE of arc length travelled.
-        const arcLength = angle * radius;
-        const strideProgress = ((arcLength / HOP_STRIDE) % 1 + 1) % 1;
+        // One upward arch per HOP_STRIDE of distance travelled.
+        const strideProgress = ((distance / HOP_STRIDE) % 1 + 1) % 1;
         return Math.sin(strideProgress * Math.PI) * HOP_HEIGHT;
       }
       case 'fly':
