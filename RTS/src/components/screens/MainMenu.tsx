@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useGameStore } from '../../game/state';
 import { FullscreenToggle } from '../Working/FullscreenToggle';
+import { TitleScreenBackground } from '../Working/TitleScreenBackground';
 import './MainMenu.css';
 
 export function MainMenu() {
@@ -118,9 +119,11 @@ export function MainMenu() {
         <FullscreenToggle />
       </div>
 
-      {/* Animated background */}
+      {/* 3D background: Title_Screen.glb rendered behind the menu content.
+          The .main-menu CSS gradient remains underneath as a fallback color
+          so the user sees a styled backdrop while the GLB streams in. */}
       <div className="menu-background">
-        <div className="background-gradient"></div>
+        <TitleScreenBackground />
       </div>
     </div>
   );
