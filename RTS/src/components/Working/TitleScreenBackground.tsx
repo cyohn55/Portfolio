@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { TitleChaseChoreographer } from './titleScreenChoreography';
+import { Skybox } from './Skybox';
 
 /**
  * TitleScreenBackground
@@ -31,6 +32,13 @@ const TITLE_MODEL_URL = `${import.meta.env.BASE_URL}models/Title_Screen.glb`;
 // fallback auto-fit camera has to frame the model itself (i.e. the GLB does
 // not carry a camera node). Lower = camera sits closer, model appears larger.
 const CAMERA_DISTANCE_FACTOR = 0.55;
+
+// Far-clip distance for whichever camera ends up active on the menu. The nebula
+// Skybox is a single enormous sphere (~55,842-unit radius at its game scale)
+// centered near the origin, so the camera sits deep inside it. The active
+// camera's far plane must comfortably exceed that radius or the skybox is
+// clipped away entirely. Matches the game Canvas's far plane (App.tsx).
+const SKYBOX_SAFE_FAR = 200000;
 
 /**
  * Walks the cloned scene graph and returns the first perspective camera node
@@ -107,6 +115,9 @@ function TitleModel() {
     if (!embeddedCamera) return;
     embeddedCamera.updateMatrixWorld(true);
     embeddedCamera.aspect = size.width / Math.max(size.height, 1);
+    // Push the far plane out so the surrounding Skybox sphere is inside the
+    // view frustum; the authored Blender far plane is sized for the model only.
+    embeddedCamera.far = Math.max(embeddedCamera.far, SKYBOX_SAFE_FAR);
     embeddedCamera.updateProjectionMatrix();
     setDefaults({ camera: embeddedCamera });
   }, [embeddedCamera, size.width, size.height, setDefaults]);
@@ -140,7 +151,9 @@ function AutoFitCamera() {
     camera.position.set(distance * 0.4, distance * 0.35, distance);
     camera.lookAt(0, 0, 0);
     camera.near = Math.max(0.1, distance / 1000);
-    camera.far = distance * 10;
+    // Reach past the model's own framing distance so the Skybox sphere remains
+    // inside the frustum (see SKYBOX_SAFE_FAR).
+    camera.far = Math.max(distance * 10, SKYBOX_SAFE_FAR);
     camera.updateProjectionMatrix();
     fittedRef.current = true;
   });
@@ -157,7 +170,7 @@ export function TitleScreenBackground() {
       // GLB resolves, and at any pixels the model doesn't cover.
       gl={{ antialias, alpha: true, powerPreference: 'high-performance' }}
       dpr={[1, 2]}
-      camera={{ fov: 45, position: [0, 0, 50] }}
+      camera={{ fov: 45, position: [0, 0, 50], far: SKYBOX_SAFE_FAR }}
       // pointerEvents:none so the canvas never swallows clicks meant for the
       // Quick Play / Leader Board buttons sitting at higher z-index in the DOM.
       style={{ width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }}
@@ -169,6 +182,10 @@ export function TitleScreenBackground() {
       <directionalLight position={[-8, 4, -6]} intensity={0.4} />
 
       <Suspense fallback={null}>
+        {/* Same rotating nebula Skybox the in-game scene renders (HexGrid.tsx).
+            It draws with renderOrder -1000 and depthWrite off, so it always sits
+            behind the title model and animals regardless of mount order. */}
+        <Skybox />
         <TitleModel />
         <AutoFitCamera />
       </Suspense>
