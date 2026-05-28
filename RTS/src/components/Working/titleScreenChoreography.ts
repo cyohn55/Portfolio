@@ -94,7 +94,7 @@ export const ANIMAL_GAITS: Readonly<Record<string, Gait>> = {
 // Grouped here so the chase can be re-tuned in one place.
 
 /** Forward travel speed along the facing line, world units / second. */
-const TRAVEL_SPEED = 12;
+const TRAVEL_SPEED = 15;
 /** How far behind the leader the chaser lags, world units. */
 const MIN_CHASE_GAP = 12;
 /** If the pair was authored further apart than MIN_CHASE_GAP, keep that gap. */
