@@ -83,9 +83,10 @@ function TitleModel() {
   // title screen simply renders statically.
   const choreographer = useMemo(() => new TitleChaseChoreographer(sceneClone), [sceneClone]);
 
-  // Advance the chase every frame off the shared render clock.
-  useFrame(({ clock }) => {
-    choreographer.update(clock.elapsedTime);
+  // Advance the chase every frame off the shared render clock. The camera lets
+  // the active pair retire once it has walked out of view.
+  useFrame(({ clock, camera }) => {
+    choreographer.update(clock.elapsedTime, camera);
   });
 
   // Dev-only handle so the title-screen chase test can read live placements

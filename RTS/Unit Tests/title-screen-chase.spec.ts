@@ -17,6 +17,7 @@ interface RouteDebugInfo {
   name: string;
   role: 'leader' | 'chaser';
   gait: 'hop' | 'fly' | 'walk';
+  visible: boolean;
   position: { x: number; y: number; z: number };
 }
 
@@ -43,6 +44,13 @@ async function pairCount(page: Page): Promise<number> {
   }, TITLE_HANDLE);
 }
 
+async function activeIndex(page: Page): Promise<number> {
+  return page.evaluate((handle) => {
+    const choreographer = (window as unknown as Record<string, { activeIndex: number }>)[handle];
+    return choreographer ? choreographer.activeIndex : -1;
+  }, TITLE_HANDLE);
+}
+
 test.describe('Title-screen chase choreography', () => {
   test('every resolved pair animates a leader and a chaser', async ({ page }) => {
     await waitForTitleScreen(page);
@@ -58,23 +66,49 @@ test.describe('Title-screen chase choreography', () => {
     expect(chasers.length).toBe(pairs);
   });
 
-  test('animals move over time (the chase is live, not static)', async ({ page }) => {
+  test('only one pair plays at a time and it moves while playing', async ({ page }) => {
     await waitForTitleScreen(page);
     test.skip((await pairCount(page)) === 0, 'No animal groups in GLB yet.');
 
+    // Exactly one pair (two animals) is visible at any moment; the rest wait.
+    const routes = await readRoutes(page);
+    const visible = routes.filter((r) => r.visible);
+    expect(visible.length).toBe(2);
+    expect(new Set(visible.map((r) => r.role))).toEqual(new Set(['leader', 'chaser']));
+
+    // The visible (active) animals translate measurably over a short window,
+    // while the hidden ones stay parked at their start.
     const before = await readRoutes(page);
-    await page.waitForTimeout(1200);
+    await page.waitForTimeout(900);
     const after = await readRoutes(page);
 
-    // Match routes by name and require a measurable horizontal displacement.
-    let movedCount = 0;
-    for (const start of before) {
-      const end = after.find((r) => r.name === start.name);
-      if (!end) continue;
+    for (const start of before.filter((r) => r.visible)) {
+      const end = after.find((r) => r.name === start.name)!;
       const moved = Math.hypot(end.position.x - start.position.x, end.position.z - start.position.z);
-      if (moved > 0.5) movedCount++;
+      expect(moved).toBeGreaterThan(0.5);
     }
-    expect(movedCount).toBe(before.length);
+  });
+
+  test('pairs play in sequence (the active pair cycles over time)', async ({ page }) => {
+    await waitForTitleScreen(page);
+    const pairs = await pairCount(page);
+    test.skip(pairs < 2, 'Need at least two pairs to observe the sequence advance.');
+
+    // Watch the active index until it changes — proves the sequence hands off
+    // from one pair to the next rather than animating them all at once.
+    const first = await activeIndex(page);
+    const advanced = await page
+      .waitForFunction(
+        ([handle, start]) => {
+          const c = (window as unknown as Record<string, { activeIndex: number }>)[handle as string];
+          return c && c.activeIndex !== start;
+        },
+        [TITLE_HANDLE, first] as const,
+        { timeout: 60_000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    expect(advanced).toBe(true);
   });
 
   test('gaits match the in-game motion: Bunny hops, Bee flies, others walk', async ({ page }) => {
