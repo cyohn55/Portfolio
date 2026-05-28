@@ -5,7 +5,7 @@
   width: 100vw;
   height: 100vh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   background: linear-gradient(135deg, #0b0f1a 0%, #1a1f35 100%);
   z-index: 2000;
@@ -46,6 +46,9 @@
 .main-menu-content {
   text-align: center;
   z-index: 1;
+  /* Anchored to the top of the viewport (parent uses align-items: flex-start);
+     this padding keeps the title clear of the very edge / browser chrome. */
+  padding-top: 40px;
   animation: fadeInUp 1s ease-out;
 }
 
