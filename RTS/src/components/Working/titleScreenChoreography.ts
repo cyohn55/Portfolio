@@ -45,6 +45,13 @@ export interface ChasePairConfig {
    * way than the artist wants it to travel).
    */
   readonly aimAt?: string;
+  /**
+   * Optional distance (world units) to push the spawn *backwards* along the
+   * travel direction, so the pair starts off-screen and walks into view rather
+   * than popping in mid-frame. The pair still passes through its authored spot
+   * after travelling `leadIn`.
+   */
+  readonly leadIn?: number;
 }
 
 /**
@@ -56,7 +63,7 @@ export interface ChasePairConfig {
 export const CHASE_PAIRS: readonly ChasePairConfig[] = [
   { chaser: 'Bee', leader: 'Bear' },
   { chaser: 'Turtle', leader: 'Bunny', aimAt: 'Pig' },
-  { chaser: 'Chicken', leader: 'Pig' },
+  { chaser: 'Chicken', leader: 'Pig', leadIn: 60 },
   { chaser: 'Fox', leader: 'Kitty' },
 ];
 
@@ -243,6 +250,12 @@ export class TitleChaseChoreographer {
     // Travel direction: steer toward `aimAt` if given, else the leader's facing.
     const dir = this.travelDirection(sceneRoot, config, leaderGroup, leaderStart);
 
+    // Push the spawn back along travel so the pair walks in from off-screen
+    // (the leader still passes through its authored spot after `leadIn` units).
+    const leadIn = config.leadIn ?? 0;
+    const baseX = leaderStart.x - dir.x * leadIn;
+    const baseZ = leaderStart.z - dir.y * leadIn;
+
     // Keep at least MIN_CHASE_GAP behind, or the authored spacing if larger.
     const authoredGap = Math.hypot(leaderStart.x - chaserStart.x, leaderStart.z - chaserStart.z);
     const lagDistance = Math.max(authoredGap * CHASE_GAP_FACTOR, MIN_CHASE_GAP);
@@ -255,9 +268,9 @@ export class TitleChaseChoreographer {
     const leader: AnimalRoute = {
       group: leaderGroup,
       gait: gaitForName(config.leader),
-      startX: leaderStart.x,
+      startX: baseX,
       startY: leaderStart.y,
-      startZ: leaderStart.z,
+      startZ: baseZ,
       lagDistance: 0,
       bobPhase: 0,
       lastPosition: new THREE.Vector3(),
@@ -267,9 +280,9 @@ export class TitleChaseChoreographer {
       gait: gaitForName(config.chaser),
       // Anchor the chaser on the leader's line, a clean gap behind, so the two
       // form a straight procession regardless of their tiny authored offset.
-      startX: leaderStart.x,
+      startX: baseX,
       startY: chaserStart.y,
-      startZ: leaderStart.z,
+      startZ: baseZ,
       lagDistance,
       bobPhase: Math.PI,
       lastPosition: new THREE.Vector3(),
