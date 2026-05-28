@@ -2,6 +2,7 @@ import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { TitleChaseChoreographer } from './titleScreenChoreography';
 
 /**
  * TitleScreenBackground
@@ -75,6 +76,28 @@ function TitleModel() {
 
     return { sceneClone: root, embeddedCamera: undefined, fallbackRadius: sphere.radius || 1 };
   }, [scene]);
+
+  // Build the chase choreographer once the scene clone exists. Construction
+  // locates each animal group by name and re-parents the animals to the scene
+  // root. If the GLB carries no named animal groups, no pairs resolve and the
+  // title screen simply renders statically.
+  const choreographer = useMemo(() => new TitleChaseChoreographer(sceneClone), [sceneClone]);
+
+  // Advance the chase every frame off the shared render clock.
+  useFrame(({ clock }) => {
+    choreographer.update(clock.elapsedTime);
+  });
+
+  // Dev-only handle so the title-screen chase test can read live placements
+  // (mirrors the __rtsStore / __rtsAnimals handles used by the gameplay tests).
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    (window as unknown as { __rtsTitleChoreographer?: TitleChaseChoreographer }).__rtsTitleChoreographer =
+      choreographer;
+    return () => {
+      delete (window as unknown as { __rtsTitleChoreographer?: TitleChaseChoreographer }).__rtsTitleChoreographer;
+    };
+  }, [choreographer]);
 
   // Promote the authored camera to the active render camera. Re-applying on
   // size changes keeps the projection matrix in sync when the window resizes
