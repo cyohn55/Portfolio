@@ -37,6 +37,14 @@ export interface ChasePairConfig {
   readonly chaser: string;
   /** Group-name fragment of the pursued, whose facing sets the travel line. */
   readonly leader: string;
+  /**
+   * Optional group-name fragment to steer this pair *toward*. When set, the
+   * travel direction points from the leader's start to that group's position
+   * instead of being read from the leader's facing — used when the authored
+   * rotation doesn't encode the intended heading (e.g. Bunny faces a different
+   * way than the artist wants it to travel).
+   */
+  readonly aimAt?: string;
 }
 
 /**
@@ -47,7 +55,7 @@ export interface ChasePairConfig {
  */
 export const CHASE_PAIRS: readonly ChasePairConfig[] = [
   { chaser: 'Bee', leader: 'Bear' },
-  { chaser: 'Turtle', leader: 'Bunny' },
+  { chaser: 'Turtle', leader: 'Bunny', aimAt: 'Pig' },
   { chaser: 'Chicken', leader: 'Pig' },
   { chaser: 'Fox', leader: 'Kitty' },
 ];
@@ -79,15 +87,16 @@ const MIN_CHASE_GAP = 12;
 /** If the pair was authored further apart than MIN_CHASE_GAP, keep that gap. */
 const CHASE_GAP_FACTOR = 1.0;
 /**
- * The leader must travel at least this far before the pair is allowed to "exit"
- * — keeps a pair that starts near a frustum edge from being skipped instantly.
- */
-const MIN_EXIT_DISTANCE = 25;
-/**
  * Safety cap: advance to the next pair after this distance even if the frustum
  * test never reports the animals as gone (e.g. no camera supplied in tests).
  */
 const MAX_TRAVEL_DISTANCE = 400;
+/**
+ * Extra distance travelled after both animals' pivots leave the frustum, so the
+ * model bodies (not just the pivots) fully clear before the next pair starts.
+ * Sized to the largest title-screen animal's footprint.
+ */
+const EXIT_MARGIN = 16;
 
 /** Peak height of a hop above the baseline, world units. */
 const HOP_HEIGHT = 2.2;
@@ -184,6 +193,19 @@ export class TitleChaseChoreographer {
   private activePairIndex = 0;
   /** Elapsed time at which the active pair began its run. */
   private activePairStartTime = 0;
+  /**
+   * Whether the active pair has been inside the view yet this run. A pair can
+   * start off-screen (its authored spot sits past a frustum edge) and walk in,
+   * so it must be seen before it is allowed to exit — otherwise the in→out
+   * transition that retires it could never be distinguished from the approach.
+   */
+  private activePairSeen = false;
+  /**
+   * Leader distance at which both pivots first left the view after being seen;
+   * the pair retires once it has travelled EXIT_MARGIN beyond this. Null while
+   * the pair is still (partly) on screen.
+   */
+  private activePairExitDistance: number | null = null;
 
   constructor(sceneRoot: THREE.Object3D) {
     sceneRoot.updateMatrixWorld(true);
@@ -218,8 +240,8 @@ export class TitleChaseChoreographer {
     const leaderStart = leaderGroup.getWorldPosition(new THREE.Vector3());
     const chaserStart = chaserGroup.getWorldPosition(new THREE.Vector3());
 
-    // Travel direction = the way the leader's eyes point.
-    const dir = facingDirectionXZ(leaderGroup);
+    // Travel direction: steer toward `aimAt` if given, else the leader's facing.
+    const dir = this.travelDirection(sceneRoot, config, leaderGroup, leaderStart);
 
     // Keep at least MIN_CHASE_GAP behind, or the authored spacing if larger.
     const authoredGap = Math.hypot(leaderStart.x - chaserStart.x, leaderStart.z - chaserStart.z);
@@ -257,6 +279,28 @@ export class TitleChaseChoreographer {
   }
 
   /**
+   * Travel heading for a pair: toward the `aimAt` group when configured (and
+   * found), otherwise the leader's authored facing. Falls back to facing if the
+   * aim target is missing or coincident with the leader.
+   */
+  private travelDirection(
+    sceneRoot: THREE.Object3D,
+    config: ChasePairConfig,
+    leaderGroup: THREE.Object3D,
+    leaderStart: THREE.Vector3,
+  ): THREE.Vector2 {
+    if (config.aimAt) {
+      const target = findGroupByName(sceneRoot, config.aimAt, new Set());
+      if (target) {
+        const targetPos = target.getWorldPosition(new THREE.Vector3());
+        const toTarget = new THREE.Vector2(targetPos.x - leaderStart.x, targetPos.z - leaderStart.z);
+        if (toTarget.length() >= 1e-3) return toTarget.normalize();
+      }
+    }
+    return facingDirectionXZ(leaderGroup);
+  }
+
+  /**
    * Advance the sequence. `elapsedSeconds` is monotonic wall-clock since start;
    * `camera` (when supplied) lets the active pair retire once it leaves view.
    */
@@ -278,12 +322,13 @@ export class TitleChaseChoreographer {
     if (this.hasActivePairExited(leaderDistance, camera)) {
       this.activePairIndex = (this.activePairIndex + 1) % this.pairs.length;
       this.activePairStartTime = elapsedSeconds;
+      this.activePairSeen = false;
+      this.activePairExitDistance = null;
     }
   }
 
-  /** True once the active pair has travelled far enough and left the view. */
+  /** True once the active pair has been seen and then walked back out of view. */
   private hasActivePairExited(leaderDistance: number, camera?: THREE.Camera): boolean {
-    if (leaderDistance < MIN_EXIT_DISTANCE) return false;
     if (leaderDistance >= MAX_TRAVEL_DISTANCE) return true;
     if (!camera) return false;
 
@@ -291,9 +336,24 @@ export class TitleChaseChoreographer {
     this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
 
     const pair = this.pairs[this.activePairIndex];
-    const leaderVisible = this.frustum.containsPoint(pair.leader.lastPosition);
-    const chaserVisible = this.frustum.containsPoint(pair.chaser.lastPosition);
-    return !leaderVisible && !chaserVisible;
+    const onScreen =
+      this.frustum.containsPoint(pair.leader.lastPosition) ||
+      this.frustum.containsPoint(pair.chaser.lastPosition);
+
+    if (onScreen) {
+      // Still (partly) visible: mark as seen and cancel any pending exit so a
+      // pair walking IN from off-screen isn't mistaken for one walking out.
+      this.activePairSeen = true;
+      this.activePairExitDistance = null;
+      return false;
+    }
+
+    if (!this.activePairSeen) return false; // hasn't entered the view yet
+
+    // Both pivots have left after being seen — start (or continue) the margin
+    // that lets the model bodies clear before handing off.
+    if (this.activePairExitDistance === null) this.activePairExitDistance = leaderDistance;
+    return leaderDistance >= this.activePairExitDistance + EXIT_MARGIN;
   }
 
   private placeAnimal(
