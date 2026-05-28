@@ -30,6 +30,12 @@ const TITLE_MODEL_URL = `${import.meta.env.BASE_URL}models/Title_Screen.glb`;
 // makes the model fill the frame roughly 4× larger on-screen.
 const CAMERA_DISTANCE_FACTOR = 0.55;
 
+// Static yaw applied to the model so its front face is angled 20° to the
+// viewer's left. Negative because Three.js uses a right-handed coord system
+// (thumb along +Y, fingers curl +Z → +X), so positive rotation.y swings the
+// front toward the viewer's RIGHT; negating it gives "to the left".
+const TITLE_YAW_RADIANS = -Math.PI / 9; // -20°
+
 function TitleModel() {
   const { scene } = useGLTF(TITLE_MODEL_URL);
 
@@ -54,7 +60,7 @@ function TitleModel() {
   // Expose the computed radius via userData on the group so AutoFitCamera can
   // read it off the mounted scene. Cheaper than threading callbacks through props.
   return (
-    <group userData={{ radius }}>
+    <group userData={{ radius }} rotation={[0, TITLE_YAW_RADIANS, 0]}>
       <primitive object={centered} />
     </group>
   );
