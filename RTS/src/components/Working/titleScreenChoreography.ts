@@ -80,7 +80,7 @@ const TRAVEL_SPEED = 4;
 /** Distance travelled before the pair loops back to its start, world units. */
 const TRAVEL_DISTANCE = 40;
 /** How far behind the leader the chaser lags, world units. */
-const MIN_CHASE_GAP = 4;
+const MIN_CHASE_GAP = 12;
 /** If the pair was authored further apart than MIN_CHASE_GAP, keep that gap. */
 const CHASE_GAP_FACTOR = 1.0;
 
