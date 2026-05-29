@@ -78,6 +78,10 @@ export interface Unit {
   pathStuckTicks?: number;
   pathLastX?: number;
   pathLastZ?: number;
+  // Aura sources (Queen heal / King damage) only. True while the aura is
+  // actively benefiting a friendly unit this tick — drives the ground ring's
+  // green/pulsing "active" state in the renderer (otherwise it shows idle blue).
+  auraActive?: boolean;
 }
 
 export interface Player {
@@ -93,6 +97,8 @@ export interface GameConfig {
   spawnIntervalMs: number; // 10s
   regenPerSecondNearQueen: number; // hp/sec within radius
   regenRadius: number; // in world units
+  kingAuraRadius: number; // world units; friendly army units within this of a King deal extra damage
+  kingDamageMultiplier: number; // attack-damage multiplier applied to army units inside a King's aura
 }
 
 export interface PatrolRoute {
