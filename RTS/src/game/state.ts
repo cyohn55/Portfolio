@@ -183,6 +183,9 @@ type Store = GameState & {
   // Render quality
   shadowsEnabled: boolean;
   setShadowsEnabled: (enabled: boolean) => void;
+  // Floating unit health bars (shown only while a unit is taking damage or healing)
+  healthBarsEnabled: boolean;
+  setHealthBarsEnabled: (enabled: boolean) => void;
   // Background music on/off (persisted across sessions)
   musicEnabled: boolean;
   setMusicEnabled: (enabled: boolean) => void;
@@ -197,6 +200,20 @@ const loadShadowsEnabled = (): boolean => {
     return localStorage.getItem(SHADOWS_STORAGE_KEY) === 'true';
   } catch {
     return false;
+  }
+};
+
+// Persisted health-bar toggle. Defaults ON so players see damage/heal feedback;
+// the video settings tab flips it and the choice survives page reloads. Stored
+// as a string so the absence of the key (first visit) resolves to the default.
+const HEALTH_BARS_STORAGE_KEY = 'rts-health-bars-enabled';
+const loadHealthBarsEnabled = (): boolean => {
+  try {
+    const raw = localStorage.getItem(HEALTH_BARS_STORAGE_KEY);
+    if (raw === null) return true; // default on
+    return raw === 'true';
+  } catch {
+    return true;
   }
 };
 
@@ -272,6 +289,15 @@ export const useGameStore = create<Store>((set, get) => ({
       /* localStorage unavailable (private mode); setting still applies for the session */
     }
     set({ shadowsEnabled: enabled });
+  },
+  healthBarsEnabled: loadHealthBarsEnabled(),
+  setHealthBarsEnabled: (enabled) => {
+    try {
+      localStorage.setItem(HEALTH_BARS_STORAGE_KEY, String(enabled));
+    } catch {
+      /* localStorage unavailable; setting still applies for the session */
+    }
+    set({ healthBarsEnabled: enabled });
   },
   musicEnabled: loadMusicEnabled(),
   setMusicEnabled: (enabled) => {

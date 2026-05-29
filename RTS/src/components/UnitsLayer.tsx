@@ -82,6 +82,45 @@ const AURA_UNIT_GLOW_RADIUS = 1.6;
 // Plenty of room for a whole army clustered around a Queen/King.
 const AURA_GLOW_CAPACITY = 4096;
 
+// Floating health bars — a dark backing quad with a colored fill quad in front,
+// billboarded to face the camera and drawn above each unit/Queen/King ONLY while
+// it is actively taking damage or being healed (see HEALTH_BAR_DISPLAY_MS). Two
+// instanced meshes keep the whole field's bars to two draw calls.
+const HEALTH_BAR_WIDTH = 1.6;
+const HEALTH_BAR_HEIGHT = 0.22;
+// How long a bar stays visible after the unit's last HP change, in ms.
+const HEALTH_BAR_DISPLAY_MS = 2500;
+// Bars are only drawn for damaged/healing units, but a large battle can light up
+// most of the field at once, so size generously.
+const HEALTH_BAR_CAPACITY = 4096;
+
+const healthBarBgGeometry = new THREE.PlaneGeometry(HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT);
+// Fill geometry is shifted so its LEFT edge sits at the local origin; scaling x
+// by the HP ratio then drains the bar from the right while the left edge stays
+// pinned to the backing bar's left edge.
+const healthBarFillGeometry = new THREE.PlaneGeometry(HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT);
+healthBarFillGeometry.translate(HEALTH_BAR_WIDTH / 2, 0, 0);
+
+// depthTest off + a high render order keeps bars readable on top of the scene.
+const HEALTH_BAR_BG_MAT = new THREE.MeshBasicMaterial({
+  color: '#000000',
+  transparent: true,
+  opacity: 0.6,
+  side: THREE.DoubleSide,
+  depthTest: false,
+  depthWrite: false,
+  toneMapped: false,
+});
+const HEALTH_BAR_FILL_MAT = new THREE.MeshBasicMaterial({
+  color: '#ffffff', // multiplied by per-instance color (see setColorAt)
+  transparent: true,
+  opacity: 0.95,
+  side: THREE.DoubleSide,
+  depthTest: false,
+  depthWrite: false,
+  toneMapped: false,
+});
+
 const OWN_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#4169E1' });
 const ENEMY_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#DC143C' });
 const SELECTION_OUTER_MAT = new THREE.MeshStandardMaterial({
@@ -215,8 +254,15 @@ function InstancedUnits() {
   const selectionInnerRef = useRef<THREE.InstancedMesh>(null);
   const auraActiveRef = useRef<THREE.InstancedMesh>(null);
   const auraUnitGlowRef = useRef<THREE.InstancedMesh>(null);
+  const healthBarBgRef = useRef<THREE.InstancedMesh>(null);
+  const healthBarFillRef = useRef<THREE.InstancedMesh>(null);
   // instanceId -> unitId per variant, rebuilt each frame for picking.
   const variantUnitIds = useRef<Map<string, string[]>>(new Map());
+
+  // Per-unit HP tracking so a bar only shows while HP is actively changing.
+  // unitId -> last seen HP, the time it last changed, and whether that change
+  // was a heal (HP up) or damage (HP down).
+  const hpTrack = useRef<Map<string, { hp: number; lastChangeMs: number; healing: boolean }>>(new Map());
 
   // Reusable scratch objects (no per-frame allocation).
   const scratch = useRef({
@@ -224,14 +270,17 @@ function InstancedUnits() {
     quaternion: new THREE.Quaternion(),
     identityQuaternion: new THREE.Quaternion(),
     scale: new THREE.Vector3(),
+    one: new THREE.Vector3(1, 1, 1),
     matrix: new THREE.Matrix4(),
     projScreen: new THREE.Matrix4(),
     frustum: new THREE.Frustum(),
+    cameraRight: new THREE.Vector3(),
+    color: new THREE.Color(),
   });
 
   // Mark ring instance buffers as dynamic (updated every frame) for the GPU.
   useEffect(() => {
-    [ownRingRef, enemyRingRef, selectionOuterRef, selectionInnerRef, auraActiveRef, auraUnitGlowRef].forEach((ref) => {
+    [ownRingRef, enemyRingRef, selectionOuterRef, selectionInnerRef, auraActiveRef, auraUnitGlowRef, healthBarBgRef, healthBarFillRef].forEach((ref) => {
       ref.current?.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     });
   }, []);
@@ -244,8 +293,17 @@ function InstancedUnits() {
     const selectedSet = selected.length > 0 ? new Set(selected) : null;
     const queenAuraRadius = s.config.regenRadius;
     const kingAuraRadius = s.config.kingAuraRadius;
+    const healthBarsEnabled = s.healthBarsEnabled;
 
-    const { position, quaternion, identityQuaternion, scale, matrix, projScreen, frustum } = scratch.current;
+    const { position, quaternion, identityQuaternion, scale, one, matrix, projScreen, frustum, cameraRight, color } = scratch.current;
+
+    // Billboard orientation for health bars: camera's quaternion makes each bar
+    // face the screen, and its world-space right axis anchors the fill's left edge.
+    const nowMs = performance.now();
+    const tracks = hpTrack.current;
+    if (healthBarsEnabled) {
+      cameraRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+    }
 
     // Pulse drives the neon-green active ring glow + per-unit glow this frame.
     const pulse = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 4);
@@ -286,10 +344,23 @@ function InstancedUnits() {
     let selectionInnerCount = 0;
     let auraActiveCount = 0;
     let auraUnitGlowCount = 0;
+    let healthBarCount = 0;
 
     for (let i = 0; i < units.length; i++) {
       const unit = units[i];
       if (unit.kind === 'Base') continue;
+
+      // HP-change detection runs for every unit (even off-screen ones) so a bar
+      // is ready to show the moment a damaged/healed unit becomes visible.
+      let track = tracks.get(unit.id);
+      if (!track) {
+        track = { hp: unit.hp, lastChangeMs: -Infinity, healing: false };
+        tracks.set(unit.id, track);
+      } else if (unit.hp !== track.hp) {
+        track.healing = unit.hp > track.hp;
+        track.lastChangeMs = nowMs;
+        track.hp = unit.hp;
+      }
 
       const key = variantKeyForUnit(unit);
       if (!counts.has(key)) continue; // not a currently-mounted variant
@@ -365,6 +436,46 @@ function InstancedUnits() {
         }
       }
 
+      // Floating health bar — drawn only while the unit is actively taking
+      // damage or being healed, and only when the player has bars enabled.
+      if (
+        healthBarsEnabled &&
+        nowMs - track.lastChangeMs < HEALTH_BAR_DISPLAY_MS &&
+        healthBarCount < HEALTH_BAR_CAPACITY &&
+        healthBarBgRef.current &&
+        healthBarFillRef.current
+      ) {
+        const ratio = Math.max(0, Math.min(1, unit.hp / unit.maxHp));
+        // Sit the bar just above the model's head; taller kinds need more lift.
+        const barY = renderY + target * 0.55 + 0.9;
+
+        // Backing bar: centered on the unit, facing the camera.
+        position.set(unit.position.x, barY, unit.position.z);
+        matrix.compose(position, camera.quaternion, one);
+        healthBarBgRef.current.setMatrixAt(healthBarCount, matrix);
+
+        // Fill: anchored at the bar's left edge, scaled in x by the HP ratio.
+        position.set(
+          unit.position.x - cameraRight.x * (HEALTH_BAR_WIDTH / 2),
+          barY - cameraRight.y * (HEALTH_BAR_WIDTH / 2),
+          unit.position.z - cameraRight.z * (HEALTH_BAR_WIDTH / 2)
+        );
+        scale.set(Math.max(ratio, 0.0001), 1, 1);
+        matrix.compose(position, camera.quaternion, scale);
+        healthBarFillRef.current.setMatrixAt(healthBarCount, matrix);
+
+        // Heals read green; damage fades red -> yellow -> green by remaining HP.
+        if (track.healing) {
+          color.setRGB(0.22, 1.0, 0.30);
+        } else if (ratio > 0.5) {
+          color.setRGB((1 - ratio) * 2, 1, 0.1);
+        } else {
+          color.setRGB(1, ratio * 2, 0.1);
+        }
+        healthBarFillRef.current.setColorAt(healthBarCount, color);
+        healthBarCount++;
+      }
+
       // Selection rings only for currently selected units.
       if (selectedSet && selectedSet.has(unit.id)) {
         if (selectionOuterRef.current && selectionOuterCount < RING_CAPACITY) {
@@ -400,6 +511,21 @@ function InstancedUnits() {
     flush(selectionInnerRef.current, selectionInnerCount);
     flush(auraActiveRef.current, auraActiveCount);
     flush(auraUnitGlowRef.current, auraUnitGlowCount);
+    flush(healthBarBgRef.current, healthBarCount);
+    flush(healthBarFillRef.current, healthBarCount);
+    if (healthBarFillRef.current?.instanceColor) {
+      healthBarFillRef.current.instanceColor.needsUpdate = true;
+    }
+
+    // Drop tracking entries for units that no longer exist so the map doesn't
+    // grow across a long match. Cheap to run every frame at typical unit counts.
+    if (tracks.size > units.length) {
+      const alive = new Set<string>();
+      for (let i = 0; i < units.length; i++) alive.add(units[i].id);
+      for (const id of tracks.keys()) {
+        if (!alive.has(id)) tracks.delete(id);
+      }
+    }
   });
 
   // Only right-click attack-move onto an enemy unit is handled per-mesh here.
@@ -475,6 +601,22 @@ function InstancedUnits() {
         ref={auraUnitGlowRef}
         args={[auraUnitGlowGeometry, AURA_UNIT_GLOW_MAT, AURA_GLOW_CAPACITY]}
         frustumCulled={false}
+      />
+
+      {/* Floating health bars — backing + colored fill, billboarded toward the
+          camera and drawn on top of the scene. Only populated for units that are
+          currently taking damage or healing. */}
+      <instancedMesh
+        ref={healthBarBgRef}
+        args={[healthBarBgGeometry, HEALTH_BAR_BG_MAT, HEALTH_BAR_CAPACITY]}
+        frustumCulled={false}
+        renderOrder={998}
+      />
+      <instancedMesh
+        ref={healthBarFillRef}
+        args={[healthBarFillGeometry, HEALTH_BAR_FILL_MAT, HEALTH_BAR_CAPACITY]}
+        frustumCulled={false}
+        renderOrder={999}
       />
 
       {/* Selection rings — only drawn for selected units. */}
