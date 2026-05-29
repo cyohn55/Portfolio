@@ -93,6 +93,8 @@ const defaultConfig: GameConfig = {
   spawnIntervalMs: 5_000,
   regenPerSecondNearQueen: 5,
   regenRadius: 8,
+  kingAuraRadius: 8,
+  kingDamageMultiplier: 2,
 };
 
 // Zero-valued match scoring counters. Used as the starting point on every new
@@ -459,6 +461,7 @@ export const useGameStore = create<Store>((set, get) => ({
       // Optimized single-pass unit filtering and caching (major CPU optimization)
       const unitCategories = {
         queens: [] as Unit[],
+        kings: [] as Unit[],
         unitsNeedingHealing: [] as Unit[],
         movableUnits: [] as Unit[],
         playerUnits: {} as Record<string, Unit[]>,
@@ -477,6 +480,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
         // Type-based categorization
         if (unit.kind === 'Queen') unitCategories.queens.push(unit);
+        if (unit.kind === 'King') unitCategories.kings.push(unit);
         if (unit.hp < unit.maxHp) unitCategories.unitsNeedingHealing.push(unit);
         if (unit.kind !== 'Base') unitCategories.movableUnits.push(unit);
 
@@ -499,7 +503,40 @@ export const useGameStore = create<Store>((set, get) => ({
       }
 
       draft.unitCountCache = newUnitCountCache;
-      const { queens, unitsNeedingHealing, movableUnits } = unitCategories;
+      const { queens, kings, unitsNeedingHealing, movableUnits } = unitCategories;
+
+      // Aura pass (Queen heal + King damage). Computed once per tick off the
+      // freshly built spatial grid so both gameplay (the King's damage buff) and
+      // the on-ground ring visuals (auraActive) read the same proximity result.
+      //
+      // - Queen ring is "active" while a friendly army unit inside the radius is
+      //   below max HP (i.e. it is actually being healed).
+      // - King ring is "active" while a buffed army unit inside the radius is in
+      //   recent combat. The King itself is never buffed (its base damage already
+      //   one-shots most units); only Units/Queens around it get the multiplier.
+      const RECENT_COMBAT_MS = 2000;
+      const kingBuffedUnitIds = new Set<string>();
+      {
+        const grid = draft.spatialGrid!;
+        for (const queen of queens) {
+          const nearby = grid.getNearbyUnits(queen.position, draft.config.regenRadius);
+          queen.auraActive = nearby.some(
+            (u) => u.ownerId === queen.ownerId && u.kind !== 'Base' && u.id !== queen.id && u.hp < u.maxHp
+          );
+        }
+        for (const king of kings) {
+          const nearby = grid.getNearbyUnits(king.position, draft.config.kingAuraRadius);
+          let active = false;
+          for (const u of nearby) {
+            if (u.ownerId !== king.ownerId || u.kind === 'Base' || u.kind === 'King') continue;
+            kingBuffedUnitIds.add(u.id);
+            if (!active && u.lastCombatEngagementMs && nowMs - u.lastCombatEngagementMs < RECENT_COMBAT_MS) {
+              active = true;
+            }
+          }
+          king.auraActive = active;
+        }
+      }
 
       // BALANCED: Moderate health regeneration throttling
       const REGEN_INTERVAL_MS = 3000; // 3 seconds
@@ -1119,8 +1156,12 @@ export const useGameStore = create<Store>((set, get) => ({
           if (distSquared <= attackRangeSq) { // Within this animal's attack range
             // Within attack range - attack AND continue moving closer for more aggressive behavior
             if (nowMs - unit.lastAttackAtMs >= unit.attackCooldownMs) {
-              // Add to combat batch instead of immediate damage
-              combatPairs.push({ attacker: unit, target, damage: unit.attackDamage });
+              // Add to combat batch instead of immediate damage. Army units
+              // standing inside a friendly King's aura deal multiplied damage.
+              const buffedDamage = kingBuffedUnitIds.has(unit.id)
+                ? unit.attackDamage * draft.config.kingDamageMultiplier
+                : unit.attackDamage;
+              combatPairs.push({ attacker: unit, target, damage: buffedDamage });
               unit.lastAttackAtMs = nowMs;
 
               // COMBAT PERSISTENCE: Track combat engagement

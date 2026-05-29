@@ -41,6 +41,33 @@ selectionOuterGeometry.rotateX(FLAT_ROTATION);
 const selectionInnerGeometry = new THREE.RingGeometry(1.0, 1.4, 16);
 selectionInnerGeometry.rotateX(FLAT_ROTATION);
 
+// Queen/King area-of-effect ring. Built at unit radius (inner 0.95, outer 1.0)
+// and scaled per instance by each aura's world radius, so one geometry serves
+// both auras even if their radii differ. 64 segments keep the large circle smooth.
+const auraRingGeometry = new THREE.RingGeometry(0.95, 1.0, 64);
+auraRingGeometry.rotateX(FLAT_ROTATION);
+
+// Max Queen + King aura sources on the field at once (3 animals x 2 sides x 2 kinds).
+const AURA_CAPACITY = 64;
+
+// Idle aura: a calm blue outline shown when the aura isn't currently helping anyone.
+const AURA_IDLE_MAT = new THREE.MeshBasicMaterial({
+  color: '#4169E1',
+  transparent: true,
+  opacity: 0.4,
+  toneMapped: false,
+});
+// Active aura: glowing green, pulsed every frame (see useFrame) while the aura
+// is healing (Queen) or buffing a unit in combat (King).
+const AURA_ACTIVE_MAT = new THREE.MeshStandardMaterial({
+  color: '#00ff66',
+  emissive: '#00ff66',
+  emissiveIntensity: 2.0,
+  transparent: true,
+  opacity: 0.6,
+  toneMapped: false,
+});
+
 const OWN_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#4169E1' });
 const ENEMY_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#DC143C' });
 const SELECTION_OUTER_MAT = new THREE.MeshStandardMaterial({
@@ -172,6 +199,8 @@ function InstancedUnits() {
   const enemyRingRef = useRef<THREE.InstancedMesh>(null);
   const selectionOuterRef = useRef<THREE.InstancedMesh>(null);
   const selectionInnerRef = useRef<THREE.InstancedMesh>(null);
+  const auraIdleRef = useRef<THREE.InstancedMesh>(null);
+  const auraActiveRef = useRef<THREE.InstancedMesh>(null);
   // instanceId -> unitId per variant, rebuilt each frame for picking.
   const variantUnitIds = useRef<Map<string, string[]>>(new Map());
 
@@ -179,6 +208,7 @@ function InstancedUnits() {
   const scratch = useRef({
     position: new THREE.Vector3(),
     quaternion: new THREE.Quaternion(),
+    identityQuaternion: new THREE.Quaternion(),
     scale: new THREE.Vector3(),
     matrix: new THREE.Matrix4(),
     projScreen: new THREE.Matrix4(),
@@ -187,19 +217,27 @@ function InstancedUnits() {
 
   // Mark ring instance buffers as dynamic (updated every frame) for the GPU.
   useEffect(() => {
-    [ownRingRef, enemyRingRef, selectionOuterRef, selectionInnerRef].forEach((ref) => {
+    [ownRingRef, enemyRingRef, selectionOuterRef, selectionInnerRef, auraIdleRef, auraActiveRef].forEach((ref) => {
       ref.current?.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     });
   }, []);
 
-  useFrame(() => {
+  useFrame(({ clock }) => {
     const s = useGameStore.getState();
     const units = s.units;
     const localPlayerId = s.localPlayerId;
     const selected = s.selectedUnitIds;
     const selectedSet = selected.length > 0 ? new Set(selected) : null;
+    const queenAuraRadius = s.config.regenRadius;
+    const kingAuraRadius = s.config.kingAuraRadius;
 
-    const { position, quaternion, scale, matrix, projScreen, frustum } = scratch.current;
+    const { position, quaternion, identityQuaternion, scale, matrix, projScreen, frustum } = scratch.current;
+
+    // Pulse drives the active (green) aura's glow + gentle breathing this frame.
+    const pulse = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 4);
+    AURA_ACTIVE_MAT.emissiveIntensity = 1.2 + pulse * 2.3;
+    AURA_ACTIVE_MAT.opacity = 0.4 + pulse * 0.35;
+    const activeAuraScale = 1 + pulse * 0.04;
 
     // Build the camera frustum once per frame for cheap off-screen culling.
     projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -220,6 +258,8 @@ function InstancedUnits() {
     let enemyRingCount = 0;
     let selectionOuterCount = 0;
     let selectionInnerCount = 0;
+    let auraIdleCount = 0;
+    let auraActiveCount = 0;
 
     for (let i = 0; i < units.length; i++) {
       const unit = units[i];
@@ -263,6 +303,32 @@ function InstancedUnits() {
         }
       }
 
+      // Queen/King aura ring: a ground circle at the aura's world radius. Green
+      // and pulsing while the aura is actively helping (unit.auraActive), calm
+      // blue otherwise. Drawn on the ground so flight lift doesn't move it.
+      if (unit.kind === 'Queen' || unit.kind === 'King') {
+        const radius = unit.kind === 'Queen' ? queenAuraRadius : kingAuraRadius;
+        const ringY = unit.position.y + 0.03;
+        if (unit.auraActive) {
+          const ringMesh = auraActiveRef.current;
+          if (ringMesh && auraActiveCount < AURA_CAPACITY) {
+            const r = radius * activeAuraScale;
+            position.set(unit.position.x, ringY, unit.position.z);
+            scale.set(r, r, r);
+            matrix.compose(position, identityQuaternion, scale);
+            ringMesh.setMatrixAt(auraActiveCount++, matrix);
+          }
+        } else {
+          const ringMesh = auraIdleRef.current;
+          if (ringMesh && auraIdleCount < AURA_CAPACITY) {
+            position.set(unit.position.x, ringY, unit.position.z);
+            scale.set(radius, radius, radius);
+            matrix.compose(position, identityQuaternion, scale);
+            ringMesh.setMatrixAt(auraIdleCount++, matrix);
+          }
+        }
+      }
+
       // Selection rings only for currently selected units.
       if (selectedSet && selectedSet.has(unit.id)) {
         if (selectionOuterRef.current && selectionOuterCount < RING_CAPACITY) {
@@ -296,6 +362,8 @@ function InstancedUnits() {
     flush(enemyRingRef.current, enemyRingCount);
     flush(selectionOuterRef.current, selectionOuterCount);
     flush(selectionInnerRef.current, selectionInnerCount);
+    flush(auraIdleRef.current, auraIdleCount);
+    flush(auraActiveRef.current, auraActiveCount);
   });
 
   // Pointer handling mirrors the previous per-unit behavior: left-click selects
@@ -363,6 +431,18 @@ function InstancedUnits() {
       <instancedMesh
         ref={enemyRingRef}
         args={[ownerRingGeometry, ENEMY_OWNER_RING_MAT, RING_CAPACITY]}
+        frustumCulled={false}
+      />
+
+      {/* Queen/King aura rings — blue when idle, glowing green when active. */}
+      <instancedMesh
+        ref={auraIdleRef}
+        args={[auraRingGeometry, AURA_IDLE_MAT, AURA_CAPACITY]}
+        frustumCulled={false}
+      />
+      <instancedMesh
+        ref={auraActiveRef}
+        args={[auraRingGeometry, AURA_ACTIVE_MAT, AURA_CAPACITY]}
         frustumCulled={false}
       />
 
