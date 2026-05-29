@@ -44,7 +44,7 @@ selectionInnerGeometry.rotateX(FLAT_ROTATION);
 // and scaled per instance by each aura's world radius, so one geometry serves
 // both auras even if their radii differ. Lifted slightly off the ground to
 // avoid z-fighting with the terrain.
-const AURA_DISC_GROUND_LIFT = 0.05;
+const AURA_DISC_GROUND_LIFT = 0.10;
 const auraRingGeometry = new THREE.CircleGeometry(1, 96);
 auraRingGeometry.rotateX(FLAT_ROTATION);
 
@@ -384,7 +384,7 @@ function InstancedUnits() {
       if (ringMesh) {
         const ringIndex = unit.ownerId === localPlayerId ? ownRingCount : enemyRingCount;
         if (ringIndex < RING_CAPACITY) {
-          matrix.makeTranslation(unit.position.x, unit.position.y + 0.02, unit.position.z);
+          matrix.makeTranslation(unit.position.x, unit.position.y + 0.07, unit.position.z);
           ringMesh.setMatrixAt(ringIndex, matrix);
           if (unit.ownerId === localPlayerId) ownRingCount++;
           else enemyRingCount++;
@@ -401,7 +401,7 @@ function InstancedUnits() {
           if (dx * dx + dz * dz <= a.r2) { inAura = true; break; }
         }
         if (inAura) {
-          position.set(unit.position.x, unit.position.y + 0.05, unit.position.z);
+          position.set(unit.position.x, unit.position.y + 0.10, unit.position.z);
           scale.set(unitGlowScale, unitGlowScale, unitGlowScale);
           matrix.compose(position, identityQuaternion, scale);
           auraUnitGlowRef.current.setMatrixAt(auraUnitGlowCount++, matrix);
@@ -468,11 +468,11 @@ function InstancedUnits() {
       // Selection rings only for currently selected units.
       if (selectedSet && selectedSet.has(unit.id)) {
         if (selectionOuterRef.current && selectionOuterCount < RING_CAPACITY) {
-          matrix.makeTranslation(unit.position.x, unit.position.y + 0.04, unit.position.z);
+          matrix.makeTranslation(unit.position.x, unit.position.y + 0.09, unit.position.z);
           selectionOuterRef.current.setMatrixAt(selectionOuterCount++, matrix);
         }
         if (selectionInnerRef.current && selectionInnerCount < RING_CAPACITY) {
-          matrix.makeTranslation(unit.position.x, unit.position.y + 0.25, unit.position.z);
+          matrix.makeTranslation(unit.position.x, unit.position.y + 0.30, unit.position.z);
           selectionInnerRef.current.setMatrixAt(selectionInnerCount++, matrix);
         }
       }
