@@ -2,6 +2,7 @@ import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { useGameStore } from '../game/state';
+import { registerArenaBoundary } from './Working/arenaBoundary';
 import { UnitsLayer } from './UnitsLayer';
 import { MapInteraction } from './HexInteraction';
 import { Skybox } from './Working/Skybox';
@@ -29,6 +30,58 @@ const PATH_GRID_MARGIN = 20;
 const PATH_GRID_STEP = 2;
 const PATH_PLAY_HALF_X = 180;
 const PATH_PLAY_HALF_Z = 290;
+
+// Distance the playable boundary is pulled in from the Arena slab's true edge, so a unit's
+// body (collision radius 2.5) rests fully on the slab instead of hanging over the rim.
+const ARENA_EDGE_INSET = 2.5;
+
+// Derive the Arena slab's oriented XZ footprint from the named "Arena" node and register it
+// as the movement boundary. The slab is a square rotated ~45° about Y, so we capture it as a
+// center plus two perpendicular world-space axes with a half-extent each (an oriented box)
+// rather than an axis-aligned box, which would leak units into the corner void. Reads from
+// the raw (pre-merge) gltf scene because the merge pass folds the slab into the static map.
+function registerArenaBoundaryFromScene(scene: THREE.Object3D): void {
+  const arena = scene.getObjectByName('Arena') as THREE.Mesh | undefined;
+  if (!arena || !arena.geometry) {
+    console.warn('⚠️ Arena node not found in battle map; off-map boundary clamp is disabled');
+    registerArenaBoundary(null);
+    return;
+  }
+
+  arena.updateWorldMatrix(true, false);
+  const geometry = arena.geometry;
+  if (!geometry.boundingBox) geometry.computeBoundingBox();
+  const localBox = geometry.boundingBox!;
+
+  // World-space center of the slab, and the world directions its local X/Z axes point in.
+  const localCenter = localBox.getCenter(new THREE.Vector3());
+  const center = localCenter.clone().applyMatrix4(arena.matrixWorld);
+  const axisU = localCenter.clone().add(new THREE.Vector3(1, 0, 0)).applyMatrix4(arena.matrixWorld).sub(center);
+  const axisV = localCenter.clone().add(new THREE.Vector3(0, 0, 1)).applyMatrix4(arena.matrixWorld).sub(center);
+  const scaleU = axisU.length();
+  const scaleV = axisV.length();
+  axisU.normalize();
+  axisV.normalize();
+
+  const halfU = Math.max(0, (localBox.max.x - localBox.min.x) * 0.5 * scaleU - ARENA_EDGE_INSET);
+  const halfV = Math.max(0, (localBox.max.z - localBox.min.z) * 0.5 * scaleV - ARENA_EDGE_INSET);
+
+  registerArenaBoundary({
+    centerX: center.x,
+    centerZ: center.z,
+    axisUx: axisU.x,
+    axisUz: axisU.z,
+    axisVx: axisV.x,
+    axisVz: axisV.z,
+    halfU,
+    halfV,
+  });
+
+  console.log(
+    `🧱 Arena boundary registered: center (${center.x.toFixed(1)}, ${center.z.toFixed(1)}), ` +
+    `half-extents ${halfU.toFixed(1)} x ${halfV.toFixed(1)} (inset ${ARENA_EDGE_INSET})`
+  );
+}
 
 export function BattleMap() {
   const tick = useGameStore((s) => s.tick);
@@ -80,6 +133,11 @@ export function BattleMap() {
       console.log('🗺️ Initializing terrain validator with battle map scene');
       terrainValidator.initialize(battleMapScene);
 
+      // Confine movable units (Units, Queens, Kings) to the Arena slab so they cannot walk
+      // off the outermost edge of the map. Derived from the raw scene's "Arena" node, whose
+      // name survives only pre-merge.
+      if (scene) registerArenaBoundaryFromScene(scene);
+
       // Build the region+portal navigation grid so ground units funnel onto bridges
       // instead of stalling at the shore. Sized to the bridge footprint plus a land
       // margin (the moat and the approaches around it).
@@ -121,7 +179,7 @@ export function BattleMap() {
         (window as any).__rtsPath = pathfinder;
       }
     }
-  }, [battleMapScene]);
+  }, [battleMapScene, scene]);
 
   const last = useRef(performance.now());
   const accumulator = useRef(0);

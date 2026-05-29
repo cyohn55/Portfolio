@@ -11,6 +11,7 @@ import { SpatialGrid } from '../utils/SpatialGrid';
 setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import { pathfinder } from '../components/Working/pathfinder';
+import { clampToArena } from '../components/Working/arenaBoundary';
 import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute } from './types';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 import * as leaderboardModule from '../components/Working/leaderboard';
@@ -1920,6 +1921,12 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
     // Reset collision attempts when movement is successful
     currentUnit.collisionAttempts = 0;
   }
+
+  // Arena boundary: confine the resolved step to the Arena slab so no unit, Queen, or King
+  // can walk off the outermost edge of the map. Applied after collision pushes (which can
+  // nudge a unit outward near the rim) and before the terrain slide below, so every return
+  // path downstream — slide, hold, or the resolved position — stays inside the arena.
+  clampToArena(adjustedPosition);
 
   // Movement-type terrain rule: the only animals ever blocked are GROUND animals
   // trying to enter water without a lowered bridge. Air and water animals are
