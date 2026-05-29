@@ -40,13 +40,12 @@ selectionOuterGeometry.rotateX(FLAT_ROTATION);
 const selectionInnerGeometry = new THREE.RingGeometry(1.0, 1.4, 16);
 selectionInnerGeometry.rotateX(FLAT_ROTATION);
 
-// Queen/King area-of-effect ring — a chunky flat-lying 3D torus. Built at major
-// radius 1 (tube AURA_TORUS_TUBE) and scaled per instance by each aura's world
-// radius, so one geometry serves both auras even if their radii differ. The
-// tube scales with it, so its world half-height is radius * AURA_TORUS_TUBE
-// (used to lift the torus so it rests on the ground rather than half-buried).
-const AURA_TORUS_TUBE = 0.1;
-const auraRingGeometry = new THREE.TorusGeometry(1, AURA_TORUS_TUBE, 20, 96);
+// Queen/King area-of-effect disc — a flat-lying filled circle built at radius 1
+// and scaled per instance by each aura's world radius, so one geometry serves
+// both auras even if their radii differ. Lifted slightly off the ground to
+// avoid z-fighting with the terrain.
+const AURA_DISC_GROUND_LIFT = 0.05;
+const auraRingGeometry = new THREE.CircleGeometry(1, 96);
 auraRingGeometry.rotateX(FLAT_ROTATION);
 
 const NEON_GREEN = '#39ff14';
@@ -396,15 +395,14 @@ function InstancedUnits() {
         }
       }
 
-      // Queen/King aura ring: a neon-green pulsing torus drawn on the ground at
-      // the aura's world radius, but ONLY while the aura is actively working
-      // (unit.auraActive — Queen healing a hurt unit, or King buffing a unit in
-      // combat). Hidden entirely otherwise. Ground-placed so flight lift doesn't
-      // move it.
+      // Queen/King aura disc: a neon-green pulsing filled circle drawn on the
+      // ground at the aura's world radius, but ONLY while the aura is actively
+      // working (unit.auraActive — Queen healing a hurt unit, or King buffing a
+      // unit in combat). Hidden entirely otherwise. Ground-placed so flight lift
+      // doesn't move it.
       if ((unit.kind === 'Queen' || unit.kind === 'King') && unit.auraActive) {
         const radius = unit.kind === 'Queen' ? queenAuraRadius : kingAuraRadius;
-        // Lift by the tube's world half-height so the torus rests on the ground.
-        const ringY = unit.position.y + radius * AURA_TORUS_TUBE;
+        const ringY = unit.position.y + AURA_DISC_GROUND_LIFT;
         const ringMesh = auraActiveRef.current;
         if (ringMesh && auraActiveCount < AURA_CAPACITY) {
           const r = radius * activeAuraScale;
@@ -558,7 +556,7 @@ function InstancedUnits() {
         frustumCulled={false}
       />
 
-      {/* Queen/King aura ring — only drawn (glowing green) while the aura is
+      {/* Queen/King aura disc — only drawn (glowing green) while the aura is
           actively healing or buffing; plus per-unit green glow pools. */}
       <instancedMesh
         ref={auraActiveRef}
