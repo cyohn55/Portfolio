@@ -75,11 +75,17 @@ const AURA_ACTIVE_MAT = new THREE.MeshStandardMaterial({
 // and opacity (see useFrame) read as a radiant green aura around the unit.
 const auraUnitGlowGeometry = new THREE.CircleGeometry(1, 28);
 auraUnitGlowGeometry.rotateX(FLAT_ROTATION);
+// depthTest off keeps the additive pulse from z-fighting with the owner ring
+// (~0.02), the aura disc (~0.05), and terrain — it's a pure additive overlay
+// that should always paint cleanly without competing for the depth buffer. A
+// high renderOrder ensures it lays down after the ground decals so the blend
+// reads as a glow on top of them, not under.
 const AURA_UNIT_GLOW_MAT = new THREE.MeshBasicMaterial({
   color: NEON_GREEN,
   transparent: true,
   opacity: 0.45,
   blending: THREE.AdditiveBlending,
+  depthTest: false,
   depthWrite: false,
   toneMapped: false,
 });
@@ -574,6 +580,7 @@ function InstancedUnits() {
         ref={auraUnitGlowRef}
         args={[auraUnitGlowGeometry, AURA_UNIT_GLOW_MAT, AURA_GLOW_CAPACITY]}
         frustumCulled={false}
+        renderOrder={10}
       />
 
       {/* Floating health bars — backing + colored fill, billboarded toward the
