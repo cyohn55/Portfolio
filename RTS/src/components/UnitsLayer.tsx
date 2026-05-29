@@ -86,8 +86,8 @@ const AURA_GLOW_CAPACITY = 4096;
 // billboarded to face the camera and drawn above each unit/Queen/King ONLY while
 // it is actively taking damage or being healed (see HEALTH_BAR_DISPLAY_MS). Two
 // instanced meshes keep the whole field's bars to two draw calls.
-const HEALTH_BAR_WIDTH = 1.6;
-const HEALTH_BAR_HEIGHT = 0.22;
+const HEALTH_BAR_WIDTH = 3.2;
+const HEALTH_BAR_HEIGHT = 0.44;
 // How long a bar stays visible after the unit's last HP change, in ms.
 const HEALTH_BAR_DISPLAY_MS = 2500;
 // Bars are only drawn for damaged/healing units, but a large battle can light up
