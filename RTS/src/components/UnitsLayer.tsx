@@ -40,14 +40,16 @@ selectionOuterGeometry.rotateX(FLAT_ROTATION);
 const selectionInnerGeometry = new THREE.RingGeometry(1.0, 1.4, 16);
 selectionInnerGeometry.rotateX(FLAT_ROTATION);
 
-// Queen/King area-of-effect ring — a flat-lying 3D torus. Built at major
+// Queen/King area-of-effect ring — a chunky flat-lying 3D torus. Built at major
 // radius 1 (tube AURA_TORUS_TUBE) and scaled per instance by each aura's world
 // radius, so one geometry serves both auras even if their radii differ. The
 // tube scales with it, so its world half-height is radius * AURA_TORUS_TUBE
 // (used to lift the torus so it rests on the ground rather than half-buried).
-const AURA_TORUS_TUBE = 0.05;
-const auraRingGeometry = new THREE.TorusGeometry(1, AURA_TORUS_TUBE, 12, 96);
+const AURA_TORUS_TUBE = 0.1;
+const auraRingGeometry = new THREE.TorusGeometry(1, AURA_TORUS_TUBE, 20, 96);
 auraRingGeometry.rotateX(FLAT_ROTATION);
+
+const NEON_GREEN = '#39ff14';
 
 // Max Queen + King aura sources on the field at once (3 animals x 2 sides x 2 kinds).
 const AURA_CAPACITY = 64;
@@ -60,14 +62,32 @@ const AURA_IDLE_MAT = new THREE.MeshStandardMaterial({
   emissiveIntensity: 3.0,
   toneMapped: false,
 });
-// Active aura: glowing green, pulsed every frame (see useFrame) while the aura
-// is healing (Queen) or buffing a unit in combat (King).
+// Active aura: glowing neon green, pulsed every frame (see useFrame) while the
+// aura is healing (Queen) or buffing a unit in combat (King).
 const AURA_ACTIVE_MAT = new THREE.MeshStandardMaterial({
-  color: '#00ff66',
-  emissive: '#00ff66',
-  emissiveIntensity: 2.0,
+  color: NEON_GREEN,
+  emissive: NEON_GREEN,
+  emissiveIntensity: 3.0,
   toneMapped: false,
 });
+
+// Per-unit neon-green glow pool, drawn on the ground beneath any friendly unit
+// currently standing inside an active aura. Additive blending + pulsing scale
+// and opacity (see useFrame) read as a radiant green aura around the unit.
+const auraUnitGlowGeometry = new THREE.CircleGeometry(1, 28);
+auraUnitGlowGeometry.rotateX(FLAT_ROTATION);
+const AURA_UNIT_GLOW_MAT = new THREE.MeshBasicMaterial({
+  color: NEON_GREEN,
+  transparent: true,
+  opacity: 0.45,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  toneMapped: false,
+});
+// Base ground radius of a unit's green glow pool (scaled per frame by the pulse).
+const AURA_UNIT_GLOW_RADIUS = 1.6;
+// Plenty of room for a whole army clustered around a Queen/King.
+const AURA_GLOW_CAPACITY = 4096;
 
 const OWN_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#4169E1' });
 const ENEMY_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#DC143C' });
@@ -202,6 +222,7 @@ function InstancedUnits() {
   const selectionInnerRef = useRef<THREE.InstancedMesh>(null);
   const auraIdleRef = useRef<THREE.InstancedMesh>(null);
   const auraActiveRef = useRef<THREE.InstancedMesh>(null);
+  const auraUnitGlowRef = useRef<THREE.InstancedMesh>(null);
   // instanceId -> unitId per variant, rebuilt each frame for picking.
   const variantUnitIds = useRef<Map<string, string[]>>(new Map());
 
@@ -218,7 +239,7 @@ function InstancedUnits() {
 
   // Mark ring instance buffers as dynamic (updated every frame) for the GPU.
   useEffect(() => {
-    [ownRingRef, enemyRingRef, selectionOuterRef, selectionInnerRef, auraIdleRef, auraActiveRef].forEach((ref) => {
+    [ownRingRef, enemyRingRef, selectionOuterRef, selectionInnerRef, auraIdleRef, auraActiveRef, auraUnitGlowRef].forEach((ref) => {
       ref.current?.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     });
   }, []);
@@ -234,11 +255,23 @@ function InstancedUnits() {
 
     const { position, quaternion, identityQuaternion, scale, matrix, projScreen, frustum } = scratch.current;
 
-    // Pulse drives the active (green) aura's glow + gentle breathing this frame.
+    // Pulse drives the neon-green active ring glow + per-unit glow this frame.
     const pulse = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 4);
-    AURA_ACTIVE_MAT.emissiveIntensity = 1.2 + pulse * 2.3;
-    AURA_ACTIVE_MAT.opacity = 0.4 + pulse * 0.35;
-    const activeAuraScale = 1 + pulse * 0.04;
+    AURA_ACTIVE_MAT.emissiveIntensity = 2.5 + pulse * 3.0; // 2.5 .. 5.5 (neon)
+    const activeAuraScale = 1 + pulse * 0.05;
+    AURA_UNIT_GLOW_MAT.opacity = 0.3 + pulse * 0.45; // 0.3 .. 0.75
+    const unitGlowScale = AURA_UNIT_GLOW_RADIUS * (0.85 + pulse * 0.4);
+
+    // Active aura sources (auraActive Queens/Kings) — friendly units standing
+    // inside any of these get the pulsing green glow pool. Few sources (<=12).
+    const activeAuras: { x: number; z: number; r2: number; owner: string }[] = [];
+    for (let i = 0; i < units.length; i++) {
+      const u = units[i];
+      if ((u.kind === 'Queen' || u.kind === 'King') && u.auraActive) {
+        const r = u.kind === 'Queen' ? queenAuraRadius : kingAuraRadius;
+        activeAuras.push({ x: u.position.x, z: u.position.z, r2: r * r, owner: u.ownerId });
+      }
+    }
 
     // Build the camera frustum once per frame for cheap off-screen culling.
     projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -261,6 +294,7 @@ function InstancedUnits() {
     let selectionInnerCount = 0;
     let auraIdleCount = 0;
     let auraActiveCount = 0;
+    let auraUnitGlowCount = 0;
 
     for (let i = 0; i < units.length; i++) {
       const unit = units[i];
@@ -301,6 +335,23 @@ function InstancedUnits() {
           ringMesh.setMatrixAt(ringIndex, matrix);
           if (unit.ownerId === localPlayerId) ownRingCount++;
           else enemyRingCount++;
+        }
+      }
+
+      // Green glow pool beneath any unit standing inside an active friendly aura.
+      if (activeAuras.length > 0 && auraUnitGlowRef.current && auraUnitGlowCount < AURA_GLOW_CAPACITY) {
+        let inAura = false;
+        for (const a of activeAuras) {
+          if (a.owner !== unit.ownerId) continue;
+          const dx = unit.position.x - a.x;
+          const dz = unit.position.z - a.z;
+          if (dx * dx + dz * dz <= a.r2) { inAura = true; break; }
+        }
+        if (inAura) {
+          position.set(unit.position.x, unit.position.y + 0.05, unit.position.z);
+          scale.set(unitGlowScale, unitGlowScale, unitGlowScale);
+          matrix.compose(position, identityQuaternion, scale);
+          auraUnitGlowRef.current.setMatrixAt(auraUnitGlowCount++, matrix);
         }
       }
 
@@ -366,6 +417,7 @@ function InstancedUnits() {
     flush(selectionInnerRef.current, selectionInnerCount);
     flush(auraIdleRef.current, auraIdleCount);
     flush(auraActiveRef.current, auraActiveCount);
+    flush(auraUnitGlowRef.current, auraUnitGlowCount);
   });
 
   // Only right-click attack-move onto an enemy unit is handled per-mesh here.
@@ -439,6 +491,11 @@ function InstancedUnits() {
       <instancedMesh
         ref={auraActiveRef}
         args={[auraRingGeometry, AURA_ACTIVE_MAT, AURA_CAPACITY]}
+        frustumCulled={false}
+      />
+      <instancedMesh
+        ref={auraUnitGlowRef}
+        args={[auraUnitGlowGeometry, AURA_UNIT_GLOW_MAT, AURA_GLOW_CAPACITY]}
         frustumCulled={false}
       />
 
