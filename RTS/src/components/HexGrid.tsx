@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { useGameStore } from '../game/state';
 import { registerArenaBoundary } from './Working/arenaBoundary';
+import { computeArenaBoundary } from './Working/arenaBoundaryScene';
 import { UnitsLayer } from './UnitsLayer';
 import { MapInteraction } from './HexInteraction';
 import { Skybox } from './Working/Skybox';
@@ -35,52 +36,28 @@ const PATH_PLAY_HALF_Z = 290;
 // body (collision radius 2.5) rests fully on the slab instead of hanging over the rim.
 const ARENA_EDGE_INSET = 2.5;
 
-// Derive the Arena slab's oriented XZ footprint from the named "Arena" node and register it
-// as the movement boundary. The slab is a square rotated ~45° about Y, so we capture it as a
-// center plus two perpendicular world-space axes with a half-extent each (an oriented box)
-// rather than an axis-aligned box, which would leak units into the corner void. Reads from
-// the raw (pre-merge) gltf scene because the merge pass folds the slab into the static map.
+// Resolve the named "Arena" node from the raw (pre-merge) gltf scene — the merge pass folds
+// the slab into the static map, so its name survives only here — and register its oriented XZ
+// footprint as the movement boundary.
 function registerArenaBoundaryFromScene(scene: THREE.Object3D): void {
-  const arena = scene.getObjectByName('Arena') as THREE.Mesh | undefined;
-  if (!arena || !arena.geometry) {
+  const arena = scene.getObjectByName('Arena');
+  if (!arena) {
     console.warn('⚠️ Arena node not found in battle map; off-map boundary clamp is disabled');
     registerArenaBoundary(null);
     return;
   }
 
-  arena.updateWorldMatrix(true, false);
-  const geometry = arena.geometry;
-  if (!geometry.boundingBox) geometry.computeBoundingBox();
-  const localBox = geometry.boundingBox!;
+  const boundary = computeArenaBoundary(arena, ARENA_EDGE_INSET);
+  registerArenaBoundary(boundary);
 
-  // World-space center of the slab, and the world directions its local X/Z axes point in.
-  const localCenter = localBox.getCenter(new THREE.Vector3());
-  const center = localCenter.clone().applyMatrix4(arena.matrixWorld);
-  const axisU = localCenter.clone().add(new THREE.Vector3(1, 0, 0)).applyMatrix4(arena.matrixWorld).sub(center);
-  const axisV = localCenter.clone().add(new THREE.Vector3(0, 0, 1)).applyMatrix4(arena.matrixWorld).sub(center);
-  const scaleU = axisU.length();
-  const scaleV = axisV.length();
-  axisU.normalize();
-  axisV.normalize();
-
-  const halfU = Math.max(0, (localBox.max.x - localBox.min.x) * 0.5 * scaleU - ARENA_EDGE_INSET);
-  const halfV = Math.max(0, (localBox.max.z - localBox.min.z) * 0.5 * scaleV - ARENA_EDGE_INSET);
-
-  registerArenaBoundary({
-    centerX: center.x,
-    centerZ: center.z,
-    axisUx: axisU.x,
-    axisUz: axisU.z,
-    axisVx: axisV.x,
-    axisVz: axisV.z,
-    halfU,
-    halfV,
-  });
-
-  console.log(
-    `🧱 Arena boundary registered: center (${center.x.toFixed(1)}, ${center.z.toFixed(1)}), ` +
-    `half-extents ${halfU.toFixed(1)} x ${halfV.toFixed(1)} (inset ${ARENA_EDGE_INSET})`
-  );
+  if (boundary) {
+    console.log(
+      `🧱 Arena boundary registered: center (${boundary.centerX.toFixed(1)}, ${boundary.centerZ.toFixed(1)}), ` +
+      `half-extents ${boundary.halfU.toFixed(1)} x ${boundary.halfV.toFixed(1)} (inset ${ARENA_EDGE_INSET})`
+    );
+  } else {
+    console.warn('⚠️ Arena node has no mesh geometry; off-map boundary clamp is disabled');
+  }
 }
 
 export function BattleMap() {
