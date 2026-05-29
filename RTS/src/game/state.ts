@@ -543,15 +543,14 @@ export const useGameStore = create<Store>((set, get) => ({
       const REGEN_AMOUNT = 1;
       const REGEN_CHECK_FREQUENCY = 3; // Restored to 3 ticks
 
-      // Heal proportional to a unit's HP tier so every kind refills in the same
-      // wall-clock time. Kings (maxHp = baseHp*3) and Queens (baseHp*2) have far
-      // larger pools than army Units (baseHp); a flat amount left them healing
-      // for many minutes and never topping off. The tier equals maxHp/baseHp,
-      // i.e. Unit 1, Queen 2, King 3, Base 8.
+      // Heal scaled by a unit's HP tier so larger pools top off quickly instead
+      // of trickling for many minutes. Army Units heal at the base amount; the
+      // bigger-pool kinds get a multiplier so they refill fast (Kings boosted to
+      // 8x by request, not strict maxHp/baseHp).
       const REGEN_TIER_BY_KIND: Record<Unit['kind'], number> = {
         Unit: 1,
         Queen: 2,
-        King: 3,
+        King: 8,
         Base: 8,
       };
 
