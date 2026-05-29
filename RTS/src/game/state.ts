@@ -565,7 +565,7 @@ export const useGameStore = create<Store>((set, get) => ({
       }
 
       // BALANCED: Moderate health regeneration throttling
-      const REGEN_INTERVAL_MS = 3000; // 3 seconds
+      const REGEN_INTERVAL_MS = 1000; // 1 second (3x faster healing)
       const REGEN_AMOUNT = 1;
       const REGEN_CHECK_FREQUENCY = 3; // Restored to 3 ticks
 
