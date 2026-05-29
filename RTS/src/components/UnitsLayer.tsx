@@ -16,7 +16,6 @@ import {
   type BakedPart,
 } from '../utils/ModelPreloader';
 import * as THREE from 'three';
-import { clickState } from '../utils/clickState';
 
 // Maximum instances drawn for a single animal variant. Sized to comfortably
 // hold hundreds of units per team even if they all share one animal.
@@ -41,20 +40,24 @@ selectionOuterGeometry.rotateX(FLAT_ROTATION);
 const selectionInnerGeometry = new THREE.RingGeometry(1.0, 1.4, 16);
 selectionInnerGeometry.rotateX(FLAT_ROTATION);
 
-// Queen/King area-of-effect ring. Built at unit radius (inner 0.95, outer 1.0)
-// and scaled per instance by each aura's world radius, so one geometry serves
-// both auras even if their radii differ. 64 segments keep the large circle smooth.
-const auraRingGeometry = new THREE.RingGeometry(0.95, 1.0, 64);
+// Queen/King area-of-effect ring — a flat-lying 3D torus. Built at major
+// radius 1 (tube AURA_TORUS_TUBE) and scaled per instance by each aura's world
+// radius, so one geometry serves both auras even if their radii differ. The
+// tube scales with it, so its world half-height is radius * AURA_TORUS_TUBE
+// (used to lift the torus so it rests on the ground rather than half-buried).
+const AURA_TORUS_TUBE = 0.05;
+const auraRingGeometry = new THREE.TorusGeometry(1, AURA_TORUS_TUBE, 12, 96);
 auraRingGeometry.rotateX(FLAT_ROTATION);
 
 // Max Queen + King aura sources on the field at once (3 animals x 2 sides x 2 kinds).
 const AURA_CAPACITY = 64;
 
-// Idle aura: a calm blue outline shown when the aura isn't currently helping anyone.
-const AURA_IDLE_MAT = new THREE.MeshBasicMaterial({
-  color: '#4169E1',
-  transparent: true,
-  opacity: 0.4,
+// Idle aura: the same glowing blue used by the selection rings, shown when the
+// aura isn't currently helping anyone.
+const AURA_IDLE_MAT = new THREE.MeshStandardMaterial({
+  color: '#000080',
+  emissive: '#000080',
+  emissiveIntensity: 3.0,
   toneMapped: false,
 });
 // Active aura: glowing green, pulsed every frame (see useFrame) while the aura
@@ -63,8 +66,6 @@ const AURA_ACTIVE_MAT = new THREE.MeshStandardMaterial({
   color: '#00ff66',
   emissive: '#00ff66',
   emissiveIntensity: 2.0,
-  transparent: true,
-  opacity: 0.6,
   toneMapped: false,
 });
 
@@ -308,7 +309,8 @@ function InstancedUnits() {
       // blue otherwise. Drawn on the ground so flight lift doesn't move it.
       if (unit.kind === 'Queen' || unit.kind === 'King') {
         const radius = unit.kind === 'Queen' ? queenAuraRadius : kingAuraRadius;
-        const ringY = unit.position.y + 0.03;
+        // Lift by the tube's world half-height so the torus rests on the ground.
+        const ringY = unit.position.y + radius * AURA_TORUS_TUBE;
         if (unit.auraActive) {
           const ringMesh = auraActiveRef.current;
           if (ringMesh && auraActiveCount < AURA_CAPACITY) {
@@ -366,32 +368,26 @@ function InstancedUnits() {
     flush(auraActiveRef.current, auraActiveCount);
   });
 
-  // Pointer handling mirrors the previous per-unit behavior: left-click selects
-  // own units (shift adds), right-click on an enemy attacks with the selection.
+  // Only right-click attack-move onto an enemy unit is handled per-mesh here.
+  // Left-click selection lives in MapInteraction's screen-space picking: the
+  // instanced models are tiny and units cluster tightly, so per-mesh raycast
+  // picking was unreliable for selecting an individual unit.
   const handlePointerDown = (variantKey: string, e: any) => {
+    if (e.button !== 2) return;
     const id = variantUnitIds.current.get(variantKey)?.[e.instanceId];
     if (!id) return;
-    e.stopPropagation();
 
     const s = useGameStore.getState();
     const unit = s.units.find((u) => u.id === id);
-    if (!unit) return;
-    const isOwnUnit = unit.ownerId === s.localPlayerId;
+    if (!unit || unit.ownerId === s.localPlayerId) return;
 
-    if (e.button === 2 && !isOwnUnit) {
-      const selectedOwn = s.units.filter(
-        (u) => s.selectedUnitIds.includes(u.id) && u.ownerId === s.localPlayerId
-      );
-      if (selectedOwn.length > 0) {
-        s.attackTarget({ unitIds: selectedOwn.map((u) => u.id), targetId: unit.id });
-      }
-      return;
+    e.stopPropagation();
+    const selectedOwn = s.units.filter(
+      (u) => s.selectedUnitIds.includes(u.id) && u.ownerId === s.localPlayerId
+    );
+    if (selectedOwn.length > 0) {
+      s.attackTarget({ unitIds: selectedOwn.map((u) => u.id), targetId: unit.id });
     }
-
-    if (!isOwnUnit) return;
-    clickState.setUnitClicked();
-    if (e.shiftKey) s.addToSelection([id]);
-    else s.selectUnits([id]);
   };
 
   const registerPartRef = (variantKey: string, partIndex: number) => (mesh: THREE.InstancedMesh | null) => {

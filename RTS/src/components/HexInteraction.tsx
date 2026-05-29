@@ -2,7 +2,12 @@ import { useRef, useState, useEffect } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useGameStore } from '../game/state';
 import * as THREE from 'three';
-import { clickState } from '../utils/clickState';
+
+// A single left-click selects the nearest own unit whose projected center is
+// within this many screen pixels of the cursor. The instanced unit models are
+// small and units cluster tightly (queens/kings spawn adjacent), so picking by
+// exact mesh raycast was unreliable; screen-space proximity is dependable.
+const UNIT_PICK_RADIUS_PX = 40;
 
 interface DragState {
   isDragging: boolean;
@@ -25,6 +30,7 @@ export function MapInteraction() {
   const moveCommand = useGameStore((s) => s.moveCommand);
   const clearSelection = useGameStore((s) => s.clearSelection);
   const selectUnits = useGameStore((s) => s.selectUnits);
+  const addToSelection = useGameStore((s) => s.addToSelection);
   const setPatrol = useGameStore((s) => s.setPatrol);
 
   // Use ref instead of state to avoid timing issues
@@ -181,9 +187,6 @@ export function MapInteraction() {
 
   const handleMouseDown = (event: MouseEvent) => {
     if (event.button === 0) { // Left mouse button
-      // Don't reset clickState here - it will be reset at the end of mouseup
-      console.log('🔴 Canvas mousedown - NOT resetting clickState (unit events fire first)');
-
       const screenPos = getScreenPosition(event);
       dragStateRef.current = {
         isDragging: true,
@@ -308,19 +311,28 @@ export function MapInteraction() {
         const selectedIds = selectedUnitsInBox.map(unit => unit.id);
         selectUnits(selectedIds);
       } else {
-        // Single click - only clear selection if we clicked on empty ground (not a unit)
-        const unitWasClicked = clickState.wasUnitClicked();
-        console.log('⚪ Canvas mouseup - clickState is:', unitWasClicked);
-        if (!unitWasClicked) {
-          console.log('❌ Clearing selection');
-          clearSelection();
-        } else {
-          console.log('✅ NOT clearing selection - unit was clicked');
+        // Single click: select the nearest own unit whose projected center is
+        // within UNIT_PICK_RADIUS_PX of the cursor; otherwise clear selection.
+        let nearestId: string | null = null;
+        let nearestDistPx = UNIT_PICK_RADIUS_PX;
+        for (const unit of units) {
+          if (unit.ownerId !== localPlayerId || unit.kind === 'Base') continue;
+          const screen = worldToScreen(
+            new THREE.Vector3(unit.position.x, unit.position.y, unit.position.z)
+          );
+          const distPx = Math.hypot(screen.x - endScreen.x, screen.y - endScreen.y);
+          if (distPx < nearestDistPx) {
+            nearestDistPx = distPx;
+            nearestId = unit.id;
+          }
         }
 
-        // Reset clickState for next click (after we've used it)
-        console.log('🔄 Resetting clickState for next click');
-        clickState.resetClickState();
+        if (nearestId) {
+          if (event.shiftKey) addToSelection([nearestId]);
+          else selectUnits([nearestId]);
+        } else {
+          clearSelection();
+        }
       }
     }
 
@@ -369,7 +381,7 @@ export function MapInteraction() {
       canvas.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [gl.domElement, units, localPlayerId, selectUnits, clearSelection]);
+  }, [gl.domElement, units, localPlayerId, selectUnits, addToSelection, clearSelection]);
 
   const handleGroundClick = (e: any) => {
     // Prevent browser context menu on right-click - check if preventDefault exists
