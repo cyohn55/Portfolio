@@ -40,13 +40,13 @@ selectionOuterGeometry.rotateX(FLAT_ROTATION);
 const selectionInnerGeometry = new THREE.RingGeometry(1.0, 1.4, 16);
 selectionInnerGeometry.rotateX(FLAT_ROTATION);
 
-// Queen/King area-of-effect ring — a flat-lying thin annulus built at outer
-// radius 1 and scaled per instance by each aura's world radius (the ring's
-// thickness scales with it, so a bigger aura draws a proportionally thicker
-// outline). Lifted just above the ground to clear terrain z-fight.
-const auraRingGeometry = new THREE.RingGeometry(0.92, 1.0, 96);
+// Queen/King area-of-effect ring — a flat-lying annulus built at outer radius
+// 1 and scaled per instance by each aura's world radius (the ring's thickness
+// scales with it, so a bigger aura draws a proportionally thicker outline).
+// DoubleSide keeps it visible from below if the camera ever tips under it.
+const auraRingGeometry = new THREE.RingGeometry(0.88, 1.0, 96);
 auraRingGeometry.rotateX(FLAT_ROTATION);
-const AURA_RING_GROUND_LIFT = 0.02;
+const AURA_RING_GROUND_LIFT = 0.1;
 
 const NEON_GREEN = '#39ff14';
 
@@ -55,15 +55,20 @@ const AURA_CAPACITY = 64;
 
 // The aura ring is hidden by default and only drawn while the aura is actively
 // working — a Queen healing a below-full-health unit in range, or a King
-// buffing a unit in range that is in combat (unit.auraActive). depthWrite off
-// so overlapping active rings (two friendly Queens close together) just
-// overpaint without z-fighting at the ground plane.
+// buffing a unit in range that is in combat (unit.auraActive).
+// transparent:true + depthWrite:false routes it through the transparent queue
+// so it draws after all opaque terrain/decals (otherwise terrain rendered
+// later in the opaque queue can overpaint it). depthTest stays on so unit
+// bodies still occlude it.
 const AURA_ACTIVE_MAT = new THREE.MeshStandardMaterial({
   color: NEON_GREEN,
   emissive: NEON_GREEN,
   emissiveIntensity: 3.0,
   toneMapped: false,
+  transparent: true,
+  opacity: 1.0,
   depthWrite: false,
+  side: THREE.DoubleSide,
 });
 
 // Per-unit neon-green glow pool, drawn on the ground beneath any friendly unit
