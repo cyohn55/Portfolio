@@ -56,11 +56,18 @@ const AURA_CAPACITY = 64;
 // The aura ring is only drawn while the aura is actively working — a Queen
 // healing a below-full-health unit in range, or a King buffing a unit in range
 // that is in combat (unit.auraActive). It is hidden entirely otherwise.
+// polygonOffset pushes the disc's per-fragment depth back so the owner rings
+// (~0.02) and per-unit glow discs (~0.05) sitting nearby in world Y always win
+// the depth test cleanly — without it, the tiny world-Y gap collapses to
+// z-fight shimmer at game-camera distance.
 const AURA_ACTIVE_MAT = new THREE.MeshStandardMaterial({
   color: NEON_GREEN,
   emissive: NEON_GREEN,
   emissiveIntensity: 3.0,
   toneMapped: false,
+  polygonOffset: true,
+  polygonOffsetFactor: 2,
+  polygonOffsetUnits: 2,
 });
 
 // Per-unit neon-green glow pool, drawn on the ground beneath any friendly unit
