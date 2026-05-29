@@ -521,7 +521,7 @@ export const useGameStore = create<Store>((set, get) => ({
         for (const queen of queens) {
           const nearby = grid.getNearbyUnits(queen.position, draft.config.regenRadius);
           queen.auraActive = nearby.some(
-            (u) => u.ownerId === queen.ownerId && u.kind !== 'Base' && u.id !== queen.id && u.hp < u.maxHp
+            (u) => u.ownerId === queen.ownerId && u.kind === 'Unit' && u.hp < u.maxHp
           );
         }
         for (const king of kings) {
