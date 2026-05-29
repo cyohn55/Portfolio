@@ -185,7 +185,7 @@ export function Settings({ onBack }: SettingsProps) {
                   Health Bars
                 </div>
                 <div style={{ color: '#64748b', fontSize: '12px', marginTop: '2px' }}>
-                  Show bars above units while they take damage or heal
+                  Show health bars above units that are below full health
                 </div>
               </div>
               <button

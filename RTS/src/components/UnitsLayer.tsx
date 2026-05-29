@@ -83,15 +83,13 @@ const AURA_UNIT_GLOW_RADIUS = 1.6;
 const AURA_GLOW_CAPACITY = 4096;
 
 // Floating health bars — a dark backing quad with a colored fill quad in front,
-// billboarded to face the camera and drawn above each unit/Queen/King ONLY while
-// it is actively taking damage or being healed (see HEALTH_BAR_DISPLAY_MS). Two
+// billboarded to face the camera and drawn above each unit/Queen/King whose HP
+// is below maximum. The bar persists until the unit heals to full or dies. Two
 // instanced meshes keep the whole field's bars to two draw calls.
 const HEALTH_BAR_WIDTH = 3.2;
 const HEALTH_BAR_HEIGHT = 0.44;
-// How long a bar stays visible after the unit's last HP change, in ms.
-const HEALTH_BAR_DISPLAY_MS = 2500;
-// Bars are only drawn for damaged/healing units, but a large battle can light up
-// most of the field at once, so size generously.
+// Bars are only drawn for damaged units, but a large battle can light up most of
+// the field at once, so size generously.
 const HEALTH_BAR_CAPACITY = 4096;
 
 const healthBarBgGeometry = new THREE.PlaneGeometry(HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT);
@@ -259,11 +257,6 @@ function InstancedUnits() {
   // instanceId -> unitId per variant, rebuilt each frame for picking.
   const variantUnitIds = useRef<Map<string, string[]>>(new Map());
 
-  // Per-unit HP tracking so a bar only shows while HP is actively changing.
-  // unitId -> last seen HP, the time it last changed, and whether that change
-  // was a heal (HP up) or damage (HP down).
-  const hpTrack = useRef<Map<string, { hp: number; lastChangeMs: number; healing: boolean }>>(new Map());
-
   // Reusable scratch objects (no per-frame allocation).
   const scratch = useRef({
     position: new THREE.Vector3(),
@@ -299,8 +292,6 @@ function InstancedUnits() {
 
     // Billboard orientation for health bars: camera's quaternion makes each bar
     // face the screen, and its world-space right axis anchors the fill's left edge.
-    const nowMs = performance.now();
-    const tracks = hpTrack.current;
     if (healthBarsEnabled) {
       cameraRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
     }
@@ -349,18 +340,6 @@ function InstancedUnits() {
     for (let i = 0; i < units.length; i++) {
       const unit = units[i];
       if (unit.kind === 'Base') continue;
-
-      // HP-change detection runs for every unit (even off-screen ones) so a bar
-      // is ready to show the moment a damaged/healed unit becomes visible.
-      let track = tracks.get(unit.id);
-      if (!track) {
-        track = { hp: unit.hp, lastChangeMs: -Infinity, healing: false };
-        tracks.set(unit.id, track);
-      } else if (unit.hp !== track.hp) {
-        track.healing = unit.hp > track.hp;
-        track.lastChangeMs = nowMs;
-        track.hp = unit.hp;
-      }
 
       const key = variantKeyForUnit(unit);
       if (!counts.has(key)) continue; // not a currently-mounted variant
@@ -436,11 +415,12 @@ function InstancedUnits() {
         }
       }
 
-      // Floating health bar — drawn only while the unit is actively taking
-      // damage or being healed, and only when the player has bars enabled.
+      // Floating health bar — drawn for any unit below full HP (and still alive),
+      // persisting until it heals to full or dies, when the player has bars on.
       if (
         healthBarsEnabled &&
-        nowMs - track.lastChangeMs < HEALTH_BAR_DISPLAY_MS &&
+        unit.hp > 0 &&
+        unit.hp < unit.maxHp &&
         healthBarCount < HEALTH_BAR_CAPACITY &&
         healthBarBgRef.current &&
         healthBarFillRef.current
@@ -464,10 +444,8 @@ function InstancedUnits() {
         matrix.compose(position, camera.quaternion, scale);
         healthBarFillRef.current.setMatrixAt(healthBarCount, matrix);
 
-        // Heals read green; damage fades red -> yellow -> green by remaining HP.
-        if (track.healing) {
-          color.setRGB(0.22, 1.0, 0.30);
-        } else if (ratio > 0.5) {
+        // Fill color reflects remaining HP: red (low) -> yellow -> green (high).
+        if (ratio > 0.5) {
           color.setRGB((1 - ratio) * 2, 1, 0.1);
         } else {
           color.setRGB(1, ratio * 2, 0.1);
@@ -515,16 +493,6 @@ function InstancedUnits() {
     flush(healthBarFillRef.current, healthBarCount);
     if (healthBarFillRef.current?.instanceColor) {
       healthBarFillRef.current.instanceColor.needsUpdate = true;
-    }
-
-    // Drop tracking entries for units that no longer exist so the map doesn't
-    // grow across a long match. Cheap to run every frame at typical unit counts.
-    if (tracks.size > units.length) {
-      const alive = new Set<string>();
-      for (let i = 0; i < units.length; i++) alive.add(units[i].id);
-      for (const id of tracks.keys()) {
-        if (!alive.has(id)) tracks.delete(id);
-      }
     }
   });
 
