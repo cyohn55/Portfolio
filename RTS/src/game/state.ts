@@ -543,6 +543,18 @@ export const useGameStore = create<Store>((set, get) => ({
       const REGEN_AMOUNT = 1;
       const REGEN_CHECK_FREQUENCY = 3; // Restored to 3 ticks
 
+      // Heal proportional to a unit's HP tier so every kind refills in the same
+      // wall-clock time. Kings (maxHp = baseHp*3) and Queens (baseHp*2) have far
+      // larger pools than army Units (baseHp); a flat amount left them healing
+      // for many minutes and never topping off. The tier equals maxHp/baseHp,
+      // i.e. Unit 1, Queen 2, King 3, Base 8.
+      const REGEN_TIER_BY_KIND: Record<Unit['kind'], number> = {
+        Unit: 1,
+        Queen: 2,
+        King: 3,
+        Base: 8,
+      };
+
       if (!draft.optimizations.regenThrottling || draft.tickCounter % REGEN_CHECK_FREQUENCY === 0) {
         // Process more healing units for better responsiveness
         const healingUnitsToProcess = unitsNeedingHealing.slice(0, 30); // Increased to 30 units per frame
@@ -556,7 +568,8 @@ export const useGameStore = create<Store>((set, get) => ({
           // Use spatial grid to find nearby queens (much faster than checking all queens)
           const nearbyQueens = draft.spatialGrid!.findNearbyQueens(unit, draft.config.regenRadius);
           if (nearbyQueens.length > 0) {
-            unit.hp = Math.min(unit.maxHp, unit.hp + REGEN_AMOUNT);
+            const healAmount = REGEN_AMOUNT * REGEN_TIER_BY_KIND[unit.kind];
+            unit.hp = Math.min(unit.maxHp, unit.hp + healAmount);
             draft.lastRegenAtMsByUnitId[unit.id] = nowMs;
           }
         }
