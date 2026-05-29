@@ -546,11 +546,11 @@ export const useGameStore = create<Store>((set, get) => ({
       // Heal scaled by a unit's HP tier so larger pools top off quickly instead
       // of trickling for many minutes. Army Units heal at the base amount; the
       // bigger-pool kinds get a multiplier so they refill fast (Kings boosted to
-      // 8x by request, not strict maxHp/baseHp).
+      // 6x by request, not strict maxHp/baseHp).
       const REGEN_TIER_BY_KIND: Record<Unit['kind'], number> = {
         Unit: 1,
         Queen: 2,
-        King: 8,
+        King: 6,
         Base: 8,
       };
 
