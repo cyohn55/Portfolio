@@ -131,8 +131,11 @@ const HEALTH_BAR_FILL_MAT = new THREE.MeshBasicMaterial({
   toneMapped: false,
 });
 
-const OWN_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#4169E1' });
-const ENEMY_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#DC143C' });
+// depthWrite off so two adjacent units' owner rings don't z-fight when they
+// overlap on the ground plane — they share an exact Y and would otherwise
+// flicker against each other. They still depth-test against terrain/units.
+const OWN_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#4169E1', depthWrite: false });
+const ENEMY_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#DC143C', depthWrite: false });
 const SELECTION_OUTER_MAT = new THREE.MeshStandardMaterial({
   color: '#000080',
   transparent: true,
