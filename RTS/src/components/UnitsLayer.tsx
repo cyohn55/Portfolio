@@ -40,34 +40,36 @@ selectionOuterGeometry.rotateX(FLAT_ROTATION);
 const selectionInnerGeometry = new THREE.RingGeometry(1.0, 1.4, 16);
 selectionInnerGeometry.rotateX(FLAT_ROTATION);
 
-// Queen/King area-of-effect disc — a flat-lying filled circle built at radius 1
-// and scaled per instance by each aura's world radius, so one geometry serves
-// both auras even if their radii differ. Lifted slightly off the ground to
-// avoid z-fighting with the terrain.
-const AURA_DISC_GROUND_LIFT = 0.05;
-const auraRingGeometry = new THREE.CircleGeometry(1, 96);
+// Queen/King area-of-effect torus — a chunky flat-lying 3D ring built at major
+// radius 1 (tube AURA_TORUS_TUBE) and scaled per instance by each aura's world
+// radius, so one geometry serves any radius. The tube scales with it, so its
+// world half-height is radius * AURA_TORUS_TUBE (used to lift the torus so it
+// rests on the ground rather than half-buried).
+const AURA_TORUS_TUBE = 0.1;
+const auraRingGeometry = new THREE.TorusGeometry(1, AURA_TORUS_TUBE, 20, 96);
 auraRingGeometry.rotateX(FLAT_ROTATION);
 
 const NEON_GREEN = '#39ff14';
+const NEON_BLUE = '#00bfff';
 
 // Max Queen + King aura sources on the field at once (3 animals x 2 sides x 2 kinds).
 const AURA_CAPACITY = 64;
 
-// The aura ring is only drawn while the aura is actively working — a Queen
-// healing a below-full-health unit in range, or a King buffing a unit in range
-// that is in combat (unit.auraActive). It is hidden entirely otherwise.
-// polygonOffset pushes the disc's per-fragment depth back so the owner rings
-// (~0.02) and per-unit glow discs (~0.05) sitting nearby in world Y always win
-// the depth test cleanly — without it, the tiny world-Y gap collapses to
-// z-fight shimmer at game-camera distance.
+// Two aura ring instanced meshes: a steady BLUE ring drawn for every alive
+// Queen/King, swapped to a pulsing GREEN ring on the same Queen/King while its
+// aura is actively working (Queen healing, King buffing). Each unit renders to
+// exactly one of the two meshes per frame.
+const AURA_IDLE_MAT = new THREE.MeshStandardMaterial({
+  color: NEON_BLUE,
+  emissive: NEON_BLUE,
+  emissiveIntensity: 2.5,
+  toneMapped: false,
+});
 const AURA_ACTIVE_MAT = new THREE.MeshStandardMaterial({
   color: NEON_GREEN,
   emissive: NEON_GREEN,
   emissiveIntensity: 3.0,
   toneMapped: false,
-  polygonOffset: true,
-  polygonOffsetFactor: 2,
-  polygonOffsetUnits: 2,
 });
 
 // Per-unit neon-green glow pool, drawn on the ground beneath any friendly unit
@@ -75,17 +77,15 @@ const AURA_ACTIVE_MAT = new THREE.MeshStandardMaterial({
 // and opacity (see useFrame) read as a radiant green aura around the unit.
 const auraUnitGlowGeometry = new THREE.CircleGeometry(1, 28);
 auraUnitGlowGeometry.rotateX(FLAT_ROTATION);
-// depthTest off keeps the additive pulse from z-fighting with the owner ring
-// (~0.02), the aura disc (~0.05), and terrain — it's a pure additive overlay
-// that should always paint cleanly without competing for the depth buffer. A
-// high renderOrder ensures it lays down after the ground decals so the blend
-// reads as a glow on top of them, not under.
+// depthTest stays on so unit bodies properly occlude the glow (it's a ground
+// decal, not an overlay). depthWrite off keeps it from competing with other
+// coplanar decals in the depth buffer. renderOrder is set on the mesh so the
+// selection rings always paint over the glow in the transparent queue.
 const AURA_UNIT_GLOW_MAT = new THREE.MeshBasicMaterial({
   color: NEON_GREEN,
   transparent: true,
   opacity: 0.45,
   blending: THREE.AdditiveBlending,
-  depthTest: false,
   depthWrite: false,
   toneMapped: false,
 });
@@ -143,6 +143,7 @@ const SELECTION_OUTER_MAT = new THREE.MeshStandardMaterial({
   emissive: '#000080',
   emissiveIntensity: 2.0,
   toneMapped: false,
+  depthWrite: false,
 });
 const SELECTION_INNER_MAT = new THREE.MeshStandardMaterial({
   color: '#000080',
@@ -151,6 +152,7 @@ const SELECTION_INNER_MAT = new THREE.MeshStandardMaterial({
   emissive: '#000080',
   emissiveIntensity: 3.0,
   toneMapped: false,
+  depthWrite: false,
 });
 
 type VariantSpec = {
@@ -265,6 +267,7 @@ function InstancedUnits() {
   const enemyRingRef = useRef<THREE.InstancedMesh>(null);
   const selectionOuterRef = useRef<THREE.InstancedMesh>(null);
   const selectionInnerRef = useRef<THREE.InstancedMesh>(null);
+  const auraIdleRef = useRef<THREE.InstancedMesh>(null);
   const auraActiveRef = useRef<THREE.InstancedMesh>(null);
   const auraUnitGlowRef = useRef<THREE.InstancedMesh>(null);
   const healthBarBgRef = useRef<THREE.InstancedMesh>(null);
@@ -288,7 +291,7 @@ function InstancedUnits() {
 
   // Mark ring instance buffers as dynamic (updated every frame) for the GPU.
   useEffect(() => {
-    [ownRingRef, enemyRingRef, selectionOuterRef, selectionInnerRef, auraActiveRef, auraUnitGlowRef, healthBarBgRef, healthBarFillRef].forEach((ref) => {
+    [ownRingRef, enemyRingRef, selectionOuterRef, selectionInnerRef, auraIdleRef, auraActiveRef, auraUnitGlowRef, healthBarBgRef, healthBarFillRef].forEach((ref) => {
       ref.current?.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     });
   }, []);
@@ -348,6 +351,7 @@ function InstancedUnits() {
     let enemyRingCount = 0;
     let selectionOuterCount = 0;
     let selectionInnerCount = 0;
+    let auraIdleCount = 0;
     let auraActiveCount = 0;
     let auraUnitGlowCount = 0;
     let healthBarCount = 0;
@@ -411,21 +415,32 @@ function InstancedUnits() {
         }
       }
 
-      // Queen/King aura disc: a neon-green pulsing filled circle drawn on the
-      // ground at the aura's world radius, but ONLY while the aura is actively
-      // working (unit.auraActive — Queen healing a hurt unit, or King buffing a
-      // unit in combat). Hidden entirely otherwise. Ground-placed so flight lift
-      // doesn't move it.
-      if ((unit.kind === 'Queen' || unit.kind === 'King') && unit.auraActive) {
+      // Queen/King aura torus: a chunky flat ring drawn at the aura's world
+      // radius around the unit. Blue + steady while idle, swapped to a green
+      // pulsing ring while the aura is actively working (Queen healing a hurt
+      // unit, or King buffing a unit in combat — unit.auraActive). Ground-placed
+      // and lifted by the tube's world half-height so flight lift doesn't move
+      // it. Skip dead units so a freshly-killed Queen/King doesn't leave a ring.
+      if ((unit.kind === 'Queen' || unit.kind === 'King') && unit.hp > 0) {
         const radius = unit.kind === 'Queen' ? queenAuraRadius : kingAuraRadius;
-        const ringY = unit.position.y + AURA_DISC_GROUND_LIFT;
-        const ringMesh = auraActiveRef.current;
-        if (ringMesh && auraActiveCount < AURA_CAPACITY) {
-          const r = radius * activeAuraScale;
-          position.set(unit.position.x, ringY, unit.position.z);
-          scale.set(r, r, r);
-          matrix.compose(position, identityQuaternion, scale);
-          ringMesh.setMatrixAt(auraActiveCount++, matrix);
+        const ringY = unit.position.y + radius * AURA_TORUS_TUBE;
+        if (unit.auraActive) {
+          const ringMesh = auraActiveRef.current;
+          if (ringMesh && auraActiveCount < AURA_CAPACITY) {
+            const r = radius * activeAuraScale;
+            position.set(unit.position.x, ringY, unit.position.z);
+            scale.set(r, r, r);
+            matrix.compose(position, identityQuaternion, scale);
+            ringMesh.setMatrixAt(auraActiveCount++, matrix);
+          }
+        } else {
+          const ringMesh = auraIdleRef.current;
+          if (ringMesh && auraIdleCount < AURA_CAPACITY) {
+            position.set(unit.position.x, ringY, unit.position.z);
+            scale.set(radius, radius, radius);
+            matrix.compose(position, identityQuaternion, scale);
+            ringMesh.setMatrixAt(auraIdleCount++, matrix);
+          }
         }
       }
 
@@ -501,6 +516,7 @@ function InstancedUnits() {
     flush(enemyRingRef.current, enemyRingCount);
     flush(selectionOuterRef.current, selectionOuterCount);
     flush(selectionInnerRef.current, selectionInnerCount);
+    flush(auraIdleRef.current, auraIdleCount);
     flush(auraActiveRef.current, auraActiveCount);
     flush(auraUnitGlowRef.current, auraUnitGlowCount);
     flush(healthBarBgRef.current, healthBarCount);
@@ -572,8 +588,15 @@ function InstancedUnits() {
         frustumCulled={false}
       />
 
-      {/* Queen/King aura disc — only drawn (glowing green) while the aura is
-          actively healing or buffing; plus per-unit green glow pools. */}
+      {/* Queen/King aura torus — blue + steady around every alive Queen/King,
+          swapped to a green pulsing ring while the aura is actively healing or
+          buffing. Per-unit green glow pool sits under any unit standing in an
+          active friendly aura. */}
+      <instancedMesh
+        ref={auraIdleRef}
+        args={[auraRingGeometry, AURA_IDLE_MAT, AURA_CAPACITY]}
+        frustumCulled={false}
+      />
       <instancedMesh
         ref={auraActiveRef}
         args={[auraRingGeometry, AURA_ACTIVE_MAT, AURA_CAPACITY]}
@@ -583,7 +606,7 @@ function InstancedUnits() {
         ref={auraUnitGlowRef}
         args={[auraUnitGlowGeometry, AURA_UNIT_GLOW_MAT, AURA_GLOW_CAPACITY]}
         frustumCulled={false}
-        renderOrder={10}
+        renderOrder={1}
       />
 
       {/* Floating health bars — backing + colored fill, billboarded toward the
@@ -602,16 +625,20 @@ function InstancedUnits() {
         renderOrder={999}
       />
 
-      {/* Selection rings — only drawn for selected units. */}
+      {/* Selection rings — only drawn for selected units. renderOrder pushes
+          them past the per-unit aura glow (renderOrder=1) in the transparent
+          queue so they always paint on top of the pulsing pool. */}
       <instancedMesh
         ref={selectionOuterRef}
         args={[selectionOuterGeometry, SELECTION_OUTER_MAT, RING_CAPACITY]}
         frustumCulled={false}
+        renderOrder={2}
       />
       <instancedMesh
         ref={selectionInnerRef}
         args={[selectionInnerGeometry, SELECTION_INNER_MAT, RING_CAPACITY]}
         frustumCulled={false}
+        renderOrder={3}
       />
     </group>
   );
