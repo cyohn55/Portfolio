@@ -54,16 +54,9 @@ const NEON_GREEN = '#39ff14';
 // Max Queen + King aura sources on the field at once (3 animals x 2 sides x 2 kinds).
 const AURA_CAPACITY = 64;
 
-// Idle aura: the same glowing blue used by the selection rings, shown when the
-// aura isn't currently helping anyone.
-const AURA_IDLE_MAT = new THREE.MeshStandardMaterial({
-  color: '#000080',
-  emissive: '#000080',
-  emissiveIntensity: 3.0,
-  toneMapped: false,
-});
-// Active aura: glowing neon green, pulsed every frame (see useFrame) while the
-// aura is healing (Queen) or buffing a unit in combat (King).
+// The aura ring is only drawn while the aura is actively working — a Queen
+// healing a below-full-health unit in range, or a King buffing a unit in range
+// that is in combat (unit.auraActive). It is hidden entirely otherwise.
 const AURA_ACTIVE_MAT = new THREE.MeshStandardMaterial({
   color: NEON_GREEN,
   emissive: NEON_GREEN,
@@ -220,7 +213,6 @@ function InstancedUnits() {
   const enemyRingRef = useRef<THREE.InstancedMesh>(null);
   const selectionOuterRef = useRef<THREE.InstancedMesh>(null);
   const selectionInnerRef = useRef<THREE.InstancedMesh>(null);
-  const auraIdleRef = useRef<THREE.InstancedMesh>(null);
   const auraActiveRef = useRef<THREE.InstancedMesh>(null);
   const auraUnitGlowRef = useRef<THREE.InstancedMesh>(null);
   // instanceId -> unitId per variant, rebuilt each frame for picking.
@@ -239,7 +231,7 @@ function InstancedUnits() {
 
   // Mark ring instance buffers as dynamic (updated every frame) for the GPU.
   useEffect(() => {
-    [ownRingRef, enemyRingRef, selectionOuterRef, selectionInnerRef, auraIdleRef, auraActiveRef, auraUnitGlowRef].forEach((ref) => {
+    [ownRingRef, enemyRingRef, selectionOuterRef, selectionInnerRef, auraActiveRef, auraUnitGlowRef].forEach((ref) => {
       ref.current?.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     });
   }, []);
@@ -292,7 +284,6 @@ function InstancedUnits() {
     let enemyRingCount = 0;
     let selectionOuterCount = 0;
     let selectionInnerCount = 0;
-    let auraIdleCount = 0;
     let auraActiveCount = 0;
     let auraUnitGlowCount = 0;
 
@@ -355,30 +346,22 @@ function InstancedUnits() {
         }
       }
 
-      // Queen/King aura ring: a ground circle at the aura's world radius. Green
-      // and pulsing while the aura is actively helping (unit.auraActive), calm
-      // blue otherwise. Drawn on the ground so flight lift doesn't move it.
-      if (unit.kind === 'Queen' || unit.kind === 'King') {
+      // Queen/King aura ring: a neon-green pulsing torus drawn on the ground at
+      // the aura's world radius, but ONLY while the aura is actively working
+      // (unit.auraActive — Queen healing a hurt unit, or King buffing a unit in
+      // combat). Hidden entirely otherwise. Ground-placed so flight lift doesn't
+      // move it.
+      if ((unit.kind === 'Queen' || unit.kind === 'King') && unit.auraActive) {
         const radius = unit.kind === 'Queen' ? queenAuraRadius : kingAuraRadius;
         // Lift by the tube's world half-height so the torus rests on the ground.
         const ringY = unit.position.y + radius * AURA_TORUS_TUBE;
-        if (unit.auraActive) {
-          const ringMesh = auraActiveRef.current;
-          if (ringMesh && auraActiveCount < AURA_CAPACITY) {
-            const r = radius * activeAuraScale;
-            position.set(unit.position.x, ringY, unit.position.z);
-            scale.set(r, r, r);
-            matrix.compose(position, identityQuaternion, scale);
-            ringMesh.setMatrixAt(auraActiveCount++, matrix);
-          }
-        } else {
-          const ringMesh = auraIdleRef.current;
-          if (ringMesh && auraIdleCount < AURA_CAPACITY) {
-            position.set(unit.position.x, ringY, unit.position.z);
-            scale.set(radius, radius, radius);
-            matrix.compose(position, identityQuaternion, scale);
-            ringMesh.setMatrixAt(auraIdleCount++, matrix);
-          }
+        const ringMesh = auraActiveRef.current;
+        if (ringMesh && auraActiveCount < AURA_CAPACITY) {
+          const r = radius * activeAuraScale;
+          position.set(unit.position.x, ringY, unit.position.z);
+          scale.set(r, r, r);
+          matrix.compose(position, identityQuaternion, scale);
+          ringMesh.setMatrixAt(auraActiveCount++, matrix);
         }
       }
 
@@ -415,7 +398,6 @@ function InstancedUnits() {
     flush(enemyRingRef.current, enemyRingCount);
     flush(selectionOuterRef.current, selectionOuterCount);
     flush(selectionInnerRef.current, selectionInnerCount);
-    flush(auraIdleRef.current, auraIdleCount);
     flush(auraActiveRef.current, auraActiveCount);
     flush(auraUnitGlowRef.current, auraUnitGlowCount);
   });
@@ -482,12 +464,8 @@ function InstancedUnits() {
         frustumCulled={false}
       />
 
-      {/* Queen/King aura rings — blue when idle, glowing green when active. */}
-      <instancedMesh
-        ref={auraIdleRef}
-        args={[auraRingGeometry, AURA_IDLE_MAT, AURA_CAPACITY]}
-        frustumCulled={false}
-      />
+      {/* Queen/King aura ring — only drawn (glowing green) while the aura is
+          actively healing or buffing; plus per-unit green glow pools. */}
       <instancedMesh
         ref={auraActiveRef}
         args={[auraRingGeometry, AURA_ACTIVE_MAT, AURA_CAPACITY]}
