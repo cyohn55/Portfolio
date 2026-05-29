@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import {
   clampPointToBoundary,
+  confineBoundaryToPoints,
   registerArenaBoundary,
   clampToArena,
   getArenaBoundary,
@@ -18,7 +19,7 @@ import type { Position3D } from '../src/game/types';
  * game registers it once at load and then reads it every tick.
  */
 
-// An axis-aligned 20 x 20 square centered at the origin (axes along world X and Z).
+// An axis-aligned 20 x 20 square centered at the origin (axes along world X and Z, no corner cut).
 const AXIS_ALIGNED: ArenaBoundary = {
   centerX: 0,
   centerZ: 0,
@@ -28,6 +29,7 @@ const AXIS_ALIGNED: ArenaBoundary = {
   axisVz: 1,
   halfU: 10,
   halfV: 10,
+  diagLimit: Infinity,
 };
 
 // The real map's slab orientation: a square rotated 45° about Y. Its axes are the unit
@@ -43,6 +45,7 @@ const ROTATED_45: ArenaBoundary = {
   axisVz: DIAGONAL,
   halfU: HALF,
   halfV: HALF,
+  diagLimit: Infinity,
 };
 
 function distanceFromCenterAlongAxis(
@@ -127,4 +130,60 @@ test('clampToArena is a no-op when no boundary is registered', () => {
   clampToArena(position);
   expect(position.x).toBe(9999);
   expect(position.z).toBe(-9999);
+});
+
+test('corner cut trims the box corner that lies past the diagonal limit', () => {
+  // Box of half 10, but a diagonal cap of 12 lops the corners (a corner sits at |U|+|V| = 20).
+  const octagon: ArenaBoundary = { ...AXIS_ALIGNED, diagLimit: 12 };
+
+  // A point driven toward the +U/+V corner: box clamp pins it to (10, 10), then the corner cut
+  // pulls it onto the line U + V = 12 (orthogonally, so symmetrically to (6, 6)).
+  const clamped = clampPointToBoundary(octagon, 1000, 1000);
+  const alongU = clamped.x; // axes are world X/Z here
+  const alongV = clamped.z;
+  expect(alongU + alongV).toBeCloseTo(12, 6);
+  expect(alongU).toBeCloseTo(6, 6);
+  expect(alongV).toBeCloseTo(6, 6);
+
+  // A point near an edge midpoint (well inside the corner cut) is unaffected by it.
+  const edge = clampPointToBoundary(octagon, 1000, 1);
+  expect(edge.x).toBeCloseTo(10, 6);
+  expect(edge.z).toBeCloseTo(1, 6);
+});
+
+// A large rotated slab (half-extents 100) for confinement tests, so the points sit well inside it.
+const BIG_ROTATED: ArenaBoundary = { ...ROTATED_45, halfU: 100, halfV: 100 };
+
+test('confineBoundaryToPoints shrinks a slab to just past the confinement points', () => {
+  const slab = BIG_ROTATED; // halfU = halfV = 100
+  // Two points at ±40 along axis U and ±30 along axis V (relative to the slab center).
+  const u = (n: number) => ({
+    x: slab.centerX + n * slab.axisUx,
+    z: slab.centerZ + n * slab.axisUz,
+  });
+  const points = [u(40), u(-40), { x: slab.centerX + 30 * slab.axisVx, z: slab.centerZ + 30 * slab.axisVz }];
+
+  const tightened = confineBoundaryToPoints(slab, points, 25, 25);
+  expect(tightened.halfU).toBeCloseTo(40 + 25, 4); // max |U| + axis margin
+  expect(tightened.halfV).toBeCloseTo(30 + 25, 4); // max |V| + axis margin
+  // The confinement is strictly smaller than the slab it came from.
+  expect(tightened.halfU).toBeLessThan(slab.halfU);
+  expect(tightened.halfV).toBeLessThan(slab.halfV);
+
+  // Every confinement point is inside the tightened boundary (clamping leaves it unchanged).
+  for (const point of points) {
+    const clamped = clampPointToBoundary(tightened, point.x, point.z);
+    expect(clamped.x).toBeCloseTo(point.x, 4);
+    expect(clamped.z).toBeCloseTo(point.z, 4);
+  }
+});
+
+test('confineBoundaryToPoints never grows the boundary beyond the slab', () => {
+  const slab = BIG_ROTATED; // halfU = halfV = 100
+  // A point far outside the slab plus a huge margin would exceed it; the result must be capped.
+  const farPoint = { x: slab.centerX + 1000 * slab.axisUx, z: slab.centerZ + 1000 * slab.axisUz };
+  const tightened = confineBoundaryToPoints(slab, [farPoint], 9999, 9999);
+  expect(tightened.halfU).toBeLessThanOrEqual(slab.halfU);
+  expect(tightened.halfV).toBeLessThanOrEqual(slab.halfV);
+  expect(tightened.diagLimit).toBeLessThanOrEqual(slab.halfU + slab.halfV);
 });

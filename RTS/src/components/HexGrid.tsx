@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { useGameStore } from '../game/state';
-import { registerArenaBoundary } from './Working/arenaBoundary';
+import { registerArenaBoundary, confineBoundaryToPoints } from './Working/arenaBoundary';
 import { computeArenaBoundary } from './Working/arenaBoundaryScene';
 import { UnitsLayer } from './UnitsLayer';
 import { MapInteraction } from './HexInteraction';
@@ -36,9 +36,16 @@ const PATH_PLAY_HALF_Z = 290;
 // body (collision radius 2.5) rests fully on the slab instead of hanging over the rim.
 const ARENA_EDGE_INSET = 2.5;
 
-// Resolve the named "Arena" node from the raw (pre-merge) gltf scene — the merge pass folds
-// the slab into the static map, so its name survives only here — and register its oriented XZ
-// footprint as the movement boundary.
+// How far past the outermost base the playable boundary sits. The Arena slab is much larger than
+// the field the bases bracket, so the boundary is tightened to the base positions plus these
+// margins ("just past the bases"): along each rotated axis, and on the diagonal corner cut that
+// trims the empty diamond tips units used to flank out onto.
+const ARENA_BASE_AXIS_MARGIN = 25;
+const ARENA_BASE_CORNER_MARGIN = 25;
+
+// Resolve the named "Arena" node from the raw (pre-merge) gltf scene — the merge pass folds the
+// slab into the static map, so its name survives only here — and register the movement boundary,
+// tightened from the oversized slab down to just past the base line.
 function registerArenaBoundaryFromScene(scene: THREE.Object3D): void {
   const arena = scene.getObjectByName('Arena');
   if (!arena) {
@@ -47,17 +54,32 @@ function registerArenaBoundaryFromScene(scene: THREE.Object3D): void {
     return;
   }
 
-  const boundary = computeArenaBoundary(arena, ARENA_EDGE_INSET);
-  registerArenaBoundary(boundary);
-
-  if (boundary) {
-    console.log(
-      `🧱 Arena boundary registered: center (${boundary.centerX.toFixed(1)}, ${boundary.centerZ.toFixed(1)}), ` +
-      `half-extents ${boundary.halfU.toFixed(1)} x ${boundary.halfV.toFixed(1)} (inset ${ARENA_EDGE_INSET})`
-    );
-  } else {
+  const slab = computeArenaBoundary(arena, ARENA_EDGE_INSET);
+  if (!slab) {
     console.warn('⚠️ Arena node has no mesh geometry; off-map boundary clamp is disabled');
+    registerArenaBoundary(null);
+    return;
   }
+
+  // Tighten to the play area bracketed by the bases. Bases exist by the time the map mounts
+  // (startMatch runs before the screen transition); if none are present yet, fall back to the
+  // full slab so the boundary is never larger than intended.
+  const basePositions = useGameStore
+    .getState()
+    .units.filter((unit) => unit.kind === 'Base')
+    .map((unit) => unit.position);
+  const boundary =
+    basePositions.length > 0
+      ? confineBoundaryToPoints(slab, basePositions, ARENA_BASE_AXIS_MARGIN, ARENA_BASE_CORNER_MARGIN)
+      : slab;
+
+  registerArenaBoundary(boundary);
+  console.log(
+    `🧱 Arena boundary registered: center (${boundary.centerX.toFixed(1)}, ${boundary.centerZ.toFixed(1)}), ` +
+    `half-extents ${boundary.halfU.toFixed(1)} x ${boundary.halfV.toFixed(1)}, ` +
+    `corner cut ${Number.isFinite(boundary.diagLimit) ? boundary.diagLimit.toFixed(1) : '∞'} ` +
+    `(from ${basePositions.length} bases)`
+  );
 }
 
 export function BattleMap() {

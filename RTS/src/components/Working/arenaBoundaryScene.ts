@@ -51,6 +51,7 @@ export function computeArenaBoundary(arena: THREE.Object3D, inset: number): Aren
   const halfU = Math.max(0, (localBox.max.x - localBox.min.x) * 0.5 * scaleU - inset);
   const halfV = Math.max(0, (localBox.max.z - localBox.min.z) * 0.5 * scaleV - inset);
 
+  // The raw slab has no corner cut; confineBoundaryToPoints adds one when sizing to the play area.
   return {
     centerX: center.x,
     centerZ: center.z,
@@ -60,5 +61,6 @@ export function computeArenaBoundary(arena: THREE.Object3D, inset: number): Aren
     axisVz: axisV.z,
     halfU,
     halfV,
+    diagLimit: Infinity,
   };
 }
