@@ -9,13 +9,16 @@ import {
   ANIMAL_FILE_MAP,
   OWL_WING_MODELS,
   TURTLE_FRAME_COUNT,
+  FOX_FRAME_COUNT,
   baseVariantKey,
   owlWingVariantKey,
   turtleFrameVariantKey,
+  foxFrameVariantKey,
   getKindTargetScale,
   getBakedAnimalParts,
   getBakedOwlWingParts,
   getBakedTurtleFrameParts,
+  getBakedFoxFrameParts,
   type BakedPart,
 } from '../utils/ModelPreloader';
 import * as THREE from 'three';
@@ -198,6 +201,11 @@ const TURTLE_WALK_FRAME_MS = 100;
 const TURTLE_WALK_FRAME_COUNT = TURTLE_FRAME_COUNT - 1; // F1..F5
 const TURTLE_WALK_FIRST_FRAME = 1; // F1
 
+// Fox pose timing: while moving, the walk cycle (F0, F1, F2) advances one frame
+// every 100ms and loops; idle holds F1.
+const FOX_WALK_FRAME_MS = 100;
+const FOX_IDLE_FRAME = 1; // Fox_F1
+
 // Per-unit visual context resolved each render frame (turtle pose selection
 // needs wall-clock time and whether the unit is currently moving).
 type VariantContext = { elapsedMs: number; isMoving: boolean };
@@ -214,6 +222,11 @@ function variantKeyForUnit(unit: Unit, ctx: VariantContext): string {
     if (!ctx.isMoving) return turtleFrameVariantKey(TURTLE_WALK_FIRST_FRAME); // idle -> F1
     const step = Math.floor(ctx.elapsedMs / TURTLE_WALK_FRAME_MS) % TURTLE_WALK_FRAME_COUNT;
     return turtleFrameVariantKey(TURTLE_WALK_FIRST_FRAME + step); // F1..F5 loop
+  }
+  if (unit.animal === 'Fox') {
+    if (!ctx.isMoving) return foxFrameVariantKey(FOX_IDLE_FRAME); // idle -> F1
+    const step = Math.floor(ctx.elapsedMs / FOX_WALK_FRAME_MS) % FOX_FRAME_COUNT;
+    return foxFrameVariantKey(step); // F0, F1, F2 loop
   }
   return baseVariantKey(unit.animal);
 }
@@ -296,6 +309,14 @@ function InstancedUnits() {
         // Turtle_F# into its own variant so the renderer can swap poses.
         for (let frame = 0; frame < TURTLE_FRAME_COUNT; frame++) {
           specs.push({ key: turtleFrameVariantKey(frame), parts: getBakedTurtleFrameParts(gltf, frame) });
+        }
+        continue;
+      }
+      if (animal === 'Fox') {
+        // Fox ships its poses as separate objects in one glb — bake each
+        // Fox_F# into its own variant so the renderer can swap poses.
+        for (let frame = 0; frame < FOX_FRAME_COUNT; frame++) {
+          specs.push({ key: foxFrameVariantKey(frame), parts: getBakedFoxFrameParts(gltf, frame) });
         }
         continue;
       }

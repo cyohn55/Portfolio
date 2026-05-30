@@ -190,6 +190,20 @@ export function turtleFrameVariantKey(frameIndex: number): string {
   return `Turtle-frame${frameIndex % TURTLE_FRAME_COUNT}`;
 }
 
+// The Fox model packs three pose objects (Fox_F0..Fox_F2) into one glb. They are
+// cycled as a three-frame walk loop while moving; idle holds Fox_F1. Like the
+// Turtle, each pose is baked into its own instanced variant and the renderer
+// shows exactly one at a time, so the unbaked frames cost nothing.
+export const FOX_FRAME_COUNT = 3;
+
+export function foxFrameNodeName(frameIndex: number): string {
+  return `Fox_F${frameIndex}`;
+}
+
+export function foxFrameVariantKey(frameIndex: number): string {
+  return `Fox-frame${frameIndex % FOX_FRAME_COUNT}`;
+}
+
 // World-space size (longest edge) a unit should occupy, by kind and animal.
 // Mirrors the targets previously used in createPreparedScene.
 export function getKindTargetScale(animal: AnimalId, kind: 'Unit' | 'Queen' | 'King' | 'Base'): number {
@@ -258,18 +272,19 @@ export function getBakedAnimalParts(gltf: any, animal: AnimalId): BakedPart[] {
   return parts;
 }
 
-// Bake a single Turtle pose object (Turtle_F#) into instanced parts. All six
-// poses share one normalization — derived from the whole model's bounds rather
-// than each pose's own — so every frame lands at the same size and ground
-// height and the turtle never jitters or resizes as the renderer cycles poses.
-function bakeTurtleFrame(gltf: any, frameIndex: number): BakedPart[] {
+// Bake a single named pose object (Turtle_F#, Fox_F#, …) out of a multi-pose
+// glb into instanced parts. All poses share one normalization — derived from the
+// whole model's bounds rather than each pose's own — so every frame lands at the
+// same size and ground height and the unit never jitters or resizes as the
+// renderer cycles poses. (The poses overlap at a common origin, so the union
+// bounds match each pose closely while guaranteeing identical placement.)
+function bakePoseFrame(gltf: any, poseNodeName: string): BakedPart[] {
   if (!gltf?.scene) return [];
 
   const root = gltf.scene.clone(true);
 
   // Shared normalization: longest edge of the combined model -> 1 unit, feet to
-  // the ground plane. (The six poses overlap at a common origin, so the union
-  // bounds match each pose closely while guaranteeing identical placement.)
+  // the ground plane.
   const box = new THREE.Box3().setFromObject(root);
   const size = new THREE.Vector3();
   box.getSize(size);
@@ -283,7 +298,7 @@ function bakeTurtleFrame(gltf: any, frameIndex: number): BakedPart[] {
 
   root.updateWorldMatrix(true, true);
 
-  const frameRoot = root.getObjectByName(turtleFrameNodeName(frameIndex));
+  const frameRoot = root.getObjectByName(poseNodeName);
   if (!frameRoot) return [];
 
   const parts: BakedPart[] = [];
@@ -304,7 +319,17 @@ export function getBakedTurtleFrameParts(gltf: any, frameIndex: number): BakedPa
   const key = turtleFrameVariantKey(frameIndex);
   const cached = bakedVariantCache.get(key);
   if (cached) return cached;
-  const parts = bakeTurtleFrame(gltf, frameIndex);
+  const parts = bakePoseFrame(gltf, turtleFrameNodeName(frameIndex));
+  bakedVariantCache.set(key, parts);
+  return parts;
+}
+
+// Return cached baked parts for one Fox pose-frame variant.
+export function getBakedFoxFrameParts(gltf: any, frameIndex: number): BakedPart[] {
+  const key = foxFrameVariantKey(frameIndex);
+  const cached = bakedVariantCache.get(key);
+  if (cached) return cached;
+  const parts = bakePoseFrame(gltf, foxFrameNodeName(frameIndex));
   bakedVariantCache.set(key, parts);
   return parts;
 }
