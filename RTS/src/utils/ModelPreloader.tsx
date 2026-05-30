@@ -204,6 +204,19 @@ export function foxFrameVariantKey(frameIndex: number): string {
   return `Fox-frame${frameIndex % FOX_FRAME_COUNT}`;
 }
 
+// The Yeti model packs three pose objects (Yeti_F0..Yeti_F2) into one glb,
+// cycled as a three-frame walk loop while moving; idle holds Yeti_F1. Like the
+// Bunny, the Yeti faces backwards out of the exporter and needs a 180° yaw flip.
+export const YETI_FRAME_COUNT = 3;
+
+export function yetiFrameNodeName(frameIndex: number): string {
+  return `Yeti_F${frameIndex}`;
+}
+
+export function yetiFrameVariantKey(frameIndex: number): string {
+  return `Yeti-frame${frameIndex % YETI_FRAME_COUNT}`;
+}
+
 // World-space size (longest edge) a unit should occupy, by kind and animal.
 // Mirrors the targets previously used in createPreparedScene.
 export function getKindTargetScale(animal: AnimalId, kind: 'Unit' | 'Queen' | 'King' | 'Base'): number {
@@ -278,7 +291,7 @@ export function getBakedAnimalParts(gltf: any, animal: AnimalId): BakedPart[] {
 // same size and ground height and the unit never jitters or resizes as the
 // renderer cycles poses. (The poses overlap at a common origin, so the union
 // bounds match each pose closely while guaranteeing identical placement.)
-function bakePoseFrame(gltf: any, poseNodeName: string): BakedPart[] {
+function bakePoseFrame(gltf: any, poseNodeName: string, yRotation = 0): BakedPart[] {
   if (!gltf?.scene) return [];
 
   const root = gltf.scene.clone(true);
@@ -295,6 +308,9 @@ function bakePoseFrame(gltf: any, poseNodeName: string): BakedPart[] {
   const center = new THREE.Vector3();
   box.getCenter(center);
   root.position.set(-center.x * normalizeScale, -box.min.y * normalizeScale, -center.z * normalizeScale);
+
+  // Facing correction for models authored backwards (matches bakeVariant).
+  root.rotation.y = yRotation;
 
   root.updateWorldMatrix(true, true);
 
@@ -330,6 +346,17 @@ export function getBakedFoxFrameParts(gltf: any, frameIndex: number): BakedPart[
   const cached = bakedVariantCache.get(key);
   if (cached) return cached;
   const parts = bakePoseFrame(gltf, foxFrameNodeName(frameIndex));
+  bakedVariantCache.set(key, parts);
+  return parts;
+}
+
+// Return cached baked parts for one Yeti pose-frame variant (flipped 180° to
+// match the Yeti's backwards authoring, like the base-variant baker does).
+export function getBakedYetiFrameParts(gltf: any, frameIndex: number): BakedPart[] {
+  const key = yetiFrameVariantKey(frameIndex);
+  const cached = bakedVariantCache.get(key);
+  if (cached) return cached;
+  const parts = bakePoseFrame(gltf, yetiFrameNodeName(frameIndex), Math.PI);
   bakedVariantCache.set(key, parts);
   return parts;
 }

@@ -10,15 +10,18 @@ import {
   OWL_WING_MODELS,
   TURTLE_FRAME_COUNT,
   FOX_FRAME_COUNT,
+  YETI_FRAME_COUNT,
   baseVariantKey,
   owlWingVariantKey,
   turtleFrameVariantKey,
   foxFrameVariantKey,
+  yetiFrameVariantKey,
   getKindTargetScale,
   getBakedAnimalParts,
   getBakedOwlWingParts,
   getBakedTurtleFrameParts,
   getBakedFoxFrameParts,
+  getBakedYetiFrameParts,
   type BakedPart,
 } from '../utils/ModelPreloader';
 import * as THREE from 'three';
@@ -206,6 +209,11 @@ const TURTLE_WALK_FIRST_FRAME = 1; // F1
 const FOX_WALK_FRAME_MS = 100;
 const FOX_IDLE_FRAME = 1; // Fox_F1
 
+// Yeti pose timing mirrors the Fox: walk cycle (F0, F1, F2) advances one frame
+// every 100ms and loops; idle holds F1.
+const YETI_WALK_FRAME_MS = 100;
+const YETI_IDLE_FRAME = 1; // Yeti_F1
+
 // Per-unit visual context resolved each render frame (turtle pose selection
 // needs wall-clock time and whether the unit is currently moving).
 type VariantContext = { elapsedMs: number; isMoving: boolean };
@@ -227,6 +235,11 @@ function variantKeyForUnit(unit: Unit, ctx: VariantContext): string {
     if (!ctx.isMoving) return foxFrameVariantKey(FOX_IDLE_FRAME); // idle -> F1
     const step = Math.floor(ctx.elapsedMs / FOX_WALK_FRAME_MS) % FOX_FRAME_COUNT;
     return foxFrameVariantKey(step); // F0, F1, F2 loop
+  }
+  if (unit.animal === 'Yetti') {
+    if (!ctx.isMoving) return yetiFrameVariantKey(YETI_IDLE_FRAME); // idle -> F1
+    const step = Math.floor(ctx.elapsedMs / YETI_WALK_FRAME_MS) % YETI_FRAME_COUNT;
+    return yetiFrameVariantKey(step); // F0, F1, F2 loop
   }
   return baseVariantKey(unit.animal);
 }
@@ -317,6 +330,14 @@ function InstancedUnits() {
         // Fox_F# into its own variant so the renderer can swap poses.
         for (let frame = 0; frame < FOX_FRAME_COUNT; frame++) {
           specs.push({ key: foxFrameVariantKey(frame), parts: getBakedFoxFrameParts(gltf, frame) });
+        }
+        continue;
+      }
+      if (animal === 'Yetti') {
+        // Yeti ships its poses as separate objects in one glb — bake each
+        // Yeti_F# into its own variant so the renderer can swap poses.
+        for (let frame = 0; frame < YETI_FRAME_COUNT; frame++) {
+          specs.push({ key: yetiFrameVariantKey(frame), parts: getBakedYetiFrameParts(gltf, frame) });
         }
         continue;
       }
