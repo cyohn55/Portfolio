@@ -227,10 +227,10 @@ const MOVE_HOLD_MS = 150;
 
 // Bear walk tilt: while moving, the bear sways smoothly on its local x-axis,
 // peaking at +15deg and -15deg. One full sway (up to +15, down to -15, back)
-// completes every 400ms — matching a 200ms swing in each direction. Idle bears
+// completes every 800ms — matching a 400ms swing in each direction. Idle bears
 // hold their original (level) pose.
 const BEAR_TILT_RAD = (15 * Math.PI) / 180;
-const BEAR_TILT_PERIOD_MS = 400;
+const BEAR_TILT_PERIOD_MS = 800;
 
 // Resolve the bear's walk-tilt pitch (radians about its local x-axis) for this
 // frame. Returns 0 for non-bears and for idle bears so they sit upright.
