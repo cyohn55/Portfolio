@@ -209,9 +209,11 @@ const TURTLE_WALK_FIRST_FRAME = 1; // F1
 const FOX_WALK_FRAME_MS = 100;
 const FOX_IDLE_FRAME = 1; // Fox_F1
 
-// Yeti pose timing mirrors the Fox: walk cycle (F0, F1, F2) advances one frame
-// every 100ms and loops; idle holds F1.
+// Yeti pose timing: while moving, the walk alternates between F1 and F2 every
+// 100ms; idle holds F0.
 const YETI_WALK_FRAME_MS = 100;
+const YETI_WALK_FIRST_FRAME = 1; // F1
+const YETI_WALK_FRAME_COUNT = 2; // alternate F1 <-> F2
 const YETI_IDLE_FRAME = 0; // Yeti_F0
 
 // Per-unit visual context resolved each render frame (turtle pose selection
@@ -237,9 +239,9 @@ function variantKeyForUnit(unit: Unit, ctx: VariantContext): string {
     return foxFrameVariantKey(step); // F0, F1, F2 loop
   }
   if (unit.animal === 'Yetti') {
-    if (!ctx.isMoving) return yetiFrameVariantKey(YETI_IDLE_FRAME); // idle -> F1
-    const step = Math.floor(ctx.elapsedMs / YETI_WALK_FRAME_MS) % YETI_FRAME_COUNT;
-    return yetiFrameVariantKey(step); // F0, F1, F2 loop
+    if (!ctx.isMoving) return yetiFrameVariantKey(YETI_IDLE_FRAME); // idle -> F0
+    const step = Math.floor(ctx.elapsedMs / YETI_WALK_FRAME_MS) % YETI_WALK_FRAME_COUNT;
+    return yetiFrameVariantKey(YETI_WALK_FIRST_FRAME + step); // alternate F1 <-> F2
   }
   return baseVariantKey(unit.animal);
 }
