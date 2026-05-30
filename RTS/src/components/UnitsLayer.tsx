@@ -29,6 +29,7 @@ const RING_CAPACITY = 4096;
 const MAX_RENDER_DISTANCE = 400;
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const X_AXIS = new THREE.Vector3(1, 0, 0);
 const FLAT_ROTATION = -Math.PI / 2;
 
 const isMobileDevice = (): boolean =>
@@ -218,11 +219,26 @@ function variantKeyForUnit(unit: Unit, ctx: VariantContext): string {
 }
 
 // Minimum horizontal displacement (squared) between consecutive samples that
-// counts as "the turtle moved". Below this it is treated as standing still.
-const TURTLE_MOVE_EPSILON_SQ = 0.01 * 0.01;
-// How long after the last detected movement a turtle keeps playing its walk
-// cycle, smoothing over frames where the fixed-timestep tick didn't advance.
-const TURTLE_MOVE_HOLD_MS = 150;
+// counts as a unit having moved. Below this it is treated as standing still.
+const MOVE_EPSILON_SQ = 0.01 * 0.01;
+// How long after the last detected movement a unit keeps playing its walk
+// animation, smoothing over frames where the fixed-timestep tick didn't advance.
+const MOVE_HOLD_MS = 150;
+
+// Bear walk tilt: while moving, the bear sways smoothly on its local x-axis,
+// peaking at +15deg and -15deg. One full sway (up to +15, down to -15, back)
+// completes every 200ms — matching a 100ms swing in each direction. Idle bears
+// hold their original (level) pose.
+const BEAR_TILT_RAD = (15 * Math.PI) / 180;
+const BEAR_TILT_PERIOD_MS = 200;
+
+// Resolve the bear's walk-tilt pitch (radians about its local x-axis) for this
+// frame. Returns 0 for non-bears and for idle bears so they sit upright.
+function bearTiltPitch(unit: Unit, elapsedMs: number, isMoving: boolean): number {
+  if (unit.animal !== 'Bear' || !isMoving) return 0;
+  const phase = (elapsedMs / BEAR_TILT_PERIOD_MS) * Math.PI * 2;
+  return Math.sin(phase) * BEAR_TILT_RAD;
+}
 
 // Vertical animation/positioning offsets applied per unit (hop, flight, Yetti).
 function verticalOffset(unit: Unit): number {
@@ -307,14 +323,16 @@ function InstancedUnits() {
   // instanceId -> unitId per variant, rebuilt each frame for picking.
   const variantUnitIds = useRef<Map<string, string[]>>(new Map());
 
-  // Turtle motion tracking: last sampled position + the time it last moved, so
-  // the renderer can tell a walking turtle (cycle F1..F5) from an idle one (F1).
-  const turtleMotion = useRef<Map<string, { x: number; z: number; lastMovedMs: number }>>(new Map());
+  // Per-unit motion tracking: last sampled position + the time it last moved, so
+  // the renderer can tell a walking unit from an idle one (turtle walk cycle,
+  // bear walk tilt).
+  const unitMotion = useRef<Map<string, { x: number; z: number; lastMovedMs: number }>>(new Map());
 
   // Reusable scratch objects (no per-frame allocation).
   const scratch = useRef({
     position: new THREE.Vector3(),
     quaternion: new THREE.Quaternion(),
+    tiltQuaternion: new THREE.Quaternion(),
     identityQuaternion: new THREE.Quaternion(),
     scale: new THREE.Vector3(),
     one: new THREE.Vector3(1, 1, 1),
@@ -332,13 +350,12 @@ function InstancedUnits() {
     });
   }, []);
 
-  // Detect whether a turtle is currently walking by sampling its position each
-  // frame. Returns false for non-turtles. The motion record is mutated in place
-  // so a moving turtle keeps its walk cycle for TURTLE_MOVE_HOLD_MS after the
-  // last detected step (bridging frames where the fixed tick didn't advance).
-  const isTurtleMoving = (unit: Unit, nowMs: number): boolean => {
-    if (unit.animal !== 'Turtle') return false;
-    const motion = turtleMotion.current;
+  // Detect whether a unit is currently walking by sampling its position each
+  // frame. The motion record is mutated in place so a moving unit keeps its walk
+  // animation for MOVE_HOLD_MS after the last detected step (bridging frames
+  // where the fixed tick didn't advance). Call at most once per unit per frame.
+  const isUnitMoving = (unit: Unit, nowMs: number): boolean => {
+    const motion = unitMotion.current;
     const record = motion.get(unit.id);
     const { x, z } = unit.position;
     if (!record) {
@@ -347,12 +364,12 @@ function InstancedUnits() {
     }
     const dx = x - record.x;
     const dz = z - record.z;
-    if (dx * dx + dz * dz > TURTLE_MOVE_EPSILON_SQ) {
+    if (dx * dx + dz * dz > MOVE_EPSILON_SQ) {
       record.lastMovedMs = nowMs;
     }
     record.x = x;
     record.z = z;
-    return nowMs - record.lastMovedMs < TURTLE_MOVE_HOLD_MS;
+    return nowMs - record.lastMovedMs < MOVE_HOLD_MS;
   };
 
   useFrame(({ clock }) => {
@@ -365,7 +382,7 @@ function InstancedUnits() {
     const kingAuraRadius = s.config.kingAuraRadius;
     const healthBarsEnabled = s.healthBarsEnabled;
 
-    const { position, quaternion, identityQuaternion, scale, one, matrix, projScreen, frustum, cameraRight, color } = scratch.current;
+    const { position, quaternion, tiltQuaternion, identityQuaternion, scale, one, matrix, projScreen, frustum, cameraRight, color } = scratch.current;
 
     // Billboard orientation for health bars: camera's quaternion makes each bar
     // face the screen, and its world-space right axis anchors the fill's left edge.
@@ -420,7 +437,8 @@ function InstancedUnits() {
       const unit = units[i];
       if (unit.kind === 'Base') continue;
 
-      const key = variantKeyForUnit(unit, { elapsedMs, isMoving: isTurtleMoving(unit, elapsedMs) });
+      const isMoving = isUnitMoving(unit, elapsedMs);
+      const key = variantKeyForUnit(unit, { elapsedMs, isMoving });
       if (!counts.has(key)) continue; // not a currently-mounted variant
       const meshes = meshRefs.current.get(key);
       if (!meshes || meshes.length === 0) continue;
@@ -436,7 +454,14 @@ function InstancedUnits() {
       if (variantCount >= MAX_INSTANCES_PER_VARIANT) continue;
 
       // Compose the per-instance transform: position, yaw, kind-based scale.
+      // Bears additionally rock on their local x-axis while walking (idle bears
+      // and every other animal keep a level pose).
       quaternion.setFromAxisAngle(Y_AXIS, unit.rotation);
+      const tiltPitch = bearTiltPitch(unit, elapsedMs, isMoving);
+      if (tiltPitch !== 0) {
+        tiltQuaternion.setFromAxisAngle(X_AXIS, tiltPitch);
+        quaternion.multiply(tiltQuaternion); // yaw then local-x pitch
+      }
       const target = getKindTargetScale(unit.animal, unit.kind);
       scale.set(target, target, target);
       matrix.compose(position, quaternion, scale);
