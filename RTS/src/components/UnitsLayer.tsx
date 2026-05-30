@@ -212,7 +212,7 @@ const FOX_IDLE_FRAME = 1; // Fox_F1
 // Yeti pose timing mirrors the Fox: walk cycle (F0, F1, F2) advances one frame
 // every 100ms and loops; idle holds F1.
 const YETI_WALK_FRAME_MS = 100;
-const YETI_IDLE_FRAME = 1; // Yeti_F1
+const YETI_IDLE_FRAME = 0; // Yeti_F0
 
 // Per-unit visual context resolved each render frame (turtle pose selection
 // needs wall-clock time and whether the unit is currently moving).
