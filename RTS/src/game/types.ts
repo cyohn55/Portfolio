@@ -82,6 +82,10 @@ export interface Unit {
   // actively benefiting a friendly unit this tick — drives the ground ring's
   // green/pulsing "active" state in the renderer (otherwise it shows idle blue).
   auraActive?: boolean;
+  // Turtle "shell" lock (toggled by simultaneous primary+secondary mouse press).
+  // While true the unit holds position — checkCollision freezes its movement —
+  // but it can still attack in range. The renderer shows the F0 shell pose.
+  isShelled?: boolean;
 }
 
 export interface Player {

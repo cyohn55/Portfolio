@@ -10,6 +10,12 @@ import { tokenToMouseButton } from './Working/controlBindings';
 // exact mesh raycast was unreliable; screen-space proximity is dependable.
 const UNIT_PICK_RADIUS_PX = 40;
 
+// MouseEvent.button (0=left, 1=middle, 2=right) -> MouseEvent.buttons bitmask
+// (1=left, 2=right, 4=middle). Lets us tell which buttons are held *together*
+// from a single event, independent of which one triggered it.
+const DOM_BUTTON_TO_BUTTONS_MASK: Record<number, number> = { 0: 1, 1: 4, 2: 2 };
+const buttonsMaskFor = (domButton: number): number => DOM_BUTTON_TO_BUTTONS_MASK[domButton] ?? 0;
+
 interface DragState {
   isDragging: boolean;
   startMouse: { x: number; y: number };
@@ -33,11 +39,16 @@ export function MapInteraction() {
   const selectUnits = useGameStore((s) => s.selectUnits);
   const addToSelection = useGameStore((s) => s.addToSelection);
   const setPatrol = useGameStore((s) => s.setPatrol);
+  const toggleTurtleShell = useGameStore((s) => s.toggleTurtleShell);
   // Mouse buttons are remappable via Settings -> Controls. Defaults: left=select,
   // right=command. tokenToMouseButton maps the saved token back to a DOM button.
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
   const primaryButton = tokenToMouseButton(keyboardBindings.primaryAction) ?? 0;
   const secondaryButton = tokenToMouseButton(keyboardBindings.secondaryAction) ?? 2;
+
+  // Guards the shell toggle to one fire per simultaneous press, reset once the
+  // buttons are no longer both held (see handleMouseUp).
+  const shellComboHandledRef = useRef(false);
 
   // Use ref instead of state to avoid timing issues
   const dragStateRef = useRef<DragState>({
@@ -167,6 +178,18 @@ export function MapInteraction() {
     return selectedUnit;
   };
 
+  // The local player's currently-selected Turtle units — the targets of the
+  // shell-lock toggle.
+  const selectedFriendlyTurtleIds = (): string[] =>
+    units
+      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Turtle' && selectedUnitIds.includes(unit.id))
+      .map((unit) => unit.id);
+
+  // True when the primary and secondary action buttons are held at the same time
+  // (read from a single event's `buttons` bitmask, so press order doesn't matter).
+  const areShellButtonsHeld = (buttons: number): boolean =>
+    (buttons & buttonsMaskFor(primaryButton)) !== 0 && (buttons & buttonsMaskFor(secondaryButton)) !== 0;
+
   const hidePatrolArrow = () => {
     if (patrolArrowRef.current) {
       patrolArrowRef.current.style.display = 'none';
@@ -192,6 +215,26 @@ export function MapInteraction() {
   };
 
   const handleMouseDown = (event: MouseEvent) => {
+    // Simultaneous primary+secondary press toggles the shell lock on any
+    // selected Turtle. Only intercepts when a turtle is actually selected, so
+    // pressing both buttons otherwise keeps its existing (per-button) behavior.
+    if (areShellButtonsHeld(event.buttons)) {
+      const turtleIds = selectedFriendlyTurtleIds();
+      if (turtleIds.length > 0) {
+        if (!shellComboHandledRef.current) {
+          shellComboHandledRef.current = true;
+          toggleTurtleShell(turtleIds);
+          // Discard the selection/patrol drag the first button may have started.
+          hideSelectionBox();
+          hidePatrolArrow();
+          dragStateRef.current = { isDragging: false, startMouse: { x: 0, y: 0 }, currentMouse: { x: 0, y: 0 } };
+          patrolDragRef.current = { isDragging: false, queenId: null, startWorldPos: null, currentWorldPos: null };
+        }
+        event.preventDefault();
+        return;
+      }
+    }
+
     if (event.button === primaryButton) { // Primary (select) button
       const screenPos = getScreenPosition(event);
       dragStateRef.current = {
@@ -285,6 +328,11 @@ export function MapInteraction() {
   };
 
   const handleMouseUp = (event: MouseEvent) => {
+    // Re-arm the shell toggle once the two-button combo is broken. `buttons`
+    // here reflects the buttons still held after this release.
+    if (!areShellButtonsHeld(event.buttons)) {
+      shellComboHandledRef.current = false;
+    }
 
     if (dragStateRef.current.isDragging && event.button === primaryButton) {
       // IMMEDIATELY hide selection box first
@@ -387,7 +435,7 @@ export function MapInteraction() {
       canvas.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [gl.domElement, units, localPlayerId, selectUnits, addToSelection, clearSelection, primaryButton, secondaryButton]);
+  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, primaryButton, secondaryButton]);
 
   const handleGroundClick = (e: any) => {
     // Prevent browser context menu on right-click - check if preventDefault exists
@@ -398,6 +446,13 @@ export function MapInteraction() {
 
     // Only handle the secondary (command) button for movement
     if (e.button === secondaryButton) { // Secondary (command) button
+
+      // Skip the move when this secondary press is half of a shell-toggle combo
+      // on a selected turtle (the toggle is handled in handleMouseDown instead).
+      const heldButtons = e.nativeEvent?.buttons ?? 0;
+      if (areShellButtonsHeld(heldButtons) && selectedFriendlyTurtleIds().length > 0) {
+        return;
+      }
 
       if (selectedUnitIds.length === 0) {
         return;

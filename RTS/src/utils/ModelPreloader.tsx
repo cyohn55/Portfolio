@@ -176,6 +176,20 @@ export function owlWingVariantKey(wingFrameIndex: number): string {
   return `Owl-wing${wingFrameIndex % OWL_WING_MODELS.length}`;
 }
 
+// The Turtle model packs six pose objects (Turtle_F0..Turtle_F5) into one glb.
+// F0 is the shell-lock pose; F1..F5 are the walk-cycle frames. Each pose is
+// baked into its own instanced variant and the renderer shows exactly one at a
+// time, so the unbaked frames cost nothing.
+export const TURTLE_FRAME_COUNT = 6;
+
+export function turtleFrameNodeName(frameIndex: number): string {
+  return `Turtle_F${frameIndex}`;
+}
+
+export function turtleFrameVariantKey(frameIndex: number): string {
+  return `Turtle-frame${frameIndex % TURTLE_FRAME_COUNT}`;
+}
+
 // World-space size (longest edge) a unit should occupy, by kind and animal.
 // Mirrors the targets previously used in createPreparedScene.
 export function getKindTargetScale(animal: AnimalId, kind: 'Unit' | 'Queen' | 'King' | 'Base'): number {
@@ -240,6 +254,57 @@ export function getBakedAnimalParts(gltf: any, animal: AnimalId): BakedPart[] {
   const cached = bakedVariantCache.get(key);
   if (cached) return cached;
   const parts = bakeVariant(gltf, animal, false);
+  bakedVariantCache.set(key, parts);
+  return parts;
+}
+
+// Bake a single Turtle pose object (Turtle_F#) into instanced parts. All six
+// poses share one normalization — derived from the whole model's bounds rather
+// than each pose's own — so every frame lands at the same size and ground
+// height and the turtle never jitters or resizes as the renderer cycles poses.
+function bakeTurtleFrame(gltf: any, frameIndex: number): BakedPart[] {
+  if (!gltf?.scene) return [];
+
+  const root = gltf.scene.clone(true);
+
+  // Shared normalization: longest edge of the combined model -> 1 unit, feet to
+  // the ground plane. (The six poses overlap at a common origin, so the union
+  // bounds match each pose closely while guaranteeing identical placement.)
+  const box = new THREE.Box3().setFromObject(root);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const maxDimension = Math.max(size.x, size.y, size.z) || 1;
+  const normalizeScale = 1 / maxDimension;
+  root.scale.setScalar(normalizeScale);
+
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  root.position.set(-center.x * normalizeScale, -box.min.y * normalizeScale, -center.z * normalizeScale);
+
+  root.updateWorldMatrix(true, true);
+
+  const frameRoot = root.getObjectByName(turtleFrameNodeName(frameIndex));
+  if (!frameRoot) return [];
+
+  const parts: BakedPart[] = [];
+  frameRoot.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.geometry) return;
+    const geometry = mesh.geometry.clone();
+    geometry.applyMatrix4(mesh.matrixWorld); // bake normalization into vertices
+    const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    parts.push({ geometry, material });
+  });
+
+  return parts;
+}
+
+// Return cached baked parts for one Turtle pose-frame variant.
+export function getBakedTurtleFrameParts(gltf: any, frameIndex: number): BakedPart[] {
+  const key = turtleFrameVariantKey(frameIndex);
+  const cached = bakedVariantCache.get(key);
+  if (cached) return cached;
+  const parts = bakeTurtleFrame(gltf, frameIndex);
   bakedVariantCache.set(key, parts);
   return parts;
 }

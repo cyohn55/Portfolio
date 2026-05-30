@@ -8,11 +8,14 @@ import {
   ALL_ANIMAL_PATHS,
   ANIMAL_FILE_MAP,
   OWL_WING_MODELS,
+  TURTLE_FRAME_COUNT,
   baseVariantKey,
   owlWingVariantKey,
+  turtleFrameVariantKey,
   getKindTargetScale,
   getBakedAnimalParts,
   getBakedOwlWingParts,
+  getBakedTurtleFrameParts,
   type BakedPart,
 } from '../utils/ModelPreloader';
 import * as THREE from 'three';
@@ -188,15 +191,38 @@ function Bases() {
   );
 }
 
-// Resolve the variant key for a unit's current visual state (owls swap to a
-// wing frame while flying).
-function variantKeyForUnit(unit: Unit): string {
+// Turtle pose timing: while moving, the walk cycle (F1..F5) advances one frame
+// every 100ms; idle holds F1; the shell lock shows F0.
+const TURTLE_WALK_FRAME_MS = 100;
+const TURTLE_WALK_FRAME_COUNT = TURTLE_FRAME_COUNT - 1; // F1..F5
+const TURTLE_WALK_FIRST_FRAME = 1; // F1
+
+// Per-unit visual context resolved each render frame (turtle pose selection
+// needs wall-clock time and whether the unit is currently moving).
+type VariantContext = { elapsedMs: number; isMoving: boolean };
+
+// Resolve the variant key for a unit's current visual state. Owls swap to a
+// wing frame while flying; turtles cycle pose frames by movement/shell state.
+function variantKeyForUnit(unit: Unit, ctx: VariantContext): string {
   if (unit.animal === 'Owl' && unit.isFlying) {
     const wingFrameIndex = Math.floor((unit.wingPhase || 0) * 4) % OWL_WING_MODELS.length;
     return owlWingVariantKey(wingFrameIndex);
   }
+  if (unit.animal === 'Turtle') {
+    if (unit.isShelled) return turtleFrameVariantKey(0); // F0 shell-lock pose
+    if (!ctx.isMoving) return turtleFrameVariantKey(TURTLE_WALK_FIRST_FRAME); // idle -> F1
+    const step = Math.floor(ctx.elapsedMs / TURTLE_WALK_FRAME_MS) % TURTLE_WALK_FRAME_COUNT;
+    return turtleFrameVariantKey(TURTLE_WALK_FIRST_FRAME + step); // F1..F5 loop
+  }
   return baseVariantKey(unit.animal);
 }
+
+// Minimum horizontal displacement (squared) between consecutive samples that
+// counts as "the turtle moved". Below this it is treated as standing still.
+const TURTLE_MOVE_EPSILON_SQ = 0.01 * 0.01;
+// How long after the last detected movement a turtle keeps playing its walk
+// cycle, smoothing over frames where the fixed-timestep tick didn't advance.
+const TURTLE_MOVE_HOLD_MS = 150;
 
 // Vertical animation/positioning offsets applied per unit (hop, flight, Yetti).
 function verticalOffset(unit: Unit): number {
@@ -249,6 +275,14 @@ function InstancedUnits() {
     for (const animal of inPlayAnimals) {
       const gltf = gltfByAnimal.get(animal);
       if (!gltf) continue;
+      if (animal === 'Turtle') {
+        // Turtle ships its poses as separate objects in one glb — bake each
+        // Turtle_F# into its own variant so the renderer can swap poses.
+        for (let frame = 0; frame < TURTLE_FRAME_COUNT; frame++) {
+          specs.push({ key: turtleFrameVariantKey(frame), parts: getBakedTurtleFrameParts(gltf, frame) });
+        }
+        continue;
+      }
       specs.push({ key: baseVariantKey(animal), parts: getBakedAnimalParts(gltf, animal) });
     }
     if (inPlayAnimals.includes('Owl')) {
@@ -273,6 +307,10 @@ function InstancedUnits() {
   // instanceId -> unitId per variant, rebuilt each frame for picking.
   const variantUnitIds = useRef<Map<string, string[]>>(new Map());
 
+  // Turtle motion tracking: last sampled position + the time it last moved, so
+  // the renderer can tell a walking turtle (cycle F1..F5) from an idle one (F1).
+  const turtleMotion = useRef<Map<string, { x: number; z: number; lastMovedMs: number }>>(new Map());
+
   // Reusable scratch objects (no per-frame allocation).
   const scratch = useRef({
     position: new THREE.Vector3(),
@@ -293,6 +331,29 @@ function InstancedUnits() {
       ref.current?.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     });
   }, []);
+
+  // Detect whether a turtle is currently walking by sampling its position each
+  // frame. Returns false for non-turtles. The motion record is mutated in place
+  // so a moving turtle keeps its walk cycle for TURTLE_MOVE_HOLD_MS after the
+  // last detected step (bridging frames where the fixed tick didn't advance).
+  const isTurtleMoving = (unit: Unit, nowMs: number): boolean => {
+    if (unit.animal !== 'Turtle') return false;
+    const motion = turtleMotion.current;
+    const record = motion.get(unit.id);
+    const { x, z } = unit.position;
+    if (!record) {
+      motion.set(unit.id, { x, z, lastMovedMs: Number.NEGATIVE_INFINITY });
+      return false;
+    }
+    const dx = x - record.x;
+    const dz = z - record.z;
+    if (dx * dx + dz * dz > TURTLE_MOVE_EPSILON_SQ) {
+      record.lastMovedMs = nowMs;
+    }
+    record.x = x;
+    record.z = z;
+    return nowMs - record.lastMovedMs < TURTLE_MOVE_HOLD_MS;
+  };
 
   useFrame(({ clock }) => {
     const s = useGameStore.getState();
@@ -353,11 +414,13 @@ function InstancedUnits() {
     let auraUnitGlowCount = 0;
     let healthBarCount = 0;
 
+    const elapsedMs = clock.elapsedTime * 1000;
+
     for (let i = 0; i < units.length; i++) {
       const unit = units[i];
       if (unit.kind === 'Base') continue;
 
-      const key = variantKeyForUnit(unit);
+      const key = variantKeyForUnit(unit, { elapsedMs, isMoving: isTurtleMoving(unit, elapsedMs) });
       if (!counts.has(key)) continue; // not a currently-mounted variant
       const meshes = meshRefs.current.get(key);
       if (!meshes || meshes.length === 0) continue;

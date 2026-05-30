@@ -146,6 +146,7 @@ type Store = GameState & {
   selectUnits: (unitIds: string[]) => void;
   addToSelection: (unitIds: string[]) => void;
   clearSelection: () => void;
+  toggleTurtleShell: (unitIds: string[]) => void;
   toggleOptimization: (key: keyof Store['optimizations']) => void;
   // Bridge animation system
   bridgeState: BridgeState;
@@ -1653,6 +1654,25 @@ export const useGameStore = create<Store>((set, get) => ({
   
   clearSelection: () => set({ selectedUnitIds: [] }),
 
+  // Toggle the "shell" lock on the local player's Turtle units in the given
+  // selection. Shelling pins the unit in place (see checkCollision) and the
+  // renderer swaps it to the F0 shell pose; toggling again releases it.
+  toggleTurtleShell: (unitIds) => set((prev) =>
+    produce(prev, (draft) => {
+      for (const id of unitIds) {
+        const unit = draft.units.find((candidate) => candidate.id === id);
+        if (!unit || unit.animal !== 'Turtle' || unit.ownerId !== draft.localPlayerId) continue;
+        unit.isShelled = !unit.isShelled;
+        if (unit.isShelled) {
+          // Shelling means "hold here": drop any pending move order and go idle
+          // so the turtle doesn't resume a stale path when later released.
+          delete draft.unitOrders[id];
+          unit.unitState = 'idle';
+        }
+      }
+    })
+  ),
+
   toggleOptimization: (key) => set((prev) => ({
     optimizations: {
       ...prev.optimizations,
@@ -1802,6 +1822,13 @@ function findClosestEnemy(unit: Unit, grid: SpatialGrid | null, all: Unit[]): Un
 const UNWEDGE_STUCK_TICKS = 60;
 
 function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Unit[], collisionRadius: number = 2.5, selectedUnitIds: string[] = [], localPlayerId: string | null = null, unitOrders: Record<string, any> = {}, spatialGrid: SpatialGrid | null = null): Position3D {
+  // A shelled turtle is locked in place: every movement branch funnels its
+  // proposed position through here, so refusing the move keeps the unit pinned
+  // while still letting combat (which never touches checkCollision) run.
+  if (currentUnit.isShelled) {
+    return { x: currentUnit.position.x, y: currentUnit.position.y, z: currentUnit.position.z };
+  }
+
   let adjustedPosition = { ...newPosition };
   let hasCollision = false;
 
