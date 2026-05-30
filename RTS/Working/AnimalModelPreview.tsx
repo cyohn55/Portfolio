@@ -31,7 +31,7 @@ const ROTATED_180: ReadonlySet<AnimalId> = new Set<AnimalId>(['Bunny', 'Yetti'])
 // to the one pose node to keep; every other pose object is stripped from the
 // card's scene (otherwise all poses render overlapping).
 const CARD_POSE_NODE: Partial<Record<AnimalId, string>> = {
-  Fox: 'Fox_F1',
+  Fox: 'Fox_F2',
   Turtle: 'Turtle_F1',
   Yetti: 'Yeti_F0',
 };

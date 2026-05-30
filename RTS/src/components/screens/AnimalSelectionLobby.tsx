@@ -6,6 +6,16 @@ import './AnimalSelectionLobby.css';
 
 const ALL_ANIMALS: AnimalId[] = ['Bee', 'Bear', 'Bunny', 'Chicken', 'Cat', 'Dolphin', 'Fox', 'Frog', 'Owl', 'Pig', 'Turtle', 'Yetti'];
 
+// Player-facing label for an animal. Most match their AnimalId, but a few
+// internal ids differ from the spelling we show (e.g. 'Yetti' displays "Yeti").
+const ANIMAL_DISPLAY_NAME: Partial<Record<AnimalId, string>> = {
+  Yetti: 'Yeti',
+};
+
+function animalDisplayName(animal: AnimalId): string {
+  return ANIMAL_DISPLAY_NAME[animal] ?? animal;
+}
+
 // Animal stats and descriptions. These mirror the gameplay ANIMALS table in
 // game/state.ts. Damage is per hit; how often a hit lands is set by
 // attackCooldownMs, so the player-facing damage bar shows DPS (see animalDps),
@@ -200,7 +210,7 @@ export function AnimalSelectionLobby() {
                 <div className="animal-model-preview">
                   <AnimalModelPreview animal={animal} />
                 </div>
-                <div className="animal-name">{animal}</div>
+                <div className="animal-name">{animalDisplayName(animal)}</div>
                 <div className="animal-role">{stats.role}</div>
                 <div className="animal-description">{stats.description}</div>
 
@@ -276,7 +286,7 @@ export function AnimalSelectionLobby() {
               return (
                 <div key={animal} className="selected-animal">
                   <div className="selected-animal-header">
-                    <span className="animal-name">{animal}</span>
+                    <span className="animal-name">{animalDisplayName(animal)}</span>
                     <button
                       className="remove-button"
                       onClick={() => setSelectedAnimals(prev => prev.filter(a => a !== animal))}
