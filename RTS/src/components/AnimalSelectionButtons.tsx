@@ -43,6 +43,19 @@ function getModelPath(animal: AnimalId) {
   return `${import.meta.env.BASE_URL}models/${ANIMAL_FILE_MAP[animal]}`;
 }
 
+// Pose-frame animals pack several pose objects (e.g. Fox_F0..Fox_F2) into one
+// glb. A button should show a single representative pose, so map each such
+// animal to the one pose node to keep; every other pose object is stripped from
+// the button's scene (otherwise all poses render overlapping).
+const BUTTON_POSE_NODE: Partial<Record<AnimalId, string>> = {
+  Fox: 'Fox_F1',
+  Turtle: 'Turtle_F1',
+  Yetti: 'Yeti_F0',
+};
+
+// Pose-root objects are named "<Prefix>_F<number>" (Fox_F0, Turtle_F3, …).
+const POSE_ROOT_NAME = /_F\d+$/;
+
 // 3D Model component for buttons
 function AnimalModel({ animal }: { animal: AnimalId }) {
   const path = getModelPath(animal);
@@ -63,7 +76,21 @@ function AnimalModel({ animal }: { animal: AnimalId }) {
       }
     });
 
-    // Scale and center the model for button display
+    // For pose-frame animals, keep only the chosen pose object and drop the rest
+    // so the button shows a single pose instead of every pose at once.
+    const keepPoseName = BUTTON_POSE_NODE[animal];
+    if (keepPoseName) {
+      const posesToRemove: THREE.Object3D[] = [];
+      scene.traverse((obj) => {
+        if (POSE_ROOT_NAME.test(obj.name) && obj.name !== keepPoseName) {
+          posesToRemove.push(obj);
+        }
+      });
+      posesToRemove.forEach((obj) => obj.removeFromParent());
+    }
+
+    // Scale and center the model for button display (bounds reflect only the
+    // pose objects that remain).
     const box = new THREE.Box3().setFromObject(scene);
     const size = new THREE.Vector3();
     box.getSize(size);
@@ -81,7 +108,7 @@ function AnimalModel({ animal }: { animal: AnimalId }) {
     }
 
     return scene;
-  }, [gltf]);
+  }, [gltf, animal]);
 
   if (!preparedScene) {
     return (
