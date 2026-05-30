@@ -45,9 +45,9 @@ const ARENA_BASE_CORNER_MARGIN = 25;
 
 // Straight left/right walls in world x. The slab is rotated 45°, so the octagon's sides come out
 // as wide as its front/back (~±270); these cap the lateral extent independently. Left and right are
-// set separately so the field can be trimmed asymmetrically. -115 .. +96 -> 211 units wide.
-const ARENA_WALL_LEFT_X = -115;
-const ARENA_WALL_RIGHT_X = 96;
+// set separately so the field can be trimmed asymmetrically. -117 .. +98 -> 215 units wide.
+const ARENA_WALL_LEFT_X = -117;
+const ARENA_WALL_RIGHT_X = 98;
 
 // Resolve the named "Arena" node from the raw (pre-merge) gltf scene — the merge pass folds the
 // slab into the static map, so its name survives only here — and register the movement boundary,
