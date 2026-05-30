@@ -26,6 +26,19 @@ const ANIMAL_FILE_MAP: Record<AnimalId, string> = {
 // animal is shown in the card.
 const ROTATED_180: ReadonlySet<AnimalId> = new Set<AnimalId>(['Bunny', 'Yetti']);
 
+// Pose-frame animals pack several pose objects (e.g. Fox_F0..Fox_F2) into one
+// glb. A card should show a single representative pose, so map each such animal
+// to the one pose node to keep; every other pose object is stripped from the
+// card's scene (otherwise all poses render overlapping).
+const CARD_POSE_NODE: Partial<Record<AnimalId, string>> = {
+  Fox: 'Fox_F1',
+  Turtle: 'Turtle_F1',
+  Yetti: 'Yeti_F0',
+};
+
+// Pose-root objects are named "<Prefix>_F<number>" (Fox_F0, Turtle_F3, …).
+const POSE_ROOT_NAME = /_F\d+$/;
+
 const TARGET_DISPLAY_SIZE = 3.0;     // Three.js units the model should fit within
 const VERTICAL_OFFSET = -1.4;        // pull the model down so it sits in the frame
 const AUTO_ROTATE_RAD_PER_SEC = 0.6; // slow lazy-susan rotation
@@ -56,6 +69,20 @@ function AnimalModel({ animal }: { animal: AnimalId }) {
       }
     });
 
+    // For pose-frame animals, keep only the chosen pose object and drop the rest
+    // so the card shows a single pose instead of every pose at once.
+    const keepPoseName = CARD_POSE_NODE[animal];
+    if (keepPoseName) {
+      const posesToRemove: THREE.Object3D[] = [];
+      scene.traverse((obj) => {
+        if (POSE_ROOT_NAME.test(obj.name) && obj.name !== keepPoseName) {
+          posesToRemove.push(obj);
+        }
+      });
+      posesToRemove.forEach((obj) => obj.removeFromParent());
+    }
+
+    // Bounds reflect only the pose objects that remain.
     const box = new THREE.Box3().setFromObject(scene);
     const size = new THREE.Vector3();
     box.getSize(size);
