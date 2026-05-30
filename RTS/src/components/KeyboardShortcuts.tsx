@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useGameStore } from '../game/state';
 import { keyboardCoordinator } from '../utils/keyboardCoordination';
+import { keyboardEventToToken } from './Working/controlBindings';
 
 export function KeyboardShortcuts() {
   const matchStarted = useGameStore((s) => s.matchStarted);
@@ -8,70 +9,49 @@ export function KeyboardShortcuts() {
   const selectedAnimalPool = useGameStore((s) => s.selectedAnimalPool);
   const units = useGameStore((s) => s.units);
   const selectUnits = useGameStore((s) => s.selectUnits);
+  const clearSelection = useGameStore((s) => s.clearSelection);
+  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
 
   useEffect(() => {
     if (!matchStarted) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
+      const token = keyboardEventToToken(event);
+      if (token === '') return; // bare modifier press
 
-      // Space bar: Select all units
-      if (key === ' ') {
-        event.preventDefault(); // Prevent page scroll
-
-        // Block camera input for 0.25 seconds to prevent accidental camera movement
-        keyboardCoordinator.blockCameraInput(250);
-
-        // Get all player's units (excluding bases)
-        const playerUnits = units.filter(u => u.ownerId === localPlayerId && u.kind !== 'Base');
-        const unitIds = playerUnits.map(u => u.id);
-
-        if (unitIds.length > 0) {
-          selectUnits(unitIds);
-        } else {
-        }
+      // Pause toggles regardless of selection state. Dispatch the shared toggle
+      // event so the existing HUD pause menu opens (and drives the sim-halt).
+      if (token === keyboardBindings.pause) {
+        event.preventDefault();
+        window.dispatchEvent(new CustomEvent('rts:toggle-pause'));
         return;
       }
 
-      // Only trigger animal-specific shortcuts if Shift is held down
-      if (!event.shiftKey) return;
-
-      // Get player's units (excluding bases)
       const playerUnits = units.filter(u => u.ownerId === localPlayerId && u.kind !== 'Base');
 
-      let targetAnimal = null;
-
-      switch (key) {
-        case 'a':
-          // Shift + A: Select all units of first animal type
-          targetAnimal = selectedAnimalPool[0];
-          break;
-        case 's':
-          // Shift + S: Select all units of second animal type
-          targetAnimal = selectedAnimalPool[1];
-          break;
-        case 'd':
-          // Shift + D: Select all units of third animal type
-          targetAnimal = selectedAnimalPool[2];
-          break;
-        default:
-          return; // Don't prevent default for other keys
-      }
-
-      if (targetAnimal) {
-        event.preventDefault(); // Prevent browser shortcuts
-
-        // Block camera input for 0.25 seconds to prevent accidental camera movement
+      // Select every own unit of one animal type; brief camera-input block keeps
+      // the shortcut's keys from also panning the camera.
+      const selectByAnimal = (animal: string | undefined) => {
+        if (!animal) return;
+        event.preventDefault();
         keyboardCoordinator.blockCameraInput(250);
+        const ids = playerUnits.filter(u => u.animal === animal).map(u => u.id);
+        if (ids.length > 0) selectUnits(ids);
+      };
 
-        // Find all units of the target animal type
-        const unitsOfType = playerUnits.filter(u => u.animal === targetAnimal);
-        const unitIds = unitsOfType.map(u => u.id);
-
-        if (unitIds.length > 0) {
-          selectUnits(unitIds);
-        } else {
-        }
+      if (token === keyboardBindings.selectAll) {
+        event.preventDefault();
+        keyboardCoordinator.blockCameraInput(250);
+        const ids = playerUnits.map(u => u.id);
+        if (ids.length > 0) selectUnits(ids);
+      } else if (token === keyboardBindings.selectGroup1) {
+        selectByAnimal(selectedAnimalPool[0]);
+      } else if (token === keyboardBindings.selectGroup2) {
+        selectByAnimal(selectedAnimalPool[1]);
+      } else if (token === keyboardBindings.selectGroup3) {
+        selectByAnimal(selectedAnimalPool[2]);
+      } else if (token === keyboardBindings.deselect) {
+        clearSelection();
       }
     };
 
@@ -82,7 +62,7 @@ export function KeyboardShortcuts() {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [matchStarted, localPlayerId, selectedAnimalPool, units, selectUnits]);
+  }, [matchStarted, localPlayerId, selectedAnimalPool, units, selectUnits, clearSelection, keyboardBindings]);
 
   // This component doesn't render anything, it just handles keyboard events
   return null;

@@ -2,6 +2,21 @@ import { useRef, useEffect, useCallback } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { keyboardCoordinator } from '../utils/keyboardCoordination';
+import { useGameStore } from '../game/state';
+import { gamepadInput } from './Working/gamepadInput';
+
+/**
+ * A camera-movement binding is only usable as a held key when it's a single
+ * plain key — no modifier chord, and not a mouse button or wheel direction
+ * (those are handled elsewhere). Returns that key token for matching against
+ * the pressed-keys set, or null when the binding isn't a plain key.
+ */
+function plainKeyToken(token: string): string | null {
+  if (!token || token.includes('+') || token.startsWith('mouse:') || token === 'wheelup' || token === 'wheeldown') {
+    return null;
+  }
+  return token;
+}
 
 // Global instance counter to detect multiple mounting
 let instanceCounter = 0;
@@ -30,6 +45,12 @@ export function CameraController({
   const right = useRef(new THREE.Vector3());
   const up = useRef(new THREE.Vector3(0, 1, 0));
 
+  // Live keyboard bindings, mirrored to a ref so the per-frame loop reads the
+  // current layout without re-subscribing or rebuilding callbacks each render.
+  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
+  const bindingsRef = useRef(keyboardBindings);
+  bindingsRef.current = keyboardBindings;
+
   // Touch handling refs
   const lastTouchPos = useRef<{ x: number; y: number } | null>(null);
   const lastPinchDistance = useRef<number | null>(null);
@@ -54,16 +75,14 @@ export function CameraController({
       return;
     }
 
-    if (['w', 'a', 's', 'd'].includes(key)) {
-      keysPressed.current.add(key);
-    }
+    // Record every key (normalizing space) so any rebound camera key resolves
+    // in the per-frame loop; unrelated keys are simply never read there.
+    keysPressed.current.add(key === ' ' ? 'space' : key);
   }, []);
 
   const handleKeyUp = useCallback((event: KeyboardEvent) => {
     const key = event.key.toLowerCase();
-    if (['w', 'a', 's', 'd'].includes(key)) {
-      keysPressed.current.delete(key);
-    }
+    keysPressed.current.delete(key === ' ' ? 'space' : key);
   }, []);
 
   const handleVisibilityChange = useCallback(() => {
@@ -208,39 +227,55 @@ export function CameraController({
       camera.lookAt(target.current);
     }
 
-    // Handle movement
-    const movement = new THREE.Vector3();
+    // Movement from keyboard (remappable) and controller (analog left stick).
+    const bindings = bindingsRef.current;
+    const cameraIntent = gamepadInput.getCameraIntent();
+    const keys = keysPressed.current;
+    const forwardKey = plainKeyToken(bindings.cameraForward);
+    const backwardKey = plainKeyToken(bindings.cameraBackward);
+    const leftKey = plainKeyToken(bindings.cameraLeft);
+    const rightKey = plainKeyToken(bindings.cameraRight);
 
-    if (keysPressed.current.size > 0) {
-      // Calculate camera direction vectors
+    const movement = new THREE.Vector3();
+    const hasGamepadPan = cameraIntent.panX !== 0 || cameraIntent.panZ !== 0;
+
+    if (keys.size > 0 || hasGamepadPan) {
+      // Camera direction vectors, flattened to the horizontal plane.
       const cameraDirection = new THREE.Vector3();
       camera.getWorldDirection(cameraDirection);
-      cameraDirection.y = 0; // Keep movement on horizontal plane
+      cameraDirection.y = 0;
       cameraDirection.normalize();
 
       forward.current.copy(cameraDirection);
       right.current.crossVectors(forward.current, up.current).normalize();
 
-      // Process movement keys
-      if (keysPressed.current.has('w')) {
-        movement.add(forward.current);
-      }
-      if (keysPressed.current.has('s')) {
-        movement.sub(forward.current);
-      }
-      if (keysPressed.current.has('a')) {
-        movement.sub(right.current);
-      }
-      if (keysPressed.current.has('d')) {
-        movement.add(right.current);
-      }
+      // Keyboard movement keys (whichever keys are currently bound).
+      if (forwardKey && keys.has(forwardKey)) movement.add(forward.current);
+      if (backwardKey && keys.has(backwardKey)) movement.sub(forward.current);
+      if (leftKey && keys.has(leftKey)) movement.sub(right.current);
+      if (rightKey && keys.has(rightKey)) movement.add(right.current);
 
-      // Apply movement
-      const moveAmount = moveSpeed * 60 * delta; // Scale by 60 for consistent speed
+      // Controller left-stick analog pan.
+      if (cameraIntent.panZ !== 0) movement.add(forward.current.clone().multiplyScalar(cameraIntent.panZ));
+      if (cameraIntent.panX !== 0) movement.add(right.current.clone().multiplyScalar(cameraIntent.panX));
+
+      const moveAmount = moveSpeed * 60 * delta; // Scale by 60 for frame-rate independence
       if (movement.length() > 0) {
         movement.normalize().multiplyScalar(moveAmount);
         target.current.add(movement);
       }
+    }
+
+    // Zoom from bound keyboard keys (if any) plus the controller, applied as a
+    // continuous per-frame rate. Mouse-wheel zoom stays in handleWheel.
+    let zoomDirection = cameraIntent.zoom; // negative = zoom in, positive = zoom out
+    const zoomInKey = plainKeyToken(bindings.cameraZoomIn);
+    const zoomOutKey = plainKeyToken(bindings.cameraZoomOut);
+    if (zoomInKey && keys.has(zoomInKey)) zoomDirection -= 1;
+    if (zoomOutKey && keys.has(zoomOutKey)) zoomDirection += 1;
+    if (zoomDirection !== 0) {
+      const zoomAmount = zoomDirection * zoomSpeed * 30 * delta;
+      currentDistance.current = Math.max(minDistance, Math.min(maxDistance, currentDistance.current + zoomAmount));
     }
 
     // Update camera position based on target and current distance

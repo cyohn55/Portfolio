@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useGameStore } from '../game/state';
 import * as THREE from 'three';
+import { tokenToMouseButton } from './Working/controlBindings';
 
 // A single left-click selects the nearest own unit whose projected center is
 // within this many screen pixels of the cursor. The instanced unit models are
@@ -32,6 +33,11 @@ export function MapInteraction() {
   const selectUnits = useGameStore((s) => s.selectUnits);
   const addToSelection = useGameStore((s) => s.addToSelection);
   const setPatrol = useGameStore((s) => s.setPatrol);
+  // Mouse buttons are remappable via Settings -> Controls. Defaults: left=select,
+  // right=command. tokenToMouseButton maps the saved token back to a DOM button.
+  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
+  const primaryButton = tokenToMouseButton(keyboardBindings.primaryAction) ?? 0;
+  const secondaryButton = tokenToMouseButton(keyboardBindings.secondaryAction) ?? 2;
 
   // Use ref instead of state to avoid timing issues
   const dragStateRef = useRef<DragState>({
@@ -186,14 +192,14 @@ export function MapInteraction() {
   };
 
   const handleMouseDown = (event: MouseEvent) => {
-    if (event.button === 0) { // Left mouse button
+    if (event.button === primaryButton) { // Primary (select) button
       const screenPos = getScreenPosition(event);
       dragStateRef.current = {
         isDragging: true,
         startMouse: screenPos,
         currentMouse: screenPos
       };
-    } else if (event.button === 2) { // Right mouse button
+    } else if (event.button === secondaryButton) { // Secondary (command) button
       // Check if exactly one queen is selected
       const queen = isSelectedQueenOnly();
       if (queen) {
@@ -280,7 +286,7 @@ export function MapInteraction() {
 
   const handleMouseUp = (event: MouseEvent) => {
 
-    if (dragStateRef.current.isDragging && event.button === 0) {
+    if (dragStateRef.current.isDragging && event.button === primaryButton) {
       // IMMEDIATELY hide selection box first
       hideSelectionBox();
 
@@ -336,7 +342,7 @@ export function MapInteraction() {
       }
     }
 
-    if (patrolDragRef.current.isDragging && event.button === 2) {
+    if (patrolDragRef.current.isDragging && event.button === secondaryButton) {
       // Complete patrol drag
       hidePatrolArrow();
 
@@ -381,7 +387,7 @@ export function MapInteraction() {
       canvas.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [gl.domElement, units, localPlayerId, selectUnits, addToSelection, clearSelection]);
+  }, [gl.domElement, units, localPlayerId, selectUnits, addToSelection, clearSelection, primaryButton, secondaryButton]);
 
   const handleGroundClick = (e: any) => {
     // Prevent browser context menu on right-click - check if preventDefault exists
@@ -390,8 +396,8 @@ export function MapInteraction() {
       e.nativeEvent.stopPropagation();
     }
 
-    // Only handle right-click for movement
-    if (e.button === 2) { // Right click
+    // Only handle the secondary (command) button for movement
+    if (e.button === secondaryButton) { // Secondary (command) button
 
       if (selectedUnitIds.length === 0) {
         return;

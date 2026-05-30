@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import './App.css';
 import { BattleMap } from './components/HexGrid';
 import { CameraController } from './components/CameraController';
+import { GamepadController } from './components/Working/GamepadController';
 import { HUD } from './components/HUD';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { ModelPreloader } from './utils/ModelPreloader';
@@ -214,6 +215,7 @@ export default function App() {
           minDistance={75}
           maxDistance={200}
         />
+        <GamepadController />
       </Canvas>
     </>
   );

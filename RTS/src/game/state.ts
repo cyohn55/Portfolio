@@ -16,6 +16,15 @@ import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandA
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 import * as leaderboardModule from '../components/Working/leaderboard';
 import * as leaderboardRemoteModule from '../components/Working/leaderboardRemote';
+import {
+  type ControlActionId,
+  type ControlBindings,
+  type InputDevice,
+  applyBinding,
+  getDefaultBindings,
+  loadBindings,
+  saveBindings,
+} from '../components/Working/controlBindings';
 
 type BridgeAnimationState = 'up' | 'lowering' | 'down' | 'raising';
 type BridgeFrame = 'Fully_Up' | 'Almost_Up' | 'Almost_Down' | 'Fully_Down';
@@ -173,6 +182,15 @@ type Store = GameState & {
   // Game pause state
   isPaused: boolean;
   unpauseGame: () => void;
+  togglePause: () => void;
+
+  // Remappable controls. Keyboard/mouse and controller each carry a full binding
+  // map; see components/Working/controlBindings.ts for the token grammar. Setters
+  // persist to localStorage so a player's layout survives reloads.
+  keyboardBindings: ControlBindings;
+  controllerBindings: ControlBindings;
+  setBinding: (device: InputDevice, actionId: ControlActionId, token: string) => void;
+  resetBindings: (device: InputDevice) => void;
   // Lighting settings
   lightingSettings: {
     sunBrightness: number;
@@ -273,6 +291,25 @@ export const useGameStore = create<Store>((set, get) => ({
   },
   isPaused: false,
   unpauseGame: () => set({ isPaused: false }),
+  togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
+
+  keyboardBindings: loadBindings('keyboard'),
+  controllerBindings: loadBindings('controller'),
+  setBinding: (device, actionId, token) => set((state) => {
+    const current = device === 'keyboard' ? state.keyboardBindings : state.controllerBindings;
+    const updated = applyBinding(current, actionId, token);
+    saveBindings(device, updated);
+    return device === 'keyboard'
+      ? { keyboardBindings: updated }
+      : { controllerBindings: updated };
+  }),
+  resetBindings: (device) => set(() => {
+    const defaults = getDefaultBindings(device);
+    saveBindings(device, defaults);
+    return device === 'keyboard'
+      ? { keyboardBindings: defaults }
+      : { controllerBindings: defaults };
+  }),
   lightingSettings: {
     sunBrightness: 5.0,
     moonBrightness: 5.0,

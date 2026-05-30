@@ -45,6 +45,14 @@ export function HUD() {
   // Pause menu state
   const [isPaused, setIsPaused] = useState(false);
 
+  // Controller (Start) and the keyboard pause key dispatch 'rts:toggle-pause'
+  // so the pause menu has a single mount point here, however it is opened.
+  useEffect(() => {
+    const handleTogglePause = () => setIsPaused((prev) => !prev);
+    window.addEventListener('rts:toggle-pause', handleTogglePause);
+    return () => window.removeEventListener('rts:toggle-pause', handleTogglePause);
+  }, []);
+
   // Update FPS display every second
   useEffect(() => {
     const interval = setInterval(() => {
