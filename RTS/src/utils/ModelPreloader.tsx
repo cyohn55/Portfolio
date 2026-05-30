@@ -217,6 +217,21 @@ export function yetiFrameVariantKey(frameIndex: number): string {
   return `Yeti-frame${frameIndex % YETI_FRAME_COUNT}`;
 }
 
+// The Cat model packs three pose objects (Kitty_F0..Kitty_F2) into one glb.
+// F0 is the idle pose; F0/F1 alternate for the walk cycle and F1/F2 alternate
+// for the attack cycle (see UnitsLayer). Like the Fox, each pose is baked into
+// its own instanced variant and the renderer shows exactly one at a time, so the
+// unbaked frames cost nothing.
+export const CAT_FRAME_COUNT = 3;
+
+export function catFrameNodeName(frameIndex: number): string {
+  return `Kitty_F${frameIndex}`;
+}
+
+export function catFrameVariantKey(frameIndex: number): string {
+  return `Cat-frame${frameIndex % CAT_FRAME_COUNT}`;
+}
+
 // World-space size (longest edge) a unit should occupy, by kind and animal.
 // Mirrors the targets previously used in createPreparedScene.
 export function getKindTargetScale(animal: AnimalId, kind: 'Unit' | 'Queen' | 'King' | 'Base'): number {
@@ -357,6 +372,17 @@ export function getBakedYetiFrameParts(gltf: any, frameIndex: number): BakedPart
   const cached = bakedVariantCache.get(key);
   if (cached) return cached;
   const parts = bakePoseFrame(gltf, yetiFrameNodeName(frameIndex), Math.PI);
+  bakedVariantCache.set(key, parts);
+  return parts;
+}
+
+// Return cached baked parts for one Cat pose-frame variant. The cat is authored
+// facing forward (like the Fox), so no yaw flip is applied.
+export function getBakedCatFrameParts(gltf: any, frameIndex: number): BakedPart[] {
+  const key = catFrameVariantKey(frameIndex);
+  const cached = bakedVariantCache.get(key);
+  if (cached) return cached;
+  const parts = bakePoseFrame(gltf, catFrameNodeName(frameIndex));
   bakedVariantCache.set(key, parts);
   return parts;
 }

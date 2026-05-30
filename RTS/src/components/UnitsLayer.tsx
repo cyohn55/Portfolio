@@ -11,17 +11,20 @@ import {
   TURTLE_FRAME_COUNT,
   FOX_FRAME_COUNT,
   YETI_FRAME_COUNT,
+  CAT_FRAME_COUNT,
   baseVariantKey,
   owlWingVariantKey,
   turtleFrameVariantKey,
   foxFrameVariantKey,
   yetiFrameVariantKey,
+  catFrameVariantKey,
   getKindTargetScale,
   getBakedAnimalParts,
   getBakedOwlWingParts,
   getBakedTurtleFrameParts,
   getBakedFoxFrameParts,
   getBakedYetiFrameParts,
+  getBakedCatFrameParts,
   type BakedPart,
 } from '../utils/ModelPreloader';
 import * as THREE from 'three';
@@ -216,9 +219,18 @@ const YETI_WALK_FIRST_FRAME = 1; // F1
 const YETI_WALK_FRAME_COUNT = 2; // alternate F1 <-> F2
 const YETI_IDLE_FRAME = 0; // Yeti_F0
 
+// Cat pose timing: while moving, the walk alternates Kitty_F0 <-> F1 every
+// 200ms; while attacking (and not moving) it alternates Kitty_F1 <-> F2 every
+// 200ms; idle holds Kitty_F0.
+const CAT_FRAME_MS = 200;
+const CAT_IDLE_FRAME = 0; // Kitty_F0
+const CAT_WALK_FRAMES = [0, 1] as const; // Kitty_F0 <-> F1
+const CAT_ATTACK_FRAMES = [1, 2] as const; // Kitty_F1 <-> F2
+
 // Per-unit visual context resolved each render frame (turtle pose selection
-// needs wall-clock time and whether the unit is currently moving).
-type VariantContext = { elapsedMs: number; isMoving: boolean };
+// needs wall-clock time and whether the unit is currently moving; the cat also
+// needs to know whether it is in an attack exchange).
+type VariantContext = { elapsedMs: number; isMoving: boolean; isAttacking: boolean };
 
 // Resolve the variant key for a unit's current visual state. Owls swap to a
 // wing frame while flying; turtles cycle pose frames by movement/shell state.
@@ -243,6 +255,19 @@ function variantKeyForUnit(unit: Unit, ctx: VariantContext): string {
     const step = Math.floor(ctx.elapsedMs / YETI_WALK_FRAME_MS) % YETI_WALK_FRAME_COUNT;
     return yetiFrameVariantKey(YETI_WALK_FIRST_FRAME + step); // alternate F1 <-> F2
   }
+  if (unit.animal === 'Cat') {
+    // Walk takes precedence over attack: a moving cat plays the walk cycle even
+    // if it swung recently (e.g. repositioning), matching the other animals.
+    if (ctx.isMoving) {
+      const step = Math.floor(ctx.elapsedMs / CAT_FRAME_MS) % CAT_WALK_FRAMES.length;
+      return catFrameVariantKey(CAT_WALK_FRAMES[step]); // alternate F0 <-> F1
+    }
+    if (ctx.isAttacking) {
+      const step = Math.floor(ctx.elapsedMs / CAT_FRAME_MS) % CAT_ATTACK_FRAMES.length;
+      return catFrameVariantKey(CAT_ATTACK_FRAMES[step]); // alternate F1 <-> F2
+    }
+    return catFrameVariantKey(CAT_IDLE_FRAME); // idle -> F0
+  }
   return baseVariantKey(unit.animal);
 }
 
@@ -266,6 +291,23 @@ function bearTiltPitch(unit: Unit, elapsedMs: number, isMoving: boolean): number
   if (unit.animal !== 'Bear' || !isMoving) return 0;
   const phase = (elapsedMs / BEAR_TILT_PERIOD_MS) * Math.PI * 2;
   return Math.sin(phase) * BEAR_TILT_RAD;
+}
+
+// How long after a unit's last swing it is still treated as "attacking", on top
+// of its own swing cadence. The grace bridges the gap between swings (so the
+// attack pose stays alive while engaged) and lets it fall back to idle shortly
+// after combat ends.
+const ATTACK_ANIM_GRACE_MS = 250;
+
+// Whether a unit is currently in an attack exchange, for pose selection (e.g.
+// the cat's attack cycle). The game tick stamps lastAttackAtMs with
+// performance.now() on every hit and attackCooldownMs is the fixed inter-swing
+// interval, so a unit counts as attacking until one full cadence (plus grace)
+// passes with no new swing. `nowMs` must come from performance.now() to match
+// lastAttackAtMs. A unit that has never attacked has lastAttackAtMs === 0.
+function isUnitAttacking(unit: Unit, nowMs: number): boolean {
+  if (!unit.lastAttackAtMs) return false; // 0 => has never attacked
+  return nowMs - unit.lastAttackAtMs < unit.attackCooldownMs + ATTACK_ANIM_GRACE_MS;
 }
 
 // Vertical animation/positioning offsets applied per unit (hop, flight, Yetti).
@@ -340,6 +382,15 @@ function InstancedUnits() {
         // Yeti_F# into its own variant so the renderer can swap poses.
         for (let frame = 0; frame < YETI_FRAME_COUNT; frame++) {
           specs.push({ key: yetiFrameVariantKey(frame), parts: getBakedYetiFrameParts(gltf, frame) });
+        }
+        continue;
+      }
+      if (animal === 'Cat') {
+        // Cat ships its poses as separate objects in one glb — bake each
+        // Kitty_F# into its own variant so the renderer can swap the
+        // walk/attack/idle poses (see variantKeyForUnit).
+        for (let frame = 0; frame < CAT_FRAME_COUNT; frame++) {
+          specs.push({ key: catFrameVariantKey(frame), parts: getBakedCatFrameParts(gltf, frame) });
         }
         continue;
       }
@@ -476,13 +527,17 @@ function InstancedUnits() {
     let healthBarCount = 0;
 
     const elapsedMs = clock.elapsedTime * 1000;
+    // Attack timing is stamped with performance.now() in the game tick, so the
+    // attack-exchange test must read the same clock (not the render clock above).
+    const nowPerf = performance.now();
 
     for (let i = 0; i < units.length; i++) {
       const unit = units[i];
       if (unit.kind === 'Base') continue;
 
       const isMoving = isUnitMoving(unit, elapsedMs);
-      const key = variantKeyForUnit(unit, { elapsedMs, isMoving });
+      const isAttacking = isUnitAttacking(unit, nowPerf);
+      const key = variantKeyForUnit(unit, { elapsedMs, isMoving, isAttacking });
       if (!counts.has(key)) continue; // not a currently-mounted variant
       const meshes = meshRefs.current.get(key);
       if (!meshes || meshes.length === 0) continue;
