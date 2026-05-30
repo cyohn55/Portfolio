@@ -63,6 +63,7 @@ export function computeArenaBoundary(arena: THREE.Object3D, inset: number): Aren
     halfU,
     halfV,
     diagLimit: Infinity,
-    maxAbsX: Infinity,
+    minX: -Infinity,
+    maxX: Infinity,
   };
 }

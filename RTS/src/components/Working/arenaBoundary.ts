@@ -32,11 +32,13 @@ export interface ArenaBoundary {
    */
   diagLimit: number;
   /**
-   * Hard cap on |world x|, applied after the oriented-box/octagon clamp. The slab is rotated 45°,
-   * so the octagon's sides and front/back come out symmetric; this straight world-space wall lets
-   * the left/right extent be tightened independently of front/back. Use Infinity for no wall.
+   * Straight world-space left/right walls, applied after the oriented-box/octagon clamp. The slab
+   * is rotated 45°, so the octagon's sides come out as wide as its front/back; these walls let the
+   * left (minX, most negative) and right (maxX, most positive) extents be tightened independently
+   * of front/back and of each other. Use ±Infinity for no wall.
    */
-  maxAbsX: number;
+  minX: number;
+  maxX: number;
 }
 
 /**
@@ -50,7 +52,7 @@ export function clampPointToBoundary(
   x: number,
   z: number,
 ): { x: number; z: number } {
-  const { centerX, centerZ, axisUx, axisUz, axisVx, axisVz, halfU, halfV, diagLimit, maxAbsX } = boundary;
+  const { centerX, centerZ, axisUx, axisUz, axisVx, axisVz, halfU, halfV, diagLimit, minX, maxX } = boundary;
 
   const offsetX = x - centerX;
   const offsetZ = z - centerZ;
@@ -78,10 +80,10 @@ export function clampPointToBoundary(
   const worldX = centerX + alongU * axisUx + alongV * axisVx;
   const worldZ = centerZ + alongU * axisUz + alongV * axisVz;
 
-  // Left/right wall: clamp world x last. Pulling x toward 0 at fixed z keeps the point inside the
-  // (convex) octagon, so this only narrows the sides without affecting front/back.
+  // Left/right walls: clamp world x last. Pulling x toward the center at fixed z keeps the point
+  // inside the (convex) octagon, so this only narrows the sides without affecting front/back.
   return {
-    x: Math.max(-maxAbsX, Math.min(maxAbsX, worldX)),
+    x: Math.max(minX, Math.min(maxX, worldX)),
     z: worldZ,
   };
 }

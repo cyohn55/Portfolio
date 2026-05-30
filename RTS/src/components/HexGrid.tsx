@@ -43,11 +43,11 @@ const ARENA_EDGE_INSET = 2.5;
 const ARENA_BASE_AXIS_MARGIN = 25;
 const ARENA_BASE_CORNER_MARGIN = 25;
 
-// Hard left/right wall (|world x|), giving a total playable width of 2x this. The slab is rotated
-// 45°, so the octagon's sides come out as wide as its front/back (~±270); this caps the lateral
-// extent independently. The field is centered near x = 0, so this is symmetric about the center
-// line. 125 -> 250 units wide.
-const ARENA_MAX_ABS_X = 125;
+// Straight left/right walls in world x. The slab is rotated 45°, so the octagon's sides come out
+// as wide as its front/back (~±270); these cap the lateral extent independently. Left and right are
+// set separately so the field can be trimmed asymmetrically. -125 .. +115 -> 240 units wide.
+const ARENA_WALL_LEFT_X = -125;
+const ARENA_WALL_RIGHT_X = 115;
 
 // Resolve the named "Arena" node from the raw (pre-merge) gltf scene — the merge pass folds the
 // slab into the static map, so its name survives only here — and register the movement boundary,
@@ -78,14 +78,14 @@ function registerArenaBoundaryFromScene(scene: THREE.Object3D): void {
     basePositions.length > 0
       ? confineBoundaryToPoints(slab, basePositions, ARENA_BASE_AXIS_MARGIN, ARENA_BASE_CORNER_MARGIN)
       : slab;
-  const boundary = { ...confined, maxAbsX: ARENA_MAX_ABS_X };
+  const boundary = { ...confined, minX: ARENA_WALL_LEFT_X, maxX: ARENA_WALL_RIGHT_X };
 
   registerArenaBoundary(boundary);
   console.log(
     `🧱 Arena boundary registered: center (${boundary.centerX.toFixed(1)}, ${boundary.centerZ.toFixed(1)}), ` +
     `half-extents ${boundary.halfU.toFixed(1)} x ${boundary.halfV.toFixed(1)}, ` +
     `corner cut ${Number.isFinite(boundary.diagLimit) ? boundary.diagLimit.toFixed(1) : '∞'}, ` +
-    `left/right wall ±${boundary.maxAbsX} (from ${basePositions.length} bases)`
+    `left/right walls x [${boundary.minX}, ${boundary.maxX}] (from ${basePositions.length} bases)`
   );
 }
 
