@@ -220,12 +220,16 @@ const YETI_WALK_FRAME_COUNT = 2; // alternate F1 <-> F2
 const YETI_IDLE_FRAME = 0; // Yeti_F0
 
 // Cat pose timing: while moving, the walk alternates Kitty_F0 <-> F1 every
-// 200ms; while attacking (and not moving) it alternates Kitty_F1 <-> F2 every
-// 200ms; idle holds Kitty_F0.
+// 200ms; idle holds Kitty_F0. While attacking (and not moving) it flashes
+// Kitty_F1 for one CAT_FRAME_MS, then holds the Kitty_F2 strike pose for
+// CAT_ATTACK_F2_HOLD_MS before repeating.
 const CAT_FRAME_MS = 200;
 const CAT_IDLE_FRAME = 0; // Kitty_F0
 const CAT_WALK_FRAMES = [0, 1] as const; // Kitty_F0 <-> F1
-const CAT_ATTACK_FRAMES = [1, 2] as const; // Kitty_F1 <-> F2
+const CAT_ATTACK_F1_FRAME = 1; // Kitty_F1 (brief wind-up)
+const CAT_ATTACK_F2_FRAME = 2; // Kitty_F2 (held strike)
+const CAT_ATTACK_F2_HOLD_MS = 1000; // how long Kitty_F2 stays before snapping back
+const CAT_ATTACK_CYCLE_MS = CAT_FRAME_MS + CAT_ATTACK_F2_HOLD_MS;
 
 // Per-unit visual context resolved each render frame (turtle pose selection
 // needs wall-clock time and whether the unit is currently moving; the cat also
@@ -263,8 +267,11 @@ function variantKeyForUnit(unit: Unit, ctx: VariantContext): string {
       return catFrameVariantKey(CAT_WALK_FRAMES[step]); // alternate F0 <-> F1
     }
     if (ctx.isAttacking) {
-      const step = Math.floor(ctx.elapsedMs / CAT_FRAME_MS) % CAT_ATTACK_FRAMES.length;
-      return catFrameVariantKey(CAT_ATTACK_FRAMES[step]); // alternate F1 <-> F2
+      // Kitty_F1 for the first CAT_FRAME_MS of each cycle, then hold Kitty_F2
+      // for CAT_ATTACK_F2_HOLD_MS before snapping back to F1.
+      const phaseMs = ctx.elapsedMs % CAT_ATTACK_CYCLE_MS;
+      const frame = phaseMs < CAT_FRAME_MS ? CAT_ATTACK_F1_FRAME : CAT_ATTACK_F2_FRAME;
+      return catFrameVariantKey(frame);
     }
     return catFrameVariantKey(CAT_IDLE_FRAME); // idle -> F0
   }
