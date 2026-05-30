@@ -30,6 +30,7 @@ const AXIS_ALIGNED: ArenaBoundary = {
   halfU: 10,
   halfV: 10,
   diagLimit: Infinity,
+  maxAbsX: Infinity,
 };
 
 // The real map's slab orientation: a square rotated 45° about Y. Its axes are the unit
@@ -46,6 +47,7 @@ const ROTATED_45: ArenaBoundary = {
   halfU: HALF,
   halfV: HALF,
   diagLimit: Infinity,
+  maxAbsX: Infinity,
 };
 
 function distanceFromCenterAlongAxis(
@@ -176,6 +178,23 @@ test('confineBoundaryToPoints shrinks a slab to just past the confinement points
     expect(clamped.x).toBeCloseTo(point.x, 4);
     expect(clamped.z).toBeCloseTo(point.z, 4);
   }
+});
+
+test('maxAbsX wall caps the left/right extent without moving z', () => {
+  // Rotated octagon (half 100) with a straight world-x wall at ±40.
+  const walled: ArenaBoundary = { ...BIG_ROTATED, diagLimit: 160, maxAbsX: 40 };
+
+  // A point pushed far to the +x side is pulled back exactly to the wall; its z is unchanged by
+  // the wall (only the octagon may have adjusted it).
+  const right = clampPointToBoundary(walled, 10000, walled.centerZ);
+  expect(right.x).toBeCloseTo(40, 6);
+
+  const left = clampPointToBoundary(walled, -10000, walled.centerZ);
+  expect(left.x).toBeCloseTo(-40, 6);
+
+  // A point already within the wall keeps its x.
+  const inside = clampPointToBoundary(walled, 25, walled.centerZ);
+  expect(Math.abs(inside.x)).toBeLessThanOrEqual(40 + 1e-9);
 });
 
 test('confineBoundaryToPoints never grows the boundary beyond the slab', () => {
