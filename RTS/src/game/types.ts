@@ -101,6 +101,21 @@ export interface Unit {
   // frog holds position (the tick skips its movement) so the grab reads cleanly.
   tongue?: FrogTongueState;
   lastTongueAtMs?: number;
+  // Cat "Hiss" ability (triggered by simultaneous primary+secondary mouse press
+  // while a friendly Cat is selected). It shows the Kitty_F2 hiss pose briefly and
+  // knocks every nearby enemy radially outward. `lastHissAtMs` gates the per-cat
+  // cooldown; `hissUntilMs` is the timestamp the Kitty_F2 pose stays visible until,
+  // after which the cat returns to its idle/walk poses. Both use performance.now().
+  lastHissAtMs?: number;
+  hissUntilMs?: number;
+  // Active radial knockback applied to an enemy by a Cat's Hiss. While `knockbackUntilMs`
+  // is in the future the tick slides this unit along (knockbackVelocityX, knockbackVelocityZ)
+  // — away from the hissing cat — and suppresses its own movement so the shove reads cleanly.
+  // checkCollision keeps the shoved unit on valid terrain and inside the arena. Cleared when
+  // the window elapses. Velocities are world units/second; the timestamp uses performance.now().
+  knockbackVelocityX?: number;
+  knockbackVelocityZ?: number;
+  knockbackUntilMs?: number;
 }
 
 // Live state of a Frog's tongue grab while the ability animates. The tongue
@@ -245,6 +260,10 @@ export interface CommandThrowEggs {
 export interface CommandFireTongues {
   unitIds: string[];      // selected units; only friendly Frogs off cooldown fire
   cursor: Position3D;     // world point under the cursor, used to aim each grab
+}
+
+export interface CommandHiss {
+  unitIds: string[];      // selected units; only friendly Cats off cooldown hiss
 }
 
 

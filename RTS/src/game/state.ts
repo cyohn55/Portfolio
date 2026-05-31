@@ -12,7 +12,7 @@ setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import { pathfinder } from '../components/Working/pathfinder';
 import { clampToArena } from '../components/Working/arenaBoundary';
-import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
+import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, CommandHiss, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 import * as leaderboardModule from '../components/Working/leaderboard';
 import * as leaderboardRemoteModule from '../components/Working/leaderboardRemote';
@@ -108,6 +108,21 @@ const TONGUE_COOLDOWN_MS = 1500;     // minimum time between a frog's tongue gra
 const TONGUE_MOUTH_HEIGHT = 1.0;     // height above the frog's base the tongue emerges from
 const TONGUE_DRAG_STOP_DIST = 2.5;   // a dragged enemy stops once this close to the frog's mouth
 
+// Cat "Hiss" ability tuning. A player-activated burst fired by holding both mouse
+// buttons while a friendly Cat is selected: the cat flashes its Kitty_F2 hiss pose
+// and shoves every enemy within HISS_KNOCKBACK_RANGE radially outward — away from
+// the cat's own position — by HISS_KNOCKBACK_DISTANCE. The shove plays out over
+// HISS_KNOCKBACK_MS as a constant-velocity slide the tick integrates (see the
+// knockback intercept in tick + the hiss action). A surrounded cat therefore pushes
+// the whole encircling ring outward at once.
+const HISS_POSE_MS = 250;            // how long the Kitty_F2 hiss pose stays visible after a hiss
+const HISS_KNOCKBACK_RANGE = 20;     // enemies whose center is within this radius are knocked back
+const HISS_KNOCKBACK_RANGE_SQ = HISS_KNOCKBACK_RANGE * HISS_KNOCKBACK_RANGE;
+const HISS_KNOCKBACK_DISTANCE = 20;  // how far each affected enemy is shoved outward, in world units
+const HISS_KNOCKBACK_MS = 200;       // duration of the shove slide; distance / time sets the speed
+const HISS_KNOCKBACK_SPEED = HISS_KNOCKBACK_DISTANCE / (HISS_KNOCKBACK_MS / 1000); // world units/sec
+const HISS_COOLDOWN_MS = 3000;       // minimum time between a cat's hisses
+
 // Full roster of playable animals, derived from the stats table so it stays in
 // sync automatically when animals are added or removed.
 const ALL_ANIMALS = Object.keys(ANIMALS) as AnimalId[];
@@ -178,6 +193,7 @@ type Store = GameState & {
   toggleTurtleShell: (unitIds: string[]) => void;
   throwEggs: (cmd: CommandThrowEggs) => void;
   fireTongues: (cmd: CommandFireTongues) => void;
+  hiss: (cmd: CommandHiss) => void;
   toggleOptimization: (key: keyof Store['optimizations']) => void;
   // Bridge animation system
   bridgeState: BridgeState;
@@ -727,6 +743,27 @@ export const useGameStore = create<Store>((set, get) => ({
       // FIXED: Process all units but with smart optimizations for AI
       // Execute movement orders and combat (process all units for proper AI)
       for (const unit of movableUnits) {
+        // Hiss knockback: while an enemy is mid-shove from a Cat's Hiss, slide it along
+        // its stored knockback vector (radially away from the cat) and skip its own AI
+        // this tick so the push reads as a clean recoil instead of fighting its pathing.
+        // checkCollision keeps it on walkable terrain and inside the arena. The shove ends
+        // when its window elapses, after which the unit resumes normal behavior next tick.
+        if (unit.knockbackUntilMs !== undefined) {
+          if (nowMs >= unit.knockbackUntilMs) {
+            delete unit.knockbackUntilMs;
+            delete unit.knockbackVelocityX;
+            delete unit.knockbackVelocityZ;
+          } else {
+            const knockbackStep = {
+              x: unit.position.x + (unit.knockbackVelocityX ?? 0) * dtSec,
+              y: unit.position.y,
+              z: unit.position.z + (unit.knockbackVelocityZ ?? 0) * dtSec,
+            };
+            unit.position = checkCollision(knockbackStep, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
+            continue;
+          }
+        }
+
         // AI thinking throttling - each unit thinks on different frames
         const isPlayerUnit = unit.ownerId in isAiByOwnerId && !isAiByOwnerId[unit.ownerId];
         const shouldThinkThisTick = isPlayerUnit || !draft.optimizations.aiThrottling || (draft.tickCounter + (draft.aiThinkingOffset[unit.id] || 0)) % 2 === 0; // Reduced to 2 for better AI responsiveness
@@ -1795,6 +1832,56 @@ export const useGameStore = create<Store>((set, get) => ({
           phaseUntilMs: now + TONGUE_WINDUP_MS,
           damageDealt: false,
         };
+      }
+    })
+  ),
+
+  // Cat "Hiss" ability. Each selected friendly Cat that is off its hiss cooldown
+  // flashes the Kitty_F2 hiss pose (for HISS_POSE_MS) and shoves every living enemy
+  // within HISS_KNOCKBACK_RANGE radially outward from its own position. The shove is
+  // a constant-velocity slide the tick integrates over HISS_KNOCKBACK_MS (see the
+  // knockback intercept in tick), so a cat surrounded on all sides pushes the entire
+  // encircling ring outward at once. Bases are immovable structures and are skipped.
+  hiss: (cmd) => set((prev) =>
+    produce(prev, (draft) => {
+      const now = performance.now();
+      for (const id of cmd.unitIds) {
+        const cat = draft.units.find((candidate) => candidate.id === id);
+        if (!cat || cat.animal !== 'Cat' || cat.ownerId !== draft.localPlayerId) continue;
+        if (cat.hp <= 0) continue;
+        if (cat.lastHissAtMs !== undefined && now - cat.lastHissAtMs < HISS_COOLDOWN_MS) continue;
+
+        cat.lastHissAtMs = now;
+        cat.hissUntilMs = now + HISS_POSE_MS;
+
+        for (const enemy of draft.units) {
+          if (enemy.ownerId === cat.ownerId) continue; // only enemies are knocked back
+          if (enemy.kind === 'Base') continue;          // immovable structure
+          if (enemy.hp <= 0) continue;
+
+          const dx = enemy.position.x - cat.position.x;
+          const dz = enemy.position.z - cat.position.z;
+          const distanceSquared = dx * dx + dz * dz;
+          if (distanceSquared > HISS_KNOCKBACK_RANGE_SQ) continue;
+
+          // Push direction is radially outward from the cat. If an enemy is sitting
+          // exactly on the cat, pick a random outward heading so it still gets shoved.
+          let pushDirectionX: number;
+          let pushDirectionZ: number;
+          if (distanceSquared < 0.0001) {
+            const randomAngle = Math.random() * Math.PI * 2;
+            pushDirectionX = Math.cos(randomAngle);
+            pushDirectionZ = Math.sin(randomAngle);
+          } else {
+            const invDistance = 1 / Math.sqrt(distanceSquared);
+            pushDirectionX = dx * invDistance;
+            pushDirectionZ = dz * invDistance;
+          }
+
+          enemy.knockbackVelocityX = pushDirectionX * HISS_KNOCKBACK_SPEED;
+          enemy.knockbackVelocityZ = pushDirectionZ * HISS_KNOCKBACK_SPEED;
+          enemy.knockbackUntilMs = now + HISS_KNOCKBACK_MS;
+        }
       }
     })
   ),

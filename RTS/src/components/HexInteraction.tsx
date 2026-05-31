@@ -42,6 +42,7 @@ export function MapInteraction() {
   const toggleTurtleShell = useGameStore((s) => s.toggleTurtleShell);
   const throwEggs = useGameStore((s) => s.throwEggs);
   const fireTongues = useGameStore((s) => s.fireTongues);
+  const hiss = useGameStore((s) => s.hiss);
   // Mouse buttons are remappable via Settings -> Controls. Defaults: left=select,
   // right=command. tokenToMouseButton maps the saved token back to a DOM button.
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
@@ -202,6 +203,13 @@ export function MapInteraction() {
       .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Frog' && selectedUnitIds.includes(unit.id))
       .map((unit) => unit.id);
 
+  // The local player's currently-selected Cat units — the casters of the Hiss
+  // knockback ability (simultaneous primary+secondary press).
+  const selectedFriendlyCatIds = (): string[] =>
+    units
+      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Cat' && selectedUnitIds.includes(unit.id))
+      .map((unit) => unit.id);
+
   // True when the primary and secondary action buttons are held at the same time
   // (read from a single event's `buttons` bitmask, so press order doesn't matter).
   const areShellButtonsHeld = (buttons: number): boolean =>
@@ -233,17 +241,21 @@ export function MapInteraction() {
 
   const handleMouseDown = (event: MouseEvent) => {
     // Simultaneous primary+secondary press drives the per-animal combo abilities:
-    // it toggles the shell lock on any selected Turtle and throws an egg from any
-    // selected Chicken (toward the cursor). Only intercepts when such a unit is
-    // selected, so pressing both buttons otherwise keeps the per-button behavior.
+    // it toggles the shell lock on any selected Turtle, throws an egg from any
+    // selected Chicken (toward the cursor), fires any selected Frog's tongue, and
+    // triggers any selected Cat's Hiss knockback. Only intercepts when such a unit
+    // is selected, so pressing both buttons otherwise keeps the per-button behavior.
     if (areShellButtonsHeld(event.buttons)) {
       const turtleIds = selectedFriendlyTurtleIds();
       const chickenIds = selectedFriendlyChickenIds();
       const frogIds = selectedFriendlyFrogIds();
-      if (turtleIds.length > 0 || chickenIds.length > 0 || frogIds.length > 0) {
+      const catIds = selectedFriendlyCatIds();
+      if (turtleIds.length > 0 || chickenIds.length > 0 || frogIds.length > 0 || catIds.length > 0) {
         if (!shellComboHandledRef.current) {
           shellComboHandledRef.current = true;
           if (turtleIds.length > 0) toggleTurtleShell(turtleIds);
+          // Hiss is radial from each cat's own position, so it needs no cursor target.
+          if (catIds.length > 0) hiss({ unitIds: catIds });
           if (chickenIds.length > 0 || frogIds.length > 0) {
             const screenPos = getScreenPosition(event);
             const target = getWorldPositionFromMouse(screenPos.x, screenPos.y);
@@ -462,7 +474,7 @@ export function MapInteraction() {
       canvas.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, primaryButton, secondaryButton]);
+  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, hiss, primaryButton, secondaryButton]);
 
   const handleGroundClick = (e: any) => {
     // Prevent browser context menu on right-click - check if preventDefault exists

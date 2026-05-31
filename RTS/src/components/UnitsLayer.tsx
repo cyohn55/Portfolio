@@ -327,6 +327,11 @@ function variantKeyForUnit(unit: Unit, ctx: VariantContext): string {
     return yetiFrameVariantKey(YETI_WALK_FIRST_FRAME + step); // alternate F1 <-> F2
   }
   if (unit.animal === 'Cat') {
+    // The Hiss pose (Kitty_F2) takes precedence over everything for a brief window
+    // after a hiss, so the strike pose reads clearly even while the cat is moving.
+    if (unit.hissUntilMs !== undefined && ctx.nowMs < unit.hissUntilMs) {
+      return catFrameVariantKey(CAT_ATTACK_F2_FRAME);
+    }
     // Walk takes precedence over attack: a moving cat plays the walk cycle even
     // if it swung recently (e.g. repositioning), matching the other animals.
     if (ctx.isMoving) {
