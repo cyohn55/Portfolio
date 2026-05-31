@@ -88,7 +88,7 @@ const EGG_HIT_RADIUS = 2.5;      // an egg hits an enemy whose center passes wit
 const EGG_HIT_RADIUS_SQ = EGG_HIT_RADIUS * EGG_HIT_RADIUS;
 const EGG_MAX_RANGE = 60;        // an egg expires after flying this far without a hit
 const EGG_COOLDOWN_MS = 700;     // minimum time between a chicken's egg throws
-const EGG_THROW_POSE_MS = 250;   // how long the Chicken_F3 + Egg throw pose stays up
+const EGG_THROW_POSE_MS = 300;   // how long the Chicken_F3 + Egg throw pose stays up
 const EGG_SPAWN_HEIGHT = 1.5;    // height above the chicken's base the egg launches from
 
 // Full roster of playable animals, derived from the stats table so it stays in
