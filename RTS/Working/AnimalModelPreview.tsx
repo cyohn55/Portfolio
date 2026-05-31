@@ -35,6 +35,7 @@ const CARD_POSE_NODE: Partial<Record<AnimalId, string>> = {
   Turtle: 'Turtle_F1',
   Yetti: 'Yeti_F0',
   Cat: 'Kitty_F0',
+  Bee: 'Bee_F0',
 };
 
 // Pose-root objects are named "<Prefix>_F<number>" (Fox_F0, Turtle_F3, …).

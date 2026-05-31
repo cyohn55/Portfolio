@@ -12,12 +12,14 @@ import {
   FOX_FRAME_COUNT,
   YETI_FRAME_COUNT,
   CAT_FRAME_COUNT,
+  BEE_FRAME_COUNT,
   baseVariantKey,
   owlWingVariantKey,
   turtleFrameVariantKey,
   foxFrameVariantKey,
   yetiFrameVariantKey,
   catFrameVariantKey,
+  beeFrameVariantKey,
   getKindTargetScale,
   getBakedAnimalParts,
   getBakedOwlWingParts,
@@ -25,6 +27,7 @@ import {
   getBakedFoxFrameParts,
   getBakedYetiFrameParts,
   getBakedCatFrameParts,
+  getBakedBeeFrameParts,
   type BakedPart,
 } from '../utils/ModelPreloader';
 import * as THREE from 'three';
@@ -232,6 +235,17 @@ const CAT_ATTACK_F2_HOLD_MS = 300; // how long Kitty_F2 strike stays
 const CAT_ATTACK_F1_HOLD_MS = 50; // how long Kitty_F1 recoil stays
 const CAT_ATTACK_CYCLE_MS = CAT_ATTACK_F2_HOLD_MS + CAT_ATTACK_F1_HOLD_MS;
 
+// Bee pose timing: the bee is always airborne, so it alternates its two
+// wing-flap poses (Bee_F0 <-> F1) every 50ms continuously, regardless of
+// movement or combat.
+const BEE_FLAP_FRAME_MS = 50;
+const BEE_FLAP_FRAMES = [0, 1] as const; // Bee_F0 <-> F1
+
+// Bee vertical bob: a gentle sine hover so an idle bee never looks frozen
+// mid-air, mirroring the title screen's flyer bob (FLY_BOB_* there).
+const BEE_BOB_AMPLITUDE = 1.1; // world units
+const BEE_BOB_FREQUENCY = 2.4; // radians / second
+
 // Per-unit visual context resolved each render frame (turtle pose selection
 // needs wall-clock time and whether the unit is currently moving; the cat also
 // needs to know whether it is in an attack exchange).
@@ -243,6 +257,12 @@ function variantKeyForUnit(unit: Unit, ctx: VariantContext): string {
   if (unit.animal === 'Owl' && unit.isFlying) {
     const wingFrameIndex = Math.floor((unit.wingPhase || 0) * 4) % OWL_WING_MODELS.length;
     return owlWingVariantKey(wingFrameIndex);
+  }
+  if (unit.animal === 'Bee') {
+    // The bee always flaps: alternate Bee_F0 <-> F1 on a fixed cadence whether
+    // it is moving, idling, or fighting.
+    const step = Math.floor(ctx.elapsedMs / BEE_FLAP_FRAME_MS) % BEE_FLAP_FRAMES.length;
+    return beeFrameVariantKey(BEE_FLAP_FRAMES[step]);
   }
   if (unit.animal === 'Turtle') {
     if (unit.isShelled) return turtleFrameVariantKey(0); // F0 shell-lock pose
@@ -318,8 +338,19 @@ function isUnitAttacking(unit: Unit, nowMs: number): boolean {
   return nowMs - unit.lastAttackAtMs < unit.attackCooldownMs + ATTACK_ANIM_GRACE_MS;
 }
 
+// Stable per-unit phase in [0, 2π) derived from the unit id, so flyers bob out
+// of lockstep with one another instead of pulsing as a single mass.
+function unitBobPhase(unitId: string): number {
+  let hash = 0;
+  for (let index = 0; index < unitId.length; index++) {
+    hash = (hash * 31 + unitId.charCodeAt(index)) | 0;
+  }
+  return (Math.abs(hash) % 1000) / 1000 * Math.PI * 2;
+}
+
 // Vertical animation/positioning offsets applied per unit (hop, flight, Yetti).
-function verticalOffset(unit: Unit): number {
+// `elapsedMs` is the render clock, used for the bee's continuous hover bob.
+function verticalOffset(unit: Unit, elapsedMs: number): number {
   let offset = 0;
   if ((unit.animal === 'Frog' || unit.animal === 'Bunny') && unit.isHopping) {
     offset += Math.sin((unit.hopPhase || 0) * Math.PI) * 1.5;
@@ -329,9 +360,12 @@ function verticalOffset(unit: Unit): number {
   }
   // Bees have no land/takeoff state — they're always airborne, so apply the
   // same +10 lift as a flying Owl unconditionally to keep flight altitudes
-  // consistent across air units.
+  // consistent across air units, plus a gentle sine bob so they hover rather
+  // than hang frozen (mirrors the title screen's flyer bob).
   if (unit.animal === 'Bee') {
     offset += 10;
+    const bobPhase = unitBobPhase(unit.id);
+    offset += Math.sin((elapsedMs / 1000) * BEE_BOB_FREQUENCY + bobPhase) * BEE_BOB_AMPLITUDE;
   }
   if (unit.animal === 'Yetti') {
     offset -= 0.9;
@@ -399,6 +433,15 @@ function InstancedUnits() {
         // walk/attack/idle poses (see variantKeyForUnit).
         for (let frame = 0; frame < CAT_FRAME_COUNT; frame++) {
           specs.push({ key: catFrameVariantKey(frame), parts: getBakedCatFrameParts(gltf, frame) });
+        }
+        continue;
+      }
+      if (animal === 'Bee') {
+        // Bee ships its two wing-flap poses as separate objects in one glb —
+        // bake each Bee_F# into its own variant so the renderer can alternate
+        // them for the continuous flap loop (see variantKeyForUnit).
+        for (let frame = 0; frame < BEE_FRAME_COUNT; frame++) {
+          specs.push({ key: beeFrameVariantKey(frame), parts: getBakedBeeFrameParts(gltf, frame) });
         }
         continue;
       }
@@ -550,7 +593,7 @@ function InstancedUnits() {
       const meshes = meshRefs.current.get(key);
       if (!meshes || meshes.length === 0) continue;
 
-      const renderY = unit.position.y + verticalOffset(unit);
+      const renderY = unit.position.y + verticalOffset(unit, elapsedMs);
       position.set(unit.position.x, renderY, unit.position.z);
 
       // Distance + frustum cull (units we can't see cost nothing).

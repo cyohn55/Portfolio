@@ -232,6 +232,20 @@ export function catFrameVariantKey(frameIndex: number): string {
   return `Cat-frame${frameIndex % CAT_FRAME_COUNT}`;
 }
 
+// The Bee model packs two pose objects (Bee_F0..Bee_F1) into one glb. They are
+// alternated as a two-frame wing-flap loop continuously (the bee is always
+// airborne). Like the Fox, each pose is baked into its own instanced variant and
+// the renderer shows exactly one at a time, so the unbaked frame costs nothing.
+export const BEE_FRAME_COUNT = 2;
+
+export function beeFrameNodeName(frameIndex: number): string {
+  return `Bee_F${frameIndex}`;
+}
+
+export function beeFrameVariantKey(frameIndex: number): string {
+  return `Bee-frame${frameIndex % BEE_FRAME_COUNT}`;
+}
+
 // World-space size (longest edge) a unit should occupy, by kind and animal.
 // Mirrors the targets previously used in createPreparedScene.
 export function getKindTargetScale(animal: AnimalId, kind: 'Unit' | 'Queen' | 'King' | 'Base'): number {
@@ -383,6 +397,17 @@ export function getBakedCatFrameParts(gltf: any, frameIndex: number): BakedPart[
   const cached = bakedVariantCache.get(key);
   if (cached) return cached;
   const parts = bakePoseFrame(gltf, catFrameNodeName(frameIndex));
+  bakedVariantCache.set(key, parts);
+  return parts;
+}
+
+// Return cached baked parts for one Bee pose-frame variant. The bee is authored
+// facing forward (like the Fox), so no yaw flip is applied.
+export function getBakedBeeFrameParts(gltf: any, frameIndex: number): BakedPart[] {
+  const key = beeFrameVariantKey(frameIndex);
+  const cached = bakedVariantCache.get(key);
+  if (cached) return cached;
+  const parts = bakePoseFrame(gltf, beeFrameNodeName(frameIndex));
   bakedVariantCache.set(key, parts);
   return parts;
 }
