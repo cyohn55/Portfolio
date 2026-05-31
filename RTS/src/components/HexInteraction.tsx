@@ -41,6 +41,7 @@ export function MapInteraction() {
   const setPatrol = useGameStore((s) => s.setPatrol);
   const toggleTurtleShell = useGameStore((s) => s.toggleTurtleShell);
   const throwEggs = useGameStore((s) => s.throwEggs);
+  const fireTongues = useGameStore((s) => s.fireTongues);
   // Mouse buttons are remappable via Settings -> Controls. Defaults: left=select,
   // right=command. tokenToMouseButton maps the saved token back to a DOM button.
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
@@ -194,6 +195,13 @@ export function MapInteraction() {
       .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Chicken' && selectedUnitIds.includes(unit.id))
       .map((unit) => unit.id);
 
+  // The local player's currently-selected Frog units — the casters of the
+  // tongue-grab ability (simultaneous primary+secondary press).
+  const selectedFriendlyFrogIds = (): string[] =>
+    units
+      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Frog' && selectedUnitIds.includes(unit.id))
+      .map((unit) => unit.id);
+
   // True when the primary and secondary action buttons are held at the same time
   // (read from a single event's `buttons` bitmask, so press order doesn't matter).
   const areShellButtonsHeld = (buttons: number): boolean =>
@@ -231,14 +239,17 @@ export function MapInteraction() {
     if (areShellButtonsHeld(event.buttons)) {
       const turtleIds = selectedFriendlyTurtleIds();
       const chickenIds = selectedFriendlyChickenIds();
-      if (turtleIds.length > 0 || chickenIds.length > 0) {
+      const frogIds = selectedFriendlyFrogIds();
+      if (turtleIds.length > 0 || chickenIds.length > 0 || frogIds.length > 0) {
         if (!shellComboHandledRef.current) {
           shellComboHandledRef.current = true;
           if (turtleIds.length > 0) toggleTurtleShell(turtleIds);
-          if (chickenIds.length > 0) {
+          if (chickenIds.length > 0 || frogIds.length > 0) {
             const screenPos = getScreenPosition(event);
             const target = getWorldPositionFromMouse(screenPos.x, screenPos.y);
-            throwEggs({ unitIds: chickenIds, target: { x: target.x, y: 0, z: target.z } });
+            const cursor = { x: target.x, y: 0, z: target.z };
+            if (chickenIds.length > 0) throwEggs({ unitIds: chickenIds, target: cursor });
+            if (frogIds.length > 0) fireTongues({ unitIds: frogIds, cursor });
           }
           // Discard the selection/patrol drag the first button may have started.
           hideSelectionBox();
@@ -451,7 +462,7 @@ export function MapInteraction() {
       canvas.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, primaryButton, secondaryButton]);
+  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, primaryButton, secondaryButton]);
 
   const handleGroundClick = (e: any) => {
     // Prevent browser context menu on right-click - check if preventDefault exists
@@ -464,11 +475,11 @@ export function MapInteraction() {
     if (e.button === secondaryButton) { // Secondary (command) button
 
       // Skip the move when this secondary press is half of a combo on a selected
-      // turtle (shell toggle) or chicken (egg throw) — those are handled in
-      // handleMouseDown instead, and shouldn't also issue a move order.
+      // turtle (shell toggle), chicken (egg throw) or frog (tongue grab) — those
+      // are handled in handleMouseDown instead, and shouldn't also issue a move.
       const heldButtons = e.nativeEvent?.buttons ?? 0;
       if (areShellButtonsHeld(heldButtons) &&
-          (selectedFriendlyTurtleIds().length > 0 || selectedFriendlyChickenIds().length > 0)) {
+          (selectedFriendlyTurtleIds().length > 0 || selectedFriendlyChickenIds().length > 0 || selectedFriendlyFrogIds().length > 0)) {
         return;
       }
 

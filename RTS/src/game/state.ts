@@ -12,7 +12,7 @@ setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import { pathfinder } from '../components/Working/pathfinder';
 import { clampToArena } from '../components/Working/arenaBoundary';
-import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
+import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 import * as leaderboardModule from '../components/Working/leaderboard';
 import * as leaderboardRemoteModule from '../components/Working/leaderboardRemote';
@@ -91,6 +91,23 @@ const EGG_COOLDOWN_MS = 700;     // minimum time between a chicken's egg throws
 const EGG_THROW_POSE_MS = 600;   // how long the Chicken_F3 + Egg throw pose stays up
 const EGG_SPAWN_HEIGHT = 1.5;    // height above the chicken's base the egg launches from
 
+// Frog tongue-grab ability tuning. The frog keeps its melee tongue (the ANIMALS
+// stats: range 8) for normal combat; this is a separate, player-activated grab
+// fired by holding both mouse buttons while a friendly Frog is selected. The
+// tongue extends from the frog's mouth to a single claimed enemy, latches on
+// contact, deals the frog's attack damage once, then reels that enemy back to
+// the frog. A missed throw simply retracts. See updateFrogTongues + fireTongues.
+const TONGUE_RANGE = 12;             // reach of the grab (beyond the frog's melee range of 8)
+const TONGUE_RANGE_SQ = TONGUE_RANGE * TONGUE_RANGE;
+const TONGUE_EXTEND_SPEED = 60;      // world units/sec the tongue tip reaches out
+const TONGUE_RETRACT_SPEED = 45;     // world units/sec the tongue (and any catch) reels back
+const TONGUE_HIT_RADIUS = 2.0;       // the tongue latches an enemy whose center is within this of the tip
+const TONGUE_HIT_RADIUS_SQ = TONGUE_HIT_RADIUS * TONGUE_HIT_RADIUS;
+const TONGUE_WINDUP_MS = 100;        // Frog_F2 mouth-open beat before the tongue shoots out
+const TONGUE_COOLDOWN_MS = 1500;     // minimum time between a frog's tongue grabs
+const TONGUE_MOUTH_HEIGHT = 1.0;     // height above the frog's base the tongue emerges from
+const TONGUE_DRAG_STOP_DIST = 2.5;   // a dragged enemy stops once this close to the frog's mouth
+
 // Full roster of playable animals, derived from the stats table so it stays in
 // sync automatically when animals are added or removed.
 const ALL_ANIMALS = Object.keys(ANIMALS) as AnimalId[];
@@ -160,6 +177,7 @@ type Store = GameState & {
   clearSelection: () => void;
   toggleTurtleShell: (unitIds: string[]) => void;
   throwEggs: (cmd: CommandThrowEggs) => void;
+  fireTongues: (cmd: CommandFireTongues) => void;
   toggleOptimization: (key: keyof Store['optimizations']) => void;
   // Bridge animation system
   bridgeState: BridgeState;
@@ -1398,6 +1416,11 @@ export const useGameStore = create<Store>((set, get) => ({
       // the same pass as melee-combat deaths.
       updateProjectiles(draft, dtSec);
 
+      // Advance every active Frog tongue grab (extend -> latch/damage -> drag/
+      // retract). Also runs before dead-unit cleanup so an enemy the grab kills is
+      // removed this same pass.
+      updateFrogTongues(draft, dtSec, nowMs);
+
       // Immediate dead unit removal to prevent regeneration of dead units
       if (draft.deadUnitsToRemove.length > 0) {
         // Set-based membership test turns the cleanup from O(dead * units) into
@@ -1699,6 +1722,71 @@ export const useGameStore = create<Store>((set, get) => ({
     })
   ),
 
+  // Frog tongue-grab ability. Each selected friendly Frog that is off cooldown and
+  // not already mid-grab claims one eligible enemy — the enemy within TONGUE_RANGE
+  // that is nearest the cursor — turns to face it, and begins the windup. The grab
+  // then animates entirely in the tick (see updateFrogTongues). Targeting respects
+  // two rules: a frog grabs exactly one enemy, and no two frogs may claim the same
+  // enemy at once (so a cluster of frogs spreads its grabs across the enemy front).
+  fireTongues: (cmd) => set((prev) =>
+    produce(prev, (draft) => {
+      const now = performance.now();
+
+      // Enemies already claimed by another friendly frog's active tongue this
+      // instant — excluded so two frogs never grab the same target.
+      const claimedTargetIds = new Set<string>();
+      for (const candidate of draft.units) {
+        if (candidate.tongue) claimedTargetIds.add(candidate.tongue.targetId);
+      }
+
+      for (const id of cmd.unitIds) {
+        const unit = draft.units.find((candidate) => candidate.id === id);
+        if (!unit || unit.animal !== 'Frog' || unit.ownerId !== draft.localPlayerId) continue;
+        if (unit.hp <= 0) continue;
+        if (unit.tongue) continue; // already mid-grab
+        if (unit.lastTongueAtMs !== undefined && now - unit.lastTongueAtMs < TONGUE_COOLDOWN_MS) continue;
+
+        // Among enemies within tongue range of THIS frog (and not already claimed),
+        // pick the one closest to the cursor so the player can aim the grab while
+        // out-of-aim frogs still snap up whatever enemy is nearest them.
+        let target: Unit | null = null;
+        let bestCursorDistSq = Infinity;
+        for (const candidate of draft.units) {
+          if (candidate.ownerId === unit.ownerId) continue; // enemies only
+          if (candidate.kind === 'Base') continue;          // animals only, never structures
+          if (candidate.hp <= 0) continue;
+          if (claimedTargetIds.has(candidate.id)) continue; // one frog per enemy
+          if (distanceSquared3D(unit.position, candidate.position) > TONGUE_RANGE_SQ) continue;
+          const cursorDistSq = distanceSquared3D(cmd.cursor, candidate.position);
+          if (cursorDistSq < bestCursorDistSq) {
+            bestCursorDistSq = cursorDistSq;
+            target = candidate;
+          }
+        }
+        if (!target) continue; // no eligible enemy in reach — the press does nothing
+
+        claimedTargetIds.add(target.id); // reserve it so a later frog in this batch can't reuse it
+
+        const direction = normalize3D(subtract3D(target.position, unit.position));
+        if (direction.x === 0 && direction.z === 0) continue; // target on top of the frog
+
+        unit.rotation = Math.atan2(direction.x, direction.z); // face the grab
+        unit.lastTongueAtMs = now;
+        unit.tongue = {
+          phase: 'windup',
+          targetId: target.id,
+          origin: { x: unit.position.x, y: unit.position.y + TONGUE_MOUTH_HEIGHT, z: unit.position.z },
+          direction,
+          length: 0,
+          maxLength: TONGUE_RANGE,
+          grabbed: false,
+          phaseUntilMs: now + TONGUE_WINDUP_MS,
+          damageDealt: false,
+        };
+      }
+    })
+  ),
+
   toggleOptimization: (key) => set((prev) => ({
     optimizations: {
       ...prev.optimizations,
@@ -1848,10 +1936,12 @@ function findClosestEnemy(unit: Unit, grid: SpatialGrid | null, all: Unit[]): Un
 const UNWEDGE_STUCK_TICKS = 60;
 
 function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Unit[], collisionRadius: number = 2.5, selectedUnitIds: string[] = [], localPlayerId: string | null = null, unitOrders: Record<string, any> = {}, spatialGrid: SpatialGrid | null = null): Position3D {
-  // A shelled turtle is locked in place: every movement branch funnels its
-  // proposed position through here, so refusing the move keeps the unit pinned
-  // while still letting combat (which never touches checkCollision) run.
-  if (currentUnit.isShelled) {
+  // A shelled turtle — or a frog mid tongue-grab — is locked in place: every
+  // movement branch funnels its proposed position through here, so refusing the
+  // move keeps the unit pinned while still letting combat (which never touches
+  // checkCollision) run. The frog must hold position so its tongue's origin stays
+  // anchored at the mouth for the whole extend/retract animation.
+  if (currentUnit.isShelled || currentUnit.tongue) {
     return { x: currentUnit.position.x, y: currentUnit.position.y, z: currentUnit.position.z };
   }
 
@@ -2113,6 +2203,98 @@ function updateProjectiles(draft: Store, dtSec: number): void {
     if (egg.traveled < egg.maxRange) survivors.push(egg); // else expired in flight
   }
   draft.projectiles = survivors;
+}
+
+// Advance every Frog whose tongue is currently out, one tick. The grab is a small
+// state machine stored on the unit (unit.tongue):
+//   windup     — Frog_F2 mouth-open beat; transitions to `extending` after
+//                TONGUE_WINDUP_MS, but only if the claimed target is still alive
+//                and reachable (else the throw fizzles and the tongue clears).
+//   extending  — the tip reaches out along the aim direction at TONGUE_EXTEND_SPEED,
+//                tracking the (possibly moving) target. On contact it latches:
+//                deals the frog's attack damage once and flips to `retracting`.
+//                If it reaches its apex (maxLength) with no contact, it also flips
+//                to `retracting` but empty-handed (a miss).
+//   retracting — the tip reels back at TONGUE_RETRACT_SPEED; a latched, still-living
+//                target is dragged along to just in front of the frog. Once fully
+//                reeled in the tongue is cleared and the frog is free again.
+// The frog holds position the whole time (the movement passes skip units with an
+// active tongue), so `origin` stays put and the geometry reads cleanly.
+function updateFrogTongues(draft: Store, dtSec: number, nowMs: number): void {
+  for (const frog of draft.units) {
+    const tongue = frog.tongue;
+    if (!tongue) continue;
+
+    // A frog that died mid-grab just drops the tongue (handled by the dead-unit
+    // cleanup removing the unit; guard here in case it is still in the list).
+    if (frog.hp <= 0) { frog.tongue = undefined; continue; }
+
+    const target = draft.units.find((candidate) => candidate.id === tongue.targetId);
+    const targetAlive = !!target && target.hp > 0;
+
+    if (tongue.phase === 'windup') {
+      if (nowMs < tongue.phaseUntilMs) continue; // hold the Frog_F2 beat
+      // The target must still be alive and within reach to actually shoot.
+      if (!targetAlive || distanceSquared3D(frog.position, target!.position) > TONGUE_RANGE_SQ) {
+        frog.tongue = undefined; // fizzle — cooldown still applies (lastTongueAtMs set at fire)
+        continue;
+      }
+      tongue.direction = normalize3D(subtract3D(target!.position, frog.position));
+      tongue.phase = 'extending';
+      continue;
+    }
+
+    if (tongue.phase === 'extending') {
+      tongue.length = Math.min(tongue.length + TONGUE_EXTEND_SPEED * dtSec, tongue.maxLength);
+
+      // Re-aim at the live target so a moving enemy is still tracked, then test
+      // whether the tip has reached it.
+      if (targetAlive) {
+        tongue.direction = normalize3D(subtract3D(target!.position, frog.position));
+        const tipX = tongue.origin.x + tongue.direction.x * tongue.length;
+        const tipZ = tongue.origin.z + tongue.direction.z * tongue.length;
+        const dx = target!.position.x - tipX;
+        const dz = target!.position.z - tipZ;
+        if (dx * dx + dz * dz <= TONGUE_HIT_RADIUS_SQ) {
+          tongue.grabbed = true;
+          if (!tongue.damageDealt) {
+            tongue.damageDealt = true;
+            target!.hp -= frog.attackDamage;
+            frog.lastAttackAtMs = nowMs; // count the grab as a swing for combat/pose timing
+            if (target!.hp <= 0) {
+              draft.deadUnitsToRemove.push(target!.id);
+              creditKill(draft, frog.ownerId, target!);
+            }
+          }
+          tongue.phase = 'retracting';
+          continue;
+        }
+      }
+
+      if (tongue.length >= tongue.maxLength) tongue.phase = 'retracting'; // apex reached: a miss
+      continue;
+    }
+
+    // retracting — reel the tongue back; drag a living catch along with the tip.
+    tongue.length = Math.max(tongue.length - TONGUE_RETRACT_SPEED * dtSec, 0);
+
+    if (tongue.grabbed && targetAlive) {
+      const tipX = tongue.origin.x + tongue.direction.x * tongue.length;
+      const tipZ = tongue.origin.z + tongue.direction.z * tongue.length;
+      // Stop dragging once the catch is right in front of the frog so it doesn't
+      // get yanked onto/through it.
+      const toFrogX = frog.position.x - target!.position.x;
+      const toFrogZ = frog.position.z - target!.position.z;
+      if (toFrogX * toFrogX + toFrogZ * toFrogZ > TONGUE_DRAG_STOP_DIST * TONGUE_DRAG_STOP_DIST) {
+        target!.position.x = tipX;
+        target!.position.z = tipZ;
+        // A dragged enemy's stale A* path no longer matches where it now is.
+        target!.pathWaypoints = undefined;
+      }
+    }
+
+    if (tongue.length <= 0) frog.tongue = undefined; // fully reeled in — frog is free
+  }
 }
 
 function checkWinConditions(draft: GameState): void {

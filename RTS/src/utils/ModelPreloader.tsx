@@ -246,12 +246,16 @@ export function beeFrameVariantKey(frameIndex: number): string {
   return `Bee-frame${frameIndex % BEE_FRAME_COUNT}`;
 }
 
-// The Frog model packs several objects into one glb, of which only two are pose
-// frames we render: Frog_F0 (grounded crouch) and Frog_F1 (mid-leap). They are
-// alternated to read as a hop while the frog moves; idle holds Frog_F0. The other
-// objects in the glb (Tongue, Frog_F2, Frog_F3) are never baked, so they stay
-// hidden. Like the Fox, the frog is authored facing forward, so no yaw flip.
-export const FROG_FRAME_COUNT = 2;
+// The Frog model packs four pose objects (Frog_F0..Frog_F3) plus a Tongue into
+// one glb. F0 (grounded crouch) and F1 (mid-leap) alternate to read as a hop
+// while the frog moves; idle holds F0. F2 (mouth-open windup) and F3 (tongue-out
+// strike) drive the tongue-grab ability, and the Tongue mesh is baked separately
+// as a stretchable beam (getBakedFrogTongueParts). Like the Fox, the frog is
+// authored facing forward, so no yaw flip is applied.
+export const FROG_FRAME_COUNT = 4;
+export const FROG_WINDUP_FRAME = 2;  // Frog_F2 (mouth-open windup / reel-in pose)
+export const FROG_STRIKE_FRAME = 3;  // Frog_F3 (tongue extended toward target)
+export const FROG_TONGUE_NODE_NAME = 'Tongue';
 
 export function frogFrameNodeName(frameIndex: number): string {
   return `Frog_F${frameIndex}`;
@@ -260,6 +264,9 @@ export function frogFrameNodeName(frameIndex: number): string {
 export function frogFrameVariantKey(frameIndex: number): string {
   return `Frog-frame${frameIndex % FROG_FRAME_COUNT}`;
 }
+
+// Variant key for the standalone stretchable tongue beam (not a per-frog pose).
+export const FROG_TONGUE_VARIANT_KEY = 'Frog-tongue-beam';
 
 // The Chicken model packs four pose objects (Chicken_F0..Chicken_F3) plus an Egg
 // into one glb. F0 is idle; F1/F2 alternate as the walk cycle; F3 is the egg-throw
@@ -452,13 +459,50 @@ export function getBakedBeeFrameParts(gltf: any, frameIndex: number): BakedPart[
 
 // Return cached baked parts for one Frog pose-frame variant. The frog is authored
 // facing forward (like the Fox), so no yaw flip is applied. Only the named pose
-// node is baked, so the glb's other objects (Tongue, Frog_F2/F3) stay hidden.
+// node is baked, so the glb's other objects (the Tongue and the three unused
+// poses) stay hidden — the renderer shows exactly one Frog_F# pose at a time.
 export function getBakedFrogFrameParts(gltf: any, frameIndex: number): BakedPart[] {
   const key = frogFrameVariantKey(frameIndex);
   const cached = bakedVariantCache.get(key);
   if (cached) return cached;
   const parts = bakePoseFrame(gltf, frogFrameNodeName(frameIndex));
   bakedVariantCache.set(key, parts);
+  return parts;
+}
+
+// Return cached baked parts for the Frog's tongue beam. Like the flying egg, the
+// Tongue mesh is normalized on its own bounds (longest edge -> 1) and centered at
+// the origin (no feet-to-ground drop) so the renderer can stretch and orient it
+// freely each frame: the tongue is drawn as a beam from the frog's mouth to its
+// current tip, scaled along its length axis by the live extension distance.
+export function getBakedFrogTongueParts(gltf: any): BakedPart[] {
+  const cached = bakedVariantCache.get(FROG_TONGUE_VARIANT_KEY);
+  if (cached) return cached;
+  const parts: BakedPart[] = [];
+  if (gltf?.scene) {
+    const root = gltf.scene.clone(true);
+    root.updateWorldMatrix(true, true);
+    const tongueNode = root.getObjectByName(FROG_TONGUE_NODE_NAME);
+    if (tongueNode) {
+      const box = new THREE.Box3().setFromObject(tongueNode);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDimension = Math.max(size.x, size.y, size.z) || 1;
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      tongueNode.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.geometry) return;
+        const geometry = mesh.geometry.clone();
+        geometry.applyMatrix4(mesh.matrixWorld); // -> world space
+        geometry.translate(-center.x, -center.y, -center.z); // center at origin
+        geometry.scale(1 / maxDimension, 1 / maxDimension, 1 / maxDimension); // longest edge -> 1
+        const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+        parts.push({ geometry, material });
+      });
+    }
+  }
+  bakedVariantCache.set(FROG_TONGUE_VARIANT_KEY, parts);
   return parts;
 }
 

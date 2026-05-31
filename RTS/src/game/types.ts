@@ -93,6 +93,31 @@ export interface Unit {
   // Both are stamped with performance.now() to match the combat clock.
   lastEggAtMs?: number;
   eggThrowUntilMs?: number;
+  // Frog tongue-grab ability (triggered by simultaneous primary+secondary mouse
+  // press while a friendly Frog is selected). `tongue` holds the live grab state
+  // while the ability animates (windup -> extend -> retract); it is cleared once
+  // the tongue fully retracts. `lastTongueAtMs` stamps the most recent fire with
+  // performance.now() to gate the per-frog cooldown. While `tongue` is set the
+  // frog holds position (the tick skips its movement) so the grab reads cleanly.
+  tongue?: FrogTongueState;
+  lastTongueAtMs?: number;
+}
+
+// Live state of a Frog's tongue grab while the ability animates. The tongue
+// extends from the frog's mouth toward a single targeted enemy; on contact it
+// latches (grabbed=true) and the retract phase drags that enemy back to the
+// frog, otherwise it simply reels back empty. A frog may have at most one
+// tongue, and two frogs may not target the same enemy at once.
+export interface FrogTongueState {
+  phase: 'windup' | 'extending' | 'retracting';
+  targetId: string;       // the single enemy this frog has claimed
+  origin: Position3D;     // tongue base (frog mouth) in world space at fire time
+  direction: Position3D;  // normalized aim direction on the XZ plane
+  length: number;         // current extension from origin, in world units
+  maxLength: number;      // reach this fire was clamped to (apex if it misses)
+  grabbed: boolean;       // true once the tongue has latched onto the target
+  phaseUntilMs: number;   // performance.now() timestamp the current phase ends at
+  damageDealt: boolean;   // guards the one-time grab damage to a latched target
 }
 
 // A flying egg fired by a Chicken's throw ability. Travels in a straight line on
@@ -215,6 +240,11 @@ export interface CommandAttackTarget {
 export interface CommandThrowEggs {
   unitIds: string[];      // selected units; only friendly Chickens off cooldown fire
   target: Position3D;     // world point the eggs are thrown toward
+}
+
+export interface CommandFireTongues {
+  unitIds: string[];      // selected units; only friendly Frogs off cooldown fire
+  cursor: Position3D;     // world point under the cursor, used to aim each grab
 }
 
 

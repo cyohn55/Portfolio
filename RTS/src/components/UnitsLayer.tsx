@@ -14,6 +14,9 @@ import {
   CAT_FRAME_COUNT,
   BEE_FRAME_COUNT,
   FROG_FRAME_COUNT,
+  FROG_WINDUP_FRAME,
+  FROG_STRIKE_FRAME,
+  FROG_TONGUE_VARIANT_KEY,
   CHICKEN_FRAME_COUNT,
   CHICKEN_THROW_FRAME,
   EGG_PROJECTILE_VARIANT_KEY,
@@ -35,6 +38,7 @@ import {
   getBakedCatFrameParts,
   getBakedBeeFrameParts,
   getBakedFrogFrameParts,
+  getBakedFrogTongueParts,
   getBakedChickenFrameParts,
   getBakedEggProjectileParts,
   type BakedPart,
@@ -51,6 +55,9 @@ const MAX_RENDER_DISTANCE = 400;
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const X_AXIS = new THREE.Vector3(1, 0, 0);
+const Z_AXIS = new THREE.Vector3(0, 0, 1);
+// Reusable scratch for the frog tongue beam's aim direction (no per-frame alloc).
+const tongueDir = new THREE.Vector3();
 const FLAT_ROTATION = -Math.PI / 2;
 
 const isMobileDevice = (): boolean =>
@@ -266,6 +273,11 @@ const FROG_LEAP_FRAME = 1; // Frog_F1 (mid-leap)
 const FROG_LEAP_PHASE_START = 0.25; // hopPhase window where the leap pose shows,
 const FROG_LEAP_PHASE_END = 0.75; // centered on the hop apex at phase 0.5
 
+// Tongue beam: cross-section thickness (the baked tongue has a longest edge of 1,
+// re-stretched to the live extension along its length axis each frame). The beam
+// is authored along local +Z, so the renderer rotates +Z onto the aim direction.
+const TONGUE_BEAM_THICKNESS = 0.45;
+
 // Chicken pose timing: idle holds Chicken_F0; while walking it alternates
 // Chicken_F1 <-> Chicken_F2 every 100ms. The egg-throw pose (Chicken_F3 + Egg)
 // overrides both for EGG_THROW_POSE_MS after a throw — see the eggThrowUntilMs
@@ -331,6 +343,12 @@ function variantKeyForUnit(unit: Unit, ctx: VariantContext): string {
     return catFrameVariantKey(CAT_IDLE_FRAME); // idle -> F0
   }
   if (unit.animal === 'Frog') {
+    // The tongue grab overrides the hop: the strike pose (Frog_F3) shows while the
+    // tongue is shooting out, and the mouth-open pose (Frog_F2) covers the windup
+    // and the reel-back. Both take precedence over idle/walk.
+    if (unit.tongue) {
+      return frogFrameVariantKey(unit.tongue.phase === 'extending' ? FROG_STRIKE_FRAME : FROG_WINDUP_FRAME);
+    }
     // Idle frogs hold the grounded crouch; moving frogs swap to the mid-leap pose
     // over the airborne portion of each hop and back to the crouch on landing.
     if (!ctx.isMoving) return frogFrameVariantKey(FROG_GROUNDED_FRAME); // idle -> F0
@@ -404,7 +422,9 @@ function unitBobPhase(unitId: string): number {
 // `elapsedMs` is the render clock, used for the bee's continuous hover bob.
 function verticalOffset(unit: Unit, elapsedMs: number): number {
   let offset = 0;
-  if ((unit.animal === 'Frog' || unit.animal === 'Bunny') && unit.isHopping) {
+  // A frog mid tongue-grab is pinned (the tick refuses its movement), so suppress
+  // the hop bob and keep it planted on the ground for the grab animation.
+  if ((unit.animal === 'Frog' || unit.animal === 'Bunny') && unit.isHopping && !unit.tongue) {
     offset += Math.sin((unit.hopPhase || 0) * Math.PI) * 1.5;
   }
   if (unit.animal === 'Owl' && unit.isFlying) {
@@ -498,13 +518,16 @@ function InstancedUnits() {
         continue;
       }
       if (animal === 'Frog') {
-        // Frog ships several objects in one glb; bake only the two pose frames
-        // (Frog_F0 grounded, Frog_F1 mid-leap) so the renderer can alternate them
-        // for the hop loop while leaving the other objects (Tongue, Frog_F2/F3)
-        // hidden (see variantKeyForUnit).
+        // Frog ships F0 (grounded), F1 (mid-leap), F2 (windup) and F3 (strike)
+        // poses plus a Tongue in one glb. Bake each pose into its own variant so
+        // the renderer shows exactly one — the hop loop alternates F0/F1, while
+        // the tongue-grab ability swaps to F2/F3 (see variantKeyForUnit). The
+        // stretchable tongue beam is a separate variant, drawn from the live
+        // tongue state below.
         for (let frame = 0; frame < FROG_FRAME_COUNT; frame++) {
           specs.push({ key: frogFrameVariantKey(frame), parts: getBakedFrogFrameParts(gltf, frame) });
         }
+        specs.push({ key: FROG_TONGUE_VARIANT_KEY, parts: getBakedFrogTongueParts(gltf) });
         continue;
       }
       if (animal === 'Chicken') {
@@ -813,6 +836,37 @@ function InstancedUnits() {
         eggCount++;
       }
       counts.set(EGG_PROJECTILE_VARIANT_KEY, eggCount);
+    }
+
+    // Frog tongue beams (Frog ability). For every frog with an active tongue, draw
+    // the baked tongue stretched from the mouth origin to the current tip: it is
+    // centered at the midpoint, oriented so its local +Z points along the aim
+    // direction, and scaled to TONGUE_BEAM_THICKNESS across by the live extension
+    // length. A zero-length (just-fired / fully-reeled) tongue is skipped.
+    const tongueMeshes = meshRefs.current.get(FROG_TONGUE_VARIANT_KEY);
+    if (tongueMeshes && tongueMeshes.length > 0) {
+      let tongueCount = 0;
+      for (const unit of s.units) {
+        if (tongueCount >= MAX_INSTANCES_PER_VARIANT) break;
+        const tongue = unit.tongue;
+        if (!tongue || tongue.length <= 0.001) continue;
+
+        const length = tongue.length;
+        const midX = tongue.origin.x + tongue.direction.x * (length / 2);
+        const midZ = tongue.origin.z + tongue.direction.z * (length / 2);
+        position.set(midX, tongue.origin.y, midZ);
+        if (!frustum.containsPoint(position)) continue; // off-screen tongues cost nothing
+
+        tongueDir.set(tongue.direction.x, 0, tongue.direction.z).normalize();
+        quaternion.setFromUnitVectors(Z_AXIS, tongueDir);
+        scale.set(TONGUE_BEAM_THICKNESS, TONGUE_BEAM_THICKNESS, length);
+        matrix.compose(position, quaternion, scale);
+        for (let p = 0; p < tongueMeshes.length; p++) {
+          if (tongueMeshes[p]) tongueMeshes[p].setMatrixAt(tongueCount, matrix);
+        }
+        tongueCount++;
+      }
+      counts.set(FROG_TONGUE_VARIANT_KEY, tongueCount);
     }
 
     // Flush instance counts + matrix updates to the GPU.
