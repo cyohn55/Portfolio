@@ -246,6 +246,21 @@ export function beeFrameVariantKey(frameIndex: number): string {
   return `Bee-frame${frameIndex % BEE_FRAME_COUNT}`;
 }
 
+// The Frog model packs several objects into one glb, of which only two are pose
+// frames we render: Frog_F0 (grounded crouch) and Frog_F1 (mid-leap). They are
+// alternated to read as a hop while the frog moves; idle holds Frog_F0. The other
+// objects in the glb (Tongue, Frog_F2, Frog_F3) are never baked, so they stay
+// hidden. Like the Fox, the frog is authored facing forward, so no yaw flip.
+export const FROG_FRAME_COUNT = 2;
+
+export function frogFrameNodeName(frameIndex: number): string {
+  return `Frog_F${frameIndex}`;
+}
+
+export function frogFrameVariantKey(frameIndex: number): string {
+  return `Frog-frame${frameIndex % FROG_FRAME_COUNT}`;
+}
+
 // World-space size (longest edge) a unit should occupy, by kind and animal.
 // Mirrors the targets previously used in createPreparedScene.
 export function getKindTargetScale(animal: AnimalId, kind: 'Unit' | 'Queen' | 'King' | 'Base'): number {
@@ -408,6 +423,18 @@ export function getBakedBeeFrameParts(gltf: any, frameIndex: number): BakedPart[
   const cached = bakedVariantCache.get(key);
   if (cached) return cached;
   const parts = bakePoseFrame(gltf, beeFrameNodeName(frameIndex));
+  bakedVariantCache.set(key, parts);
+  return parts;
+}
+
+// Return cached baked parts for one Frog pose-frame variant. The frog is authored
+// facing forward (like the Fox), so no yaw flip is applied. Only the named pose
+// node is baked, so the glb's other objects (Tongue, Frog_F2/F3) stay hidden.
+export function getBakedFrogFrameParts(gltf: any, frameIndex: number): BakedPart[] {
+  const key = frogFrameVariantKey(frameIndex);
+  const cached = bakedVariantCache.get(key);
+  if (cached) return cached;
+  const parts = bakePoseFrame(gltf, frogFrameNodeName(frameIndex));
   bakedVariantCache.set(key, parts);
   return parts;
 }

@@ -13,6 +13,7 @@ import {
   YETI_FRAME_COUNT,
   CAT_FRAME_COUNT,
   BEE_FRAME_COUNT,
+  FROG_FRAME_COUNT,
   baseVariantKey,
   owlWingVariantKey,
   turtleFrameVariantKey,
@@ -20,6 +21,7 @@ import {
   yetiFrameVariantKey,
   catFrameVariantKey,
   beeFrameVariantKey,
+  frogFrameVariantKey,
   getKindTargetScale,
   getBakedAnimalParts,
   getBakedOwlWingParts,
@@ -28,6 +30,7 @@ import {
   getBakedYetiFrameParts,
   getBakedCatFrameParts,
   getBakedBeeFrameParts,
+  getBakedFrogFrameParts,
   type BakedPart,
 } from '../utils/ModelPreloader';
 import * as THREE from 'three';
@@ -246,6 +249,17 @@ const BEE_FLAP_FRAMES = [0, 1] as const; // Bee_F0 <-> F1
 const BEE_BOB_AMPLITUDE = 1.1; // world units
 const BEE_BOB_FREQUENCY = 2.4; // radians / second
 
+// Frog pose timing: while moving, the frog alternates its grounded crouch
+// (Frog_F0) and its mid-leap pose (Frog_F1) to read as a hop; idle holds the
+// grounded Frog_F0. The swap is driven by the unit's own hopPhase (which the tick
+// advances 0->1 per hop and which also drives the vertical bob, peaking at 0.5),
+// so the leap pose stays centered on the apex of the arc instead of drifting
+// against it on a wall clock.
+const FROG_GROUNDED_FRAME = 0; // Frog_F0 (crouch / idle)
+const FROG_LEAP_FRAME = 1; // Frog_F1 (mid-leap)
+const FROG_LEAP_PHASE_START = 0.25; // hopPhase window where the leap pose shows,
+const FROG_LEAP_PHASE_END = 0.75; // centered on the hop apex at phase 0.5
+
 // Per-unit visual context resolved each render frame (turtle pose selection
 // needs wall-clock time and whether the unit is currently moving; the cat also
 // needs to know whether it is in an attack exchange).
@@ -295,6 +309,14 @@ function variantKeyForUnit(unit: Unit, ctx: VariantContext): string {
       return catFrameVariantKey(frame);
     }
     return catFrameVariantKey(CAT_IDLE_FRAME); // idle -> F0
+  }
+  if (unit.animal === 'Frog') {
+    // Idle frogs hold the grounded crouch; moving frogs swap to the mid-leap pose
+    // over the airborne portion of each hop and back to the crouch on landing.
+    if (!ctx.isMoving) return frogFrameVariantKey(FROG_GROUNDED_FRAME); // idle -> F0
+    const phase = unit.hopPhase || 0;
+    const airborne = phase >= FROG_LEAP_PHASE_START && phase < FROG_LEAP_PHASE_END;
+    return frogFrameVariantKey(airborne ? FROG_LEAP_FRAME : FROG_GROUNDED_FRAME);
   }
   return baseVariantKey(unit.animal);
 }
@@ -442,6 +464,16 @@ function InstancedUnits() {
         // them for the continuous flap loop (see variantKeyForUnit).
         for (let frame = 0; frame < BEE_FRAME_COUNT; frame++) {
           specs.push({ key: beeFrameVariantKey(frame), parts: getBakedBeeFrameParts(gltf, frame) });
+        }
+        continue;
+      }
+      if (animal === 'Frog') {
+        // Frog ships several objects in one glb; bake only the two pose frames
+        // (Frog_F0 grounded, Frog_F1 mid-leap) so the renderer can alternate them
+        // for the hop loop while leaving the other objects (Tongue, Frog_F2/F3)
+        // hidden (see variantKeyForUnit).
+        for (let frame = 0; frame < FROG_FRAME_COUNT; frame++) {
+          specs.push({ key: frogFrameVariantKey(frame), parts: getBakedFrogFrameParts(gltf, frame) });
         }
         continue;
       }

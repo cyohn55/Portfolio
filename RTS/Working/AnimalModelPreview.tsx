@@ -36,10 +36,8 @@ const CARD_POSE_NODE: Partial<Record<AnimalId, string>> = {
   Yetti: 'Yeti_F0',
   Cat: 'Kitty_F0',
   Bee: 'Bee_F0',
+  Frog: 'Frog_F0',
 };
-
-// Pose-root objects are named "<Prefix>_F<number>" (Fox_F0, Turtle_F3, …).
-const POSE_ROOT_NAME = /_F\d+$/;
 
 const TARGET_DISPLAY_SIZE = 3.0;     // Three.js units the model should fit within
 const VERTICAL_OFFSET = -1.4;        // pull the model down so it sits in the frame
@@ -71,17 +69,16 @@ function AnimalModel({ animal }: { animal: AnimalId }) {
       }
     });
 
-    // For pose-frame animals, keep only the chosen pose object and drop the rest
-    // so the card shows a single pose instead of every pose at once.
+    // For pose-frame animals, keep only the chosen pose object and drop every
+    // other top-level node so the card shows a single pose instead of all of them
+    // overlapping. For most animals the only top-level nodes are pose frames; the
+    // Frog additionally ships a separate `Tongue` node, which this also drops so
+    // the card matches the single Frog_F0 pose seen in-game.
     const keepPoseName = CARD_POSE_NODE[animal];
     if (keepPoseName) {
-      const posesToRemove: THREE.Object3D[] = [];
-      scene.traverse((obj) => {
-        if (POSE_ROOT_NAME.test(obj.name) && obj.name !== keepPoseName) {
-          posesToRemove.push(obj);
-        }
+      [...scene.children].forEach((child) => {
+        if (child.name !== keepPoseName) child.removeFromParent();
       });
-      posesToRemove.forEach((obj) => obj.removeFromParent());
     }
 
     // Bounds reflect only the pose objects that remain.
