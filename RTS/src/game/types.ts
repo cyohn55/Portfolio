@@ -116,6 +116,13 @@ export interface Unit {
   knockbackVelocityX?: number;
   knockbackVelocityZ?: number;
   knockbackUntilMs?: number;
+  // Bee "Swarm" ability (triggered by simultaneous primary+secondary mouse press
+  // while a friendly Bee is selected). `swarmTargetId` is the single enemy this bee
+  // has claimed to dive at — no two swarming bees share a target. While it is set the
+  // bee ignores its normal AI and flies straight at that enemy (see updateBeeSwarms);
+  // on contact it stings once, a coin flip that either kills BOTH the bee and the
+  // target or fizzles, after which the field is cleared and the bee resumes behavior.
+  swarmTargetId?: string;
 }
 
 // Live state of a Frog's tongue grab while the ability animates. The tongue
@@ -264,6 +271,10 @@ export interface CommandFireTongues {
 
 export interface CommandHiss {
   unitIds: string[];      // selected units; only friendly Cats off cooldown hiss
+}
+
+export interface CommandSwarm {
+  unitIds: string[];      // selected units; only friendly Bees that find a target swarm
 }
 
 

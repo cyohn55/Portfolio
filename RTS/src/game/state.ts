@@ -12,7 +12,7 @@ setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import { pathfinder } from '../components/Working/pathfinder';
 import { clampToArena } from '../components/Working/arenaBoundary';
-import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, CommandHiss, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
+import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 import * as leaderboardModule from '../components/Working/leaderboard';
 import * as leaderboardRemoteModule from '../components/Working/leaderboardRemote';
@@ -123,6 +123,18 @@ const HISS_KNOCKBACK_MS = 200;       // duration of the shove slide; distance / 
 const HISS_KNOCKBACK_SPEED = HISS_KNOCKBACK_DISTANCE / (HISS_KNOCKBACK_MS / 1000); // world units/sec
 const HISS_COOLDOWN_MS = 3000;       // minimum time between a cat's hisses
 
+// Bee "Swarm" ability tuning. A player-activated, sacrificial dive fired by holding
+// both mouse buttons while a friendly Bee is selected: every selected bee claims the
+// nearest enemy no other swarming bee has taken and flies straight at it at
+// SWARM_DIVE_SPEED. On reaching SWARM_STING_RANGE it stings once — a coin flip that
+// either kills BOTH the bee and its target (SWARM_STING_KILL_CHANCE) or fizzles, after
+// which the surviving bee disengages and resumes normal behavior. See swarm + updateBeeSwarms.
+const SWARM_DIVE_SPEED = 60;          // world units/sec a swarming bee closes on its target (a fast dive)
+const SWARM_STING_RANGE = 3.0;        // distance at which the bee reaches its target and stings
+const SWARM_STING_RANGE_SQ = SWARM_STING_RANGE * SWARM_STING_RANGE;
+const SWARM_STING_KILL_CHANCE = 0.5;  // probability a sting kills both the target and the bee
+const SWARM_WING_FLAP_PER_SEC = 3;    // wing-flap cycles/sec kept advancing so the dive reads as active flight
+
 // Full roster of playable animals, derived from the stats table so it stays in
 // sync automatically when animals are added or removed.
 const ALL_ANIMALS = Object.keys(ANIMALS) as AnimalId[];
@@ -194,6 +206,7 @@ type Store = GameState & {
   throwEggs: (cmd: CommandThrowEggs) => void;
   fireTongues: (cmd: CommandFireTongues) => void;
   hiss: (cmd: CommandHiss) => void;
+  swarm: (cmd: CommandSwarm) => void;
   toggleOptimization: (key: keyof Store['optimizations']) => void;
   // Bridge animation system
   bridgeState: BridgeState;
@@ -762,6 +775,13 @@ export const useGameStore = create<Store>((set, get) => ({
             unit.position = checkCollision(knockbackStep, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
             continue;
           }
+        }
+
+        // Bee Swarm dive: a bee mid-Swarm is driven entirely by updateBeeSwarms (it flies
+        // straight at its claimed target and stings on contact), so skip its normal AI and
+        // combat this tick — otherwise the two would fight over the bee's movement.
+        if (unit.swarmTargetId !== undefined) {
+          continue;
         }
 
         // AI thinking throttling - each unit thinks on different frames
@@ -1458,6 +1478,11 @@ export const useGameStore = create<Store>((set, get) => ({
       // removed this same pass.
       updateFrogTongues(draft, dtSec, nowMs);
 
+      // Advance every Bee mid-Swarm (dive toward its claimed enemy -> sting on contact).
+      // Also runs before dead-unit cleanup so the bee and target a sting kills are both
+      // removed in this same pass.
+      updateBeeSwarms(draft, dtSec, nowMs);
+
       // Immediate dead unit removal to prevent regeneration of dead units
       if (draft.deadUnitsToRemove.length > 0) {
         // Set-based membership test turns the cleanup from O(dead * units) into
@@ -1882,6 +1907,52 @@ export const useGameStore = create<Store>((set, get) => ({
           enemy.knockbackVelocityZ = pushDirectionZ * HISS_KNOCKBACK_SPEED;
           enemy.knockbackUntilMs = now + HISS_KNOCKBACK_MS;
         }
+      }
+    })
+  ),
+
+  // Bee "Swarm" ability. Each selected friendly Bee that is not already swarming
+  // claims the closest living enemy animal no other bee has taken and commits to a
+  // dive at it (the dive + sting then plays out entirely in the tick — see
+  // updateBeeSwarms). Targeting respects two rules: a bee dives at exactly one enemy,
+  // and no two bees may claim the same enemy at once, so a cloud of bees spreads its
+  // stings across distinct targets rather than piling onto one.
+  swarm: (cmd) => set((prev) =>
+    produce(prev, (draft) => {
+      // Enemies already claimed by another bee mid-Swarm — excluded so no two bees
+      // dive at the same target.
+      const claimedTargetIds = new Set<string>();
+      for (const candidate of draft.units) {
+        if (candidate.swarmTargetId !== undefined) claimedTargetIds.add(candidate.swarmTargetId);
+      }
+
+      for (const id of cmd.unitIds) {
+        const bee = draft.units.find((candidate) => candidate.id === id);
+        if (!bee || bee.animal !== 'Bee' || bee.ownerId !== draft.localPlayerId) continue;
+        if (bee.kind !== 'Unit') continue; // sacrificial dive — never risk a Bee King/Queen
+        if (bee.hp <= 0) continue;
+        if (bee.swarmTargetId !== undefined) continue; // already diving
+
+        // Claim the closest living enemy animal (never a Base) not already claimed.
+        let target: Unit | null = null;
+        let bestDistSq = Infinity;
+        for (const candidate of draft.units) {
+          if (candidate.ownerId === bee.ownerId) continue; // enemies only
+          if (candidate.kind === 'Base') continue;          // animals only, never structures
+          if (candidate.hp <= 0) continue;
+          if (claimedTargetIds.has(candidate.id)) continue; // one bee per enemy
+          const distSq = distanceSquared3D(bee.position, candidate.position);
+          if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            target = candidate;
+          }
+        }
+        if (!target) continue; // no unclaimed enemy left for this bee — it sits this swarm out
+
+        claimedTargetIds.add(target.id); // reserve so a later bee in this batch can't reuse it
+        bee.swarmTargetId = target.id;
+        // Drop any pending move order so the dive isn't fighting a stale destination.
+        delete draft.unitOrders[bee.id];
       }
     })
   ),
@@ -2404,6 +2475,62 @@ function updateFrogTongues(draft: Store, dtSec: number, nowMs: number): void {
     }
 
     if (tongue.length <= 0) frog.tongue = undefined; // fully reeled in — frog is free
+  }
+}
+
+// Advance every Bee that is mid-Swarm, one tick. A swarming bee flies straight at its
+// claimed enemy at SWARM_DIVE_SPEED (its normal AI is suppressed by the swarm intercept
+// in tick). On reaching SWARM_STING_RANGE it stings once: with probability
+// SWARM_STING_KILL_CHANCE both the bee and the target die, otherwise the sting glances
+// off harmlessly; either way the surviving bee disengages (swarmTargetId cleared) and
+// resumes normal behavior. A bee whose target dies or vanishes before contact simply
+// breaks off. Bees are air units, so the dive ignores terrain and unit collision.
+function updateBeeSwarms(draft: Store, dtSec: number, nowMs: number): void {
+  for (const bee of draft.units) {
+    if (bee.swarmTargetId === undefined) continue;
+
+    // A bee killed mid-dive just drops the swarm (the dead-unit cleanup removes it).
+    if (bee.hp <= 0) { bee.swarmTargetId = undefined; continue; }
+
+    const target = draft.units.find((candidate) => candidate.id === bee.swarmTargetId);
+    if (!target || target.hp <= 0) {
+      bee.swarmTargetId = undefined; // target gone — break off and resume normal behavior
+      continue;
+    }
+
+    // Track the live target on the XZ plane so a moving enemy is still chased.
+    const toTargetX = target.position.x - bee.position.x;
+    const toTargetZ = target.position.z - bee.position.z;
+    const distSq = toTargetX * toTargetX + toTargetZ * toTargetZ;
+
+    if (distSq <= SWARM_STING_RANGE_SQ) {
+      // Contact: sting once. A coin flip kills both the bee and its target, or neither.
+      bee.lastAttackAtMs = nowMs; // count the sting as a swing for pose/combat timing
+      if (Math.random() < SWARM_STING_KILL_CHANCE) {
+        target.hp = 0;
+        draft.deadUnitsToRemove.push(target.id);
+        creditKill(draft, bee.ownerId, target);      // the bee's owner killed the target
+
+        bee.hp = 0;
+        draft.deadUnitsToRemove.push(bee.id);
+        creditKill(draft, target.ownerId, bee);       // the bee dies with the sting
+      }
+      bee.swarmTargetId = undefined; // sting resolved — a surviving bee disengages
+      continue;
+    }
+
+    // Dive straight at the target. distSq > range here, so the vector is non-zero.
+    const invDist = 1 / Math.sqrt(distSq);
+    const dirX = toTargetX * invDist;
+    const dirZ = toTargetZ * invDist;
+    bee.rotation = Math.atan2(dirX, dirZ);
+    bee.isFlying = true;
+    bee.wingPhase = ((bee.wingPhase || 0) + dtSec * SWARM_WING_FLAP_PER_SEC) % 1;
+
+    const step = SWARM_DIVE_SPEED * dtSec;
+    bee.position.x += dirX * step;
+    bee.position.z += dirZ * step;
+    bee.pathWaypoints = undefined; // a dive overrides any prior A* route
   }
 }
 
