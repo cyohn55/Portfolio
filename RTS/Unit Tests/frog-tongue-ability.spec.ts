@@ -34,7 +34,7 @@ const SIM_DT_MS = 1000 / 60;
 // Open ground far from the moat/bridges so the only behavior under test is the
 // frog's grab — no terrain chokepoints.
 const FROG_POSITION = { x: 200, y: 0.25, z: 200 };
-// Within the tongue's reach (TONGUE_RANGE = 40) but beyond the frog's melee
+// Within the tongue's reach (TONGUE_RANGE = 20) but beyond the frog's melee
 // range (8), so the grab — not an incidental melee swing — is what connects.
 const IN_RANGE_OFFSET = 9;
 // Beyond the tongue's reach: a press here should claim nothing.
@@ -279,8 +279,8 @@ test.describe('Frog tongue ability', () => {
     // The press fired a tongue even with no eligible target...
     expect(result.tongueAfterFire).toBe(true);
     expect(result.targetIdEmpty).toBe(true);
-    // ...it extended to (near) its full reach...
-    expect(result.maxLengthSeen).toBeGreaterThanOrEqual(35);
+    // ...it extended to (near) its full reach (TONGUE_RANGE = 20)...
+    expect(result.maxLengthSeen).toBeGreaterThanOrEqual(18);
     // ...the far enemy took no damage, and the tongue reeled all the way back.
     expect(result.enemyDamageTaken).toBe(0);
     expect(result.tongueCleared).toBe(true);
