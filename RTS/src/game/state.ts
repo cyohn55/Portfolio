@@ -2044,11 +2044,11 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
       continue;
     }
 
-    // UNIT SPACING FIX: Enforce a 5.0 unit minimum distance for all units so massed
-    // crowds spread out twice as far as before (was 2.5) and don't bunch on a point.
-    // Increase spacing for Yetti units by 2 units (was 1).
-    const baseMinimumDistance = 5.0;
-    const yetiSpacingBonus = (currentUnit.animal === 'Yetti' || other.animal === 'Yetti') ? 2.0 : 0;
+    // UNIT SPACING FIX: Enforce a 3.75 unit minimum distance for all units so massed
+    // crowds spread out without bunching on a point (was 5.0, reduced 25%).
+    // Increase spacing for Yetti units by 1.5 units (was 2.0).
+    const baseMinimumDistance = 3.75;
+    const yetiSpacingBonus = (currentUnit.animal === 'Yetti' || other.animal === 'Yetti') ? 1.5 : 0;
     const minimumDistance = baseMinimumDistance + yetiSpacingBonus;
     const minimumDistanceSquared = minimumDistance * minimumDistance;
 
