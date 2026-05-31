@@ -462,19 +462,23 @@ export function getBakedFrogFrameParts(gltf: any, frameIndex: number): BakedPart
   return parts;
 }
 
-// Return cached baked parts for one Chicken pose-frame variant. The chicken is
-// authored facing forward (like the Fox), so no yaw flip is applied. The throw
-// frame (F3) bakes the held Egg alongside Chicken_F3; the walk/idle frames bake
-// only their own pose, so the Egg and the unused poses stay hidden.
+// Return cached baked parts for one Chicken pose-frame variant. The walk/idle
+// frames (F0–F2) are authored facing forward (like the Fox), so no yaw flip is
+// applied and they bake only their own pose (Egg + unused poses stay hidden).
+// The throw frame (F3) bakes the held Egg alongside Chicken_F3 and is spun 180°
+// about the Y axis — Blender's Z axis maps to glTF/three.js Y, so this is the
+// requested "rotate Chicken_F3 180° on Blender's Z" — turning the chicken so its
+// tail feathers face the target it is throwing toward.
 export function getBakedChickenFrameParts(gltf: any, frameIndex: number): BakedPart[] {
   const key = chickenFrameVariantKey(frameIndex);
   const cached = bakedVariantCache.get(key);
   if (cached) return cached;
-  const nodeNames =
-    frameIndex === CHICKEN_THROW_FRAME
-      ? [chickenFrameNodeName(CHICKEN_THROW_FRAME), CHICKEN_EGG_NODE_NAME]
-      : chickenFrameNodeName(frameIndex);
-  const parts = bakePoseFrame(gltf, nodeNames);
+  const isThrowFrame = frameIndex === CHICKEN_THROW_FRAME;
+  const nodeNames = isThrowFrame
+    ? [chickenFrameNodeName(CHICKEN_THROW_FRAME), CHICKEN_EGG_NODE_NAME]
+    : chickenFrameNodeName(frameIndex);
+  const yRotation = isThrowFrame ? Math.PI : 0; // tail-to-target for the throw pose
+  const parts = bakePoseFrame(gltf, nodeNames, yRotation);
   bakedVariantCache.set(key, parts);
   return parts;
 }
