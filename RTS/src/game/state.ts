@@ -115,7 +115,7 @@ const TONGUE_DRAG_STOP_DIST = 2.5;   // a dragged enemy stops once this close to
 // HISS_KNOCKBACK_MS as a constant-velocity slide the tick integrates (see the
 // knockback intercept in tick + the hiss action). A surrounded cat therefore pushes
 // the whole encircling ring outward at once.
-const HISS_POSE_MS = 250;            // how long the Kitty_F2 hiss pose stays visible after a hiss
+const HISS_POSE_MS = 500;            // how long the Kitty_F2 hiss pose stays visible after a hiss
 const HISS_KNOCKBACK_RANGE = 20;     // enemies whose center is within this radius are knocked back
 const HISS_KNOCKBACK_RANGE_SQ = HISS_KNOCKBACK_RANGE * HISS_KNOCKBACK_RANGE;
 const HISS_KNOCKBACK_DISTANCE = 20;  // how far each affected enemy is shoved outward, in world units
