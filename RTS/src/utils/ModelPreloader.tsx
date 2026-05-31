@@ -294,11 +294,20 @@ export const EGG_PROJECTILE_VARIANT_KEY = 'Chicken-egg-projectile';
 // World-space size (longest edge) a unit should occupy, by kind and animal.
 // Mirrors the targets previously used in createPreparedScene.
 export function getKindTargetScale(animal: AnimalId, kind: 'Unit' | 'Queen' | 'King' | 'Base'): number {
+  // Yetti is the oversized "boss" animal with hand-tuned battlefield sizes.
+  if (animal === 'Yetti') {
+    if (kind === 'King') return 13.0;
+    if (kind === 'Queen') return 11.0;
+    if (kind === 'Unit') return 8.0;
+    return 6.0; // Base keeps its prior size.
+  }
+
   let target = kind === 'King' ? 6.0 : kind === 'Queen' ? 5.0 : 3.0;
-  if (animal === 'Yetti') target *= 2.0;
-  // Regular (non-Yetti) units are doubled so they read more clearly on the
-  // battlefield; kings, queens, and Yetti units keep their original size.
-  if (kind === 'Unit' && animal !== 'Yetti') target *= 2.0;
+  // The Bear king and queen are 2 units larger than the standard royals.
+  if (animal === 'Bear' && (kind === 'King' || kind === 'Queen')) target += 2.0;
+  // Regular units are doubled so they read more clearly on the battlefield;
+  // kings and queens keep their base size.
+  if (kind === 'Unit') target *= 2.0;
   return target;
 }
 
