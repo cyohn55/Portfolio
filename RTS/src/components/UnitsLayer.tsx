@@ -276,7 +276,7 @@ const FROG_LEAP_PHASE_END = 0.75; // centered on the hop apex at phase 0.5
 // Tongue beam: cross-section thickness (the baked tongue has a longest edge of 1,
 // re-stretched to the live extension along its length axis each frame). The beam
 // is authored along local +Z, so the renderer rotates +Z onto the aim direction.
-const TONGUE_BEAM_THICKNESS = 0.45;
+const TONGUE_BEAM_THICKNESS = 0.9;
 
 // Chicken pose timing: idle holds Chicken_F0; while walking it alternates
 // Chicken_F1 <-> Chicken_F2 every 100ms. The egg-throw pose (Chicken_F3 + Egg)

@@ -267,6 +267,10 @@ export function frogFrameVariantKey(frameIndex: number): string {
 
 // Variant key for the standalone stretchable tongue beam (not a per-frog pose).
 export const FROG_TONGUE_VARIANT_KEY = 'Frog-tongue-beam';
+// Tint for the tongue beam (#C83D2D). The Tongue mesh shares its glb material
+// (Material.014) with parts of the frog body, so the beam bake clones the
+// material and recolors only the clone — the body parts keep their original hue.
+export const FROG_TONGUE_COLOR = 0xc83d2d;
 
 // The Chicken model packs four pose objects (Chicken_F0..Chicken_F3) plus an Egg
 // into one glb. F0 is idle; F1/F2 alternate as the walk cycle; F3 is the egg-throw
@@ -497,7 +501,11 @@ export function getBakedFrogTongueParts(gltf: any): BakedPart[] {
         geometry.applyMatrix4(mesh.matrixWorld); // -> world space
         geometry.translate(-center.x, -center.y, -center.z); // center at origin
         geometry.scale(1 / maxDimension, 1 / maxDimension, 1 / maxDimension); // longest edge -> 1
-        const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+        const source = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+        // Clone before tinting so the shared source material (used by frog-body
+        // parts) is left untouched.
+        const material = (source as THREE.MeshStandardMaterial).clone();
+        if ((material as any).color) (material as any).color.setHex(FROG_TONGUE_COLOR);
         parts.push({ geometry, material });
       });
     }

@@ -34,11 +34,11 @@ const SIM_DT_MS = 1000 / 60;
 // Open ground far from the moat/bridges so the only behavior under test is the
 // frog's grab — no terrain chokepoints.
 const FROG_POSITION = { x: 200, y: 0.25, z: 200 };
-// Within the tongue's reach (TONGUE_RANGE = 12) but beyond the frog's melee
+// Within the tongue's reach (TONGUE_RANGE = 40) but beyond the frog's melee
 // range (8), so the grab — not an incidental melee swing — is what connects.
 const IN_RANGE_OFFSET = 9;
 // Beyond the tongue's reach: a press here should claim nothing.
-const OUT_OF_RANGE_OFFSET = 20;
+const OUT_OF_RANGE_OFFSET = 50;
 // Enough frames to cover windup + full extend + full retract for IN_RANGE_OFFSET.
 const TICK_COUNT = 90;
 // Fewer frames: enough to complete one grab while staying inside the cooldown

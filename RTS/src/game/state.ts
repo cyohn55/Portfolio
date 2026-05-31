@@ -97,7 +97,7 @@ const EGG_SPAWN_HEIGHT = 1.5;    // height above the chicken's base the egg laun
 // tongue extends from the frog's mouth to a single claimed enemy, latches on
 // contact, deals the frog's attack damage once, then reels that enemy back to
 // the frog. A missed throw simply retracts. See updateFrogTongues + fireTongues.
-const TONGUE_RANGE = 12;             // reach of the grab (beyond the frog's melee range of 8)
+const TONGUE_RANGE = 40;             // reach of the grab (well beyond the frog's melee range of 8)
 const TONGUE_RANGE_SQ = TONGUE_RANGE * TONGUE_RANGE;
 const TONGUE_EXTEND_SPEED = 60;      // world units/sec the tongue tip reaches out
 const TONGUE_RETRACT_SPEED = 45;     // world units/sec the tongue (and any catch) reels back
