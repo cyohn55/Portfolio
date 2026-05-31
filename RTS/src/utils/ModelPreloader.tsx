@@ -305,6 +305,10 @@ export function getKindTargetScale(animal: AnimalId, kind: 'Unit' | 'Queen' | 'K
   let target = kind === 'King' ? 6.0 : kind === 'Queen' ? 5.0 : 3.0;
   // The Bear king and queen are 2 units larger than the standard royals.
   if (animal === 'Bear' && (kind === 'King' || kind === 'Queen')) target += 2.0;
+  // The Cat king and queen are doubled (king 12 / queen 10). Doubling the standard
+  // 6/5 royals preserves the king-slightly-larger-than-queen ratio shared by the
+  // other animals.
+  if (animal === 'Cat' && (kind === 'King' || kind === 'Queen')) target *= 2.0;
   // Regular units are doubled so they read more clearly on the battlefield;
   // kings and queens keep their base size.
   if (kind === 'Unit') target *= 2.0;

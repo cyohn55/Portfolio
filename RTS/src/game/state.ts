@@ -115,7 +115,7 @@ const TONGUE_DRAG_STOP_DIST = 2.5;   // a dragged enemy stops once this close to
 // HISS_KNOCKBACK_MS as a constant-velocity slide the tick integrates (see the
 // knockback intercept in tick + the hiss action). A surrounded cat therefore pushes
 // the whole encircling ring outward at once.
-const HISS_POSE_MS = 500;            // how long the Kitty_F2 hiss pose stays visible after a hiss
+const HISS_POSE_MS = 1000;           // how long the Kitty_F2 hiss pose stays visible (cat is movement-locked this whole time)
 const HISS_KNOCKBACK_RANGE = 20;     // enemies whose center is within this radius are knocked back
 const HISS_KNOCKBACK_RANGE_SQ = HISS_KNOCKBACK_RANGE * HISS_KNOCKBACK_RANGE;
 const HISS_KNOCKBACK_DISTANCE = 20;  // how far each affected enemy is shoved outward, in world units
@@ -2035,12 +2035,16 @@ function findClosestEnemy(unit: Unit, grid: SpatialGrid | null, all: Unit[]): Un
 const UNWEDGE_STUCK_TICKS = 60;
 
 function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Unit[], collisionRadius: number = 2.5, selectedUnitIds: string[] = [], localPlayerId: string | null = null, unitOrders: Record<string, any> = {}, spatialGrid: SpatialGrid | null = null): Position3D {
-  // A shelled turtle — or a frog mid tongue-grab — is locked in place: every
-  // movement branch funnels its proposed position through here, so refusing the
+  // A shelled turtle, a frog mid tongue-grab, or a cat mid-Hiss is locked in place:
+  // every movement branch funnels its proposed position through here, so refusing the
   // move keeps the unit pinned while still letting combat (which never touches
   // checkCollision) run. The frog must hold position so its tongue's origin stays
-  // anchored at the mouth for the whole extend/retract animation.
-  if (currentUnit.isShelled || currentUnit.tongue) {
+  // anchored at the mouth for the whole extend/retract animation; the cat holds while
+  // its Kitty_F2 hiss pose plays. The hiss window is stamped with performance.now()
+  // (same clock used to set hissUntilMs), and the && short-circuits so the clock read
+  // only happens for cats that have actually hissed.
+  const hissLocked = currentUnit.hissUntilMs !== undefined && performance.now() < currentUnit.hissUntilMs;
+  if (currentUnit.isShelled || currentUnit.tongue || hissLocked) {
     return { x: currentUnit.position.x, y: currentUnit.position.y, z: currentUnit.position.z };
   }
 
