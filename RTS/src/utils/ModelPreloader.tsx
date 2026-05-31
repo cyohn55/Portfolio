@@ -294,7 +294,7 @@ export const EGG_PROJECTILE_VARIANT_KEY = 'Chicken-egg-projectile';
 // World-space size (longest edge) a unit should occupy, by kind and animal.
 // Mirrors the targets previously used in createPreparedScene.
 export function getKindTargetScale(animal: AnimalId, kind: 'Unit' | 'Queen' | 'King' | 'Base'): number {
-  let target = kind === 'King' ? 6.0 : kind === 'Queen' ? 5.0 : 3.0;
+  let target = kind === 'King' ? 12.0 : kind === 'Queen' ? 10.0 : 6.0;
   if (animal === 'Yetti') target *= 2.0;
   return target;
 }
