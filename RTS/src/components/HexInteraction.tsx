@@ -40,14 +40,16 @@ export function MapInteraction() {
   const addToSelection = useGameStore((s) => s.addToSelection);
   const setPatrol = useGameStore((s) => s.setPatrol);
   const toggleTurtleShell = useGameStore((s) => s.toggleTurtleShell);
+  const throwEggs = useGameStore((s) => s.throwEggs);
   // Mouse buttons are remappable via Settings -> Controls. Defaults: left=select,
   // right=command. tokenToMouseButton maps the saved token back to a DOM button.
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
   const primaryButton = tokenToMouseButton(keyboardBindings.primaryAction) ?? 0;
   const secondaryButton = tokenToMouseButton(keyboardBindings.secondaryAction) ?? 2;
 
-  // Guards the shell toggle to one fire per simultaneous press, reset once the
-  // buttons are no longer both held (see handleMouseUp).
+  // Guards the simultaneous-press combo (turtle shell toggle and chicken egg
+  // throw) to one fire per press, reset once the buttons are no longer both held
+  // (see handleMouseUp). One press = at most one egg per chicken.
   const shellComboHandledRef = useRef(false);
 
   // Use ref instead of state to avoid timing issues
@@ -185,6 +187,13 @@ export function MapInteraction() {
       .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Turtle' && selectedUnitIds.includes(unit.id))
       .map((unit) => unit.id);
 
+  // The local player's currently-selected Chicken units — the throwers of the
+  // egg ability (simultaneous primary+secondary press).
+  const selectedFriendlyChickenIds = (): string[] =>
+    units
+      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Chicken' && selectedUnitIds.includes(unit.id))
+      .map((unit) => unit.id);
+
   // True when the primary and secondary action buttons are held at the same time
   // (read from a single event's `buttons` bitmask, so press order doesn't matter).
   const areShellButtonsHeld = (buttons: number): boolean =>
@@ -215,15 +224,22 @@ export function MapInteraction() {
   };
 
   const handleMouseDown = (event: MouseEvent) => {
-    // Simultaneous primary+secondary press toggles the shell lock on any
-    // selected Turtle. Only intercepts when a turtle is actually selected, so
-    // pressing both buttons otherwise keeps its existing (per-button) behavior.
+    // Simultaneous primary+secondary press drives the per-animal combo abilities:
+    // it toggles the shell lock on any selected Turtle and throws an egg from any
+    // selected Chicken (toward the cursor). Only intercepts when such a unit is
+    // selected, so pressing both buttons otherwise keeps the per-button behavior.
     if (areShellButtonsHeld(event.buttons)) {
       const turtleIds = selectedFriendlyTurtleIds();
-      if (turtleIds.length > 0) {
+      const chickenIds = selectedFriendlyChickenIds();
+      if (turtleIds.length > 0 || chickenIds.length > 0) {
         if (!shellComboHandledRef.current) {
           shellComboHandledRef.current = true;
-          toggleTurtleShell(turtleIds);
+          if (turtleIds.length > 0) toggleTurtleShell(turtleIds);
+          if (chickenIds.length > 0) {
+            const screenPos = getScreenPosition(event);
+            const target = getWorldPositionFromMouse(screenPos.x, screenPos.y);
+            throwEggs({ unitIds: chickenIds, target: { x: target.x, y: 0, z: target.z } });
+          }
           // Discard the selection/patrol drag the first button may have started.
           hideSelectionBox();
           hidePatrolArrow();
@@ -435,7 +451,7 @@ export function MapInteraction() {
       canvas.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, primaryButton, secondaryButton]);
+  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, primaryButton, secondaryButton]);
 
   const handleGroundClick = (e: any) => {
     // Prevent browser context menu on right-click - check if preventDefault exists
@@ -447,10 +463,12 @@ export function MapInteraction() {
     // Only handle the secondary (command) button for movement
     if (e.button === secondaryButton) { // Secondary (command) button
 
-      // Skip the move when this secondary press is half of a shell-toggle combo
-      // on a selected turtle (the toggle is handled in handleMouseDown instead).
+      // Skip the move when this secondary press is half of a combo on a selected
+      // turtle (shell toggle) or chicken (egg throw) — those are handled in
+      // handleMouseDown instead, and shouldn't also issue a move order.
       const heldButtons = e.nativeEvent?.buttons ?? 0;
-      if (areShellButtonsHeld(heldButtons) && selectedFriendlyTurtleIds().length > 0) {
+      if (areShellButtonsHeld(heldButtons) &&
+          (selectedFriendlyTurtleIds().length > 0 || selectedFriendlyChickenIds().length > 0)) {
         return;
       }
 

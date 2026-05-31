@@ -86,6 +86,27 @@ export interface Unit {
   // While true the unit holds position — checkCollision freezes its movement —
   // but it can still attack in range. The renderer shows the F0 shell pose.
   isShelled?: boolean;
+  // Chicken egg-throw ability (triggered by simultaneous primary+secondary mouse
+  // press while a friendly Chicken is selected). lastEggAtMs gates the per-press
+  // cooldown; eggThrowUntilMs is the timestamp the F3 throw pose (Chicken_F3 +
+  // Egg) stays visible until, after which the chicken returns to idle/walk poses.
+  // Both are stamped with performance.now() to match the combat clock.
+  lastEggAtMs?: number;
+  eggThrowUntilMs?: number;
+}
+
+// A flying egg fired by a Chicken's throw ability. Travels in a straight line on
+// the XZ plane toward the targeted point, dealing `damage` to the first enemy
+// animal (non-Base) it passes within EGG_HIT_RADIUS of, then expiring. Expires
+// on its own once it has flown `maxRange` world units without a hit.
+export interface Projectile {
+  id: string;
+  ownerId: string;            // the firing chicken's owner; egg only hits other owners
+  position: Position3D;       // current world position (flies at a fixed height)
+  velocity: Position3D;       // world units per second (y is 0 — flat flight)
+  traveled: number;           // world units flown so far, vs maxRange for expiry
+  maxRange: number;           // distance to the targeted area, clamped to EGG_MAX_RANGE
+  damage: number;             // hp removed from the animal it strikes
 }
 
 export interface Player {
@@ -172,6 +193,7 @@ export interface GameState {
   unitOrders: Record<string, Position3D>; // unit id -> target position for movement orders
   queenPatrols: Record<string, PatrolRoute>; // queen id -> patrol route
   matchStats: MatchStats; // scoring counters for the current match (local player)
+  projectiles: Projectile[]; // in-flight egg projectiles (Chicken ability)
 }
 
 export interface CommandMoveUnits {
@@ -188,6 +210,11 @@ export interface CommandSetPatrol {
 export interface CommandAttackTarget {
   unitIds: string[];
   targetId: string; // Enemy unit ID to attack
+}
+
+export interface CommandThrowEggs {
+  unitIds: string[];      // selected units; only friendly Chickens off cooldown fire
+  target: Position3D;     // world point the eggs are thrown toward
 }
 
 

@@ -261,6 +261,25 @@ export function frogFrameVariantKey(frameIndex: number): string {
   return `Frog-frame${frameIndex % FROG_FRAME_COUNT}`;
 }
 
+// The Chicken model packs four pose objects (Chicken_F0..Chicken_F3) plus an Egg
+// into one glb. F0 is idle; F1/F2 alternate as the walk cycle; F3 is the egg-throw
+// pose, baked together with the held Egg so both appear at once (see UnitsLayer).
+// The Egg is also baked on its own as a flying projectile (getBakedEggProjectileParts).
+export const CHICKEN_FRAME_COUNT = 4;
+export const CHICKEN_THROW_FRAME = 3; // Chicken_F3 (+ Egg) — the throw pose
+export const CHICKEN_EGG_NODE_NAME = 'Egg';
+
+export function chickenFrameNodeName(frameIndex: number): string {
+  return `Chicken_F${frameIndex}`;
+}
+
+export function chickenFrameVariantKey(frameIndex: number): string {
+  return `Chicken-frame${frameIndex % CHICKEN_FRAME_COUNT}`;
+}
+
+// Variant key for the standalone flying egg projectile (not a per-unit pose).
+export const EGG_PROJECTILE_VARIANT_KEY = 'Chicken-egg-projectile';
+
 // World-space size (longest edge) a unit should occupy, by kind and animal.
 // Mirrors the targets previously used in createPreparedScene.
 export function getKindTargetScale(animal: AnimalId, kind: 'Unit' | 'Queen' | 'King' | 'Base'): number {
@@ -329,13 +348,15 @@ export function getBakedAnimalParts(gltf: any, animal: AnimalId): BakedPart[] {
   return parts;
 }
 
-// Bake a single named pose object (Turtle_F#, Fox_F#, …) out of a multi-pose
+// Bake one or more named pose objects (Turtle_F#, Fox_F#, …) out of a multi-pose
 // glb into instanced parts. All poses share one normalization — derived from the
 // whole model's bounds rather than each pose's own — so every frame lands at the
 // same size and ground height and the unit never jitters or resizes as the
 // renderer cycles poses. (The poses overlap at a common origin, so the union
 // bounds match each pose closely while guaranteeing identical placement.)
-function bakePoseFrame(gltf: any, poseNodeName: string, yRotation = 0): BakedPart[] {
+// Passing several node names bakes them together as one variant, e.g. the
+// Chicken's throw pose (Chicken_F3 + the held Egg).
+function bakePoseFrame(gltf: any, poseNodeNames: string | string[], yRotation = 0): BakedPart[] {
   if (!gltf?.scene) return [];
 
   const root = gltf.scene.clone(true);
@@ -358,18 +379,20 @@ function bakePoseFrame(gltf: any, poseNodeName: string, yRotation = 0): BakedPar
 
   root.updateWorldMatrix(true, true);
 
-  const frameRoot = root.getObjectByName(poseNodeName);
-  if (!frameRoot) return [];
-
+  const names = Array.isArray(poseNodeNames) ? poseNodeNames : [poseNodeNames];
   const parts: BakedPart[] = [];
-  frameRoot.traverse((object) => {
-    const mesh = object as THREE.Mesh;
-    if (!mesh.isMesh || !mesh.geometry) return;
-    const geometry = mesh.geometry.clone();
-    geometry.applyMatrix4(mesh.matrixWorld); // bake normalization into vertices
-    const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
-    parts.push({ geometry, material });
-  });
+  for (const name of names) {
+    const frameRoot = root.getObjectByName(name);
+    if (!frameRoot) continue;
+    frameRoot.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.geometry) return;
+      const geometry = mesh.geometry.clone();
+      geometry.applyMatrix4(mesh.matrixWorld); // bake normalization into vertices
+      const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+      parts.push({ geometry, material });
+    });
+  }
 
   return parts;
 }
@@ -436,6 +459,58 @@ export function getBakedFrogFrameParts(gltf: any, frameIndex: number): BakedPart
   if (cached) return cached;
   const parts = bakePoseFrame(gltf, frogFrameNodeName(frameIndex));
   bakedVariantCache.set(key, parts);
+  return parts;
+}
+
+// Return cached baked parts for one Chicken pose-frame variant. The chicken is
+// authored facing forward (like the Fox), so no yaw flip is applied. The throw
+// frame (F3) bakes the held Egg alongside Chicken_F3; the walk/idle frames bake
+// only their own pose, so the Egg and the unused poses stay hidden.
+export function getBakedChickenFrameParts(gltf: any, frameIndex: number): BakedPart[] {
+  const key = chickenFrameVariantKey(frameIndex);
+  const cached = bakedVariantCache.get(key);
+  if (cached) return cached;
+  const nodeNames =
+    frameIndex === CHICKEN_THROW_FRAME
+      ? [chickenFrameNodeName(CHICKEN_THROW_FRAME), CHICKEN_EGG_NODE_NAME]
+      : chickenFrameNodeName(frameIndex);
+  const parts = bakePoseFrame(gltf, nodeNames);
+  bakedVariantCache.set(key, parts);
+  return parts;
+}
+
+// Return cached baked parts for the flying egg projectile. Unlike a pose frame,
+// the egg is normalized on its own bounds (longest edge -> 1) and centered at the
+// origin (no feet-to-ground drop), so the renderer can place and scale it freely
+// at each projectile's world position.
+export function getBakedEggProjectileParts(gltf: any): BakedPart[] {
+  const cached = bakedVariantCache.get(EGG_PROJECTILE_VARIANT_KEY);
+  if (cached) return cached;
+  const parts: BakedPart[] = [];
+  if (gltf?.scene) {
+    const root = gltf.scene.clone(true);
+    root.updateWorldMatrix(true, true);
+    const eggNode = root.getObjectByName(CHICKEN_EGG_NODE_NAME);
+    if (eggNode) {
+      const box = new THREE.Box3().setFromObject(eggNode);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDimension = Math.max(size.x, size.y, size.z) || 1;
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      eggNode.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.geometry) return;
+        const geometry = mesh.geometry.clone();
+        geometry.applyMatrix4(mesh.matrixWorld); // -> world space
+        geometry.translate(-center.x, -center.y, -center.z); // center at origin
+        geometry.scale(1 / maxDimension, 1 / maxDimension, 1 / maxDimension); // longest edge -> 1
+        const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+        parts.push({ geometry, material });
+      });
+    }
+  }
+  bakedVariantCache.set(EGG_PROJECTILE_VARIANT_KEY, parts);
   return parts;
 }
 

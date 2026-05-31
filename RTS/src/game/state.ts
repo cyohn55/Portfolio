@@ -12,7 +12,7 @@ setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import { pathfinder } from '../components/Working/pathfinder';
 import { clampToArena } from '../components/Working/arenaBoundary';
-import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute } from './types';
+import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 import * as leaderboardModule from '../components/Working/leaderboard';
 import * as leaderboardRemoteModule from '../components/Working/leaderboardRemote';
@@ -78,6 +78,18 @@ const ANIMALS: Record<AnimalId, { baseHp: number; dmg: number; speed: number; ra
 // loop lets the unit attack from distance and back away from faster-closing melee
 // threats (kiting) instead of walking into their swing.
 const MELEE_RANGE = 5;
+
+// Chicken egg-throw ability tuning. The chicken keeps its melee peck (the ANIMALS
+// stats above) for normal combat; the egg is a separate, player-activated ranged
+// strike fired by holding both mouse buttons while a friendly Chicken is selected.
+const EGG_DAMAGE = 10;            // hp removed from the first enemy animal an egg hits
+const EGG_SPEED = 45;            // world units per second the egg flies
+const EGG_HIT_RADIUS = 2.5;      // an egg hits an enemy whose center passes within this
+const EGG_HIT_RADIUS_SQ = EGG_HIT_RADIUS * EGG_HIT_RADIUS;
+const EGG_MAX_RANGE = 60;        // an egg expires after flying this far without a hit
+const EGG_COOLDOWN_MS = 700;     // minimum time between a chicken's egg throws
+const EGG_THROW_POSE_MS = 250;   // how long the Chicken_F3 + Egg throw pose stays up
+const EGG_SPAWN_HEIGHT = 1.5;    // height above the chicken's base the egg launches from
 
 // Full roster of playable animals, derived from the stats table so it stays in
 // sync automatically when animals are added or removed.
@@ -147,6 +159,7 @@ type Store = GameState & {
   addToSelection: (unitIds: string[]) => void;
   clearSelection: () => void;
   toggleTurtleShell: (unitIds: string[]) => void;
+  throwEggs: (cmd: CommandThrowEggs) => void;
   toggleOptimization: (key: keyof Store['optimizations']) => void;
   // Bridge animation system
   bridgeState: BridgeState;
@@ -280,6 +293,7 @@ export const useGameStore = create<Store>((set, get) => ({
   lastWinCheckMs: 0,
   deadUnitsToRemove: [],
   matchStats: createEmptyMatchStats(),
+  projectiles: [],
   ultraPerformanceMode: true, // Enable ultra mode by default
   optimizations: {
     aiThrottling: true,
@@ -386,7 +400,7 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
@@ -443,6 +457,7 @@ export const useGameStore = create<Store>((set, get) => ({
       lastWinCheckMs: 0,
       deadUnitsToRemove: [],
       matchStats: createEmptyMatchStats(),
+      projectiles: [],
       bridgeState: {
         rightBridge: {
           currentState: 'up',
@@ -1353,34 +1368,7 @@ export const useGameStore = create<Store>((set, get) => ({
         if (target.hp <= 0) {
           if (tickDebug) console.log(`Unit ${target.animal} (${target.ownerId}) killed by ${attacker.animal} (${attacker.ownerId})`);
           draft.deadUnitsToRemove.push(target.id);
-
-          // Attribution keys off the killing-blow attacker, so a target chipped
-          // down by allied damage doesn't double-count. Track both sides:
-          // - Player→enemy kills feed the leaderboard score AND the Your
-          //   Forces card.
-          // - AI→player kills are non-scoring but populate the Enemy Forces
-          //   card so players can see how the AI fared against them.
-          const isPlayerKillingEnemy =
-            attacker.ownerId === draft.localPlayerId &&
-            target.ownerId !== draft.localPlayerId;
-          const isAiKillingPlayer =
-            attacker.ownerId !== draft.localPlayerId &&
-            target.ownerId === draft.localPlayerId;
-          if (isPlayerKillingEnemy) {
-            switch (target.kind) {
-              case 'Base':  draft.matchStats.enemyBasesDestroyed++; break;
-              case 'King':  draft.matchStats.enemyKingsKilled++;    break;
-              case 'Queen': draft.matchStats.enemyQueensKilled++;   break;
-              case 'Unit':  draft.matchStats.enemyUnitsKilled++;    break;
-            }
-          } else if (isAiKillingPlayer) {
-            switch (target.kind) {
-              case 'Base':  draft.matchStats.playerBasesDestroyed++; break;
-              case 'King':  draft.matchStats.playerKingsKilled++;    break;
-              case 'Queen': draft.matchStats.playerQueensKilled++;   break;
-              case 'Unit':  draft.matchStats.playerUnitsKilled++;    break;
-            }
-          }
+          creditKill(draft, attacker.ownerId, target);
         }
 
         // Apply knockback effect (but not to Bases - they should stay stationary)
@@ -1404,6 +1392,11 @@ export const useGameStore = create<Store>((set, get) => ({
       if (tickDebug && draft.deadUnitsToRemove.length > 0) {
         console.log(`Removing ${draft.deadUnitsToRemove.length} dead units`);
       }
+
+      // Advance in-flight egg projectiles and resolve their hits. Runs before the
+      // dead-unit cleanup below so an animal an egg kills this tick is removed in
+      // the same pass as melee-combat deaths.
+      updateProjectiles(draft, dtSec);
 
       // Immediate dead unit removal to prevent regeneration of dead units
       if (draft.deadUnitsToRemove.length > 0) {
@@ -1669,6 +1662,39 @@ export const useGameStore = create<Store>((set, get) => ({
           delete draft.unitOrders[id];
           unit.unitState = 'idle';
         }
+      }
+    })
+  ),
+
+  // Chicken egg-throw ability. Each selected friendly Chicken that is off its
+  // egg cooldown turns to face the targeted point, shows the throw pose for a
+  // short window, and launches one egg projectile toward it (resolved in tick).
+  throwEggs: (cmd) => set((prev) =>
+    produce(prev, (draft) => {
+      const now = performance.now();
+      for (const id of cmd.unitIds) {
+        const unit = draft.units.find((candidate) => candidate.id === id);
+        if (!unit || unit.animal !== 'Chicken' || unit.ownerId !== draft.localPlayerId) continue;
+        if (unit.hp <= 0) continue;
+        if (unit.lastEggAtMs !== undefined && now - unit.lastEggAtMs < EGG_COOLDOWN_MS) continue;
+
+        const direction = normalize3D(subtract3D(cmd.target, unit.position));
+        if (direction.x === 0 && direction.z === 0) continue; // target on top of the chicken
+
+        unit.rotation = Math.atan2(direction.x, direction.z); // face the throw, like movement does
+        unit.lastEggAtMs = now;
+        unit.eggThrowUntilMs = now + EGG_THROW_POSE_MS;
+
+        const distanceToTarget = Math.sqrt(distanceSquared3D(unit.position, cmd.target));
+        draft.projectiles.push({
+          id: `egg-${id}-${now.toFixed(0)}-${nanoid(5)}`,
+          ownerId: unit.ownerId,
+          position: { x: unit.position.x, y: unit.position.y + EGG_SPAWN_HEIGHT, z: unit.position.z },
+          velocity: { x: direction.x * EGG_SPEED, y: 0, z: direction.z * EGG_SPEED },
+          traveled: 0,
+          maxRange: Math.min(Math.max(distanceToTarget, EGG_HIT_RADIUS), EGG_MAX_RANGE),
+          damage: EGG_DAMAGE,
+        });
       }
     })
   ),
@@ -2014,6 +2040,79 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
   }
 
   return adjustedPosition;
+}
+
+// Credit a kill to the match-stats cards based on who landed the killing blow.
+// Attribution keys off the killing attacker's owner so allied chip damage never
+// double-counts. Player→enemy kills feed the leaderboard score and the Your
+// Forces card; AI→player kills are non-scoring but populate the Enemy Forces
+// card. Shared by melee combat and the Chicken's egg projectile.
+function creditKill(draft: Store, attackerOwnerId: string, target: Unit): void {
+  const isPlayerKillingEnemy =
+    attackerOwnerId === draft.localPlayerId && target.ownerId !== draft.localPlayerId;
+  const isAiKillingPlayer =
+    attackerOwnerId !== draft.localPlayerId && target.ownerId === draft.localPlayerId;
+  if (isPlayerKillingEnemy) {
+    switch (target.kind) {
+      case 'Base':  draft.matchStats.enemyBasesDestroyed++; break;
+      case 'King':  draft.matchStats.enemyKingsKilled++;    break;
+      case 'Queen': draft.matchStats.enemyQueensKilled++;   break;
+      case 'Unit':  draft.matchStats.enemyUnitsKilled++;    break;
+    }
+  } else if (isAiKillingPlayer) {
+    switch (target.kind) {
+      case 'Base':  draft.matchStats.playerBasesDestroyed++; break;
+      case 'King':  draft.matchStats.playerKingsKilled++;    break;
+      case 'Queen': draft.matchStats.playerQueensKilled++;   break;
+      case 'Unit':  draft.matchStats.playerUnitsKilled++;    break;
+    }
+  }
+}
+
+// Advance every in-flight egg one tick: move it along its flight vector, then
+// resolve the first enemy animal (non-Base) it passes within EGG_HIT_RADIUS of.
+// A hit removes EGG_DAMAGE hp (crediting the kill and queuing removal through the
+// shared dead-unit path) and consumes the egg. Eggs that fly past EGG_MAX_RANGE
+// without a hit simply expire. Mutates draft.projectiles in place.
+function updateProjectiles(draft: Store, dtSec: number): void {
+  if (!draft.projectiles || draft.projectiles.length === 0) return;
+
+  const survivors: Projectile[] = [];
+  for (const egg of draft.projectiles) {
+    const stepX = egg.velocity.x * dtSec;
+    const stepZ = egg.velocity.z * dtSec;
+    egg.position.x += stepX;
+    egg.position.z += stepZ;
+    egg.traveled += Math.sqrt(stepX * stepX + stepZ * stepZ);
+
+    // Resolve the closest enemy animal within the egg's hit radius this tick.
+    let hitTarget: Unit | null = null;
+    let closestSq = EGG_HIT_RADIUS_SQ;
+    for (const candidate of draft.units) {
+      if (candidate.ownerId === egg.ownerId) continue; // enemies only
+      if (candidate.kind === 'Base') continue;         // animals only
+      if (candidate.hp <= 0) continue;
+      const dx = candidate.position.x - egg.position.x;
+      const dz = candidate.position.z - egg.position.z;
+      const distSq = dx * dx + dz * dz; // XZ plane; the egg flies at a fixed height
+      if (distSq <= closestSq) {
+        closestSq = distSq;
+        hitTarget = candidate;
+      }
+    }
+
+    if (hitTarget) {
+      hitTarget.hp -= egg.damage;
+      if (hitTarget.hp <= 0) {
+        draft.deadUnitsToRemove.push(hitTarget.id);
+        creditKill(draft, egg.ownerId, hitTarget);
+      }
+      continue; // egg is consumed on impact
+    }
+
+    if (egg.traveled < egg.maxRange) survivors.push(egg); // else expired in flight
+  }
+  draft.projectiles = survivors;
 }
 
 function checkWinConditions(draft: GameState): void {

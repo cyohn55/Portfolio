@@ -54,6 +54,7 @@ const BUTTON_POSE_NODE: Partial<Record<AnimalId, string>> = {
   Cat: 'Kitty_F0',
   Bee: 'Bee_F0',
   Frog: 'Frog_F0',
+  Chicken: 'Chicken_F0',
 };
 
 // 3D Model component for buttons

@@ -37,6 +37,7 @@ const CARD_POSE_NODE: Partial<Record<AnimalId, string>> = {
   Cat: 'Kitty_F0',
   Bee: 'Bee_F0',
   Frog: 'Frog_F0',
+  Chicken: 'Chicken_F0',
 };
 
 const TARGET_DISPLAY_SIZE = 3.0;     // Three.js units the model should fit within

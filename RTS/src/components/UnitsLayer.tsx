@@ -14,6 +14,9 @@ import {
   CAT_FRAME_COUNT,
   BEE_FRAME_COUNT,
   FROG_FRAME_COUNT,
+  CHICKEN_FRAME_COUNT,
+  CHICKEN_THROW_FRAME,
+  EGG_PROJECTILE_VARIANT_KEY,
   baseVariantKey,
   owlWingVariantKey,
   turtleFrameVariantKey,
@@ -22,6 +25,7 @@ import {
   catFrameVariantKey,
   beeFrameVariantKey,
   frogFrameVariantKey,
+  chickenFrameVariantKey,
   getKindTargetScale,
   getBakedAnimalParts,
   getBakedOwlWingParts,
@@ -31,6 +35,8 @@ import {
   getBakedCatFrameParts,
   getBakedBeeFrameParts,
   getBakedFrogFrameParts,
+  getBakedChickenFrameParts,
+  getBakedEggProjectileParts,
   type BakedPart,
 } from '../utils/ModelPreloader';
 import * as THREE from 'three';
@@ -260,10 +266,24 @@ const FROG_LEAP_FRAME = 1; // Frog_F1 (mid-leap)
 const FROG_LEAP_PHASE_START = 0.25; // hopPhase window where the leap pose shows,
 const FROG_LEAP_PHASE_END = 0.75; // centered on the hop apex at phase 0.5
 
+// Chicken pose timing: idle holds Chicken_F0; while walking it alternates
+// Chicken_F1 <-> Chicken_F2 every 100ms. The egg-throw pose (Chicken_F3 + Egg)
+// overrides both for EGG_THROW_POSE_MS after a throw — see the eggThrowUntilMs
+// check below, which reads the same performance.now() clock the throw stamps.
+const CHICKEN_WALK_FRAME_MS = 100;
+const CHICKEN_IDLE_FRAME = 0; // Chicken_F0
+const CHICKEN_WALK_FRAMES = [1, 2] as const; // Chicken_F1 <-> Chicken_F2
+
+// Flying egg projectile: world size (the baked egg has a longest edge of 1) and
+// a gentle spin so it tumbles in flight rather than sliding rigidly.
+const EGG_WORLD_SIZE = 1.3;
+const EGG_SPIN_RAD_PER_MS = 0.006;
+
 // Per-unit visual context resolved each render frame (turtle pose selection
 // needs wall-clock time and whether the unit is currently moving; the cat also
-// needs to know whether it is in an attack exchange).
-type VariantContext = { elapsedMs: number; isMoving: boolean; isAttacking: boolean };
+// needs to know whether it is in an attack exchange; the chicken needs the
+// performance.now() clock to time its egg-throw pose).
+type VariantContext = { elapsedMs: number; isMoving: boolean; isAttacking: boolean; nowMs: number };
 
 // Resolve the variant key for a unit's current visual state. Owls swap to a
 // wing frame while flying; turtles cycle pose frames by movement/shell state.
@@ -317,6 +337,16 @@ function variantKeyForUnit(unit: Unit, ctx: VariantContext): string {
     const phase = unit.hopPhase || 0;
     const airborne = phase >= FROG_LEAP_PHASE_START && phase < FROG_LEAP_PHASE_END;
     return frogFrameVariantKey(airborne ? FROG_LEAP_FRAME : FROG_GROUNDED_FRAME);
+  }
+  if (unit.animal === 'Chicken') {
+    // The throw pose (Chicken_F3 + Egg) takes precedence for a brief window after
+    // an egg is launched; otherwise idle holds F0 and walking alternates F1<->F2.
+    if (unit.eggThrowUntilMs !== undefined && ctx.nowMs < unit.eggThrowUntilMs) {
+      return chickenFrameVariantKey(CHICKEN_THROW_FRAME);
+    }
+    if (!ctx.isMoving) return chickenFrameVariantKey(CHICKEN_IDLE_FRAME); // idle -> F0
+    const step = Math.floor(ctx.elapsedMs / CHICKEN_WALK_FRAME_MS) % CHICKEN_WALK_FRAMES.length;
+    return chickenFrameVariantKey(CHICKEN_WALK_FRAMES[step]); // F1 <-> F2
   }
   return baseVariantKey(unit.animal);
 }
@@ -477,6 +507,17 @@ function InstancedUnits() {
         }
         continue;
       }
+      if (animal === 'Chicken') {
+        // Chicken ships F0 (idle), F1/F2 (walk), F3 (throw) + an Egg in one glb.
+        // Bake each pose into its own variant — F3 carries the held Egg — so the
+        // renderer shows exactly one pose and the spare poses/egg stay hidden
+        // (see variantKeyForUnit). The flying egg is a separate variant below.
+        for (let frame = 0; frame < CHICKEN_FRAME_COUNT; frame++) {
+          specs.push({ key: chickenFrameVariantKey(frame), parts: getBakedChickenFrameParts(gltf, frame) });
+        }
+        specs.push({ key: EGG_PROJECTILE_VARIANT_KEY, parts: getBakedEggProjectileParts(gltf) });
+        continue;
+      }
       specs.push({ key: baseVariantKey(animal), parts: getBakedAnimalParts(gltf, animal) });
     }
     if (inPlayAnimals.includes('Owl')) {
@@ -620,7 +661,7 @@ function InstancedUnits() {
 
       const isMoving = isUnitMoving(unit, elapsedMs);
       const isAttacking = isUnitAttacking(unit, nowPerf);
-      const key = variantKeyForUnit(unit, { elapsedMs, isMoving, isAttacking });
+      const key = variantKeyForUnit(unit, { elapsedMs, isMoving, isAttacking, nowMs: nowPerf });
       if (!counts.has(key)) continue; // not a currently-mounted variant
       const meshes = meshRefs.current.get(key);
       if (!meshes || meshes.length === 0) continue;
@@ -750,6 +791,28 @@ function InstancedUnits() {
           selectionInnerRef.current.setMatrixAt(selectionInnerCount++, matrix);
         }
       }
+    }
+
+    // Flying egg projectiles (Chicken ability). These aren't units, so the unit
+    // loop above never populates their variant — fill it here from the live
+    // projectile list. Each egg tumbles as it flies toward its target.
+    const eggMeshes = meshRefs.current.get(EGG_PROJECTILE_VARIANT_KEY);
+    if (eggMeshes && eggMeshes.length > 0) {
+      let eggCount = 0;
+      for (const egg of s.projectiles) {
+        if (eggCount >= MAX_INSTANCES_PER_VARIANT) break;
+        position.set(egg.position.x, egg.position.y, egg.position.z);
+        if (!frustum.containsPoint(position)) continue; // off-screen eggs cost nothing
+        const spin = (elapsedMs * EGG_SPIN_RAD_PER_MS) % (Math.PI * 2);
+        quaternion.setFromAxisAngle(X_AXIS, spin);
+        scale.set(EGG_WORLD_SIZE, EGG_WORLD_SIZE, EGG_WORLD_SIZE);
+        matrix.compose(position, quaternion, scale);
+        for (let p = 0; p < eggMeshes.length; p++) {
+          if (eggMeshes[p]) eggMeshes[p].setMatrixAt(eggCount, matrix);
+        }
+        eggCount++;
+      }
+      counts.set(EGG_PROJECTILE_VARIANT_KEY, eggCount);
     }
 
     // Flush instance counts + matrix updates to the GPU.
