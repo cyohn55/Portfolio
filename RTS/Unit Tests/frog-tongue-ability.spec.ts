@@ -44,6 +44,9 @@ const TICK_COUNT = 90;
 // Fewer frames: enough to complete one grab while staying inside the cooldown
 // window, so the immediate re-fire in the cooldown test is genuinely blocked.
 const GRAB_COMPLETE_TICKS = 50;
+// Enough frames for a full-length whiff (windup + extend to 40u + reel all the
+// way back at the slowed retract speed) to complete and clear.
+const WHIFF_TICKS = 220;
 
 async function openFrogMatch(page: Page): Promise<void> {
   await page.goto('/');
@@ -137,7 +140,7 @@ test.describe('Frog tongue ability', () => {
     expect(result.tongueCleared).toBe(true);
   });
 
-  test('two frogs cannot grab the same enemy at once', async ({ page }) => {
+  test('two frogs both fire, but only one grabs the single enemy (the other whiffs)', async ({ page }) => {
     test.setTimeout(60_000);
     await openFrogMatch(page);
 
@@ -162,17 +165,22 @@ test.describe('Frog tongue ability', () => {
 
       const a = store.getState().units.find((u: any) => u.id === frogA.id)?.tongue ?? null;
       const b = store.getState().units.find((u: any) => u.id === frogB.id)?.tongue ?? null;
+      const targetIds = [a, b].map((t) => t?.targetId);
       return {
         frogFound: true,
+        // Every selected frog fires a tongue.
         frogsWithTongue: [a, b].filter(Boolean).length,
-        claimedTargetIds: [a?.targetId ?? null, b?.targetId ?? null].filter(Boolean),
+        // Exactly one claimed the enemy; the other is a whiff (empty targetId).
+        grabbedCount: targetIds.filter((id) => id === 'enemy-target').length,
+        whiffCount: targetIds.filter((id) => id === '').length,
       };
     }, { frogPos: FROG_POSITION, offset: IN_RANGE_OFFSET });
 
     expect(result.frogFound).toBe(true);
-    // Exactly one frog grabbed the lone enemy; the other found no free target.
-    expect(result.frogsWithTongue).toBe(1);
-    expect(result.claimedTargetIds).toEqual(['enemy-target']);
+    // Both frogs extend a tongue, but only one grabs the lone enemy.
+    expect(result.frogsWithTongue).toBe(2);
+    expect(result.grabbedCount).toBe(1);
+    expect(result.whiffCount).toBe(1);
   });
 
   test('the per-frog cooldown blocks a second grab fired too soon', async ({ page }) => {
@@ -219,11 +227,11 @@ test.describe('Frog tongue ability', () => {
     expect(result.firedSecond).toBe(false);
   });
 
-  test('a press with no enemy in range does nothing', async ({ page }) => {
+  test('a press with no enemy in range whiffs the tongue out and back (no damage)', async ({ page }) => {
     test.setTimeout(60_000);
     await openFrogMatch(page);
 
-    const result = await page.evaluate(({ frogPos, offset, dtSec, dtMs }) => {
+    const result = await page.evaluate(({ frogPos, offset, dtSec, dtMs, ticks }) => {
       const store = (window as any).__rtsStore;
       const animals = (window as any).__rtsAnimals;
       const state = store.getState();
@@ -235,25 +243,46 @@ test.describe('Frog tongue ability', () => {
 
       const enemyStartHp = 400;
       const enemyPos = { x: frogPos.x + offset, y: frogPos.y, z: frogPos.z }; // out of tongue range
-      const frog = { ...template, id: 'frog-no-target', kind: 'Unit', position: { ...frogPos }, attackDamage: animals.Frog.dmg, attackCooldownMs: 1e9, moveSpeed: 0, tongue: undefined, lastTongueAtMs: undefined };
+      const frog = { ...template, id: 'frog-whiff', kind: 'Unit', position: { ...frogPos }, attackDamage: animals.Frog.dmg, attackCooldownMs: 1e9, moveSpeed: 0, tongue: undefined, lastTongueAtMs: undefined };
       const enemy = { ...template, id: 'enemy-far', ownerId: enemyId, kind: 'Unit', position: { ...enemyPos }, hp: enemyStartHp, maxHp: enemyStartHp, moveSpeed: 0, attackCooldownMs: 1e9, tongue: undefined };
       const playerBase = { ...template, id: 'player-base', kind: 'Base', position: { x: frogPos.x - 60, y: frogPos.y, z: frogPos.z }, moveSpeed: 0 };
-      const enemyBase = { ...template, id: 'enemy-base', ownerId: enemyId, kind: 'Base', position: { x: frogPos.x + 80, y: frogPos.y, z: frogPos.z }, moveSpeed: 0 };
+      const enemyBase = { ...template, id: 'enemy-base', ownerId: enemyId, kind: 'Base', position: { x: frogPos.x + 90, y: frogPos.y, z: frogPos.z }, moveSpeed: 0 };
       store.setState({ units: [frog, enemy, playerBase, enemyBase], unitOrders: {}, projectiles: [] });
 
       store.getState().fireTongues({ unitIds: [frog.id], cursor: { ...enemyPos } });
-      const tongueAfterFire = Boolean(store.getState().units.find((u: any) => u.id === frog.id)?.tongue);
+      const fired = store.getState().units.find((u: any) => u.id === frog.id)?.tongue;
+      const tongueAfterFire = Boolean(fired);
+      const targetIdEmpty = fired?.targetId === '';
 
+      // Tick to completion, tracking how far the whiff extended.
       const nowBase = performance.now();
-      for (let i = 0; i < 20; i++) store.getState().tick(dtSec, nowBase + i * dtMs);
+      let maxLengthSeen = 0;
+      for (let i = 0; i < ticks; i++) {
+        store.getState().tick(dtSec, nowBase + i * dtMs);
+        const len = store.getState().units.find((u: any) => u.id === frog.id)?.tongue?.length ?? 0;
+        if (len > maxLengthSeen) maxLengthSeen = len;
+      }
 
       const e = store.getState().units.find((u: any) => u.id === enemy.id);
-      return { frogFound: true, tongueAfterFire, enemyDamageTaken: enemyStartHp - (e?.hp ?? enemyStartHp) };
-    }, { frogPos: FROG_POSITION, offset: OUT_OF_RANGE_OFFSET, dtSec: SIM_DT_SEC, dtMs: SIM_DT_MS });
+      const f = store.getState().units.find((u: any) => u.id === frog.id);
+      return {
+        frogFound: true,
+        tongueAfterFire,
+        targetIdEmpty,
+        maxLengthSeen,
+        enemyDamageTaken: enemyStartHp - (e?.hp ?? enemyStartHp),
+        tongueCleared: !f?.tongue,
+      };
+    }, { frogPos: FROG_POSITION, offset: OUT_OF_RANGE_OFFSET, dtSec: SIM_DT_SEC, dtMs: SIM_DT_MS, ticks: WHIFF_TICKS });
 
     expect(result.frogFound).toBe(true);
-    // No target was claimed and the far enemy took no damage.
-    expect(result.tongueAfterFire).toBe(false);
+    // The press fired a tongue even with no eligible target...
+    expect(result.tongueAfterFire).toBe(true);
+    expect(result.targetIdEmpty).toBe(true);
+    // ...it extended to (near) its full reach...
+    expect(result.maxLengthSeen).toBeGreaterThanOrEqual(35);
+    // ...the far enemy took no damage, and the tongue reeled all the way back.
     expect(result.enemyDamageTaken).toBe(0);
+    expect(result.tongueCleared).toBe(true);
   });
 });

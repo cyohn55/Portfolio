@@ -100,7 +100,7 @@ const EGG_SPAWN_HEIGHT = 1.5;    // height above the chicken's base the egg laun
 const TONGUE_RANGE = 40;             // reach of the grab (well beyond the frog's melee range of 8)
 const TONGUE_RANGE_SQ = TONGUE_RANGE * TONGUE_RANGE;
 const TONGUE_EXTEND_SPEED = 60;      // world units/sec the tongue tip reaches out
-const TONGUE_RETRACT_SPEED = 45;     // world units/sec the tongue (and any catch) reels back
+const TONGUE_RETRACT_SPEED = 22.5;   // world units/sec the tongue (and any catch) reels back
 const TONGUE_HIT_RADIUS = 2.0;       // the tongue latches an enemy whose center is within this of the tip
 const TONGUE_HIT_RADIUS_SQ = TONGUE_HIT_RADIUS * TONGUE_HIT_RADIUS;
 const TONGUE_WINDUP_MS = 100;        // Frog_F2 mouth-open beat before the tongue shoots out
@@ -1763,18 +1763,30 @@ export const useGameStore = create<Store>((set, get) => ({
             target = candidate;
           }
         }
-        if (!target) continue; // no eligible enemy in reach — the press does nothing
+        // Every selected frog fires a tongue: if it claimed an enemy it aims the
+        // grab at that enemy; otherwise it whiffs — shooting the tongue straight
+        // out toward the cursor (or its current facing if the cursor is on top of
+        // it) to full length and reeling back empty-handed.
+        let targetId = '';
+        let direction: Position3D;
+        if (target) {
+          claimedTargetIds.add(target.id); // reserve it so a later frog in this batch can't reuse it
+          targetId = target.id;
+          direction = normalize3D(subtract3D(target.position, unit.position));
+        } else {
+          direction = normalize3D(subtract3D(cmd.cursor, unit.position));
+        }
+        if (direction.x === 0 && direction.z === 0) {
+          // Degenerate aim (target/cursor on top of the frog): shoot out along the
+          // frog's current facing so the whiff still plays.
+          direction = { x: Math.sin(unit.rotation), y: 0, z: Math.cos(unit.rotation) };
+        }
 
-        claimedTargetIds.add(target.id); // reserve it so a later frog in this batch can't reuse it
-
-        const direction = normalize3D(subtract3D(target.position, unit.position));
-        if (direction.x === 0 && direction.z === 0) continue; // target on top of the frog
-
-        unit.rotation = Math.atan2(direction.x, direction.z); // face the grab
+        unit.rotation = Math.atan2(direction.x, direction.z); // face the throw
         unit.lastTongueAtMs = now;
         unit.tongue = {
           phase: 'windup',
-          targetId: target.id,
+          targetId,
           origin: { x: unit.position.x, y: unit.position.y + TONGUE_MOUTH_HEIGHT, z: unit.position.z },
           direction,
           length: 0,
@@ -2206,15 +2218,17 @@ function updateProjectiles(draft: Store, dtSec: number): void {
 }
 
 // Advance every Frog whose tongue is currently out, one tick. The grab is a small
-// state machine stored on the unit (unit.tongue):
+// state machine stored on the unit (unit.tongue). A tongue is either a grab
+// attempt (targetId set to a claimed enemy) or a whiff (no targetId — fired when
+// the frog had no eligible target, so it just shoots out and reels back):
 //   windup     — Frog_F2 mouth-open beat; transitions to `extending` after
-//                TONGUE_WINDUP_MS, but only if the claimed target is still alive
-//                and reachable (else the throw fizzles and the tongue clears).
-//   extending  — the tip reaches out along the aim direction at TONGUE_EXTEND_SPEED,
-//                tracking the (possibly moving) target. On contact it latches:
-//                deals the frog's attack damage once and flips to `retracting`.
-//                If it reaches its apex (maxLength) with no contact, it also flips
-//                to `retracting` but empty-handed (a miss).
+//                TONGUE_WINDUP_MS. A grab attempt fizzles here if its claimed
+//                target died or left reach; a whiff always proceeds.
+//   extending  — the tip reaches out along the aim direction at TONGUE_EXTEND_SPEED.
+//                A grab attempt tracks its (possibly moving) target and, on
+//                contact, latches: deals the frog's attack damage once and flips
+//                to `retracting`. A whiff (and a grab that never connects) extends
+//                straight to its apex (maxLength) and then flips to `retracting`.
 //   retracting — the tip reels back at TONGUE_RETRACT_SPEED; a latched, still-living
 //                target is dragged along to just in front of the frog. Once fully
 //                reeled in the tongue is cleared and the frog is free again.
@@ -2234,12 +2248,16 @@ function updateFrogTongues(draft: Store, dtSec: number, nowMs: number): void {
 
     if (tongue.phase === 'windup') {
       if (nowMs < tongue.phaseUntilMs) continue; // hold the Frog_F2 beat
-      // The target must still be alive and within reach to actually shoot.
-      if (!targetAlive || distanceSquared3D(frog.position, target!.position) > TONGUE_RANGE_SQ) {
-        frog.tongue = undefined; // fizzle — cooldown still applies (lastTongueAtMs set at fire)
-        continue;
+      // A grab attempt (targetId set) only shoots if its claimed enemy is still
+      // alive and in reach — otherwise it fizzles. A whiff (no targetId) always
+      // shoots out along its fixed cursor-facing direction.
+      if (tongue.targetId) {
+        if (!targetAlive || distanceSquared3D(frog.position, target!.position) > TONGUE_RANGE_SQ) {
+          frog.tongue = undefined; // fizzle — cooldown still applies (lastTongueAtMs set at fire)
+          continue;
+        }
+        tongue.direction = normalize3D(subtract3D(target!.position, frog.position));
       }
-      tongue.direction = normalize3D(subtract3D(target!.position, frog.position));
       tongue.phase = 'extending';
       continue;
     }
