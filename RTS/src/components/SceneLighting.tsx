@@ -31,6 +31,10 @@ const ENV_INTENSITY_REFRESH_INTERVAL = 30;
 export function SceneLighting() {
   const exposure = useGameStore((s) => s.lightingSettings.exposure);
   const environmentIntensity = useGameStore((s) => s.lightingSettings.environmentIntensity);
+  const saturation = useGameStore((s) => s.lightingSettings.saturation);
+  const contrast = useGameStore((s) => s.lightingSettings.contrast);
+  const brightness = useGameStore((s) => s.lightingSettings.brightness);
+  const hue = useGameStore((s) => s.lightingSettings.hue);
 
   const { gl, scene } = useThree();
   const frameCounter = useRef(0);
@@ -41,6 +45,17 @@ export function SceneLighting() {
     gl.toneMapping = THREE.AgXToneMapping;
     gl.toneMappingExposure = exposure;
   }, [gl, exposure]);
+
+  // Final-image color grade. A CSS filter on the canvas element grades the rendered 3D image
+  // (not the HUD/menus, which are separate DOM) and updates instantly — the most reliable,
+  // dependency-free way to push saturation/hue/contrast/brightness for the stylized look.
+  // Neutral filters are skipped so we don't pay for an off-screen filter pass at default values.
+  useEffect(() => {
+    const isNeutral = saturation === 1 && contrast === 1 && brightness === 1 && hue === 0;
+    gl.domElement.style.filter = isNeutral
+      ? ''
+      : `saturate(${saturation}) contrast(${contrast}) brightness(${brightness}) hue-rotate(${hue}deg)`;
+  }, [gl, saturation, contrast, brightness, hue]);
 
   // Push the IBL strength onto every lit material. Only MeshStandard/Physical materials
   // sample the environment map (basic/emissive UI materials ignore it), so we guard on the

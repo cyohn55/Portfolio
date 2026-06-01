@@ -23,6 +23,10 @@ export function Settings({ onBack }: SettingsProps) {
   const [dayNightSpeed, setDayNightSpeed] = useState(lightingSettings.dayNightSpeed);
   const [exposure, setExposure] = useState(lightingSettings.exposure);
   const [environmentIntensity, setEnvironmentIntensity] = useState(lightingSettings.environmentIntensity);
+  const [saturation, setSaturation] = useState(lightingSettings.saturation);
+  const [contrast, setContrast] = useState(lightingSettings.contrast);
+  const [brightness, setBrightness] = useState(lightingSettings.brightness);
+  const [hue, setHue] = useState(lightingSettings.hue);
 
   // Sync with store when settings change externally
   useEffect(() => {
@@ -32,54 +36,60 @@ export function Settings({ onBack }: SettingsProps) {
     setDayNightSpeed(lightingSettings.dayNightSpeed);
     setExposure(lightingSettings.exposure);
     setEnvironmentIntensity(lightingSettings.environmentIntensity);
+    setSaturation(lightingSettings.saturation);
+    setContrast(lightingSettings.contrast);
+    setBrightness(lightingSettings.brightness);
+    setHue(lightingSettings.hue);
   }, [lightingSettings]);
 
-  // Exposure and environment (IBL) intensity update the live scene as the slider moves, so the
-  // player can dial the look in real time against the 3D behind this panel. The values are
-  // committed to localStorage on Save like the rest.
-  const previewExposure = (value: number) => {
-    setExposure(value);
-    updateLightingSettings({ exposure: value });
-  };
-  const previewEnvironmentIntensity = (value: number) => {
-    setEnvironmentIntensity(value);
-    updateLightingSettings({ environmentIntensity: value });
-  };
+  // The visual-look knobs (exposure, IBL, and the color grade) update the live scene as the
+  // slider moves so the player can dial against the 3D behind this panel; they are committed to
+  // localStorage on Save like the rest. Each preview helper updates its local state AND the
+  // store in one place so the two never drift.
+  const preview = (key: keyof typeof lightingSettings, setLocal: (v: number) => void) =>
+    (value: number) => {
+      setLocal(value);
+      updateLightingSettings({ [key]: value } as Partial<typeof lightingSettings>);
+    };
+  const previewExposure = preview('exposure', setExposure);
+  const previewEnvironmentIntensity = preview('environmentIntensity', setEnvironmentIntensity);
+  const previewSaturation = preview('saturation', setSaturation);
+  const previewContrast = preview('contrast', setContrast);
+  const previewBrightness = preview('brightness', setBrightness);
+  const previewHue = preview('hue', setHue);
 
   // The live-preview values that were active when the panel opened, so "Back" (cancel) can
   // discard any dialing and restore the scene to where it was. Captured once on mount.
   const openingPreviewRef = useRef({
     exposure: lightingSettings.exposure,
     environmentIntensity: lightingSettings.environmentIntensity,
+    saturation: lightingSettings.saturation,
+    contrast: lightingSettings.contrast,
+    brightness: lightingSettings.brightness,
+    hue: lightingSettings.hue,
   });
   const handleBack = () => {
-    updateLightingSettings({
-      exposure: openingPreviewRef.current.exposure,
-      environmentIntensity: openingPreviewRef.current.environmentIntensity,
-    });
+    updateLightingSettings({ ...openingPreviewRef.current });
     onBack();
   };
 
   const handleSave = () => {
+    const next = {
+      sunBrightness,
+      moonBrightness,
+      ambientLight,
+      dayNightSpeed,
+      exposure,
+      environmentIntensity,
+      saturation,
+      contrast,
+      brightness,
+      hue,
+    };
     // Save to game store
-    updateLightingSettings({
-      sunBrightness,
-      moonBrightness,
-      ambientLight,
-      dayNightSpeed,
-      exposure,
-      environmentIntensity
-    });
-
+    updateLightingSettings(next);
     // Also persist to localStorage
-    localStorage.setItem('lightingSettings', JSON.stringify({
-      sunBrightness,
-      moonBrightness,
-      ambientLight,
-      dayNightSpeed,
-      exposure,
-      environmentIntensity
-    }));
+    localStorage.setItem('lightingSettings', JSON.stringify(next));
 
     onBack();
   };
@@ -91,12 +101,15 @@ export function Settings({ onBack }: SettingsProps) {
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.7)',
+      // Light, un-blurred scrim so the 3D scene stays visible behind the panel — the lighting/
+      // color sliders preview live, which is only useful if you can actually see the battlefield.
+      // The panel is pushed to the right so the centre/left of the map shows while you dial.
+      backgroundColor: 'rgba(0, 0, 0, 0.2)',
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 9999,
-      backdropFilter: 'blur(5px)'
+      justifyContent: 'flex-end',
+      paddingRight: '40px',
+      zIndex: 9999
     }}>
       <div style={{
         background: 'linear-gradient(180deg, rgba(17,23,38,0.95) 0%, rgba(12,17,29,0.95) 100%)',
@@ -105,6 +118,8 @@ export function Settings({ onBack }: SettingsProps) {
         padding: '40px',
         minWidth: '600px',
         maxWidth: '800px',
+        maxHeight: '90vh',
+        overflowY: 'auto',
         boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
       }}>
         <h2 style={{
@@ -345,6 +360,78 @@ export function Settings({ onBack }: SettingsProps) {
               />
               <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
                 Soft studio fill on the models' shadow side. Higher = richer, more "rendered" look; 0 = lit by the sun/moon only.
+              </div>
+            </div>
+
+            <div>
+              <label style={{ color: '#94a3b8', fontSize: '14px', display: 'block', marginBottom: '8px' }}>
+                Saturation (Current: {saturation.toFixed(2)})
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="2"
+                step="0.05"
+                value={saturation}
+                onChange={(e) => previewSaturation(parseFloat(e.target.value))}
+                style={{ width: '100%' }}
+              />
+              <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
+                Color vividness. 1.0 = unchanged, higher = punchier "Pixar" color, 0 = greyscale.
+              </div>
+            </div>
+
+            <div>
+              <label style={{ color: '#94a3b8', fontSize: '14px', display: 'block', marginBottom: '8px' }}>
+                Contrast (Current: {contrast.toFixed(2)})
+              </label>
+              <input
+                type="range"
+                min="0.5"
+                max="1.5"
+                step="0.05"
+                value={contrast}
+                onChange={(e) => previewContrast(parseFloat(e.target.value))}
+                style={{ width: '100%' }}
+              />
+              <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
+                Separation between lights and darks. 1.0 = unchanged.
+              </div>
+            </div>
+
+            <div>
+              <label style={{ color: '#94a3b8', fontSize: '14px', display: 'block', marginBottom: '8px' }}>
+                Brightness (Current: {brightness.toFixed(2)})
+              </label>
+              <input
+                type="range"
+                min="0.5"
+                max="1.5"
+                step="0.05"
+                value={brightness}
+                onChange={(e) => previewBrightness(parseFloat(e.target.value))}
+                style={{ width: '100%' }}
+              />
+              <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
+                Post-grade lift of the final image (distinct from Exposure, which is the lighting).
+              </div>
+            </div>
+
+            <div>
+              <label style={{ color: '#94a3b8', fontSize: '14px', display: 'block', marginBottom: '8px' }}>
+                Hue Shift (Current: {hue.toFixed(0)}°)
+              </label>
+              <input
+                type="range"
+                min="-180"
+                max="180"
+                step="1"
+                value={hue}
+                onChange={(e) => previewHue(parseFloat(e.target.value))}
+                style={{ width: '100%' }}
+              />
+              <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
+                Rotates all colors around the wheel. 0° = unchanged (use sparingly for a stylized tint).
               </div>
             </div>
 

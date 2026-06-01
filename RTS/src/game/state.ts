@@ -290,6 +290,12 @@ type Store = GameState & {
     // wrap-around fill from the baked studio environment. Higher = richer, more "rendered"
     // fill on the model's shadowed side. See SceneLighting.
     environmentIntensity: number;
+    // Final-image color grade, applied as a CSS filter on the WebGL canvas (cheap, live, and
+    // only affects the 3D, not the HUD). Neutral values are 1.0 (and 0° hue). See SceneLighting.
+    saturation: number; // 1 = unchanged, >1 more vivid, 0 greyscale
+    contrast: number;   // 1 = unchanged
+    brightness: number; // 1 = unchanged (a post-grade lift, distinct from exposure)
+    hue: number;        // degrees of hue rotation, 0 = unchanged
   };
   updateLightingSettings: (settings: Partial<Store['lightingSettings']>) => void;
   // Render quality
@@ -329,6 +335,10 @@ const DEFAULT_LIGHTING_SETTINGS = {
   dayNightSpeed: 60,
   exposure: 1.0,
   environmentIntensity: 1.0,
+  saturation: 1.0,
+  contrast: 1.0,
+  brightness: 1.0,
+  hue: 0,
 };
 type LightingSettings = typeof DEFAULT_LIGHTING_SETTINGS;
 const loadLightingSettings = (): LightingSettings => {
