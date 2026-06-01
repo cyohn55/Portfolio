@@ -12,7 +12,7 @@ setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import { pathfinder } from '../components/Working/pathfinder';
 import { clampToArena } from '../components/Working/arenaBoundary';
-import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
+import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 import * as leaderboardModule from '../components/Working/leaderboard';
 import * as leaderboardRemoteModule from '../components/Working/leaderboardRemote';
@@ -135,6 +135,24 @@ const SWARM_STING_RANGE_SQ = SWARM_STING_RANGE * SWARM_STING_RANGE;
 const SWARM_STING_KILL_CHANCE = 0.5;  // probability a sting kills both the target and the bee
 const SWARM_WING_FLAP_PER_SEC = 3;    // wing-flap cycles/sec kept advancing so the dive reads as active flight
 
+// Owl "Pickup" ability tuning. A player-activated abduction fired by holding both mouse
+// buttons over a unit while a friendly Owl is selected: each selected Owl claims the
+// nearest unit matching the clicked unit's animal type AND owner that no other Owl has
+// taken, swoops down to it (descending from flight height), grabs it, carries it back up
+// to OWL_FLIGHT_HEIGHT and hovers for OWL_CARRY_DURATION_MS, then drops it. A dropped
+// enemy takes OWL_FALL_DAMAGE; a dropped friendly lands unharmed (a repositioning/rescue).
+// See pickup + updateOwlPickups.
+const OWL_FLIGHT_HEIGHT = 10;          // world-unit render lift of a flying Owl (matches verticalOffset); the height it returns to
+const OWL_SWOOP_SPEED = 40;            // world units/sec an Owl closes on its target on the XZ plane while diving
+const OWL_DESCENT_SPEED = 22;          // world units/sec the Owl's lift drops as it swoops toward the ground
+const OWL_ASCENT_SPEED = 16;           // world units/sec the Owl's lift rises as it carries its catch back up
+const OWL_GRAB_RANGE = 3.0;            // XZ distance at which the Owl reaches its target and grabs it
+const OWL_GRAB_RANGE_SQ = OWL_GRAB_RANGE * OWL_GRAB_RANGE;
+const OWL_GRAB_LIFT = 1.5;             // the Owl must descend to within this lift of the ground before the talons close
+const OWL_CARRY_DURATION_MS = 2500;    // how long a grabbed unit is held aloft before being dropped
+const OWL_FALL_DAMAGE = 25;            // hp removed from a dropped enemy on impact; friendlies take none
+const OWL_WING_FLAP_PER_SEC = 4;       // wing-flap cycles/sec kept advancing so the swoop/carry reads as active flight
+
 // Full roster of playable animals, derived from the stats table so it stays in
 // sync automatically when animals are added or removed.
 const ALL_ANIMALS = Object.keys(ANIMALS) as AnimalId[];
@@ -207,6 +225,7 @@ type Store = GameState & {
   fireTongues: (cmd: CommandFireTongues) => void;
   hiss: (cmd: CommandHiss) => void;
   swarm: (cmd: CommandSwarm) => void;
+  pickup: (cmd: CommandOwlPickup) => void;
   toggleOptimization: (key: keyof Store['optimizations']) => void;
   // Bridge animation system
   bridgeState: BridgeState;
@@ -781,6 +800,13 @@ export const useGameStore = create<Store>((set, get) => ({
         // straight at its claimed target and stings on contact), so skip its normal AI and
         // combat this tick — otherwise the two would fight over the bee's movement.
         if (unit.swarmTargetId !== undefined) {
+          continue;
+        }
+
+        // Owl Pickup: an Owl mid-Pickup is driven entirely by updateOwlPickups (swoop ->
+        // grab -> carry -> drop), and a unit being carried is held by its Owl. Both have
+        // their normal AI/combat suppressed so the ability owns their movement this tick.
+        if (unit.owlPickup !== undefined || unit.carriedByOwlId !== undefined) {
           continue;
         }
 
@@ -1483,6 +1509,10 @@ export const useGameStore = create<Store>((set, get) => ({
       // removed in this same pass.
       updateBeeSwarms(draft, dtSec, nowMs);
 
+      // Advance every Owl mid-Pickup (swoop down -> grab -> carry up -> drop). Runs before
+      // dead-unit cleanup so an enemy a fatal drop kills is removed in this same pass.
+      updateOwlPickups(draft, dtSec, nowMs);
+
       // Immediate dead unit removal to prevent regeneration of dead units
       if (draft.deadUnitsToRemove.length > 0) {
         // Set-based membership test turns the cleanup from O(dead * units) into
@@ -1953,6 +1983,59 @@ export const useGameStore = create<Store>((set, get) => ({
         bee.swarmTargetId = target.id;
         // Drop any pending move order so the dive isn't fighting a stale destination.
         delete draft.unitOrders[bee.id];
+      }
+    })
+  ),
+
+  // Owl "Pickup" ability. Each selected friendly Owl that is not already mid-Pickup claims
+  // the closest living unit that matches the clicked unit's animal type AND owner and that no
+  // other Owl has taken, then commits to a swoop at it (the dive, grab, carry and drop all
+  // play out in the tick — see updateOwlPickups). Targeting respects two rules mirroring the
+  // Bee Swarm: an Owl grabs exactly one unit, and no two Owls may claim the same unit, so a
+  // flight of Owls spreads its catches across distinct targets rather than piling onto one.
+  pickup: (cmd) => set((prev) =>
+    produce(prev, (draft) => {
+      // Units already claimed by an Owl mid-Pickup (its swoop target) or already in another
+      // Owl's talons — excluded so no two Owls grab the same unit.
+      const claimedTargetIds = new Set<string>();
+      for (const candidate of draft.units) {
+        if (candidate.owlPickup !== undefined) claimedTargetIds.add(candidate.owlPickup.targetId);
+        if (candidate.carriedByOwlId !== undefined) claimedTargetIds.add(candidate.id);
+      }
+
+      for (const id of cmd.unitIds) {
+        const owl = draft.units.find((candidate) => candidate.id === id);
+        if (!owl || owl.animal !== 'Owl' || owl.ownerId !== draft.localPlayerId) continue;
+        if (owl.kind !== 'Unit') continue; // protect a royal Owl from swooping into danger
+        if (owl.hp <= 0) continue;
+        if (owl.owlPickup !== undefined) continue; // already swooping
+
+        // Claim the closest living unit matching the clicked unit's type AND owner, never a
+        // Base, that is not already claimed and is not itself a busy/carried unit.
+        let target: Unit | null = null;
+        let bestDistSq = Infinity;
+        for (const candidate of draft.units) {
+          if (candidate.animal !== cmd.targetAnimal) continue;   // same animal type as the clicked unit
+          if (candidate.ownerId !== cmd.targetOwnerId) continue; // same side as the clicked unit
+          if (candidate.kind === 'Base') continue;               // animals only, never structures
+          if (candidate.hp <= 0) continue;
+          if (candidate.id === owl.id) continue;                 // an Owl can't grab itself
+          if (candidate.owlPickup !== undefined) continue;       // never grab another mid-Pickup Owl
+          if (claimedTargetIds.has(candidate.id)) continue;      // one Owl per target
+          const distSq = distanceSquared3D(owl.position, candidate.position);
+          if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            target = candidate;
+          }
+        }
+        if (!target) continue; // no unclaimed match left for this Owl — it sits this pickup out
+
+        claimedTargetIds.add(target.id); // reserve so a later Owl in this batch can't reuse it
+        owl.owlPickup = { phase: 'swooping', targetId: target.id, grabbed: false, carryUntilMs: 0 };
+        owl.isFlying = true;                                     // keep wings animating through the swoop
+        owl.flightLift = OWL_FLIGHT_HEIGHT;                      // start the descent from cruising altitude
+        // Drop any pending move order so the swoop isn't fighting a stale destination.
+        delete draft.unitOrders[owl.id];
       }
     })
   ),
@@ -2531,6 +2614,133 @@ function updateBeeSwarms(draft: Store, dtSec: number, nowMs: number): void {
     bee.position.x += dirX * step;
     bee.position.z += dirZ * step;
     bee.pathWaypoints = undefined; // a dive overrides any prior A* route
+  }
+}
+
+// Move a unit's render lift toward a goal at `speed` world units/sec, returning the new lift
+// clamped so it never overshoots. Used to animate an Owl (and its catch) down into a swoop
+// and back up to flight height.
+function approachLift(currentLift: number, goalLift: number, speed: number, dtSec: number): number {
+  const delta = goalLift - currentLift;
+  const step = speed * dtSec;
+  if (Math.abs(delta) <= step) return goalLift;
+  return currentLift + Math.sign(delta) * step;
+}
+
+// Detach the unit an Owl is carrying without harming it (used when the Owl dies or its catch
+// is lost mid-carry). The unit drops straight down to the ground it is currently over and
+// resumes normal behavior next tick.
+function releaseCarriedUnit(draft: Store, owl: Unit): void {
+  const carried = draft.units.find((candidate) => candidate.carriedByOwlId === owl.id);
+  if (!carried) return;
+  carried.carriedByOwlId = undefined;
+  carried.flightLift = undefined; // fall back to the ground (render lift cleared)
+}
+
+// Advance every Owl that is mid-Pickup, one tick. The ability runs as a two-phase state
+// machine driven entirely here (the Owl's normal AI is suppressed by the pickup intercept in
+// tick):
+//   'swooping' — the Owl flies toward its claimed target on the XZ plane at OWL_SWOOP_SPEED
+//     while descending from flight height. Once it is within OWL_GRAB_RANGE and has dropped to
+//     near the ground it grabs the target (carriedByOwlId set) and switches to 'carrying'.
+//   'carrying' — the Owl rises back to OWL_FLIGHT_HEIGHT with the unit glued beneath it, holds
+//     until OWL_CARRY_DURATION_MS has elapsed, then drops it. A dropped enemy takes
+//     OWL_FALL_DAMAGE (a fatal drop is credited to the Owl's owner); a dropped friendly lands
+//     unharmed. The Owl then clears the ability and resumes normal flight.
+// An Owl whose target dies or vanishes before the grab simply breaks off and flies home. Owls
+// are air units, so the swoop ignores terrain and unit collision.
+function updateOwlPickups(draft: Store, dtSec: number, nowMs: number): void {
+  for (const owl of draft.units) {
+    const pickup = owl.owlPickup;
+    if (pickup === undefined) continue;
+
+    // An Owl killed mid-Pickup releases its catch unharmed and drops the ability (the
+    // dead-unit cleanup removes the Owl).
+    if (owl.hp <= 0) {
+      releaseCarriedUnit(draft, owl);
+      owl.owlPickup = undefined;
+      owl.flightLift = undefined;
+      continue;
+    }
+
+    const target = draft.units.find((candidate) => candidate.id === pickup.targetId);
+
+    // Target gone (died or removed) — break off. Anything the Owl was carrying is already
+    // dead, so just end the ability and let the Owl fly home (flight render restored).
+    if (!target || target.hp <= 0) {
+      owl.owlPickup = undefined;
+      owl.flightLift = undefined;
+      continue;
+    }
+
+    owl.isFlying = true; // keep the wing-flap animation running through both phases
+    owl.wingPhase = ((owl.wingPhase || 0) + dtSec * OWL_WING_FLAP_PER_SEC) % 1;
+
+    if (pickup.phase === 'carrying') {
+      // Rise back to cruising altitude with the catch held just beneath the talons.
+      owl.flightLift = approachLift(owl.flightLift ?? 0, OWL_FLIGHT_HEIGHT, OWL_ASCENT_SPEED, dtSec);
+      target.position.x = owl.position.x;
+      target.position.z = owl.position.z;
+      target.rotation = owl.rotation;
+      target.flightLift = Math.max(0, (owl.flightLift ?? 0) - 1.2); // dangle just below the Owl
+
+      // Release once the hold has elapsed AND the Owl has carried the unit back up to flight
+      // height (so it always "returns to its original flying height" before dropping).
+      const reachedFlightHeight = (owl.flightLift ?? 0) >= OWL_FLIGHT_HEIGHT - 0.01;
+      if (nowMs >= pickup.carryUntilMs && reachedFlightHeight) {
+        target.carriedByOwlId = undefined;
+        target.flightLift = undefined; // the dropped unit falls to the ground it is over
+
+        // Enemies hit the ground hard; friendlies are set down safely (a repositioning/rescue).
+        if (target.ownerId !== owl.ownerId) {
+          target.hp -= OWL_FALL_DAMAGE;
+          if (target.hp <= 0) {
+            target.hp = 0;
+            draft.deadUnitsToRemove.push(target.id);
+            creditKill(draft, owl.ownerId, target); // the drop killed the enemy
+          }
+        }
+
+        owl.owlPickup = undefined;
+        owl.flightLift = undefined; // back to normal flight behavior next tick
+      }
+      continue;
+    }
+
+    // phase === 'swooping': dive toward the target on the XZ plane while descending.
+    const toTargetX = target.position.x - owl.position.x;
+    const toTargetZ = target.position.z - owl.position.z;
+    const distSq = toTargetX * toTargetX + toTargetZ * toTargetZ;
+
+    owl.flightLift = approachLift(owl.flightLift ?? OWL_FLIGHT_HEIGHT, 0, OWL_DESCENT_SPEED, dtSec);
+
+    // Grab once the Owl is both over the target and low enough for the talons to reach.
+    if (distSq <= OWL_GRAB_RANGE_SQ && (owl.flightLift ?? 0) <= OWL_GRAB_LIFT) {
+      target.carriedByOwlId = owl.id;
+      target.position.x = owl.position.x;
+      target.position.z = owl.position.z;
+      target.flightLift = Math.max(0, (owl.flightLift ?? 0) - 1.2);
+      target.pathWaypoints = undefined;
+      delete draft.unitOrders[target.id];
+
+      pickup.phase = 'carrying';
+      pickup.grabbed = true;
+      pickup.carryUntilMs = nowMs + OWL_CARRY_DURATION_MS;
+      continue;
+    }
+
+    // Still closing: steer straight at the target (distSq may be ~0 if already overhead but
+    // still too high to grab, in which case the Owl just keeps descending in place).
+    if (distSq > 1e-6) {
+      const invDist = 1 / Math.sqrt(distSq);
+      const dirX = toTargetX * invDist;
+      const dirZ = toTargetZ * invDist;
+      owl.rotation = Math.atan2(dirX, dirZ);
+      const step = Math.min(OWL_SWOOP_SPEED * dtSec, Math.sqrt(distSq));
+      owl.position.x += dirX * step;
+      owl.position.z += dirZ * step;
+    }
+    owl.pathWaypoints = undefined; // a swoop overrides any prior A* route
   }
 }
 

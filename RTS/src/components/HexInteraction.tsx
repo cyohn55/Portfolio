@@ -44,6 +44,7 @@ export function MapInteraction() {
   const fireTongues = useGameStore((s) => s.fireTongues);
   const hiss = useGameStore((s) => s.hiss);
   const swarm = useGameStore((s) => s.swarm);
+  const pickup = useGameStore((s) => s.pickup);
   // Mouse buttons are remappable via Settings -> Controls. Defaults: left=select,
   // right=command. tokenToMouseButton maps the saved token back to a DOM button.
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
@@ -220,6 +221,35 @@ export function MapInteraction() {
       .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Bee' && unit.kind === 'Unit' && selectedUnitIds.includes(unit.id))
       .map((unit) => unit.id);
 
+  // The local player's currently-selected regular Owl units — the casters of the Pickup
+  // ability (simultaneous primary+secondary press over a unit). Restricted to the Unit kind
+  // so an Owl King/Queen is never sent swooping into danger, and so a royal-only selection
+  // still gets the normal both-button behavior.
+  const selectedFriendlyOwlIds = (): string[] =>
+    units
+      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Owl' && unit.kind === 'Unit' && selectedUnitIds.includes(unit.id))
+      .map((unit) => unit.id);
+
+  // The unit (any owner) whose projected center is nearest the cursor within
+  // UNIT_PICK_RADIUS_PX, excluding Bases — the Owl Pickup target whose animal type and owner
+  // define which units the selected Owls grab. Returns null when no unit is under the cursor.
+  const unitUnderCursor = (screen: { x: number; y: number }): typeof units[number] | null => {
+    let nearest: typeof units[number] | null = null;
+    let nearestDistPx = UNIT_PICK_RADIUS_PX;
+    for (const unit of units) {
+      if (unit.kind === 'Base') continue;
+      const projected = worldToScreen(
+        new THREE.Vector3(unit.position.x, unit.position.y, unit.position.z)
+      );
+      const distPx = Math.hypot(projected.x - screen.x, projected.y - screen.y);
+      if (distPx < nearestDistPx) {
+        nearestDistPx = distPx;
+        nearest = unit;
+      }
+    }
+    return nearest;
+  };
+
   // True when the primary and secondary action buttons are held at the same time
   // (read from a single event's `buttons` bitmask, so press order doesn't matter).
   const areShellButtonsHeld = (buttons: number): boolean =>
@@ -253,16 +283,23 @@ export function MapInteraction() {
     // Simultaneous primary+secondary press drives the per-animal combo abilities:
     // it toggles the shell lock on any selected Turtle, throws an egg from any
     // selected Chicken (toward the cursor), fires any selected Frog's tongue,
-    // triggers any selected Cat's Hiss knockback, and sends any selected Bee into a
-    // Swarm dive. Only intercepts when such a unit is selected, so pressing both
-    // buttons otherwise keeps the per-button behavior.
+    // triggers any selected Cat's Hiss knockback, sends any selected Bee into a
+    // Swarm dive, and sends any selected Owl swooping to pick up the unit under the
+    // cursor. Only intercepts when such a unit is selected, so pressing both buttons
+    // otherwise keeps the per-button behavior.
     if (areShellButtonsHeld(event.buttons)) {
       const turtleIds = selectedFriendlyTurtleIds();
       const chickenIds = selectedFriendlyChickenIds();
       const frogIds = selectedFriendlyFrogIds();
       const catIds = selectedFriendlyCatIds();
       const beeIds = selectedFriendlyBeeIds();
-      if (turtleIds.length > 0 || chickenIds.length > 0 || frogIds.length > 0 || catIds.length > 0 || beeIds.length > 0) {
+      // Owls only act when a unit is actually under the cursor — that unit's animal type and
+      // owner decide what the Owls grab — so resolve the target up front and treat the Owls
+      // as active only when one is found.
+      const owlIds = selectedFriendlyOwlIds();
+      const owlTarget = owlIds.length > 0 ? unitUnderCursor(getScreenPosition(event)) : null;
+      const owlsActive = owlIds.length > 0 && owlTarget !== null;
+      if (turtleIds.length > 0 || chickenIds.length > 0 || frogIds.length > 0 || catIds.length > 0 || beeIds.length > 0 || owlsActive) {
         if (!shellComboHandledRef.current) {
           shellComboHandledRef.current = true;
           if (turtleIds.length > 0) toggleTurtleShell(turtleIds);
@@ -270,6 +307,8 @@ export function MapInteraction() {
           if (catIds.length > 0) hiss({ unitIds: catIds });
           // Swarm has each bee pick its own nearest enemy, so it needs no cursor target.
           if (beeIds.length > 0) swarm({ unitIds: beeIds });
+          // Pickup grabs units matching the clicked unit's animal type AND owner.
+          if (owlsActive && owlTarget) pickup({ unitIds: owlIds, targetAnimal: owlTarget.animal, targetOwnerId: owlTarget.ownerId });
           if (chickenIds.length > 0 || frogIds.length > 0) {
             const screenPos = getScreenPosition(event);
             const target = getWorldPositionFromMouse(screenPos.x, screenPos.y);
@@ -488,7 +527,7 @@ export function MapInteraction() {
       canvas.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, hiss, swarm, primaryButton, secondaryButton]);
+  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, hiss, swarm, pickup, primaryButton, secondaryButton]);
 
   const handleGroundClick = (e: any) => {
     // Prevent browser context menu on right-click - check if preventDefault exists
@@ -501,12 +540,12 @@ export function MapInteraction() {
     if (e.button === secondaryButton) { // Secondary (command) button
 
       // Skip the move when this secondary press is half of a combo on a selected
-      // turtle (shell toggle), chicken (egg throw), frog (tongue grab), cat (Hiss) or
-      // bee (Swarm) — those are handled in handleMouseDown instead, and shouldn't also
-      // issue a move.
+      // turtle (shell toggle), chicken (egg throw), frog (tongue grab), cat (Hiss),
+      // bee (Swarm) or owl (Pickup) — those are handled in handleMouseDown instead, and
+      // shouldn't also issue a move.
       const heldButtons = e.nativeEvent?.buttons ?? 0;
       if (areShellButtonsHeld(heldButtons) &&
-          (selectedFriendlyTurtleIds().length > 0 || selectedFriendlyChickenIds().length > 0 || selectedFriendlyFrogIds().length > 0 || selectedFriendlyCatIds().length > 0 || selectedFriendlyBeeIds().length > 0)) {
+          (selectedFriendlyTurtleIds().length > 0 || selectedFriendlyChickenIds().length > 0 || selectedFriendlyFrogIds().length > 0 || selectedFriendlyCatIds().length > 0 || selectedFriendlyBeeIds().length > 0 || selectedFriendlyOwlIds().length > 0)) {
         return;
       }
 

@@ -123,6 +123,31 @@ export interface Unit {
   // on contact it stings once, a coin flip that either kills BOTH the bee and the
   // target or fizzles, after which the field is cleared and the bee resumes behavior.
   swarmTargetId?: string;
+  // Owl "Pickup" ability (triggered by simultaneous primary+secondary mouse press on a
+  // unit while a friendly Owl is selected). Set on the carrier Owl, this drives a swoop
+  // -> grab -> lift -> drop state machine entirely in the tick (see updateOwlPickups);
+  // while it is set the Owl ignores its normal AI and combat.
+  owlPickup?: OwlPickupState;
+  // Set on the unit an Owl has grabbed and is carrying aloft. While present the unit is
+  // suppressed (its AI/combat are skipped) and its position is driven by the carrier Owl;
+  // cleared on drop, when it falls and (for enemies) takes fall damage. Holds the carrier
+  // Owl's id so the carried unit can be released if that Owl dies mid-carry.
+  carriedByOwlId?: string;
+  // Ability-controlled render altitude in world units, overriding an air unit's default
+  // flight lift. Animated by updateOwlPickups for both the swooping/carrying Owl and the
+  // unit it holds, so the two rise and fall together. Undefined for normally-behaving units.
+  flightLift?: number;
+}
+
+// Per-Owl state for the "Pickup" ability while it animates. The Owl dives at a claimed
+// target ('swooping'), grabs it on contact, then carries it back up to flight height and
+// hovers until carryUntilMs, at which point it drops the unit ('carrying'). One target per
+// Owl — no two Owls claim the same unit. See updateOwlPickups.
+export interface OwlPickupState {
+  phase: 'swooping' | 'carrying';
+  targetId: string;        // the single unit this Owl has claimed to grab (and then carry)
+  grabbed: boolean;        // false while diving toward the target, true once it is in the Owl's talons
+  carryUntilMs: number;    // performance.now() time to release a carried unit; only meaningful once grabbed
 }
 
 // Live state of a Frog's tongue grab while the ability animates. The tongue
@@ -275,6 +300,12 @@ export interface CommandHiss {
 
 export interface CommandSwarm {
   unitIds: string[];      // selected units; only friendly Bees that find a target swarm
+}
+
+export interface CommandOwlPickup {
+  unitIds: string[];      // selected units; only friendly Owls (Unit kind) that find a target swoop
+  targetAnimal: AnimalId; // animal type to grab, taken from the unit under the cursor
+  targetOwnerId: string;  // owner of the units to grab (clicked unit's side) — type AND owner must match
 }
 
 

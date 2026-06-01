@@ -427,6 +427,11 @@ function unitBobPhase(unitId: string): number {
 // `elapsedMs` is the render clock, used for the bee's continuous hover bob.
 function verticalOffset(unit: Unit, elapsedMs: number): number {
   let offset = 0;
+  // Ability-controlled altitude (an Owl mid-Pickup and the unit it carries) fully overrides
+  // the default per-animal flight/bob so the Owl can swoop to the ground and lift its catch.
+  if (unit.flightLift !== undefined) {
+    return unit.flightLift;
+  }
   // A frog mid tongue-grab is pinned (the tick refuses its movement), so suppress
   // the hop bob and keep it planted on the ground for the grab animation.
   if ((unit.animal === 'Frog' || unit.animal === 'Bunny') && unit.isHopping && !unit.tongue) {
