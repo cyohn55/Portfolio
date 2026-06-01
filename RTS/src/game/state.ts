@@ -2044,17 +2044,20 @@ export const useGameStore = create<Store>((set, get) => ({
   ),
 
   // Owl cargo delivery. The second half of the friendly-Pickup flow: each selected Owl that is
-  // hovering with friendly cargo ('holding') is sent to the cursor drop-off point, flying there
-  // at flight height before descending to set its catch down unharmed (see the 'delivering'
-  // phase in updateOwlPickups). Owls mid-swoop, carrying an enemy, or already delivering are
-  // ignored, so only cargo actually awaiting orders responds.
+  // hovering with friendly cargo ('holding') sets its catch down directly beneath where it is
+  // hovering — it descends in place rather than flying to a shared cursor point, so multiple
+  // delivering Owls spread their cargo across their own positions instead of stacking the dropped
+  // models on one spot (see the 'delivering' phase in updateOwlPickups). Owls mid-swoop, carrying
+  // an enemy, or already delivering are ignored, so only cargo actually awaiting orders responds.
   deliverCargo: (cmd) => set((prev) =>
     produce(prev, (draft) => {
       for (const id of cmd.unitIds) {
         const owl = draft.units.find((candidate) => candidate.id === id);
         if (!owl || owl.owlPickup === undefined) continue;
         if (owl.owlPickup.phase !== 'holding') continue; // only cargo awaiting a delivery order
-        owl.owlPickup.deliverTo = { x: cmd.target.x, y: cmd.target.y, z: cmd.target.z };
+        // Deliver directly beneath the Owl: the drop-off is its own current position, so each
+        // Owl lands its cargo where it hovers and the dropped units never pile onto one point.
+        owl.owlPickup.deliverTo = { x: owl.position.x, y: owl.position.y, z: owl.position.z };
         owl.owlPickup.phase = 'delivering';
       }
     })

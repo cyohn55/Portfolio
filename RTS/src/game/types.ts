@@ -312,8 +312,8 @@ export interface CommandOwlPickup {
 }
 
 export interface CommandOwlDeliver {
-  unitIds: string[];      // selected Owls currently holding friendly cargo ('holding' phase)
-  target: Position3D;     // world drop-off point the Owls fly to before setting their cargo down
+  unitIds: string[];      // selected Owls currently holding friendly cargo ('holding' phase) — each
+                          // sets its cargo down directly beneath where it is hovering
 }
 
 

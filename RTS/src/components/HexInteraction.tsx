@@ -303,7 +303,7 @@ export function MapInteraction() {
       const catIds = selectedFriendlyCatIds();
       const beeIds = selectedFriendlyBeeIds();
       // Owls have two combo modes. If any selected Owl is already holding friendly cargo, this
-      // press is a DELIVERY — it sends those Owls to drop their cargo at the cursor location.
+      // press is a DELIVERY — those Owls set their cargo down directly beneath themselves.
       // Otherwise it is a PICKUP, and only fires when a unit is under the cursor (that unit's
       // animal type and owner decide what the Owls grab).
       const owlIds = selectedFriendlyOwlIds();
@@ -320,10 +320,9 @@ export function MapInteraction() {
           // Swarm has each bee pick its own nearest enemy, so it needs no cursor target.
           if (beeIds.length > 0) swarm({ unitIds: beeIds });
           if (deliverActive) {
-            // Deliver: drop the held friendly cargo at the cursor's ground position.
-            const screenPos = getScreenPosition(event);
-            const dropOff = getWorldPositionFromMouse(screenPos.x, screenPos.y);
-            deliverCargo({ unitIds: deliveringOwlIds, target: { x: dropOff.x, y: 0, z: dropOff.z } });
+            // Deliver: each holding Owl sets its cargo down directly beneath itself (no cursor
+            // target), so multiple deliveries spread out instead of stacking on one point.
+            deliverCargo({ unitIds: deliveringOwlIds });
           } else if (owlTarget) {
             // Pickup: grab units matching the clicked unit's animal type AND owner.
             pickup({ unitIds: owlIds, targetAnimal: owlTarget.animal, targetOwnerId: owlTarget.ownerId });
