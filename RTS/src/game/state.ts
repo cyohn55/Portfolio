@@ -148,8 +148,9 @@ const OWL_DESCENT_SPEED = 22;          // world units/sec the Owl's lift drops a
 const OWL_ASCENT_SPEED = 16;           // world units/sec the Owl's lift rises as it carries its catch back up
 const OWL_GRAB_RANGE = 3.0;            // XZ distance at which the Owl reaches its target and grabs it
 const OWL_GRAB_RANGE_SQ = OWL_GRAB_RANGE * OWL_GRAB_RANGE;
-const OWL_GRAB_LIFT = 1.5;             // the Owl must descend to within this lift of the ground before the talons close
 const OWL_CARRY_HANG_OFFSET = 5;       // world units the carried unit dangles below the Owl so it never clips the model
+const OWL_PLUCK_ALTITUDE = OWL_CARRY_HANG_OFFSET; // lift the Owl swoops down to (hovering above the target); a body-length up keeps it clear of the map while the catch still reaches the ground
+const OWL_GRAB_LIFT = 1.5;             // tolerance above pluck altitude within which the talons close
 const OWL_CARRY_DURATION_MS = 2500;    // how long a grabbed unit is held aloft before being dropped
 const OWL_FALL_DAMAGE = 25;            // hp removed from a dropped enemy on impact; friendlies take none
 const OWL_WING_FLAP_PER_SEC = 4;       // wing-flap cycles/sec kept advancing so the swoop/carry reads as active flight
@@ -2713,10 +2714,13 @@ function updateOwlPickups(draft: Store, dtSec: number, nowMs: number): void {
     const toTargetZ = target.position.z - owl.position.z;
     const distSq = toTargetX * toTargetX + toTargetZ * toTargetZ;
 
-    owl.flightLift = approachLift(owl.flightLift ?? OWL_FLIGHT_HEIGHT, 0, OWL_DESCENT_SPEED, dtSec);
+    // Swoop only down to pluck altitude — the Owl hovers a body-length above the target so
+    // its own model never sinks into the map; the catch (hung OWL_CARRY_HANG_OFFSET below)
+    // still reaches the ground from there.
+    owl.flightLift = approachLift(owl.flightLift ?? OWL_FLIGHT_HEIGHT, OWL_PLUCK_ALTITUDE, OWL_DESCENT_SPEED, dtSec);
 
-    // Grab once the Owl is both over the target and low enough for the talons to reach.
-    if (distSq <= OWL_GRAB_RANGE_SQ && (owl.flightLift ?? 0) <= OWL_GRAB_LIFT) {
+    // Grab once the Owl is both over the target and has settled to pluck altitude.
+    if (distSq <= OWL_GRAB_RANGE_SQ && (owl.flightLift ?? 0) <= OWL_PLUCK_ALTITUDE + OWL_GRAB_LIFT) {
       target.carriedByOwlId = owl.id;
       target.position.x = owl.position.x;
       target.position.z = owl.position.z;
