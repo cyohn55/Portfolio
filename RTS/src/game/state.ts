@@ -2637,14 +2637,19 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
 
       // SPACING FIX: Different behavior for friendly vs enemy units
       if (isFriendly) {
-        // PLAYER MOVEMENT FIX: Reduce collision for selected units moving through unselected friendly units
-        let pushStrength = 0.5; // Default 50% push strength
-
-        if (shouldReduceCollision) {
-          // Selected player units push through unselected friendly units more easily
-          pushStrength = 0.2; // Reduced to 20% for easier movement
-        }
-
+        // A selected player unit must travel AROUND its unselected teammates, never
+        // bulldoze through them. When the mover overlaps an unselected friendly we fully
+        // eject the *mover* to the edge of that unit's personal space (strength 1.0)
+        // instead of letting it penetrate. Only the mover is repositioned here (the idle
+        // unit's position is never touched in checkCollision), and because the ejection is
+        // radial the mover's residual forward order carries it tangentially around the
+        // obstacle. Together with the separation pass holding idle units in place against
+        // selected neighbors, this is what stops a moving selection from shoving idle
+        // friendlies across the map. Two friendlies that are both idle, both selected, or
+        // both AI instead share the spacing softly (0.5) so neither snaps. Ability
+        // knockback such as the Cat's Hiss is applied elsewhere and intentionally bypasses
+        // this rule.
+        const pushStrength = shouldReduceCollision ? 1.0 : 0.5;
         const pushDistance = (minimumDistance - distance) * pushStrength;
         adjustedPosition.x += pushDirectionX * pushDistance;
         adjustedPosition.z += pushDirectionZ * pushDistance;
@@ -2725,6 +2730,9 @@ const SEPARATION_QUERY_RADIUS = UNIT_MINIMUM_SPACING + YETI_SPACING_BONUS; // wi
 function separateOverlappingUnits(draft: Store): void {
   const grid = draft.spatialGrid;
   const nowMs = performance.now();
+  // O(1) membership for the asymmetric friendly rule below; selectedUnitIds can be large
+  // (e.g. select-all), so a Set avoids a per-neighbor linear scan in this hot pass.
+  const selectedIds = new Set(draft.selectedUnitIds);
 
   for (const unit of draft.units) {
     // Bases are immovable. Units being carried, in flight, or locked in place (shelled turtle,
@@ -2748,6 +2756,16 @@ function separateOverlappingUnits(draft: Store): void {
       if (other.id === unit.id || other.kind === 'Base') continue;
       // Skip units owned by the air/carry systems, for the same reason we skip them as `unit`.
       if (other.carriedByOwlId !== undefined || other.isFlying || (other.flightLift ?? 0) > 0) continue;
+
+      // Selected units travel AROUND their idle teammates rather than pushing them: an
+      // unselected friendly holds its ground against a selected friendly neighbor, so a
+      // moving selection can never carry idle units across the map. The selected unit is
+      // the one that yields — when it is the unit being processed this guard is false, so
+      // it still separates away from the idle other. Ability knockback (e.g. the Cat's
+      // Hiss) moves units through a separate system and is unaffected.
+      if (unit.ownerId === other.ownerId && selectedIds.has(other.id) && !selectedIds.has(unit.id)) {
+        continue;
+      }
 
       const dx = unit.position.x - other.position.x;
       const dz = unit.position.z - other.position.z;
