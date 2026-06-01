@@ -1518,6 +1518,11 @@ export const useGameStore = create<Store>((set, get) => ({
       // dead-unit cleanup so an enemy a fatal drop kills is removed in this same pass.
       updateOwlPickups(draft, dtSec, nowMs);
 
+      // Relax any unit pile-ups now that all movement, combat, and Owl drops have settled this
+      // tick. Idle/arrived/just-delivered units don't go through the moving-unit collision, so
+      // without this pass their models would stack and clip on a single point.
+      separateOverlappingUnits(draft);
+
       // Immediate dead unit removal to prevent regeneration of dead units
       if (draft.deadUnitsToRemove.length > 0) {
         // Set-based membership test turns the cleanup from O(dead * units) into
@@ -2212,6 +2217,20 @@ function findClosestEnemy(unit: Unit, grid: SpatialGrid | null, all: Unit[]): Un
 // it is allowed to pass through friendly units to free itself. At 60 Hz this is ~1s.
 const UNWEDGE_STUCK_TICKS = 60;
 
+// Minimum XZ distance enforced between any two units so massed crowds spread out instead of
+// bunching on a point. Shared by the moving-unit collision push (checkCollision) and the
+// idle separation pass (separateOverlappingUnits) so a unit's personal space is the same
+// whether it is walking or standing still.
+const UNIT_MINIMUM_SPACING = 3.75;
+// Extra spacing when a Yetti is involved on either side — its model is larger than the rest.
+const YETI_SPACING_BONUS = 1.5;
+
+// Minimum spacing required between currentUnit and other, accounting for the Yetti size bonus.
+function minimumSpacingBetween(currentUnit: Unit, other: Unit): number {
+  const yetiBonus = (currentUnit.animal === 'Yetti' || other.animal === 'Yetti') ? YETI_SPACING_BONUS : 0;
+  return UNIT_MINIMUM_SPACING + yetiBonus;
+}
+
 function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Unit[], collisionRadius: number = 2.5, selectedUnitIds: string[] = [], localPlayerId: string | null = null, unitOrders: Record<string, any> = {}, spatialGrid: SpatialGrid | null = null): Position3D {
   // A shelled turtle, a frog mid tongue-grab, or a cat mid-Hiss is locked in place:
   // every movement branch funnels its proposed position through here, so refusing the
@@ -2313,12 +2332,9 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
       continue;
     }
 
-    // UNIT SPACING FIX: Enforce a 3.75 unit minimum distance for all units so massed
-    // crowds spread out without bunching on a point (was 5.0, reduced 25%).
-    // Increase spacing for Yetti units by 1.5 units (was 2.0).
-    const baseMinimumDistance = 3.75;
-    const yetiSpacingBonus = (currentUnit.animal === 'Yetti' || other.animal === 'Yetti') ? 1.5 : 0;
-    const minimumDistance = baseMinimumDistance + yetiSpacingBonus;
+    // UNIT SPACING: enforce each unit's personal space so massed crowds spread out without
+    // bunching on a point. The same spacing is reused by the idle separation pass.
+    const minimumDistance = minimumSpacingBetween(currentUnit, other);
     const minimumDistanceSquared = minimumDistance * minimumDistance;
 
     if (distanceSquared < minimumDistanceSquared) {
@@ -2412,6 +2428,104 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
   }
 
   return adjustedPosition;
+}
+
+// Idle units never pass through checkCollision — only the active movement branches do — so units
+// that have arrived at an order, been set down by an Owl, or are simply standing still would
+// overlap and clip into one another (intersecting geometry piled on a single point). This
+// relaxation pass runs once per tick over every settled ground unit and nudges any pair closer
+// than their minimum spacing apart, so stacks resolve into a spread-out formation. Pushes are
+// gentle (a fraction of the overlap) and applied across the whole crowd, so a pile eases apart
+// over a few ticks rather than snapping. It reuses the same spacing and terrain rules as the
+// moving-unit collision, so a unit's personal space is identical whether it is walking or at rest.
+const SEPARATION_RELAX_FACTOR = 0.5;            // fraction of the overlap a unit backs off per tick
+const SEPARATION_MELEE_TOLERANCE_SQ = 4;        // enemies within this (2 units) are left close for combat
+const SEPARATION_QUERY_RADIUS = UNIT_MINIMUM_SPACING + YETI_SPACING_BONUS; // widest spacing any pair can demand
+
+function separateOverlappingUnits(draft: Store): void {
+  const grid = draft.spatialGrid;
+  const nowMs = performance.now();
+
+  for (const unit of draft.units) {
+    // Bases are immovable. Units being carried, in flight, or locked in place (shelled turtle,
+    // frog mid tongue-grab, hissing cat) are positioned by their own systems — their spacing is
+    // not ours to manage, and nudging them would fight those systems.
+    if (unit.kind === 'Base') continue;
+    if (unit.carriedByOwlId !== undefined) continue;
+    if (unit.isFlying || (unit.flightLift ?? 0) > 0 || unit.owlPickup !== undefined) continue;
+    if (unit.isShelled || unit.tongue) continue;
+    if (unit.hissUntilMs !== undefined && nowMs < unit.hissUntilMs) continue;
+
+    const neighbors = grid
+      ? grid.getNearbyUnits(unit.position, SEPARATION_QUERY_RADIUS)
+      : draft.units;
+
+    let pushX = 0;
+    let pushZ = 0;
+    let overlapped = false;
+
+    for (const other of neighbors) {
+      if (other.id === unit.id || other.kind === 'Base') continue;
+      // Skip units owned by the air/carry systems, for the same reason we skip them as `unit`.
+      if (other.carriedByOwlId !== undefined || other.isFlying || (other.flightLift ?? 0) > 0) continue;
+
+      const dx = unit.position.x - other.position.x;
+      const dz = unit.position.z - other.position.z;
+      const distanceSquared = dx * dx + dz * dz;
+
+      // Enemies are allowed to close to melee range without being shoved apart, matching the
+      // moving-unit collision rule — otherwise separation would fight combat positioning.
+      if (unit.ownerId !== other.ownerId && distanceSquared <= SEPARATION_MELEE_TOLERANCE_SQ) continue;
+
+      const minimumDistance = minimumSpacingBetween(unit, other);
+      if (distanceSquared >= minimumDistance * minimumDistance) continue; // already well spaced
+
+      overlapped = true;
+      if (distanceSquared < 0.000001) {
+        // Exactly coincident (e.g. two units set down on one spot): pick a random escape heading
+        // and back off half the full spacing along it.
+        const randomAngle = Math.random() * Math.PI * 2;
+        const overlap = minimumDistance * SEPARATION_RELAX_FACTOR;
+        pushX += Math.cos(randomAngle) * overlap;
+        pushZ += Math.sin(randomAngle) * overlap;
+      } else {
+        const distance = Math.sqrt(distanceSquared);
+        const invDistance = 1 / distance;
+        const overlap = (minimumDistance - distance) * SEPARATION_RELAX_FACTOR;
+        pushX += dx * invDistance * overlap;
+        pushZ += dz * invDistance * overlap;
+      }
+    }
+
+    if (!overlapped) continue;
+
+    const resolved: Position3D = {
+      x: unit.position.x + pushX,
+      y: unit.position.y,
+      z: unit.position.z + pushZ,
+    };
+
+    // Keep the nudge inside the arena and off forbidden water (a push can shove a unit toward
+    // either). Ground units that would land on water slide along whichever axis stays walkable,
+    // mirroring checkCollision; if both axes are blocked the unit holds rather than clip in.
+    clampToArena(resolved);
+    if (ANIMAL_MOVEMENT_TYPES[unit.animal] === 'ground' &&
+        !terrainValidator.canAnimalMoveTo(unit.animal, resolved)) {
+      const slideAlongX = { x: resolved.x, y: unit.position.y, z: unit.position.z };
+      if (terrainValidator.canAnimalMoveTo(unit.animal, slideAlongX)) {
+        unit.position.x = slideAlongX.x;
+      } else {
+        const slideAlongZ = { x: unit.position.x, y: unit.position.y, z: resolved.z };
+        if (terrainValidator.canAnimalMoveTo(unit.animal, slideAlongZ)) {
+          unit.position.z = slideAlongZ.z;
+        }
+      }
+      continue; // boxed in this tick (or only one axis free, handled above) — hold the rest
+    }
+
+    unit.position.x = resolved.x;
+    unit.position.z = resolved.z;
+  }
 }
 
 // Credit a kill to the match-stats cards based on who landed the killing blow.
