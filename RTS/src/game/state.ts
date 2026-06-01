@@ -329,15 +329,15 @@ const loadShadowsEnabled = (): boolean => {
 // transparently pick up sensible values for the new fields).
 const LIGHTING_STORAGE_KEY = 'lightingSettings';
 const DEFAULT_LIGHTING_SETTINGS = {
-  sunBrightness: 3.0,
-  moonBrightness: 3.0,
-  ambientLight: 1.2,
-  dayNightSpeed: 60,
-  exposure: 1.0,
-  environmentIntensity: 1.0,
-  saturation: 1.0,
+  sunBrightness: 9.5,
+  moonBrightness: 15,
+  ambientLight: 5,
+  dayNightSpeed: 210,
+  exposure: 0.4,
+  environmentIntensity: 1.7,
+  saturation: 1.5,
   contrast: 1.0,
-  brightness: 1.0,
+  brightness: 0.95,
   hue: 0,
 };
 type LightingSettings = typeof DEFAULT_LIGHTING_SETTINGS;
