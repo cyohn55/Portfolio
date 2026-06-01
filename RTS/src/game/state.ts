@@ -12,7 +12,7 @@ setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import { pathfinder } from '../components/Working/pathfinder';
 import { clampToArena } from '../components/Working/arenaBoundary';
-import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
+import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, CommandOwlDeliver, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 import * as leaderboardModule from '../components/Working/leaderboard';
 import * as leaderboardRemoteModule from '../components/Working/leaderboardRemote';
@@ -228,6 +228,7 @@ type Store = GameState & {
   hiss: (cmd: CommandHiss) => void;
   swarm: (cmd: CommandSwarm) => void;
   pickup: (cmd: CommandOwlPickup) => void;
+  deliverCargo: (cmd: CommandOwlDeliver) => void;
   toggleOptimization: (key: keyof Store['optimizations']) => void;
   // Bridge animation system
   bridgeState: BridgeState;
@@ -2042,6 +2043,23 @@ export const useGameStore = create<Store>((set, get) => ({
     })
   ),
 
+  // Owl cargo delivery. The second half of the friendly-Pickup flow: each selected Owl that is
+  // hovering with friendly cargo ('holding') is sent to the cursor drop-off point, flying there
+  // at flight height before descending to set its catch down unharmed (see the 'delivering'
+  // phase in updateOwlPickups). Owls mid-swoop, carrying an enemy, or already delivering are
+  // ignored, so only cargo actually awaiting orders responds.
+  deliverCargo: (cmd) => set((prev) =>
+    produce(prev, (draft) => {
+      for (const id of cmd.unitIds) {
+        const owl = draft.units.find((candidate) => candidate.id === id);
+        if (!owl || owl.owlPickup === undefined) continue;
+        if (owl.owlPickup.phase !== 'holding') continue; // only cargo awaiting a delivery order
+        owl.owlPickup.deliverTo = { x: cmd.target.x, y: cmd.target.y, z: cmd.target.z };
+        owl.owlPickup.phase = 'delivering';
+      }
+    })
+  ),
+
   toggleOptimization: (key) => set((prev) => ({
     optimizations: {
       ...prev.optimizations,
@@ -2629,26 +2647,59 @@ function approachLift(currentLift: number, goalLift: number, speed: number, dtSe
   return currentLift + Math.sign(delta) * step;
 }
 
+// Glue the carried unit to a position OWL_CARRY_HANG_OFFSET below the Owl, matching its XZ and
+// facing, so it dangles beneath the talons clear of the model. Called every carry/hold/deliver
+// tick so a moving Owl tows its catch along.
+function carryUnitBeneath(owl: Unit, carried: Unit): void {
+  carried.position.x = owl.position.x;
+  carried.position.z = owl.position.z;
+  carried.position.y = owl.position.y; // share the Owl's ground reference so the hang stays exact
+  carried.rotation = owl.rotation;
+  carried.pathWaypoints = undefined;
+  carried.flightLift = Math.max(0, (owl.flightLift ?? 0) - OWL_CARRY_HANG_OFFSET);
+}
+
+// Set a carried unit down at its current XZ: ground it on the surface below, clear the carry
+// render lift, and (for an enemy, when fallDamage > 0) apply impact damage — a fatal drop is
+// credited to the Owl's owner. Friendlies, or any delivery (fallDamage 0), land unharmed.
+function dropCarriedUnit(draft: Store, owl: Unit, carried: Unit, fallDamage: number): void {
+  carried.carriedByOwlId = undefined;
+  carried.position.y = terrainValidator.getBridgeSurfaceY(carried.position) ?? 0; // land on the ground it is over
+  carried.flightLift = undefined;
+  delete draft.unitOrders[carried.id];
+
+  if (fallDamage > 0 && carried.ownerId !== owl.ownerId) {
+    carried.hp -= fallDamage;
+    if (carried.hp <= 0) {
+      carried.hp = 0;
+      draft.deadUnitsToRemove.push(carried.id);
+      creditKill(draft, owl.ownerId, carried); // the drop killed the enemy
+    }
+  }
+}
+
 // Detach the unit an Owl is carrying without harming it (used when the Owl dies or its catch
 // is lost mid-carry). The unit drops straight down to the ground it is currently over and
 // resumes normal behavior next tick.
 function releaseCarriedUnit(draft: Store, owl: Unit): void {
   const carried = draft.units.find((candidate) => candidate.carriedByOwlId === owl.id);
   if (!carried) return;
-  carried.carriedByOwlId = undefined;
-  carried.flightLift = undefined; // fall back to the ground (render lift cleared)
+  dropCarriedUnit(draft, owl, carried, 0);
 }
 
-// Advance every Owl that is mid-Pickup, one tick. The ability runs as a two-phase state
-// machine driven entirely here (the Owl's normal AI is suppressed by the pickup intercept in
-// tick):
-//   'swooping' — the Owl flies toward its claimed target on the XZ plane at OWL_SWOOP_SPEED
-//     while descending from flight height. Once it is within OWL_GRAB_RANGE and has dropped to
-//     near the ground it grabs the target (carriedByOwlId set) and switches to 'carrying'.
-//   'carrying' — the Owl rises back to OWL_FLIGHT_HEIGHT with the unit glued beneath it, holds
-//     until OWL_CARRY_DURATION_MS has elapsed, then drops it. A dropped enemy takes
-//     OWL_FALL_DAMAGE (a fatal drop is credited to the Owl's owner); a dropped friendly lands
-//     unharmed. The Owl then clears the ability and resumes normal flight.
+// Advance every Owl that is mid-Pickup, one tick. The ability runs as a state machine driven
+// entirely here (the Owl's normal AI is suppressed by the pickup intercept in tick):
+//   'swooping'   — the Owl flies toward its claimed target on the XZ plane at OWL_SWOOP_SPEED
+//     while descending to pluck altitude. Once over the target it grabs it and switches to
+//     'carrying'.
+//   'carrying'   — the Owl rises back to OWL_FLIGHT_HEIGHT with the unit glued beneath it. An
+//     ENEMY catch is then dropped once OWL_CARRY_DURATION_MS has elapsed, taking OWL_FALL_DAMAGE.
+//     A FRIENDLY catch is instead held: on reaching flight height the Owl switches to 'holding'.
+//   'holding'    — (friendly only) the Owl hovers indefinitely with its cargo, awaiting a
+//     delivery order. A second both-buttons press (deliverCargo) sets deliverTo and moves it to
+//     'delivering'.
+//   'delivering' — (friendly only) the Owl flies to deliverTo at flight height, descends to
+//     pluck altitude over the spot, and sets the unit down unharmed.
 // An Owl whose target dies or vanishes before the grab simply breaks off and flies home. Owls
 // are air units, so the swoop ignores terrain and unit collision.
 function updateOwlPickups(draft: Store, dtSec: number, nowMs: number): void {
@@ -2678,31 +2729,67 @@ function updateOwlPickups(draft: Store, dtSec: number, nowMs: number): void {
     owl.isFlying = true; // keep the wing-flap animation running through both phases
     owl.wingPhase = ((owl.wingPhase || 0) + dtSec * OWL_WING_FLAP_PER_SEC) % 1;
 
+    const carriedIsFriendly = target.ownerId === owl.ownerId;
+
     if (pickup.phase === 'carrying') {
       // Rise back to cruising altitude with the catch dangling well below the talons.
       owl.flightLift = approachLift(owl.flightLift ?? 0, OWL_FLIGHT_HEIGHT, OWL_ASCENT_SPEED, dtSec);
-      target.position.x = owl.position.x;
-      target.position.z = owl.position.z;
-      target.rotation = owl.rotation;
-      target.flightLift = Math.max(0, (owl.flightLift ?? 0) - OWL_CARRY_HANG_OFFSET); // dangle below the Owl, clear of its model
+      carryUnitBeneath(owl, target);
 
-      // Release once the hold has elapsed AND the Owl has carried the unit back up to flight
-      // height (so it always "returns to its original flying height" before dropping).
       const reachedFlightHeight = (owl.flightLift ?? 0) >= OWL_FLIGHT_HEIGHT - 0.01;
+
+      // A friendly catch is carried until the player orders a delivery: once the Owl is back at
+      // flight height it switches to hovering ('holding') with its cargo instead of dropping.
+      if (carriedIsFriendly) {
+        if (reachedFlightHeight) pickup.phase = 'holding';
+        continue;
+      }
+
+      // An enemy catch is dropped once the carry timer elapses AND the Owl has returned to its
+      // original flight height, so it always "returns to its flying height" before dropping.
       if (nowMs >= pickup.carryUntilMs && reachedFlightHeight) {
-        target.carriedByOwlId = undefined;
-        target.flightLift = undefined; // the dropped unit falls to the ground it is over
+        dropCarriedUnit(draft, owl, target, OWL_FALL_DAMAGE); // enemies hit the ground hard
+        owl.owlPickup = undefined;
+        owl.flightLift = undefined; // back to normal flight behavior next tick
+      }
+      continue;
+    }
 
-        // Enemies hit the ground hard; friendlies are set down safely (a repositioning/rescue).
-        if (target.ownerId !== owl.ownerId) {
-          target.hp -= OWL_FALL_DAMAGE;
-          if (target.hp <= 0) {
-            target.hp = 0;
-            draft.deadUnitsToRemove.push(target.id);
-            creditKill(draft, owl.ownerId, target); // the drop killed the enemy
-          }
-        }
+    if (pickup.phase === 'holding') {
+      // Friendly cargo: hover in place at flight height, towing the unit beneath, until the
+      // player issues a delivery order (deliverCargo sets deliverTo and flips to 'delivering').
+      owl.flightLift = approachLift(owl.flightLift ?? 0, OWL_FLIGHT_HEIGHT, OWL_ASCENT_SPEED, dtSec);
+      carryUnitBeneath(owl, target);
+      continue;
+    }
 
+    if (pickup.phase === 'delivering' && pickup.deliverTo !== undefined) {
+      // Friendly cargo: fly to the drop-off point at flight height, then descend to pluck
+      // altitude over it and set the unit down unharmed.
+      const toDropX = pickup.deliverTo.x - owl.position.x;
+      const toDropZ = pickup.deliverTo.z - owl.position.z;
+      const dropDistSq = toDropX * toDropX + toDropZ * toDropZ;
+
+      if (dropDistSq > OWL_GRAB_RANGE_SQ) {
+        // Still en route: cruise toward the drop-off at flight height.
+        owl.flightLift = approachLift(owl.flightLift ?? 0, OWL_FLIGHT_HEIGHT, OWL_ASCENT_SPEED, dtSec);
+        const invDist = 1 / Math.sqrt(dropDistSq);
+        const dirX = toDropX * invDist;
+        const dirZ = toDropZ * invDist;
+        owl.rotation = Math.atan2(dirX, dirZ);
+        const step = Math.min(OWL_SWOOP_SPEED * dtSec, Math.sqrt(dropDistSq));
+        owl.position.x += dirX * step;
+        owl.position.z += dirZ * step;
+        owl.pathWaypoints = undefined;
+        carryUnitBeneath(owl, target);
+        continue;
+      }
+
+      // Over the drop-off: descend to pluck altitude, then set the friendly down unharmed.
+      owl.flightLift = approachLift(owl.flightLift ?? OWL_FLIGHT_HEIGHT, OWL_PLUCK_ALTITUDE, OWL_DESCENT_SPEED, dtSec);
+      carryUnitBeneath(owl, target);
+      if ((owl.flightLift ?? 0) <= OWL_PLUCK_ALTITUDE + OWL_GRAB_LIFT) {
+        dropCarriedUnit(draft, owl, target, 0); // delivered safely — no fall damage
         owl.owlPickup = undefined;
         owl.flightLift = undefined; // back to normal flight behavior next tick
       }
@@ -2722,11 +2809,8 @@ function updateOwlPickups(draft: Store, dtSec: number, nowMs: number): void {
     // Grab once the Owl is both over the target and has settled to pluck altitude.
     if (distSq <= OWL_GRAB_RANGE_SQ && (owl.flightLift ?? 0) <= OWL_PLUCK_ALTITUDE + OWL_GRAB_LIFT) {
       target.carriedByOwlId = owl.id;
-      target.position.x = owl.position.x;
-      target.position.z = owl.position.z;
-      target.flightLift = Math.max(0, (owl.flightLift ?? 0) - OWL_CARRY_HANG_OFFSET);
-      target.pathWaypoints = undefined;
       delete draft.unitOrders[target.id];
+      carryUnitBeneath(owl, target);
 
       pickup.phase = 'carrying';
       pickup.grabbed = true;

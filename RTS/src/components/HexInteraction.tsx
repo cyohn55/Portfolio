@@ -45,6 +45,7 @@ export function MapInteraction() {
   const hiss = useGameStore((s) => s.hiss);
   const swarm = useGameStore((s) => s.swarm);
   const pickup = useGameStore((s) => s.pickup);
+  const deliverCargo = useGameStore((s) => s.deliverCargo);
   // Mouse buttons are remappable via Settings -> Controls. Defaults: left=select,
   // right=command. tokenToMouseButton maps the saved token back to a DOM button.
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
@@ -230,6 +231,14 @@ export function MapInteraction() {
       .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Owl' && unit.kind === 'Unit' && selectedUnitIds.includes(unit.id))
       .map((unit) => unit.id);
 
+  // Selected Owls currently hovering with friendly cargo, awaiting a delivery order. When any
+  // exist, the next both-buttons press is a delivery (drop-off at the cursor) rather than a new
+  // pickup — this is the second press that "shows the Owls where to deliver their cargo".
+  const selectedOwlsHoldingCargo = (): string[] =>
+    units
+      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Owl' && selectedUnitIds.includes(unit.id) && unit.owlPickup?.phase === 'holding')
+      .map((unit) => unit.id);
+
   // The unit (any owner) whose projected center is nearest the cursor within
   // UNIT_PICK_RADIUS_PX, excluding Bases — the Owl Pickup target whose animal type and owner
   // define which units the selected Owls grab. Returns null when no unit is under the cursor.
@@ -293,12 +302,15 @@ export function MapInteraction() {
       const frogIds = selectedFriendlyFrogIds();
       const catIds = selectedFriendlyCatIds();
       const beeIds = selectedFriendlyBeeIds();
-      // Owls only act when a unit is actually under the cursor — that unit's animal type and
-      // owner decide what the Owls grab — so resolve the target up front and treat the Owls
-      // as active only when one is found.
+      // Owls have two combo modes. If any selected Owl is already holding friendly cargo, this
+      // press is a DELIVERY — it sends those Owls to drop their cargo at the cursor location.
+      // Otherwise it is a PICKUP, and only fires when a unit is under the cursor (that unit's
+      // animal type and owner decide what the Owls grab).
       const owlIds = selectedFriendlyOwlIds();
-      const owlTarget = owlIds.length > 0 ? unitUnderCursor(getScreenPosition(event)) : null;
-      const owlsActive = owlIds.length > 0 && owlTarget !== null;
+      const deliveringOwlIds = owlIds.length > 0 ? selectedOwlsHoldingCargo() : [];
+      const deliverActive = deliveringOwlIds.length > 0;
+      const owlTarget = (owlIds.length > 0 && !deliverActive) ? unitUnderCursor(getScreenPosition(event)) : null;
+      const owlsActive = deliverActive || owlTarget !== null;
       if (turtleIds.length > 0 || chickenIds.length > 0 || frogIds.length > 0 || catIds.length > 0 || beeIds.length > 0 || owlsActive) {
         if (!shellComboHandledRef.current) {
           shellComboHandledRef.current = true;
@@ -307,8 +319,15 @@ export function MapInteraction() {
           if (catIds.length > 0) hiss({ unitIds: catIds });
           // Swarm has each bee pick its own nearest enemy, so it needs no cursor target.
           if (beeIds.length > 0) swarm({ unitIds: beeIds });
-          // Pickup grabs units matching the clicked unit's animal type AND owner.
-          if (owlsActive && owlTarget) pickup({ unitIds: owlIds, targetAnimal: owlTarget.animal, targetOwnerId: owlTarget.ownerId });
+          if (deliverActive) {
+            // Deliver: drop the held friendly cargo at the cursor's ground position.
+            const screenPos = getScreenPosition(event);
+            const dropOff = getWorldPositionFromMouse(screenPos.x, screenPos.y);
+            deliverCargo({ unitIds: deliveringOwlIds, target: { x: dropOff.x, y: 0, z: dropOff.z } });
+          } else if (owlTarget) {
+            // Pickup: grab units matching the clicked unit's animal type AND owner.
+            pickup({ unitIds: owlIds, targetAnimal: owlTarget.animal, targetOwnerId: owlTarget.ownerId });
+          }
           if (chickenIds.length > 0 || frogIds.length > 0) {
             const screenPos = getScreenPosition(event);
             const target = getWorldPositionFromMouse(screenPos.x, screenPos.y);
@@ -527,7 +546,7 @@ export function MapInteraction() {
       canvas.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, hiss, swarm, pickup, primaryButton, secondaryButton]);
+  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, hiss, swarm, pickup, deliverCargo, primaryButton, secondaryButton]);
 
   const handleGroundClick = (e: any) => {
     // Prevent browser context menu on right-click - check if preventDefault exists

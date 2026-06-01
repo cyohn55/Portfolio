@@ -139,15 +139,18 @@ export interface Unit {
   flightLift?: number;
 }
 
-// Per-Owl state for the "Pickup" ability while it animates. The Owl dives at a claimed
-// target ('swooping'), grabs it on contact, then carries it back up to flight height and
-// hovers until carryUntilMs, at which point it drops the unit ('carrying'). One target per
-// Owl — no two Owls claim the same unit. See updateOwlPickups.
+// Per-Owl state for the "Pickup" ability while it animates. The Owl dives at a claimed target
+// ('swooping') and grabs it on contact ('carrying'). An ENEMY catch is dropped once
+// carryUntilMs elapses (fall damage). A FRIENDLY catch is instead held aloft indefinitely
+// ('holding') until the player issues a delivery order, which sends the Owl to deliverTo
+// ('delivering') to set the unit down unharmed. One target per Owl — no two Owls claim the
+// same unit. See updateOwlPickups + deliverCargo.
 export interface OwlPickupState {
-  phase: 'swooping' | 'carrying';
+  phase: 'swooping' | 'carrying' | 'holding' | 'delivering';
   targetId: string;        // the single unit this Owl has claimed to grab (and then carry)
   grabbed: boolean;        // false while diving toward the target, true once it is in the Owl's talons
-  carryUntilMs: number;    // performance.now() time to release a carried unit; only meaningful once grabbed
+  carryUntilMs: number;    // performance.now() time to drop an enemy catch; only meaningful while 'carrying'
+  deliverTo?: Position3D;  // friendly drop-off point set by a delivery order; drives the 'delivering' phase
 }
 
 // Live state of a Frog's tongue grab while the ability animates. The tongue
@@ -306,6 +309,11 @@ export interface CommandOwlPickup {
   unitIds: string[];      // selected units; only friendly Owls (Unit kind) that find a target swoop
   targetAnimal: AnimalId; // animal type to grab, taken from the unit under the cursor
   targetOwnerId: string;  // owner of the units to grab (clicked unit's side) — type AND owner must match
+}
+
+export interface CommandOwlDeliver {
+  unitIds: string[];      // selected Owls currently holding friendly cargo ('holding' phase)
+  target: Position3D;     // world drop-off point the Owls fly to before setting their cargo down
 }
 
 
