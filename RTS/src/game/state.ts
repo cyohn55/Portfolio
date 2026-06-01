@@ -151,6 +151,8 @@ const OWL_GRAB_RANGE_SQ = OWL_GRAB_RANGE * OWL_GRAB_RANGE;
 const OWL_CARRY_HANG_OFFSET = 5;       // world units the carried unit dangles below the Owl so it never clips the model
 const OWL_PLUCK_ALTITUDE = OWL_CARRY_HANG_OFFSET; // lift the Owl swoops down to (hovering above the target); a body-length up keeps it clear of the map while the catch still reaches the ground
 const OWL_GRAB_LIFT = 1.5;             // tolerance above pluck altitude within which the talons close
+const OWL_DELIVERY_ARRIVAL_RANGE = 8.0;   // XZ distance from the ordered drop-off at which a delivering Owl stops and sets its cargo down beneath itself
+const OWL_DELIVERY_ARRIVAL_RANGE_SQ = OWL_DELIVERY_ARRIVAL_RANGE * OWL_DELIVERY_ARRIVAL_RANGE;
 const OWL_CARRY_DURATION_MS = 2500;    // how long a grabbed unit is held aloft before being dropped
 const OWL_FALL_DAMAGE = 25;            // hp removed from a dropped enemy on impact; friendlies take none
 const OWL_WING_FLAP_PER_SEC = 4;       // wing-flap cycles/sec kept advancing so the swoop/carry reads as active flight
@@ -2044,20 +2046,19 @@ export const useGameStore = create<Store>((set, get) => ({
   ),
 
   // Owl cargo delivery. The second half of the friendly-Pickup flow: each selected Owl that is
-  // hovering with friendly cargo ('holding') sets its catch down directly beneath where it is
-  // hovering — it descends in place rather than flying to a shared cursor point, so multiple
-  // delivering Owls spread their cargo across their own positions instead of stacking the dropped
-  // models on one spot (see the 'delivering' phase in updateOwlPickups). Owls mid-swoop, carrying
-  // an enemy, or already delivering are ignored, so only cargo actually awaiting orders responds.
+  // hovering with friendly cargo ('holding') is sent to the cursor drop-off point, flying there
+  // at flight height. Rather than converging on the exact point (which stacked the dropped models),
+  // each Owl stops once it is within OWL_DELIVERY_ARRIVAL_RANGE of the destination and sets its
+  // cargo down directly beneath itself — so Owls arriving from different directions spread their
+  // cargo around the drop-off (see the 'delivering' phase in updateOwlPickups). Owls mid-swoop,
+  // carrying an enemy, or already delivering are ignored, so only cargo awaiting orders responds.
   deliverCargo: (cmd) => set((prev) =>
     produce(prev, (draft) => {
       for (const id of cmd.unitIds) {
         const owl = draft.units.find((candidate) => candidate.id === id);
         if (!owl || owl.owlPickup === undefined) continue;
         if (owl.owlPickup.phase !== 'holding') continue; // only cargo awaiting a delivery order
-        // Deliver directly beneath the Owl: the drop-off is its own current position, so each
-        // Owl lands its cargo where it hovers and the dropped units never pile onto one point.
-        owl.owlPickup.deliverTo = { x: owl.position.x, y: owl.position.y, z: owl.position.z };
+        owl.owlPickup.deliverTo = { x: cmd.target.x, y: cmd.target.y, z: cmd.target.z };
         owl.owlPickup.phase = 'delivering';
       }
     })
@@ -2767,13 +2768,15 @@ function updateOwlPickups(draft: Store, dtSec: number, nowMs: number): void {
     }
 
     if (pickup.phase === 'delivering' && pickup.deliverTo !== undefined) {
-      // Friendly cargo: fly to the drop-off point at flight height, then descend to pluck
-      // altitude over it and set the unit down unharmed.
+      // Friendly cargo: fly to the drop-off point at flight height until within the arrival range,
+      // then descend to pluck altitude where it stopped and set the unit down beneath itself. The
+      // arrival range (wider than the grab range) lets Owls converging from different directions
+      // settle around the drop-off rather than stacking their cargo on the exact point.
       const toDropX = pickup.deliverTo.x - owl.position.x;
       const toDropZ = pickup.deliverTo.z - owl.position.z;
       const dropDistSq = toDropX * toDropX + toDropZ * toDropZ;
 
-      if (dropDistSq > OWL_GRAB_RANGE_SQ) {
+      if (dropDistSq > OWL_DELIVERY_ARRIVAL_RANGE_SQ) {
         // Still en route: cruise toward the drop-off at flight height.
         owl.flightLift = approachLift(owl.flightLift ?? 0, OWL_FLIGHT_HEIGHT, OWL_ASCENT_SPEED, dtSec);
         const invDist = 1 / Math.sqrt(dropDistSq);
@@ -2788,7 +2791,8 @@ function updateOwlPickups(draft: Store, dtSec: number, nowMs: number): void {
         continue;
       }
 
-      // Over the drop-off: descend to pluck altitude, then set the friendly down unharmed.
+      // Arrived near the drop-off: descend in place to pluck altitude, then set the friendly down
+      // unharmed directly beneath the Owl.
       owl.flightLift = approachLift(owl.flightLift ?? OWL_FLIGHT_HEIGHT, OWL_PLUCK_ALTITUDE, OWL_DESCENT_SPEED, dtSec);
       carryUnitBeneath(owl, target);
       if ((owl.flightLift ?? 0) <= OWL_PLUCK_ALTITUDE + OWL_GRAB_LIFT) {
