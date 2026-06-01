@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useGameStore } from '../game/state';
+import { ANIMAL_MOVEMENT_TYPES } from '../game/types';
 import * as THREE from 'three';
 import { tokenToMouseButton } from './Working/controlBindings';
 
@@ -304,12 +305,15 @@ export function MapInteraction() {
       const beeIds = selectedFriendlyBeeIds();
       // Owls have two combo modes. If any selected Owl is already holding friendly cargo, this
       // press is a DELIVERY — it sends those Owls to the cursor location, where each sets its
-      // cargo down beneath itself on arrival. Otherwise it is a PICKUP, and only fires when a unit
-      // is under the cursor (that unit's animal type and owner decide what the Owls grab).
+      // cargo down beneath itself on arrival. Otherwise it is a PICKUP, and only fires when a
+      // grabbable unit is under the cursor (that unit's animal type and owner decide what the
+      // Owls grab). Flying units (Owls, Bees) can't be plucked out of the air, so they are not
+      // valid pickup targets — clicking one is treated as no target.
       const owlIds = selectedFriendlyOwlIds();
       const deliveringOwlIds = owlIds.length > 0 ? selectedOwlsHoldingCargo() : [];
       const deliverActive = deliveringOwlIds.length > 0;
-      const owlTarget = (owlIds.length > 0 && !deliverActive) ? unitUnderCursor(getScreenPosition(event)) : null;
+      const cursorUnit = (owlIds.length > 0 && !deliverActive) ? unitUnderCursor(getScreenPosition(event)) : null;
+      const owlTarget = (cursorUnit && ANIMAL_MOVEMENT_TYPES[cursorUnit.animal] !== 'air') ? cursorUnit : null;
       const owlsActive = deliverActive || owlTarget !== null;
       if (turtleIds.length > 0 || chickenIds.length > 0 || frogIds.length > 0 || catIds.length > 0 || beeIds.length > 0 || owlsActive) {
         if (!shellComboHandledRef.current) {

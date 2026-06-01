@@ -2028,6 +2028,7 @@ export const useGameStore = create<Store>((set, get) => ({
           if (candidate.animal !== cmd.targetAnimal) continue;   // same animal type as the clicked unit
           if (candidate.ownerId !== cmd.targetOwnerId) continue; // same side as the clicked unit
           if (candidate.kind === 'Base') continue;               // animals only, never structures
+          if (ANIMAL_MOVEMENT_TYPES[candidate.animal] === 'air') continue; // can't pluck flying units (Owls/Bees) out of the air
           if (candidate.hp <= 0) continue;
           if (candidate.id === owl.id) continue;                 // an Owl can't grab itself
           if (candidate.owlPickup !== undefined) continue;       // never grab another mid-Pickup Owl
