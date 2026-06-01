@@ -103,7 +103,10 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
 
       // Moon is brightest when above horizon (higher Y = brighter)
       // Add minimum intensity so moon always provides some light
-      const moonIntensity = Math.max(2.0, ((moonY - 20) / radiusY)) * lightingSettings.moonBrightness; // Minimum 2.0 for brighter nighttime
+      // The floor is kept low now that the baked IBL (SceneLighting) lifts the shadow side —
+      // the moon no longer has to flood the whole field to keep night readable, which
+      // previously over-lit it.
+      const moonIntensity = Math.max(0.6, ((moonY - 20) / radiusY)) * lightingSettings.moonBrightness;
       moonRef.current.intensity = moonIntensity;
 
       // Moon glow effect - always fully visible
@@ -156,8 +159,10 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
       // Use whichever is closer to horizon (sun or moon)
       const horizonFactor = Math.max(sunHorizonFactor, moonHorizonFactor);
 
-      // Set intensity (0 when far from horizon, up to 8.0 at horizon)
-      horizonLightRef.current.intensity = horizonFactor * 8.0;
+      // Set intensity (0 when far from horizon, up to 5.0 at horizon). Lowered from 8.0:
+      // the sunrise/sunset warm wash was a major washout source, and the IBL fill now
+      // carries the ambient, so this only needs to add a gentle golden-hour tint.
+      horizonLightRef.current.intensity = horizonFactor * 5.0;
     }
 
     // Update hemisphere light for ambient lighting transition
@@ -191,21 +196,24 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
     }
   });
 
-  // Create sun material - bright yellow glow
+  // Create sun material - bright yellow glow. toneMapped:false keeps it a pure, vivid beacon
+  // under AgX tone mapping (which would otherwise pull the saturated yellow toward grey).
   const sunMaterial = useMemo(() => {
     return new THREE.MeshBasicMaterial({
       color: 0xFFFF00, // Bright yellow
       transparent: true,
       opacity: 1.0,
+      toneMapped: false,
     });
   }, []);
 
-  // Create moon material - baby blue glow
+  // Create moon material - baby blue glow (toneMapped:false for the same reason as the sun).
   const moonMaterial = useMemo(() => {
     return new THREE.MeshBasicMaterial({
       color: 0x89CFF0, // Baby blue
       transparent: true,
       opacity: 1.0,
+      toneMapped: false,
     });
   }, []);
 
@@ -296,8 +304,9 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
         />
       </mesh>
 
-      {/* Sun point light - emits yellow light like a lightbulb */}
-      <pointLight ref={sunLightRef} position={[250, 100, 0]} intensity={20} color={0xFFFF00} distance={300} decay={1} />
+      {/* Sun point light - a warm local glow near the sun disc. Lowered 20 -> 8: at full
+          strength it stacked on the directional sun and blew out everything it reached. */}
+      <pointLight ref={sunLightRef} position={[250, 100, 0]} intensity={8} color={0xFFFF00} distance={300} decay={1} />
 
       {/* Visual moon sphere - baby blue */}
       <mesh ref={moonMeshRef} position={[-250, 100, 0]}>
@@ -346,8 +355,9 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
         />
       </mesh>
 
-      {/* Moon point light - emits baby blue light like a lightbulb */}
-      <pointLight ref={moonLightRef} position={[-250, 100, 0]} intensity={20} color={0x89CFF0} distance={300} decay={1} />
+      {/* Moon point light - a cool local glow near the moon disc. Lowered 20 -> 8 to match
+          the sun and stop it over-lighting the field at night. */}
+      <pointLight ref={moonLightRef} position={[-250, 100, 0]} intensity={8} color={0x89CFF0} distance={300} decay={1} />
 
       {/* Horizon light - increases intensity as sun/moon near horizon */}
       <pointLight ref={horizonLightRef} position={[0, 20, 0]} intensity={0} color={0xffd9b3} distance={250} decay={1} />

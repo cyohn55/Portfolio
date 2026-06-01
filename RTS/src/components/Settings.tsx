@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../game/state';
 import { ControlBindingsPanel } from './Working/ControlBindingsPanel';
 
@@ -21,6 +21,8 @@ export function Settings({ onBack }: SettingsProps) {
   const [moonBrightness, setMoonBrightness] = useState(lightingSettings.moonBrightness);
   const [ambientLight, setAmbientLight] = useState(lightingSettings.ambientLight);
   const [dayNightSpeed, setDayNightSpeed] = useState(lightingSettings.dayNightSpeed);
+  const [exposure, setExposure] = useState(lightingSettings.exposure);
+  const [environmentIntensity, setEnvironmentIntensity] = useState(lightingSettings.environmentIntensity);
 
   // Sync with store when settings change externally
   useEffect(() => {
@@ -28,7 +30,35 @@ export function Settings({ onBack }: SettingsProps) {
     setMoonBrightness(lightingSettings.moonBrightness);
     setAmbientLight(lightingSettings.ambientLight);
     setDayNightSpeed(lightingSettings.dayNightSpeed);
+    setExposure(lightingSettings.exposure);
+    setEnvironmentIntensity(lightingSettings.environmentIntensity);
   }, [lightingSettings]);
+
+  // Exposure and environment (IBL) intensity update the live scene as the slider moves, so the
+  // player can dial the look in real time against the 3D behind this panel. The values are
+  // committed to localStorage on Save like the rest.
+  const previewExposure = (value: number) => {
+    setExposure(value);
+    updateLightingSettings({ exposure: value });
+  };
+  const previewEnvironmentIntensity = (value: number) => {
+    setEnvironmentIntensity(value);
+    updateLightingSettings({ environmentIntensity: value });
+  };
+
+  // The live-preview values that were active when the panel opened, so "Back" (cancel) can
+  // discard any dialing and restore the scene to where it was. Captured once on mount.
+  const openingPreviewRef = useRef({
+    exposure: lightingSettings.exposure,
+    environmentIntensity: lightingSettings.environmentIntensity,
+  });
+  const handleBack = () => {
+    updateLightingSettings({
+      exposure: openingPreviewRef.current.exposure,
+      environmentIntensity: openingPreviewRef.current.environmentIntensity,
+    });
+    onBack();
+  };
 
   const handleSave = () => {
     // Save to game store
@@ -36,7 +66,9 @@ export function Settings({ onBack }: SettingsProps) {
       sunBrightness,
       moonBrightness,
       ambientLight,
-      dayNightSpeed
+      dayNightSpeed,
+      exposure,
+      environmentIntensity
     });
 
     // Also persist to localStorage
@@ -44,7 +76,9 @@ export function Settings({ onBack }: SettingsProps) {
       sunBrightness,
       moonBrightness,
       ambientLight,
-      dayNightSpeed
+      dayNightSpeed,
+      exposure,
+      environmentIntensity
     }));
 
     onBack();
@@ -280,6 +314,42 @@ export function Settings({ onBack }: SettingsProps) {
 
             <div>
               <label style={{ color: '#94a3b8', fontSize: '14px', display: 'block', marginBottom: '8px' }}>
+                Exposure (Current: {exposure.toFixed(2)})
+              </label>
+              <input
+                type="range"
+                min="0.4"
+                max="2"
+                step="0.05"
+                value={exposure}
+                onChange={(e) => previewExposure(parseFloat(e.target.value))}
+                style={{ width: '100%' }}
+              />
+              <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
+                Overall brightness (AgX tone mapping). Lower to recover washed-out highlights, raise to lift a dark scene.
+              </div>
+            </div>
+
+            <div>
+              <label style={{ color: '#94a3b8', fontSize: '14px', display: 'block', marginBottom: '8px' }}>
+                Environment Light / IBL (Current: {environmentIntensity.toFixed(1)})
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="3"
+                step="0.1"
+                value={environmentIntensity}
+                onChange={(e) => previewEnvironmentIntensity(parseFloat(e.target.value))}
+                style={{ width: '100%' }}
+              />
+              <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
+                Soft studio fill on the models' shadow side. Higher = richer, more "rendered" look; 0 = lit by the sun/moon only.
+              </div>
+            </div>
+
+            <div>
+              <label style={{ color: '#94a3b8', fontSize: '14px', display: 'block', marginBottom: '8px' }}>
                 Day/Night Cycle Speed (Current: {dayNightSpeed}s)
               </label>
               <input
@@ -319,7 +389,7 @@ export function Settings({ onBack }: SettingsProps) {
           borderTop: '2px solid rgba(88,120,255,0.3)'
         }}>
           <button
-            onClick={onBack}
+            onClick={handleBack}
             style={{
               flex: 1,
               padding: '14px 28px',

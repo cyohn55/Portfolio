@@ -282,6 +282,14 @@ type Store = GameState & {
     moonBrightness: number;
     ambientLight: number;
     dayNightSpeed: number;
+    // Renderer tone-mapping exposure (AgX). Higher = brighter overall; lets the player
+    // pull highlights back from washing out or lift a too-dark scene without touching
+    // individual lights. See SceneLighting.
+    exposure: number;
+    // Image-based-lighting (IBL) strength: drives material.envMapIntensity for the soft,
+    // wrap-around fill from the baked studio environment. Higher = richer, more "rendered"
+    // fill on the model's shadowed side. See SceneLighting.
+    environmentIntensity: number;
   };
   updateLightingSettings: (settings: Partial<Store['lightingSettings']>) => void;
   // Render quality
@@ -304,6 +312,34 @@ const loadShadowsEnabled = (): boolean => {
     return localStorage.getItem(SHADOWS_STORAGE_KEY) === 'true';
   } catch {
     return false;
+  }
+};
+
+// Persisted lighting settings. Tuned for a bright, stylized ("Pixar"-leaning) look:
+// soft IBL fill + AgX tone mapping keep colors vivid without the day/night sun washing
+// out highlights or crushing the shadow side to black. The values are the player-facing
+// knobs the Settings → Video tab exposes; defaults are the starting point, and any saved
+// override is merged on top (so older saves that predate exposure/environmentIntensity
+// transparently pick up sensible values for the new fields).
+const LIGHTING_STORAGE_KEY = 'lightingSettings';
+const DEFAULT_LIGHTING_SETTINGS = {
+  sunBrightness: 3.0,
+  moonBrightness: 3.0,
+  ambientLight: 1.2,
+  dayNightSpeed: 60,
+  exposure: 1.0,
+  environmentIntensity: 1.0,
+};
+type LightingSettings = typeof DEFAULT_LIGHTING_SETTINGS;
+const loadLightingSettings = (): LightingSettings => {
+  try {
+    const raw = localStorage.getItem(LIGHTING_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_LIGHTING_SETTINGS };
+    const parsed = JSON.parse(raw) as Partial<LightingSettings>;
+    // Merge over defaults so a missing/older key never yields NaN or undefined.
+    return { ...DEFAULT_LIGHTING_SETTINGS, ...parsed };
+  } catch {
+    return { ...DEFAULT_LIGHTING_SETTINGS };
   }
 };
 
@@ -396,12 +432,7 @@ export const useGameStore = create<Store>((set, get) => ({
       ? { keyboardBindings: defaults }
       : { controllerBindings: defaults };
   }),
-  lightingSettings: {
-    sunBrightness: 5.0,
-    moonBrightness: 5.0,
-    ambientLight: 1.6,
-    dayNightSpeed: 60,
-  },
+  lightingSettings: loadLightingSettings(),
   updateLightingSettings: (settings) => set((state) => ({
     lightingSettings: { ...state.lightingSettings, ...settings }
   })),

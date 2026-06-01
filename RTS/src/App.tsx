@@ -10,6 +10,7 @@ import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { ModelPreloader } from './utils/ModelPreloader';
 import { PerformanceOptimizer } from './components/PerformanceOptimizer';
 import { DayNightCycle } from './components/DayNightCycle';
+import { SceneLighting } from './components/SceneLighting';
 import { useGameStore } from './game/state';
 import { MainMenu } from './components/screens/MainMenu';
 import { AnimalSelectionLobby } from './components/screens/AnimalSelectionLobby';
@@ -201,6 +202,11 @@ export default function App() {
           console.log('Available WebGL Extensions:', extensions?.length || 0);
         }}
       >
+        {/* Soft IBL fill + AgX tone mapping + exposure (player-tunable). Wraps the models in
+            stylized studio light so they stay vivid and readable at every point in the cycle. */}
+        <Suspense fallback={null}>
+          <SceneLighting />
+        </Suspense>
         {/* Day/Night Cycle with Sun and Moon - handles background color dynamically */}
         <DayNightCycle cycleDurationSeconds={120} />
         <ModelPreloader />
