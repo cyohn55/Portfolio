@@ -31,6 +31,13 @@ interface CameraControllerProps {
   // the remaining distance closed per second" terms. A small value keeps the
   // follow gentle so the camera glides rather than snaps.
   followSpeed?: number;
+  // Width of the screen-edge band (in CSS pixels) that triggers edge-pan when
+  // the cursor enters it — the classic RTS "push the mouse to the edge to
+  // scroll" zone.
+  edgePanMargin?: number;
+  // World units the camera slides per pixel of middle-mouse drag ("grab and
+  // slide the terrain"). Scaled by moveSpeed so it tracks the overall pan feel.
+  dragPanSensitivity?: number;
 }
 
 export function CameraController({
@@ -38,7 +45,9 @@ export function CameraController({
   zoomSpeed = 2,
   minDistance = 2,
   maxDistance = 100,
-  followSpeed = 1.5
+  followSpeed = 1.5,
+  edgePanMargin = 12,
+  dragPanSensitivity = 0.6
 }: CameraControllerProps) {
   instanceCounter++;
   const instanceId = instanceCounter;
@@ -58,7 +67,7 @@ export function CameraController({
   bindingsRef.current = keyboardBindings;
 
   // Whether the camera is currently easing toward the selected troops. Manual
-  // panning (WASD, controller stick, touch drag) cancels it; making a fresh
+  // panning (edge-scroll, middle-drag, controller stick, touch drag) cancels it; making a fresh
   // selection re-arms it.
   const followEnabled = useRef(false);
 
@@ -74,6 +83,15 @@ export function CameraController({
   const lastTouchPos = useRef<{ x: number; y: number } | null>(null);
   const lastPinchDistance = useRef<number | null>(null);
   const isDragging = useRef(false);
+
+  // Mouse-driven camera panning refs. `mousePos` is the latest cursor position
+  // in client pixels; `mouseOverCanvas` gates edge-pan so hovering a HUD widget
+  // (minimap, buttons) near a screen edge doesn't scroll the map. The middle-
+  // drag refs track a "grab and slide the terrain" gesture.
+  const mousePos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const mouseOverCanvas = useRef(false);
+  const isMiddleDragging = useRef(false);
+  const lastDragPos = useRef<{ x: number; y: number } | null>(null);
 
   // Fixed camera angle - lower angle for better RTS view
   const CAMERA_ANGLE = Math.PI / 10; // 18 degrees
@@ -131,6 +149,62 @@ export function CameraController({
     const newDistance = Math.max(minDistance, Math.min(maxDistance, currentDistance.current + zoomDelta));
     currentDistance.current = newDistance;
   }, [zoomSpeed, minDistance, maxDistance, instanceId, gl]);
+
+  // Start a "grab and slide" pan when the middle mouse button is pressed over
+  // the canvas. preventDefault suppresses the browser's middle-click autoscroll.
+  const handleMouseDown = useCallback((event: MouseEvent) => {
+    if (event.button !== 1) return; // middle button only
+    const node = event.target as Node | null;
+    if (!node || !gl.domElement.contains(node)) return;
+    event.preventDefault();
+    isMiddleDragging.current = true;
+    lastDragPos.current = { x: event.clientX, y: event.clientY };
+  }, [gl]);
+
+  // Track the cursor (for edge-pan) and, while middle-dragging, slide the focus
+  // point so the terrain appears to follow the cursor. Listening on `window`
+  // keeps the drag alive even if the cursor briefly leaves the canvas.
+  const handleMouseMove = useCallback((event: MouseEvent) => {
+    mousePos.current = { x: event.clientX, y: event.clientY };
+    const node = event.target as Node | null;
+    mouseOverCanvas.current = !!node && gl.domElement.contains(node);
+
+    if (!isMiddleDragging.current || !lastDragPos.current) return;
+
+    const deltaX = event.clientX - lastDragPos.current.x;
+    const deltaY = event.clientY - lastDragPos.current.y;
+
+    // Ground-plane basis derived fresh from the camera so the slide direction is
+    // always correct regardless of frame timing.
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldDirection(cameraDirection);
+    cameraDirection.y = 0;
+    cameraDirection.normalize();
+    const rightVec = new THREE.Vector3().crossVectors(cameraDirection, up.current).normalize();
+
+    // Grabbing the terrain: dragging right slides the world right, so the focus
+    // point moves left (inverted), matching the single-finger touch drag.
+    const perPixel = moveSpeed * dragPanSensitivity;
+    target.current.add(rightVec.multiplyScalar(-deltaX * perPixel));
+    target.current.add(cameraDirection.multiplyScalar(deltaY * perPixel));
+
+    // A manual grab cancels selection auto-follow until the next selection.
+    followEnabled.current = false;
+    lastDragPos.current = { x: event.clientX, y: event.clientY };
+  }, [camera, gl, moveSpeed, dragPanSensitivity]);
+
+  const handleMouseUp = useCallback((event: MouseEvent) => {
+    if (event.button !== 1) return;
+    isMiddleDragging.current = false;
+    lastDragPos.current = null;
+  }, []);
+
+  // Cursor left the document entirely — stop edge-panning and any active drag.
+  const handleMouseLeaveWindow = useCallback(() => {
+    mouseOverCanvas.current = false;
+    isMiddleDragging.current = false;
+    lastDragPos.current = null;
+  }, []);
 
   // Touch event handlers for mobile
   const handleTouchStart = useCallback((event: TouchEvent) => {
@@ -206,11 +280,23 @@ export function CameraController({
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('wheel', handleWheel, { passive: false });
 
+    // Mouse-driven camera panning: middle-drag "grab and slide" plus edge-pan
+    // cursor tracking. mousedown is bound to the canvas so a drag only begins
+    // over the game; move/up live on the window so the gesture survives the
+    // cursor briefly leaving the canvas.
+    const canvasEl = gl.domElement;
+    canvasEl.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseleave', handleMouseLeaveWindow);
+
     // Drop any "still pressed" keys whenever the window/tab loses the ability
     // to deliver the matching keyup. Otherwise the camera drifts forever in
     // the last-held direction after alt-tabbing, opening dev tools, or any
-    // OS hotkey that steals focus mid-press.
+    // OS hotkey that steals focus mid-press. The same blur also ends any active
+    // mouse drag and stops edge-pan.
     window.addEventListener('blur', clearPressedKeys);
+    window.addEventListener('blur', handleMouseLeaveWindow);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Touch event listeners
@@ -224,14 +310,19 @@ export function CameraController({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('wheel', handleWheel);
+      canvas.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mouseleave', handleMouseLeaveWindow);
       window.removeEventListener('blur', clearPressedKeys);
+      window.removeEventListener('blur', handleMouseLeaveWindow);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       canvas.removeEventListener('touchstart', handleTouchStart);
       canvas.removeEventListener('touchmove', handleTouchMove);
       canvas.removeEventListener('touchend', handleTouchEnd);
       canvas.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [handleKeyDown, handleKeyUp, handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd, clearPressedKeys, handleVisibilityChange, gl, instanceId]);
+  }, [handleKeyDown, handleKeyUp, handleWheel, handleMouseDown, handleMouseMove, handleMouseUp, handleMouseLeaveWindow, handleTouchStart, handleTouchMove, handleTouchEnd, clearPressedKeys, handleVisibilityChange, gl, instanceId]);
 
   useFrame((state, delta) => {
     // Set camera properties on first frame
@@ -249,7 +340,15 @@ export function CameraController({
       camera.lookAt(target.current);
     }
 
-    // Movement from keyboard (remappable) and controller (analog left stick).
+    // Ground-plane basis vectors, recomputed each frame (cheap) so edge-pan,
+    // middle-drag, keyboard drive, and the controller stick all share one frame.
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldDirection(cameraDirection);
+    cameraDirection.y = 0;
+    cameraDirection.normalize();
+    forward.current.copy(cameraDirection);
+    right.current.crossVectors(forward.current, up.current).normalize();
+
     const bindings = bindingsRef.current;
     const cameraIntent = gamepadInput.getCameraIntent();
     const keys = keysPressed.current;
@@ -258,47 +357,38 @@ export function CameraController({
     const leftKey = plainKeyToken(bindings.cameraLeft);
     const rightKey = plainKeyToken(bindings.cameraRight);
 
-    const movement = new THREE.Vector3();
-    const hasGamepadPan = cameraIntent.panX !== 0 || cameraIntent.panZ !== 0;
+    // Keyboard movement (ESDF) only ever drives a piloted King/Queen — the
+    // keyboard no longer pans the camera (edge-scroll and middle-drag do that).
+    const keyboardDrive = new THREE.Vector3();
+    if (forwardKey && keys.has(forwardKey)) keyboardDrive.add(forward.current);
+    if (backwardKey && keys.has(backwardKey)) keyboardDrive.sub(forward.current);
+    if (leftKey && keys.has(leftKey)) keyboardDrive.sub(right.current);
+    if (rightKey && keys.has(rightKey)) keyboardDrive.add(right.current);
 
-    if (keys.size > 0 || hasGamepadPan) {
-      // Camera direction vectors, flattened to the horizontal plane.
-      const cameraDirection = new THREE.Vector3();
-      camera.getWorldDirection(cameraDirection);
-      cameraDirection.y = 0;
-      cameraDirection.normalize();
+    // Controller left-stick: drives a piloted monarch when piloting, otherwise
+    // pans the camera (the keyboard's old job).
+    const gamepadMove = new THREE.Vector3();
+    if (cameraIntent.panZ !== 0) gamepadMove.add(forward.current.clone().multiplyScalar(cameraIntent.panZ));
+    if (cameraIntent.panX !== 0) gamepadMove.add(right.current.clone().multiplyScalar(cameraIntent.panX));
 
-      forward.current.copy(cameraDirection);
-      right.current.crossVectors(forward.current, up.current).normalize();
-
-      // Keyboard movement keys (whichever keys are currently bound).
-      if (forwardKey && keys.has(forwardKey)) movement.add(forward.current);
-      if (backwardKey && keys.has(backwardKey)) movement.sub(forward.current);
-      if (leftKey && keys.has(leftKey)) movement.sub(right.current);
-      if (rightKey && keys.has(rightKey)) movement.add(right.current);
-
-      // Controller left-stick analog pan.
-      if (cameraIntent.panZ !== 0) movement.add(forward.current.clone().multiplyScalar(cameraIntent.panZ));
-      if (cameraIntent.panX !== 0) movement.add(right.current.clone().multiplyScalar(cameraIntent.panX));
-    }
-
-    // While piloting a King/Queen, the same movement keys/stick drive that unit
-    // (the game tick reads pilotInput) instead of panning the camera, and the
-    // camera eases to follow it. Otherwise the movement vector pans the camera
-    // as usual. Read the piloted id straight from the store so this per-frame
-    // loop never forces a React re-render.
+    // While piloting a King/Queen, the ESDF keys and controller stick drive that
+    // unit (the game tick reads pilotInput) and the camera eases to follow it.
+    // Otherwise the controller stick plus screen-edge scroll pan the camera.
+    // Read the piloted id straight from the store so this per-frame loop never
+    // forces a React re-render.
     const store = useGameStore.getState();
     const pilotedId = store.pilotedUnitId;
 
     if (pilotedId) {
-      // The vector is already camera-relative; clamp its length to 1 so an analog
-      // stick scales speed while a digital key press (length 1) means full speed.
-      const intentMagnitude = Math.hypot(movement.x, movement.z);
+      // The drive vector is camera-relative; clamp its length to 1 so an analog
+      // stick scales speed while digital keys (length 1) mean full speed.
+      const drive = keyboardDrive.add(gamepadMove);
+      const intentMagnitude = Math.hypot(drive.x, drive.z);
       if (intentMagnitude > 1) {
-        movement.x /= intentMagnitude;
-        movement.z /= intentMagnitude;
+        drive.x /= intentMagnitude;
+        drive.z /= intentMagnitude;
       }
-      pilotInput.setMove(movement.x, movement.z);
+      pilotInput.setMove(drive.x, drive.z);
 
       // Ease the camera focus onto the piloted unit. Selection auto-follow stays
       // off while piloting so the two follow behaviours don't fight.
@@ -312,11 +402,25 @@ export function CameraController({
         }
       }
     } else {
-      // Normal camera panning from the movement vector.
-      if (movement.length() > 0) {
+      // Camera panning: controller stick plus screen-edge scroll. (Middle-drag
+      // is applied directly in handleMouseMove.) Edge-pan only fires while the
+      // cursor sits in the edge band over the canvas, so hovering a HUD widget
+      // near a screen edge doesn't scroll the map.
+      const pan = gamepadMove;
+      if (mouseOverCanvas.current && !isMiddleDragging.current) {
+        const { x: mouseX, y: mouseY } = mousePos.current;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        if (mouseX <= edgePanMargin) pan.sub(right.current);
+        else if (mouseX >= viewportWidth - edgePanMargin) pan.add(right.current);
+        if (mouseY <= edgePanMargin) pan.add(forward.current);
+        else if (mouseY >= viewportHeight - edgePanMargin) pan.sub(forward.current);
+      }
+
+      if (pan.length() > 0) {
         const moveAmount = moveSpeed * 60 * delta; // Scale by 60 for frame-rate independence
-        movement.normalize().multiplyScalar(moveAmount);
-        target.current.add(movement);
+        pan.normalize().multiplyScalar(moveAmount);
+        target.current.add(pan);
         // Any manual pan input cancels the auto-follow until a fresh selection.
         followEnabled.current = false;
       }

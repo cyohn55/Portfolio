@@ -40,6 +40,7 @@ export type ControlActionId =
   | 'deselect'
   | 'primaryAction'
   | 'secondaryAction'
+  | 'pilotCycleMonarch'
   | 'pilotMonarch1'
   | 'pilotMonarch2'
   | 'pilotMonarch3'
@@ -72,10 +73,10 @@ const CONTROLLER_STORAGE_KEY = 'rts-controller-bindings';
  * of actions so the two Settings sub-tabs stay conceptually aligned.
  */
 export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
-  { id: 'cameraForward', label: 'Move Camera Forward', category: 'Camera', description: 'Pan the camera away from you.' },
-  { id: 'cameraBackward', label: 'Move Camera Backward', category: 'Camera', description: 'Pan the camera toward you.' },
-  { id: 'cameraLeft', label: 'Move Camera Left', category: 'Camera', description: 'Pan the camera left.' },
-  { id: 'cameraRight', label: 'Move Camera Right', category: 'Camera', description: 'Pan the camera right.' },
+  { id: 'cameraForward', label: 'Move Forward', category: 'Camera', description: 'Drives a piloted King/Queen forward. On a controller, the left stick also pans the camera. (Pan the camera with edge-scroll or middle-mouse drag.)' },
+  { id: 'cameraBackward', label: 'Move Backward', category: 'Camera', description: 'Drives a piloted King/Queen backward. On a controller, the left stick also pans the camera.' },
+  { id: 'cameraLeft', label: 'Move Left', category: 'Camera', description: 'Drives a piloted King/Queen left. On a controller, the left stick also pans the camera.' },
+  { id: 'cameraRight', label: 'Move Right', category: 'Camera', description: 'Drives a piloted King/Queen right. On a controller, the left stick also pans the camera.' },
   { id: 'cameraZoomIn', label: 'Zoom In', category: 'Camera', description: 'Bring the camera closer to the map.' },
   { id: 'cameraZoomOut', label: 'Zoom Out', category: 'Camera', description: 'Pull the camera back from the map.' },
   { id: 'selectAll', label: 'Select All / Rally', category: 'Selection', description: 'Select every one of your units. While piloting a King/Queen, this same key instead rallies that animal’s units to follow the monarch.' },
@@ -85,9 +86,10 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
   { id: 'deselect', label: 'Deselect All', category: 'Selection', description: 'Clear the current selection.' },
   { id: 'primaryAction', label: 'Select / Confirm', category: 'Commands', description: 'Select the unit under the cursor / reticle.' },
   { id: 'secondaryAction', label: 'Move / Attack', category: 'Commands', description: 'Order selected units to the cursor / reticle.' },
-  { id: 'pilotMonarch1', label: 'Pilot Monarch 1', category: 'Pilot', description: 'Directly pilot the King of your first animal (toggle Queen with Toggle Monarch). Drive it with the camera-movement keys.' },
-  { id: 'pilotMonarch2', label: 'Pilot Monarch 2', category: 'Pilot', description: 'Directly pilot the King of your second animal. Drive it with the camera-movement keys.' },
-  { id: 'pilotMonarch3', label: 'Pilot Monarch 3', category: 'Pilot', description: 'Directly pilot the King of your third animal. Drive it with the camera-movement keys.' },
+  { id: 'pilotCycleMonarch', label: 'Cycle Piloted Monarch', category: 'Pilot', description: 'Tap to start piloting your first animal’s King, then cycle through your other animals’ monarchs. Drive it with the Move keys.' },
+  { id: 'pilotMonarch1', label: 'Pilot Monarch 1', category: 'Pilot', description: 'Directly pilot the King of your first animal (toggle Queen with Toggle Monarch). Drive it with the Move keys/stick.' },
+  { id: 'pilotMonarch2', label: 'Pilot Monarch 2', category: 'Pilot', description: 'Directly pilot the King of your second animal. Drive it with the Move keys/stick.' },
+  { id: 'pilotMonarch3', label: 'Pilot Monarch 3', category: 'Pilot', description: 'Directly pilot the King of your third animal. Drive it with the Move keys/stick.' },
   { id: 'pilotToggleMonarch', label: 'Toggle King / Queen', category: 'Pilot', description: 'While piloting, switch between the King and the Queen of the same animal.' },
   { id: 'pause', label: 'Pause Game', category: 'System', description: 'Toggle the pause menu.' },
 ] as const;
@@ -95,10 +97,13 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
 const ACTION_IDS: readonly ControlActionId[] = CONTROL_ACTIONS.map((action) => action.id);
 
 export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
-  cameraForward: 'w',
-  cameraBackward: 's',
-  cameraLeft: 'a',
-  cameraRight: 'd',
+  // ESDF cluster drives a piloted monarch (E=forward, S=left, D=back, F=right).
+  // The camera no longer pans from the keyboard — edge-scroll and middle-mouse
+  // drag (see CameraController) handle panning, leaving the left hand for hotkeys.
+  cameraForward: 'e',
+  cameraBackward: 'd',
+  cameraLeft: 's',
+  cameraRight: 'f',
   cameraZoomIn: 'wheelup',
   cameraZoomOut: 'wheeldown',
   selectAll: 'space',
@@ -108,10 +113,14 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   deselect: 'escape',
   primaryAction: 'mouse:left',
   secondaryAction: 'mouse:right',
-  pilotMonarch1: 'z',
-  pilotMonarch2: 'x',
-  pilotMonarch3: 'c',
-  pilotToggleMonarch: 'v',
+  // A cycles through the three animals' monarchs; G swaps the current King/Queen.
+  // The per-slot pilot keys stay unbound on keyboard (they exist for the
+  // controller's D-Pad), so the home row stays free for the cycle/toggle keys.
+  pilotCycleMonarch: 'a',
+  pilotMonarch1: '',
+  pilotMonarch2: '',
+  pilotMonarch3: '',
+  pilotToggleMonarch: 'g',
   pause: 'p',
 };
 
@@ -129,6 +138,7 @@ export const DEFAULT_CONTROLLER_BINDINGS: ControlBindings = {
   deselect: 'button:3', // Y
   primaryAction: 'button:0', // A
   secondaryAction: 'button:1', // B
+  pilotCycleMonarch: '', // keyboard-only; the controller uses the per-slot D-Pad pilots below
   pilotMonarch1: 'button:12', // D-Pad Up
   pilotMonarch2: 'button:14', // D-Pad Left
   pilotMonarch3: 'button:15', // D-Pad Right

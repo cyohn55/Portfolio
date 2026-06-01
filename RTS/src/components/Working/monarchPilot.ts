@@ -1,7 +1,7 @@
 /**
  * monarchPilot — shared, framework-free helpers and runtime state for the
  * "direct pilot" feature, where the player drives a King or Queen with the
- * camera-movement keys (WASD / left stick) instead of issuing mouse orders.
+ * ESDF keys (or the controller's left stick) instead of issuing mouse orders.
  *
  * This module is intentionally free of React and Three.js so its pure helpers
  * can be unit tested in isolation and reused by both the input layer (which

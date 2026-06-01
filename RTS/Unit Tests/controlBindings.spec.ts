@@ -68,20 +68,28 @@ test.describe('default binding maps', () => {
     }
   });
 
-  test('default keyboard tokens are unique (no accidental conflicts)', () => {
-    const tokens = actionIds().map((id) => DEFAULT_KEYBOARD_BINDINGS[id as keyof ControlBindings]);
-    expect(new Set(tokens).size).toBe(tokens.length);
+  // Only *bound* tokens must be unique; an action may be intentionally left
+  // unbound on a device (e.g. the per-slot pilots are keyboard-unbound, and the
+  // cycle pilot is controller-unbound), and several actions may share UNBOUND.
+  test('default keyboard tokens are unique among bound actions', () => {
+    const bound = actionIds()
+      .map((id) => DEFAULT_KEYBOARD_BINDINGS[id as keyof ControlBindings])
+      .filter((token) => token !== UNBOUND_TOKEN);
+    expect(new Set(bound).size).toBe(bound.length);
   });
 
-  test('default controller tokens are unique (no accidental conflicts)', () => {
-    const tokens = actionIds().map((id) => DEFAULT_CONTROLLER_BINDINGS[id as keyof ControlBindings]);
-    expect(new Set(tokens).size).toBe(tokens.length);
+  test('default controller tokens are unique among bound actions', () => {
+    const bound = actionIds()
+      .map((id) => DEFAULT_CONTROLLER_BINDINGS[id as keyof ControlBindings])
+      .filter((token) => token !== UNBOUND_TOKEN);
+    expect(new Set(bound).size).toBe(bound.length);
   });
 
   test('getDefaultBindings returns an independent copy', () => {
     const a = getDefaultBindings('keyboard');
-    a.cameraForward = 'z';
-    expect(getDefaultBindings('keyboard').cameraForward).toBe('w');
+    a.cameraForward = 'mutated';
+    // A later call is unaffected by mutating an earlier returned copy.
+    expect(getDefaultBindings('keyboard').cameraForward).toBe(DEFAULT_KEYBOARD_BINDINGS.cameraForward);
   });
 });
 
@@ -119,24 +127,27 @@ test.describe('persistence round-trip', () => {
 
 test.describe('applyBinding and findConflict', () => {
   test('assigning an in-use token transfers it and unbinds the previous owner', () => {
-    const base = getDefaultBindings('keyboard'); // cameraForward 'w', cameraBackward 's'
-    const next = applyBinding(base, 'cameraBackward', 'w');
-    expect(next.cameraBackward).toBe('w');
+    const base = getDefaultBindings('keyboard');
+    const forwardToken = base.cameraForward; // whatever the Move Forward default is
+    const next = applyBinding(base, 'cameraBackward', forwardToken);
+    expect(next.cameraBackward).toBe(forwardToken);
     expect(next.cameraForward).toBe(UNBOUND_TOKEN);
-    expect(base.cameraForward).toBe('w'); // original not mutated
+    expect(base.cameraForward).toBe(forwardToken); // original not mutated
   });
 
   test('unbinding an action does not disturb others', () => {
     const base = getDefaultBindings('keyboard');
+    const backwardToken = base.cameraBackward;
     const next = applyBinding(base, 'cameraForward', UNBOUND_TOKEN);
     expect(next.cameraForward).toBe(UNBOUND_TOKEN);
-    expect(next.cameraBackward).toBe('s');
+    expect(next.cameraBackward).toBe(backwardToken);
   });
 
   test('findConflict detects the holder, skips the excepted action, ignores unbound', () => {
     const base = getDefaultBindings('keyboard');
-    expect(findConflict(base, 'w', 'cameraBackward')).toBe('cameraForward');
-    expect(findConflict(base, 'w', 'cameraForward')).toBeNull();
+    const forwardToken = base.cameraForward;
+    expect(findConflict(base, forwardToken, 'cameraBackward')).toBe('cameraForward');
+    expect(findConflict(base, forwardToken, 'cameraForward')).toBeNull();
     expect(findConflict(base, UNBOUND_TOKEN, 'cameraForward')).toBeNull();
   });
 });

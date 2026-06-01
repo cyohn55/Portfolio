@@ -41,7 +41,7 @@ const CAMERA_ACTIONS: ReadonlySet<ControlActionId> = new Set([
 const TAP_ACTIONS: readonly ControlActionId[] = [
   'primaryAction', 'secondaryAction', 'selectAll',
   'selectGroup1', 'selectGroup2', 'selectGroup3', 'deselect',
-  'pilotMonarch1', 'pilotMonarch2', 'pilotMonarch3', 'pilotToggleMonarch', 'pause',
+  'pilotCycleMonarch', 'pilotMonarch1', 'pilotMonarch2', 'pilotMonarch3', 'pilotToggleMonarch', 'pause',
 ];
 
 function getActiveGamepad(): GamepadLike | null {
@@ -190,6 +190,9 @@ export function GamepadController() {
       }
       case 'deselect':
         state.clearSelection();
+        break;
+      case 'pilotCycleMonarch':
+        state.pilotCycleMonarch();
         break;
       case 'pilotMonarch1':
         state.pilotMonarchBySlot(0);

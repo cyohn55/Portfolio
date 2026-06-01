@@ -232,9 +232,10 @@ type Store = GameState & {
   selectUnits: (unitIds: string[]) => void;
   addToSelection: (unitIds: string[]) => void;
   clearSelection: () => void;
-  // Direct monarch piloting (z/x/c/v + Space rally). See monarchPilot.ts and the
-  // pilot-movement block in tick().
+  // Direct monarch piloting (A cycles monarchs, G toggles King/Queen, Space
+  // rallies). See monarchPilot.ts and the pilot-movement block in tick().
   pilotMonarchBySlot: (slotIndex: number) => void;
+  pilotCycleMonarch: () => void;
   togglePilotMonarchKind: () => void;
   rallyToMonarch: () => void;
   clearPilot: () => void;
@@ -1937,7 +1938,43 @@ export const useGameStore = create<Store>((set, get) => ({
     return { pilotedUnitId: monarch.id, selectedUnitIds: [monarch.id] };
   }),
 
-  // Swap the piloted unit between the King and Queen of the same animal (v).
+  // Cycle the piloted monarch through the local player's animal pool (the "A"
+  // key). When not piloting, this starts on the first animal's monarch; while
+  // piloting, it advances to the next animal that still has a living monarch
+  // (wrapping around). Each step prefers the King, falling back to the Queen.
+  // Returns to no-pilot is handled by re-pressing nothing — there is always a
+  // monarch to land on as long as one animal still has one alive.
+  pilotCycleMonarch: () => set((prev) => {
+    if (!prev.localPlayerId) return {};
+    const pool = prev.selectedAnimalPool;
+    if (pool.length === 0) return {};
+
+    // Resolve the pool slot of the animal we are currently piloting, so the
+    // next press advances from there; default just before slot 0 otherwise.
+    const current = prev.pilotedUnitId
+      ? prev.units.find((u) => u.id === prev.pilotedUnitId)
+      : null;
+    const currentSlot = current ? pool.indexOf(current.animal) : -1;
+
+    // Walk forward through the pool (wrapping) until we find an animal with a
+    // living monarch, so dead-monarch animals are skipped rather than stalling.
+    for (let step = 1; step <= pool.length; step++) {
+      const slot = (currentSlot + step) % pool.length;
+      const animal = pool[slot];
+      if (!animal) continue;
+      const monarch =
+        findMonarch(prev.units, prev.localPlayerId, animal, 'King') ??
+        findMonarch(prev.units, prev.localPlayerId, animal, 'Queen');
+      if (monarch) {
+        pilotInput.reset();
+        return { pilotedUnitId: monarch.id, selectedUnitIds: [monarch.id] };
+      }
+    }
+
+    return {};
+  }),
+
+  // Swap the piloted unit between the King and Queen of the same animal (G).
   // No-op when not piloting or when the sibling monarch is dead.
   togglePilotMonarchKind: () => set((prev) => {
     if (!prev.localPlayerId || !prev.pilotedUnitId) return {};

@@ -274,10 +274,11 @@ export interface GameState {
   queenPatrols: Record<string, PatrolRoute>; // queen id -> patrol route
   matchStats: MatchStats; // scoring counters for the current match (local player)
   projectiles: Projectile[]; // in-flight egg projectiles (Chicken ability)
-  // Id of the local player's King/Queen the player is directly piloting (z/x/c
-  // selects by animal slot, v toggles King<->Queen), or null when not piloting.
-  // While set, the tick drives this unit purely from `pilotInput` (the WASD/stick
-  // movement vector) and ignores its AI, orders, and combat. See monarchPilot.ts.
+  // Id of the local player's King/Queen the player is directly piloting (A
+  // cycles through the animals' monarchs, G toggles King<->Queen), or null when
+  // not piloting. While set, the tick drives this unit purely from `pilotInput`
+  // (the ESDF/stick movement vector) and ignores its AI, orders, and combat.
+  // See monarchPilot.ts.
   pilotedUnitId: string | null;
 }
 
