@@ -26,13 +26,18 @@ interface CameraControllerProps {
   zoomSpeed?: number;
   minDistance?: number;
   maxDistance?: number;
+  // How quickly the camera eases toward the selected troops, in "fraction of
+  // the remaining distance closed per second" terms. A small value keeps the
+  // follow gentle so the camera glides rather than snaps.
+  followSpeed?: number;
 }
 
 export function CameraController({
   moveSpeed = 0.5,
   zoomSpeed = 2,
   minDistance = 2,
-  maxDistance = 100
+  maxDistance = 100,
+  followSpeed = 1.5
 }: CameraControllerProps) {
   instanceCounter++;
   const instanceId = instanceCounter;
@@ -50,6 +55,19 @@ export function CameraController({
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
   const bindingsRef = useRef(keyboardBindings);
   bindingsRef.current = keyboardBindings;
+
+  // Whether the camera is currently easing toward the selected troops. Manual
+  // panning (WASD, controller stick, touch drag) cancels it; making a fresh
+  // selection re-arms it.
+  const followEnabled = useRef(false);
+
+  // Re-arm follow whenever the player makes a non-empty selection. The store
+  // hands out a new array reference on every select/add/clear, so this fires on
+  // each selection change rather than every game tick.
+  const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
+  useEffect(() => {
+    followEnabled.current = selectedUnitIds.length > 0;
+  }, [selectedUnitIds]);
 
   // Touch handling refs
   const lastTouchPos = useRef<{ x: number; y: number } | null>(null);
@@ -154,6 +172,9 @@ export function CameraController({
       // Move target based on drag (inverted for natural feel)
       target.current.add(rightVec.multiplyScalar(-deltaX * moveSpeed * 0.5));
       target.current.add(forwardVec.multiplyScalar(deltaY * moveSpeed * 0.5));
+
+      // Dragging the view is a manual pan, so stop chasing the selection.
+      followEnabled.current = false;
 
       lastTouchPos.current = { x: touchX, y: touchY };
     } else if (event.touches.length === 2 && lastPinchDistance.current !== null) {
@@ -263,6 +284,39 @@ export function CameraController({
       if (movement.length() > 0) {
         movement.normalize().multiplyScalar(moveAmount);
         target.current.add(movement);
+        // Any manual pan input cancels the auto-follow until a fresh selection.
+        followEnabled.current = false;
+      }
+    }
+
+    // Slow auto-follow: when armed, ease the focus point toward the centroid of
+    // the currently selected, still-living troops. Reads the store directly so
+    // the per-frame loop never forces a React re-render on unit movement.
+    if (followEnabled.current) {
+      const store = useGameStore.getState();
+      const selectedIds = store.selectedUnitIds;
+      if (selectedIds.length === 0) {
+        followEnabled.current = false;
+      } else {
+        const selectedSet = new Set(selectedIds);
+        let sumX = 0;
+        let sumZ = 0;
+        let count = 0;
+        for (const unit of store.units) {
+          if (selectedSet.has(unit.id)) {
+            sumX += unit.position.x;
+            sumZ += unit.position.z;
+            count++;
+          }
+        }
+
+        if (count > 0) {
+          // Frame-rate-independent easing toward the troop centroid. Only the
+          // horizontal focus moves; height/zoom stay under the player's control.
+          const easing = 1 - Math.exp(-followSpeed * delta);
+          target.current.x += (sumX / count - target.current.x) * easing;
+          target.current.z += (sumZ / count - target.current.z) * easing;
+        }
       }
     }
 
