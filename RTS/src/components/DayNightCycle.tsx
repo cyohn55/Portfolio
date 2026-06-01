@@ -228,7 +228,12 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
       {/* Sun directional light. Casts shadows only when the player enables them
           from the pause menu. The orthographic shadow frustum is sized to span
           the whole battlefield (units run roughly z ∈ [-260, 260]); on mobile
-          PerformanceOptimizer keeps shadowMap.enabled false, so this no-ops. */}
+          PerformanceOptimizer keeps shadowMap.enabled false, so this no-ops.
+          normalBias is raised well above a typical small-scene value because the
+          static map now self-casts: over this 600-unit frustum each 4096² shadow
+          texel is ~0.15 world units, so the flat merged ground needs a large
+          along-normal offset to keep its own shadow off itself (acne) as the sun
+          arcs. Tune normalBias up if shimmer appears, down if shadows detach. */}
       <directionalLight
         ref={sunRef}
         position={[50, 50, 30]}
@@ -243,8 +248,8 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
         shadow-camera-right={300}
         shadow-camera-top={300}
         shadow-camera-bottom={-300}
-        shadow-bias={-0.0002}
-        shadow-normalBias={0.05}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.6}
         shadow-radius={4}
       />
 

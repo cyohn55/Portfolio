@@ -163,7 +163,7 @@ export function buildOptimizedBattleMap(gltfScene: THREE.Object3D): OptimizedBat
     node.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh) {
-        m.castShadow = false; // receive-only, like the rest of the static map
+        m.castShadow = true; // casts + receives, like the rest of the static map
         m.receiveShadow = true;
         preservedMeshes++;
       }
@@ -193,7 +193,7 @@ export function buildOptimizedBattleMap(gltfScene: THREE.Object3D): OptimizedBat
       mesh.matrixWorld.decompose(preserved.position, preserved.quaternion, preserved.scale);
       preserved.name = mesh.name;
       preserved.visible = mesh.visible;
-      preserved.castShadow = false; // receive-only, like the rest of the static map
+      preserved.castShadow = true; // casts + receives, like the rest of the static map
       preserved.receiveShadow = true;
       makeDeckDoubleSided(preserved); // keep the deck raycast-hittable regardless of winding
       root.add(preserved);
@@ -224,12 +224,14 @@ export function buildOptimizedBattleMap(gltfScene: THREE.Object3D): OptimizedBat
     const material = materialBySignature.get(signature)!;
     const merged = mergeGeometries(geometries, false);
 
-    // Static map geometry receives unit shadows but does NOT cast: self-shadowing
-    // this large, dense mesh produces acne/shimmer that crawls as the day/night
-    // sun moves. Only units cast shadows onto the world (the standard RTS look).
+    // Static map geometry both casts and receives shadows so props (trees, rocks,
+    // structures) ground themselves in the world. Because the map is merged BY MATERIAL,
+    // the large flat ground is part of these casters and will self-shadow; the resulting
+    // acne/shimmer is held off by the sun light's shadow-bias / normalBias (see
+    // DayNightCycle), not by disabling casting.
     if (merged) {
       const mesh = new THREE.Mesh(merged, material);
-      mesh.castShadow = false;
+      mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.name = `Merged_${signature}`;
       root.add(mesh);
@@ -239,7 +241,7 @@ export function buildOptimizedBattleMap(gltfScene: THREE.Object3D): OptimizedBat
       // is lost (should not happen given attributes are normalized).
       for (const geometry of geometries) {
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = false;
+        mesh.castShadow = true;
         mesh.receiveShadow = true;
         root.add(mesh);
         mergedDrawCalls++;
