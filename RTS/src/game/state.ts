@@ -1643,6 +1643,11 @@ export const useGameStore = create<Store>((set, get) => ({
       // dead-unit cleanup so an enemy a fatal drop kills is removed in this same pass.
       updateOwlPickups(draft, dtSec, nowMs);
 
+      // Clear a lane for any selected King/Queen by shoving its blocking friendlies aside,
+      // BEFORE the relaxation pass so separation can tidy the freshly opened formation and
+      // (per its own rule) won't pull the shoved units back toward the selected royal.
+      clearPathForSelectedRoyals(draft);
+
       // Relax any unit pile-ups now that all movement, combat, and Owl drops have settled this
       // tick. Idle/arrived/just-delivered units don't go through the moving-unit collision, so
       // without this pass their models would stack and clip on a single point.
@@ -2535,6 +2540,12 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
   const isCurrentUnitSelected = selectedUnitIds.includes(currentUnit.id);
   // SIMPLIFIED: Use localPlayerId to identify human player units
   const isCurrentUnitPlayer = currentUnit.ownerId === localPlayerId;
+  // A selected local King/Queen plows straight through its own army rather than detouring
+  // around it: its "make way" shove (clearPathForSelectedRoyals) knocks blocking friendlies
+  // aside each tick, so the royal itself ignores friendly collision below. Enemy collision
+  // and terrain are still enforced.
+  const isSelectedOwnRoyal = isCurrentUnitSelected && isCurrentUnitPlayer &&
+                             (currentUnit.kind === 'King' || currentUnit.kind === 'Queen');
 
   // Precompute the bridge pass-through predicate ONCE per call — it depends only on
   // currentUnit.position (constant for this checkCollision pass), not on `other`. The
@@ -2588,6 +2599,12 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
     const isFriendly = currentUnit.ownerId === other.ownerId;
 
     if (isEnemy && distanceSquared <= 4) { // Within 2 units, allow very close combat
+      continue;
+    }
+
+    // A selected royal ignores friendly collision entirely — it does not detour around its
+    // own army; the make-way shove relocates those friendlies instead (see above).
+    if (isFriendly && isSelectedOwnRoyal) {
       continue;
     }
 
@@ -2726,6 +2743,90 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
 const SEPARATION_RELAX_FACTOR = 0.5;            // fraction of the overlap a unit backs off per tick
 const SEPARATION_MELEE_TOLERANCE_SQ = 4;        // enemies within this (2 units) are left close for combat
 const SEPARATION_QUERY_RADIUS = UNIT_MINIMUM_SPACING + YETI_SPACING_BONUS; // widest spacing any pair can demand
+
+// Extra clearance, beyond normal spacing, that a selected King/Queen carves out of its own
+// army — the "2 unit knockback" that keeps friendlies from blocking the royal's path.
+const ROYAL_CLEARANCE_BONUS = 2.0;
+
+// Selected kings/queens get a privileged make-way shove: every friendly unit blocking a
+// selected royal is knocked radially outward to a ROYAL_CLEARANCE_BONUS-wider gap than
+// normal spacing, so the royal is never hemmed in by its own units. This is the deliberate
+// exception to the rule that selected units travel AROUND (never push) their teammates —
+// only royalty may shove, and only its own side (enemies are resolved by combat). Only the
+// blocking unit is moved (the royal holds its course), and the shove settles once the lane
+// is clear, so it reads as a brief knockback rather than a constant force. Ground units are
+// kept off forbidden water and inside the arena, mirroring separateOverlappingUnits.
+function clearPathForSelectedRoyals(draft: Store): void {
+  if (!draft.localPlayerId || draft.selectedUnitIds.length === 0) return;
+  const selectedIds = new Set(draft.selectedUnitIds);
+  const grid = draft.spatialGrid;
+  const queryRadius = SEPARATION_QUERY_RADIUS + ROYAL_CLEARANCE_BONUS;
+
+  for (const royal of draft.units) {
+    if (royal.kind !== 'King' && royal.kind !== 'Queen') continue;
+    if (royal.ownerId !== draft.localPlayerId) continue;
+    if (!selectedIds.has(royal.id)) continue;
+
+    const neighbors = grid ? grid.getNearbyUnits(royal.position, queryRadius) : draft.units;
+
+    for (const other of neighbors) {
+      if (other.id === royal.id || other.kind === 'Base') continue;
+      if (other.ownerId !== royal.ownerId) continue; // friendly only — enemies are combat, not cargo
+      // Units owned by the air/carry systems are positioned elsewhere; don't fight them.
+      if (other.carriedByOwlId !== undefined || other.isFlying || (other.flightLift ?? 0) > 0) continue;
+      // Only shove UNSELECTED teammates: a selected unit (including another royal) is moving
+      // under the player's own control and clears itself, so bulldozing it would fight that.
+      if (selectedIds.has(other.id)) continue;
+
+      const dx = other.position.x - royal.position.x;
+      const dz = other.position.z - royal.position.z;
+      const distanceSquared = dx * dx + dz * dz;
+      const clearance = minimumSpacingBetween(royal, other) + ROYAL_CLEARANCE_BONUS;
+      if (distanceSquared >= clearance * clearance) continue; // already outside the royal's bubble
+
+      let pushX: number;
+      let pushZ: number;
+      let distance: number;
+      if (distanceSquared < 0.000001) {
+        // Coincident with the royal: pick a random escape heading.
+        const angle = Math.random() * Math.PI * 2;
+        pushX = Math.cos(angle);
+        pushZ = Math.sin(angle);
+        distance = 0;
+      } else {
+        distance = Math.sqrt(distanceSquared);
+        const invDistance = 1 / distance;
+        pushX = dx * invDistance;
+        pushZ = dz * invDistance;
+      }
+
+      const shove = clearance - distance; // distance out to the edge of the royal's bubble
+      const resolved: Position3D = {
+        x: other.position.x + pushX * shove,
+        y: other.position.y,
+        z: other.position.z + pushZ * shove,
+      };
+      clampToArena(resolved);
+
+      if (ANIMAL_MOVEMENT_TYPES[other.animal] === 'ground' &&
+          !terrainValidator.canAnimalMoveTo(other.animal, resolved)) {
+        const slideAlongX = { x: resolved.x, y: other.position.y, z: other.position.z };
+        if (terrainValidator.canAnimalMoveTo(other.animal, slideAlongX)) {
+          other.position.x = slideAlongX.x;
+        } else {
+          const slideAlongZ = { x: other.position.x, y: other.position.y, z: resolved.z };
+          if (terrainValidator.canAnimalMoveTo(other.animal, slideAlongZ)) {
+            other.position.z = slideAlongZ.z;
+          }
+        }
+        continue; // boxed against water — shove what we can this tick
+      }
+
+      other.position.x = resolved.x;
+      other.position.z = resolved.z;
+    }
+  }
+}
 
 function separateOverlappingUnits(draft: Store): void {
   const grid = draft.spatialGrid;

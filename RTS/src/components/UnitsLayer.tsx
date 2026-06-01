@@ -186,6 +186,43 @@ const SELECTION_INNER_MAT = new THREE.MeshStandardMaterial({
   depthWrite: false,
 });
 
+// King/Queen rings are GOLD to mark royalty apart from the blue/red owner rings and
+// blue selection rings of regular units. Only the local player's royals are gilded —
+// enemy royals keep their red owner ring so friend/foe stays legible at a glance.
+// These reuse the unit ring geometries but are drawn into their own instanced meshes,
+// scaled per-royal (see royalRingScale) so the ring sits visibly around the larger
+// king/queen models instead of being buried beneath them.
+const ROYAL_GOLD = '#FFD700';
+const ROYAL_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: ROYAL_GOLD, depthWrite: false });
+const ROYAL_SELECTION_OUTER_MAT = new THREE.MeshStandardMaterial({
+  color: ROYAL_GOLD,
+  transparent: true,
+  opacity: 0.4,
+  emissive: ROYAL_GOLD,
+  emissiveIntensity: 2.0,
+  toneMapped: false,
+  depthWrite: false,
+});
+const ROYAL_SELECTION_INNER_MAT = new THREE.MeshStandardMaterial({
+  color: ROYAL_GOLD,
+  transparent: true,
+  opacity: 0.8,
+  emissive: ROYAL_GOLD,
+  emissiveIntensity: 3.0,
+  toneMapped: false,
+  depthWrite: false,
+});
+
+// Baseline enlargement of a royal ring over a unit ring, then scaled further by how
+// much bigger the royal's model is than its own animal's unit so oversized royals
+// (Cat, Yetti, Bear) keep a proportionally sized ring.
+const ROYAL_RING_BASE_SCALE = 1.6;
+function royalRingScale(unit: Unit): number {
+  const unitScale = getKindTargetScale(unit.animal, 'Unit');
+  if (unitScale <= 0) return ROYAL_RING_BASE_SCALE;
+  return ROYAL_RING_BASE_SCALE * (getKindTargetScale(unit.animal, unit.kind) / unitScale);
+}
+
 type VariantSpec = {
   key: string;
   parts: BakedPart[];
@@ -566,8 +603,11 @@ function InstancedUnits() {
   const meshRefs = useRef<Map<string, THREE.InstancedMesh[]>>(new Map());
   const ownRingRef = useRef<THREE.InstancedMesh>(null);
   const enemyRingRef = useRef<THREE.InstancedMesh>(null);
+  const royalOwnerRingRef = useRef<THREE.InstancedMesh>(null);
   const selectionOuterRef = useRef<THREE.InstancedMesh>(null);
   const selectionInnerRef = useRef<THREE.InstancedMesh>(null);
+  const royalSelectionOuterRef = useRef<THREE.InstancedMesh>(null);
+  const royalSelectionInnerRef = useRef<THREE.InstancedMesh>(null);
   const auraActiveRef = useRef<THREE.InstancedMesh>(null);
   const auraUnitGlowRef = useRef<THREE.InstancedMesh>(null);
   const healthBarBgRef = useRef<THREE.InstancedMesh>(null);
@@ -597,7 +637,7 @@ function InstancedUnits() {
 
   // Mark ring instance buffers as dynamic (updated every frame) for the GPU.
   useEffect(() => {
-    [ownRingRef, enemyRingRef, selectionOuterRef, selectionInnerRef, auraActiveRef, auraUnitGlowRef, healthBarBgRef, healthBarFillRef].forEach((ref) => {
+    [ownRingRef, enemyRingRef, royalOwnerRingRef, selectionOuterRef, selectionInnerRef, royalSelectionOuterRef, royalSelectionInnerRef, auraActiveRef, auraUnitGlowRef, healthBarBgRef, healthBarFillRef].forEach((ref) => {
       ref.current?.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     });
   }, []);
@@ -677,8 +717,11 @@ function InstancedUnits() {
     }
     let ownRingCount = 0;
     let enemyRingCount = 0;
+    let royalOwnerRingCount = 0;
     let selectionOuterCount = 0;
     let selectionInnerCount = 0;
+    let royalSelectionOuterCount = 0;
+    let royalSelectionInnerCount = 0;
     let auraActiveCount = 0;
     let auraUnitGlowCount = 0;
     let healthBarCount = 0;
@@ -727,15 +770,30 @@ function InstancedUnits() {
       variantUnitIds.current.get(key)![variantCount] = unit.id;
       counts.set(key, variantCount + 1);
 
-      // Owner ring sits on the ground beneath the unit (ignores flight lift).
-      const ringMesh = unit.ownerId === localPlayerId ? ownRingRef.current : enemyRingRef.current;
-      if (ringMesh) {
-        const ringIndex = unit.ownerId === localPlayerId ? ownRingCount : enemyRingCount;
-        if (ringIndex < RING_CAPACITY) {
-          matrix.makeTranslation(unit.position.x, unit.position.y + 0.02, unit.position.z);
-          ringMesh.setMatrixAt(ringIndex, matrix);
-          if (unit.ownerId === localPlayerId) ownRingCount++;
-          else enemyRingCount++;
+      // Owner ring sits on the ground beneath the unit (ignores flight lift). The local
+      // player's kings/queens get a larger GOLD ring instead of the standard blue one so
+      // royalty reads at a glance; enemy royals keep the red owner ring for friend/foe
+      // clarity.
+      const isOwnUnit = unit.ownerId === localPlayerId;
+      const isRoyal = unit.kind === 'King' || unit.kind === 'Queen';
+      if (isRoyal && isOwnUnit) {
+        if (royalOwnerRingRef.current && royalOwnerRingCount < RING_CAPACITY) {
+          const s = royalRingScale(unit);
+          position.set(unit.position.x, unit.position.y + 0.02, unit.position.z);
+          scale.set(s, s, s);
+          matrix.compose(position, identityQuaternion, scale);
+          royalOwnerRingRef.current.setMatrixAt(royalOwnerRingCount++, matrix);
+        }
+      } else {
+        const ringMesh = isOwnUnit ? ownRingRef.current : enemyRingRef.current;
+        if (ringMesh) {
+          const ringIndex = isOwnUnit ? ownRingCount : enemyRingCount;
+          if (ringIndex < RING_CAPACITY) {
+            matrix.makeTranslation(unit.position.x, unit.position.y + 0.02, unit.position.z);
+            ringMesh.setMatrixAt(ringIndex, matrix);
+            if (isOwnUnit) ownRingCount++;
+            else enemyRingCount++;
+          }
         }
       }
 
@@ -813,15 +871,33 @@ function InstancedUnits() {
         healthBarCount++;
       }
 
-      // Selection rings only for currently selected units.
+      // Selection rings only for currently selected units. A selected king/queen gets the
+      // larger GOLD selection rings (matching its gold owner ring) so its selected state is
+      // unmistakable beneath the bigger royal model; regular units keep the blue rings.
       if (selectedSet && selectedSet.has(unit.id)) {
-        if (selectionOuterRef.current && selectionOuterCount < RING_CAPACITY) {
-          matrix.makeTranslation(unit.position.x, unit.position.y + 0.04, unit.position.z);
-          selectionOuterRef.current.setMatrixAt(selectionOuterCount++, matrix);
-        }
-        if (selectionInnerRef.current && selectionInnerCount < RING_CAPACITY) {
-          matrix.makeTranslation(unit.position.x, unit.position.y + 0.25, unit.position.z);
-          selectionInnerRef.current.setMatrixAt(selectionInnerCount++, matrix);
+        if (isRoyal) {
+          const s = royalRingScale(unit);
+          if (royalSelectionOuterRef.current && royalSelectionOuterCount < RING_CAPACITY) {
+            position.set(unit.position.x, unit.position.y + 0.04, unit.position.z);
+            scale.set(s, s, s);
+            matrix.compose(position, identityQuaternion, scale);
+            royalSelectionOuterRef.current.setMatrixAt(royalSelectionOuterCount++, matrix);
+          }
+          if (royalSelectionInnerRef.current && royalSelectionInnerCount < RING_CAPACITY) {
+            position.set(unit.position.x, unit.position.y + 0.25, unit.position.z);
+            scale.set(s, s, s);
+            matrix.compose(position, identityQuaternion, scale);
+            royalSelectionInnerRef.current.setMatrixAt(royalSelectionInnerCount++, matrix);
+          }
+        } else {
+          if (selectionOuterRef.current && selectionOuterCount < RING_CAPACITY) {
+            matrix.makeTranslation(unit.position.x, unit.position.y + 0.04, unit.position.z);
+            selectionOuterRef.current.setMatrixAt(selectionOuterCount++, matrix);
+          }
+          if (selectionInnerRef.current && selectionInnerCount < RING_CAPACITY) {
+            matrix.makeTranslation(unit.position.x, unit.position.y + 0.25, unit.position.z);
+            selectionInnerRef.current.setMatrixAt(selectionInnerCount++, matrix);
+          }
         }
       }
     }
@@ -897,8 +973,11 @@ function InstancedUnits() {
     };
     flush(ownRingRef.current, ownRingCount);
     flush(enemyRingRef.current, enemyRingCount);
+    flush(royalOwnerRingRef.current, royalOwnerRingCount);
     flush(selectionOuterRef.current, selectionOuterCount);
     flush(selectionInnerRef.current, selectionInnerCount);
+    flush(royalSelectionOuterRef.current, royalSelectionOuterCount);
+    flush(royalSelectionInnerRef.current, royalSelectionInnerCount);
     flush(auraActiveRef.current, auraActiveCount);
     flush(auraUnitGlowRef.current, auraUnitGlowCount);
     flush(healthBarBgRef.current, healthBarCount);
@@ -969,6 +1048,12 @@ function InstancedUnits() {
         args={[ownerRingGeometry, ENEMY_OWNER_RING_MAT, RING_CAPACITY]}
         frustumCulled={false}
       />
+      {/* Local player's King/Queen owner ring — gold, scaled per royal. */}
+      <instancedMesh
+        ref={royalOwnerRingRef}
+        args={[ownerRingGeometry, ROYAL_OWNER_RING_MAT, RING_CAPACITY]}
+        frustumCulled={false}
+      />
 
       {/* Queen/King aura ring — flat green annulus drawn only while the aura
           is actively healing or buffing. Per-unit green glow pool sits under
@@ -1015,6 +1100,21 @@ function InstancedUnits() {
         args={[selectionInnerGeometry, SELECTION_INNER_MAT, RING_CAPACITY]}
         frustumCulled={false}
         renderOrder={3}
+      />
+
+      {/* King/Queen selection rings — gold, scaled per royal, drawn when a royal is
+          selected. Render orders sit just above the regular selection rings. */}
+      <instancedMesh
+        ref={royalSelectionOuterRef}
+        args={[selectionOuterGeometry, ROYAL_SELECTION_OUTER_MAT, RING_CAPACITY]}
+        frustumCulled={false}
+        renderOrder={4}
+      />
+      <instancedMesh
+        ref={royalSelectionInnerRef}
+        args={[selectionInnerGeometry, ROYAL_SELECTION_INNER_MAT, RING_CAPACITY]}
+        frustumCulled={false}
+        renderOrder={5}
       />
     </group>
   );
