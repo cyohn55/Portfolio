@@ -149,6 +149,7 @@ const OWL_ASCENT_SPEED = 16;           // world units/sec the Owl's lift rises a
 const OWL_GRAB_RANGE = 3.0;            // XZ distance at which the Owl reaches its target and grabs it
 const OWL_GRAB_RANGE_SQ = OWL_GRAB_RANGE * OWL_GRAB_RANGE;
 const OWL_GRAB_LIFT = 1.5;             // the Owl must descend to within this lift of the ground before the talons close
+const OWL_CARRY_HANG_OFFSET = 4.5;     // world units the carried unit dangles below the Owl so it never clips the model
 const OWL_CARRY_DURATION_MS = 2500;    // how long a grabbed unit is held aloft before being dropped
 const OWL_FALL_DAMAGE = 25;            // hp removed from a dropped enemy on impact; friendlies take none
 const OWL_WING_FLAP_PER_SEC = 4;       // wing-flap cycles/sec kept advancing so the swoop/carry reads as active flight
@@ -2677,12 +2678,12 @@ function updateOwlPickups(draft: Store, dtSec: number, nowMs: number): void {
     owl.wingPhase = ((owl.wingPhase || 0) + dtSec * OWL_WING_FLAP_PER_SEC) % 1;
 
     if (pickup.phase === 'carrying') {
-      // Rise back to cruising altitude with the catch held just beneath the talons.
+      // Rise back to cruising altitude with the catch dangling well below the talons.
       owl.flightLift = approachLift(owl.flightLift ?? 0, OWL_FLIGHT_HEIGHT, OWL_ASCENT_SPEED, dtSec);
       target.position.x = owl.position.x;
       target.position.z = owl.position.z;
       target.rotation = owl.rotation;
-      target.flightLift = Math.max(0, (owl.flightLift ?? 0) - 1.2); // dangle just below the Owl
+      target.flightLift = Math.max(0, (owl.flightLift ?? 0) - OWL_CARRY_HANG_OFFSET); // dangle below the Owl, clear of its model
 
       // Release once the hold has elapsed AND the Owl has carried the unit back up to flight
       // height (so it always "returns to its original flying height" before dropping).
@@ -2719,7 +2720,7 @@ function updateOwlPickups(draft: Store, dtSec: number, nowMs: number): void {
       target.carriedByOwlId = owl.id;
       target.position.x = owl.position.x;
       target.position.z = owl.position.z;
-      target.flightLift = Math.max(0, (owl.flightLift ?? 0) - 1.2);
+      target.flightLift = Math.max(0, (owl.flightLift ?? 0) - OWL_CARRY_HANG_OFFSET);
       target.pathWaypoints = undefined;
       delete draft.unitOrders[target.id];
 
