@@ -11,6 +11,10 @@ export function KeyboardShortcuts() {
   const selectUnits = useGameStore((s) => s.selectUnits);
   const clearSelection = useGameStore((s) => s.clearSelection);
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
+  const pilotedUnitId = useGameStore((s) => s.pilotedUnitId);
+  const pilotMonarchBySlot = useGameStore((s) => s.pilotMonarchBySlot);
+  const togglePilotMonarchKind = useGameStore((s) => s.togglePilotMonarchKind);
+  const rallyToMonarch = useGameStore((s) => s.rallyToMonarch);
 
   useEffect(() => {
     if (!matchStarted) return;
@@ -39,8 +43,37 @@ export function KeyboardShortcuts() {
         if (ids.length > 0) selectUnits(ids);
       };
 
+      // Pilot a monarch by animal slot (z/x/c) and swap King<->Queen (v). No
+      // camera-input block here: these keys don't collide with the camera keys,
+      // and blocking would briefly swallow the WASD presses used to drive the unit.
+      if (token === keyboardBindings.pilotMonarch1) {
+        event.preventDefault();
+        pilotMonarchBySlot(0);
+        return;
+      } else if (token === keyboardBindings.pilotMonarch2) {
+        event.preventDefault();
+        pilotMonarchBySlot(1);
+        return;
+      } else if (token === keyboardBindings.pilotMonarch3) {
+        event.preventDefault();
+        pilotMonarchBySlot(2);
+        return;
+      } else if (token === keyboardBindings.pilotToggleMonarch) {
+        event.preventDefault();
+        togglePilotMonarchKind();
+        return;
+      }
+
       if (token === keyboardBindings.selectAll) {
         event.preventDefault();
+        // While piloting, the Select-All key instead rallies the piloted monarch's
+        // army to follow it (the two contexts are mutually exclusive — select-all
+        // would only clear the single-unit pilot selection). Don't block camera
+        // input here so WASD keeps driving the piloted unit.
+        if (pilotedUnitId) {
+          rallyToMonarch();
+          return;
+        }
         keyboardCoordinator.blockCameraInput(250);
         const ids = playerUnits.map(u => u.id);
         if (ids.length > 0) selectUnits(ids);
@@ -62,7 +95,7 @@ export function KeyboardShortcuts() {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [matchStarted, localPlayerId, selectedAnimalPool, units, selectUnits, clearSelection, keyboardBindings]);
+  }, [matchStarted, localPlayerId, selectedAnimalPool, units, selectUnits, clearSelection, keyboardBindings, pilotedUnitId, pilotMonarchBySlot, togglePilotMonarchKind, rallyToMonarch]);
 
   // This component doesn't render anything, it just handles keyboard events
   return null;

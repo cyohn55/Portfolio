@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { keyboardCoordinator } from '../utils/keyboardCoordination';
 import { useGameStore } from '../game/state';
 import { gamepadInput } from './Working/gamepadInput';
+import { pilotInput } from './Working/monarchPilot';
 
 /**
  * A camera-movement binding is only usable as a held key when it's a single
@@ -279,43 +280,74 @@ export function CameraController({
       // Controller left-stick analog pan.
       if (cameraIntent.panZ !== 0) movement.add(forward.current.clone().multiplyScalar(cameraIntent.panZ));
       if (cameraIntent.panX !== 0) movement.add(right.current.clone().multiplyScalar(cameraIntent.panX));
+    }
 
-      const moveAmount = moveSpeed * 60 * delta; // Scale by 60 for frame-rate independence
+    // While piloting a King/Queen, the same movement keys/stick drive that unit
+    // (the game tick reads pilotInput) instead of panning the camera, and the
+    // camera eases to follow it. Otherwise the movement vector pans the camera
+    // as usual. Read the piloted id straight from the store so this per-frame
+    // loop never forces a React re-render.
+    const store = useGameStore.getState();
+    const pilotedId = store.pilotedUnitId;
+
+    if (pilotedId) {
+      // The vector is already camera-relative; clamp its length to 1 so an analog
+      // stick scales speed while a digital key press (length 1) means full speed.
+      const intentMagnitude = Math.hypot(movement.x, movement.z);
+      if (intentMagnitude > 1) {
+        movement.x /= intentMagnitude;
+        movement.z /= intentMagnitude;
+      }
+      pilotInput.setMove(movement.x, movement.z);
+
+      // Ease the camera focus onto the piloted unit. Selection auto-follow stays
+      // off while piloting so the two follow behaviours don't fight.
+      followEnabled.current = false;
+      for (const unit of store.units) {
+        if (unit.id === pilotedId) {
+          const easing = 1 - Math.exp(-followSpeed * delta);
+          target.current.x += (unit.position.x - target.current.x) * easing;
+          target.current.z += (unit.position.z - target.current.z) * easing;
+          break;
+        }
+      }
+    } else {
+      // Normal camera panning from the movement vector.
       if (movement.length() > 0) {
+        const moveAmount = moveSpeed * 60 * delta; // Scale by 60 for frame-rate independence
         movement.normalize().multiplyScalar(moveAmount);
         target.current.add(movement);
         // Any manual pan input cancels the auto-follow until a fresh selection.
         followEnabled.current = false;
       }
-    }
 
-    // Slow auto-follow: when armed, ease the focus point toward the centroid of
-    // the currently selected, still-living troops. Reads the store directly so
-    // the per-frame loop never forces a React re-render on unit movement.
-    if (followEnabled.current) {
-      const store = useGameStore.getState();
-      const selectedIds = store.selectedUnitIds;
-      if (selectedIds.length === 0) {
-        followEnabled.current = false;
-      } else {
-        const selectedSet = new Set(selectedIds);
-        let sumX = 0;
-        let sumZ = 0;
-        let count = 0;
-        for (const unit of store.units) {
-          if (selectedSet.has(unit.id)) {
-            sumX += unit.position.x;
-            sumZ += unit.position.z;
-            count++;
+      // Slow auto-follow: when armed, ease the focus point toward the centroid of
+      // the currently selected, still-living troops. Reads the store directly so
+      // the per-frame loop never forces a React re-render on unit movement.
+      if (followEnabled.current) {
+        const selectedIds = store.selectedUnitIds;
+        if (selectedIds.length === 0) {
+          followEnabled.current = false;
+        } else {
+          const selectedSet = new Set(selectedIds);
+          let sumX = 0;
+          let sumZ = 0;
+          let count = 0;
+          for (const unit of store.units) {
+            if (selectedSet.has(unit.id)) {
+              sumX += unit.position.x;
+              sumZ += unit.position.z;
+              count++;
+            }
           }
-        }
 
-        if (count > 0) {
-          // Frame-rate-independent easing toward the troop centroid. Only the
-          // horizontal focus moves; height/zoom stay under the player's control.
-          const easing = 1 - Math.exp(-followSpeed * delta);
-          target.current.x += (sumX / count - target.current.x) * easing;
-          target.current.z += (sumZ / count - target.current.z) * easing;
+          if (count > 0) {
+            // Frame-rate-independent easing toward the troop centroid. Only the
+            // horizontal focus moves; height/zoom stay under the player's control.
+            const easing = 1 - Math.exp(-followSpeed * delta);
+            target.current.x += (sumX / count - target.current.x) * easing;
+            target.current.z += (sumZ / count - target.current.z) * easing;
+          }
         }
       }
     }

@@ -40,11 +40,15 @@ export type ControlActionId =
   | 'deselect'
   | 'primaryAction'
   | 'secondaryAction'
+  | 'pilotMonarch1'
+  | 'pilotMonarch2'
+  | 'pilotMonarch3'
+  | 'pilotToggleMonarch'
   | 'pause';
 
 export type InputDevice = 'keyboard' | 'controller';
 
-export type ControlCategory = 'Camera' | 'Selection' | 'Commands' | 'System';
+export type ControlCategory = 'Camera' | 'Selection' | 'Commands' | 'Pilot' | 'System';
 
 /** A binding map assigns one input token to every bindable action. */
 export type ControlBindings = Record<ControlActionId, string>;
@@ -74,13 +78,17 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
   { id: 'cameraRight', label: 'Move Camera Right', category: 'Camera', description: 'Pan the camera right.' },
   { id: 'cameraZoomIn', label: 'Zoom In', category: 'Camera', description: 'Bring the camera closer to the map.' },
   { id: 'cameraZoomOut', label: 'Zoom Out', category: 'Camera', description: 'Pull the camera back from the map.' },
-  { id: 'selectAll', label: 'Select All Units', category: 'Selection', description: 'Select every one of your units.' },
+  { id: 'selectAll', label: 'Select All / Rally', category: 'Selection', description: 'Select every one of your units. While piloting a King/Queen, this same key instead rallies that animal’s units to follow the monarch.' },
   { id: 'selectGroup1', label: 'Select Animal Type 1', category: 'Selection', description: 'Select all units of your first animal.' },
   { id: 'selectGroup2', label: 'Select Animal Type 2', category: 'Selection', description: 'Select all units of your second animal.' },
   { id: 'selectGroup3', label: 'Select Animal Type 3', category: 'Selection', description: 'Select all units of your third animal.' },
   { id: 'deselect', label: 'Deselect All', category: 'Selection', description: 'Clear the current selection.' },
   { id: 'primaryAction', label: 'Select / Confirm', category: 'Commands', description: 'Select the unit under the cursor / reticle.' },
   { id: 'secondaryAction', label: 'Move / Attack', category: 'Commands', description: 'Order selected units to the cursor / reticle.' },
+  { id: 'pilotMonarch1', label: 'Pilot Monarch 1', category: 'Pilot', description: 'Directly pilot the King of your first animal (toggle Queen with Toggle Monarch). Drive it with the camera-movement keys.' },
+  { id: 'pilotMonarch2', label: 'Pilot Monarch 2', category: 'Pilot', description: 'Directly pilot the King of your second animal. Drive it with the camera-movement keys.' },
+  { id: 'pilotMonarch3', label: 'Pilot Monarch 3', category: 'Pilot', description: 'Directly pilot the King of your third animal. Drive it with the camera-movement keys.' },
+  { id: 'pilotToggleMonarch', label: 'Toggle King / Queen', category: 'Pilot', description: 'While piloting, switch between the King and the Queen of the same animal.' },
   { id: 'pause', label: 'Pause Game', category: 'System', description: 'Toggle the pause menu.' },
 ] as const;
 
@@ -100,6 +108,10 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   deselect: 'escape',
   primaryAction: 'mouse:left',
   secondaryAction: 'mouse:right',
+  pilotMonarch1: 'z',
+  pilotMonarch2: 'x',
+  pilotMonarch3: 'c',
+  pilotToggleMonarch: 'v',
   pause: 'p',
 };
 
@@ -117,6 +129,10 @@ export const DEFAULT_CONTROLLER_BINDINGS: ControlBindings = {
   deselect: 'button:3', // Y
   primaryAction: 'button:0', // A
   secondaryAction: 'button:1', // B
+  pilotMonarch1: 'button:12', // D-Pad Up
+  pilotMonarch2: 'button:14', // D-Pad Left
+  pilotMonarch3: 'button:15', // D-Pad Right
+  pilotToggleMonarch: 'button:13', // D-Pad Down
   pause: 'button:9', // Start
 };
 

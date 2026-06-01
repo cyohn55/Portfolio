@@ -38,6 +38,7 @@ export function HUD() {
   const matchStats = useGameStore((s) => s.matchStats);
   const musicEnabled = useGameStore((s) => s.musicEnabled);
   const setMusicEnabled = useGameStore((s) => s.setMusicEnabled);
+  const pilotedUnitId = useGameStore((s) => s.pilotedUnitId);
 
   // FPS monitoring state
   const [fps, setFps] = useState({ current: 0, average: 0, min: 0, max: 0 });
@@ -67,6 +68,13 @@ export function HUD() {
   }, []);
 
   const selectedUnits = units.filter(u => selectedUnitIds.includes(u.id));
+
+  // The King/Queen the player is directly piloting, if any. The followers it has
+  // rallied are this animal's army Units that carry its id in followMonarchId.
+  const pilotedUnit = pilotedUnitId ? units.find(u => u.id === pilotedUnitId) ?? null : null;
+  const rallyCount = pilotedUnit
+    ? units.filter(u => u.followMonarchId === pilotedUnit.id).length
+    : 0;
 
   // Live score using the same scoring contract the post-game screen uses, so
   // the in-game total matches what gets persisted to the leaderboard.
@@ -110,6 +118,43 @@ export function HUD() {
           <span style={{ color: '#4ade80', fontWeight: 'bold', fontSize: '14px' }}>
             {matchTimeDisplay}
           </span>
+        </div>
+      </div>
+    )}
+
+    {/* Piloting indicator: shows which monarch is under direct control and the
+        active rally count, plus the drive/rally hint. Sits just under the
+        top-left Score/Time panel. */}
+    {matchStarted && pilotedUnit && (
+      <div style={{
+        position: 'fixed',
+        top: '92px',
+        left: '20px',
+        zIndex: 1000,
+        pointerEvents: 'none',
+        background: 'rgba(28,18,46,0.85)',
+        border: '1px solid rgba(212,175,55,0.55)',
+        borderRadius: '8px',
+        padding: '10px 14px',
+        backdropFilter: 'blur(10px)',
+        fontFamily: 'monospace',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '4px',
+        fontSize: '12px',
+        color: '#fff',
+        minWidth: '140px',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+          <span style={{ color: '#facc15', fontWeight: 'bold' }}>
+            👑 Piloting
+          </span>
+          <span style={{ color: '#fde68a', fontWeight: 'bold' }}>
+            {pilotedUnit.animal} {pilotedUnit.kind}
+          </span>
+        </div>
+        <div style={{ color: '#94a3b8', fontSize: '10px' }}>
+          WASD: drive · Space: rally{rallyCount > 0 ? ` (${rallyCount})` : ''} · V: King/Queen
         </div>
       </div>
     )}

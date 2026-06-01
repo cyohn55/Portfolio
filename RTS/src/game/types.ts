@@ -137,6 +137,11 @@ export interface Unit {
   // flight lift. Animated by updateOwlPickups for both the swooping/carrying Owl and the
   // unit it holds, so the two rise and fall together. Undefined for normally-behaving units.
   flightLift?: number;
+  // Monarch rally (Space while piloting). Set on a local-player army Unit to make it
+  // trail the piloted King/Queen identified by this id: the tick keeps refreshing the
+  // unit's move order to the monarch's position while it is farther than the follow stop
+  // band. Cleared when the player toggles the rally off or when the monarch dies.
+  followMonarchId?: string;
 }
 
 // Per-Owl state for the "Pickup" ability while it animates. The Owl dives at a claimed target
@@ -269,6 +274,11 @@ export interface GameState {
   queenPatrols: Record<string, PatrolRoute>; // queen id -> patrol route
   matchStats: MatchStats; // scoring counters for the current match (local player)
   projectiles: Projectile[]; // in-flight egg projectiles (Chicken ability)
+  // Id of the local player's King/Queen the player is directly piloting (z/x/c
+  // selects by animal slot, v toggles King<->Queen), or null when not piloting.
+  // While set, the tick drives this unit purely from `pilotInput` (the WASD/stick
+  // movement vector) and ignores its AI, orders, and combat. See monarchPilot.ts.
+  pilotedUnitId: string | null;
 }
 
 export interface CommandMoveUnits {

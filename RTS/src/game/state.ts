@@ -12,6 +12,14 @@ setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import { pathfinder } from '../components/Working/pathfinder';
 import { clampToArena } from '../components/Working/arenaBoundary';
+import {
+  type MonarchKind,
+  MONARCH_FOLLOW_STOP_DISTANCE,
+  findMonarch,
+  otherMonarchKind,
+  pilotInput,
+  shouldChaseMonarch,
+} from '../components/Working/monarchPilot';
 import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, CommandOwlDeliver, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 import * as leaderboardModule from '../components/Working/leaderboard';
@@ -224,6 +232,12 @@ type Store = GameState & {
   selectUnits: (unitIds: string[]) => void;
   addToSelection: (unitIds: string[]) => void;
   clearSelection: () => void;
+  // Direct monarch piloting (z/x/c/v + Space rally). See monarchPilot.ts and the
+  // pilot-movement block in tick().
+  pilotMonarchBySlot: (slotIndex: number) => void;
+  togglePilotMonarchKind: () => void;
+  rallyToMonarch: () => void;
+  clearPilot: () => void;
   toggleTurtleShell: (unitIds: string[]) => void;
   throwEggs: (cmd: CommandThrowEggs) => void;
   fireTongues: (cmd: CommandFireTongues) => void;
@@ -398,6 +412,7 @@ export const useGameStore = create<Store>((set, get) => ({
   gameOver: false,
   winner: null,
   selectedUnitIds: [],
+  pilotedUnitId: null,
   unitOrders: {},
   queenPatrols: {},
   unitCountCache: {},
@@ -512,7 +527,7 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
@@ -550,6 +565,9 @@ export const useGameStore = create<Store>((set, get) => ({
 
     console.log(`✅ Created ${units.length} total units:`, units.map(u => `${u.animal} ${u.kind}`));
 
+    // Drop any stale pilot movement intent from a previous match.
+    pilotInput.reset();
+
     set({
       units,
       matchStarted: true,
@@ -557,6 +575,7 @@ export const useGameStore = create<Store>((set, get) => ({
       gameOver: false,
       winner: null,
       selectedUnitIds: [],
+      pilotedUnitId: null,
       unitOrders: {},
       lastSpawnAtMsByQueenId: {},
       unitCountCache: {},
@@ -856,6 +875,52 @@ export const useGameStore = create<Store>((set, get) => ({
           continue;
         }
 
+        // Direct piloting: the player is driving this King/Queen with the camera-movement
+        // keys (z/x/c selected it). Its movement is purely the `pilotInput` vector — never
+        // the AI or order system — and it never auto-attacks (fully manual). Any stale move
+        // order is dropped so mouse orders and WASD don't fight, and we skip the rest of the
+        // per-unit AI/combat for it this tick.
+        if (draft.pilotedUnitId !== null && unit.id === draft.pilotedUnitId) {
+          if (draft.unitOrders[unit.id]) delete draft.unitOrders[unit.id];
+
+          const move = pilotInput.getMove();
+          const inputMagnitude = Math.hypot(move.x, move.z);
+          if (inputMagnitude > 0.0001) {
+            // Normalize the steering direction but let an analog stick scale speed
+            // (clamped so a digital key press, which reports magnitude 1, is full speed).
+            const dirX = move.x / inputMagnitude;
+            const dirZ = move.z / inputMagnitude;
+            const moveDistance = unit.moveSpeed * dtSec * Math.min(inputMagnitude, 1);
+            unit.rotation = Math.atan2(dirX, dirZ);
+
+            // Locomotion animation flags, matching the rest of the movement code.
+            if (unit.animal === 'Frog' || unit.animal === 'Bunny') {
+              unit.isHopping = true;
+              const hopSpeed = unit.moveSpeed / 5;
+              unit.hopPhase = ((unit.hopPhase || 0) + hopSpeed * dtSec) % 1;
+            }
+            if (unit.animal === 'Owl') {
+              unit.isFlying = true;
+              const flapSpeed = 3;
+              unit.wingPhase = ((unit.wingPhase || 0) + flapSpeed * dtSec) % 1;
+            }
+
+            const newPosition = {
+              x: unit.position.x + dirX * moveDistance,
+              y: unit.position.y,
+              z: unit.position.z + dirZ * moveDistance,
+            };
+            unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
+          } else {
+            // No input this frame: hold position and drop the moving animations.
+            if (unit.animal === 'Frog' || unit.animal === 'Bunny') unit.isHopping = false;
+            if (unit.animal === 'Owl') unit.isFlying = false;
+          }
+
+          unit.unitState = 'idle';
+          continue;
+        }
+
         // AI thinking throttling - each unit thinks on different frames
         const isPlayerUnit = unit.ownerId in isAiByOwnerId && !isAiByOwnerId[unit.ownerId];
         const shouldThinkThisTick = isPlayerUnit || !draft.optimizations.aiThrottling || (draft.tickCounter + (draft.aiThinkingOffset[unit.id] || 0)) % 2 === 0; // Reduced to 2 for better AI responsiveness
@@ -863,6 +928,24 @@ export const useGameStore = create<Store>((set, get) => ({
         // Initialize AI thinking offset for new units
         if (!draft.aiThinkingOffset[unit.id]) {
           draft.aiThinkingOffset[unit.id] = Math.floor(Math.random() * 2); // Match new thinking interval
+        }
+
+        // Monarch rally: a follower keeps its move order pinned to the piloted
+        // King/Queen it is trailing, so it chases the monarch as the player drives
+        // it. Refreshed before the order is read below, so the standard Priority-1
+        // movement (which also auto-engages enemies en route) carries it there.
+        // Dropping the order inside the stop band lets it idle near the monarch
+        // instead of jittering against it, and a dead/missing monarch ends the rally.
+        if (isPlayerUnit && unit.followMonarchId) {
+          const monarch = unitById.get(unit.followMonarchId);
+          if (!monarch || monarch.hp <= 0) {
+            delete unit.followMonarchId;
+            delete draft.unitOrders[unit.id];
+          } else if (shouldChaseMonarch(distance3D(unit.position, monarch.position), MONARCH_FOLLOW_STOP_DISTANCE)) {
+            draft.unitOrders[unit.id] = { x: monarch.position.x, y: 0, z: monarch.position.z };
+          } else if (draft.unitOrders[unit.id]) {
+            delete draft.unitOrders[unit.id];
+          }
         }
 
         const order = draft.unitOrders[unit.id];
@@ -1585,6 +1668,16 @@ export const useGameStore = create<Store>((set, get) => ({
           if (unit.currentAttackers) {
             unit.currentAttackers = unit.currentAttackers.filter(id => !deadSet.has(id));
           }
+          // End a rally whose monarch just died so followers stop chasing a ghost.
+          if (unit.followMonarchId && deadSet.has(unit.followMonarchId)) {
+            delete unit.followMonarchId;
+          }
+        }
+
+        // Stop piloting if the piloted King/Queen just died.
+        if (draft.pilotedUnitId && deadSet.has(draft.pilotedUnitId)) {
+          draft.pilotedUnitId = null;
+          pilotInput.reset();
         }
 
         // Clear dead units from the target cache in one pass.
@@ -1812,6 +1905,92 @@ export const useGameStore = create<Store>((set, get) => ({
   })),
   
   clearSelection: () => set({ selectedUnitIds: [] }),
+
+  // --- Direct monarch piloting -------------------------------------------------
+  // Start piloting the King of the local player's animal in `slotIndex`
+  // (0/1/2 -> z/x/c). Defaults to the King; the player can swap to the Queen
+  // with togglePilotMonarchKind. Selecting it also makes it the current
+  // selection so the existing ring/HUD highlight the piloted unit, and the
+  // camera (which follows the selection) eases onto it. Re-pressing the slot of
+  // the unit already being piloted stops piloting.
+  pilotMonarchBySlot: (slotIndex) => set((prev) => {
+    if (!prev.localPlayerId) return {};
+    const animal = prev.selectedAnimalPool[slotIndex];
+    if (!animal) return {};
+
+    // If already piloting this animal's monarch, the same key unpilots it.
+    const current = prev.pilotedUnitId
+      ? prev.units.find((u) => u.id === prev.pilotedUnitId)
+      : null;
+    if (current && current.animal === animal) {
+      pilotInput.reset();
+      return { pilotedUnitId: null };
+    }
+
+    // Prefer the King; fall back to the Queen if the King is already dead.
+    const monarch =
+      findMonarch(prev.units, prev.localPlayerId, animal, 'King') ??
+      findMonarch(prev.units, prev.localPlayerId, animal, 'Queen');
+    if (!monarch) return {};
+
+    pilotInput.reset();
+    return { pilotedUnitId: monarch.id, selectedUnitIds: [monarch.id] };
+  }),
+
+  // Swap the piloted unit between the King and Queen of the same animal (v).
+  // No-op when not piloting or when the sibling monarch is dead.
+  togglePilotMonarchKind: () => set((prev) => {
+    if (!prev.localPlayerId || !prev.pilotedUnitId) return {};
+    const current = prev.units.find((u) => u.id === prev.pilotedUnitId);
+    if (!current || (current.kind !== 'King' && current.kind !== 'Queen')) return {};
+
+    const sibling = findMonarch(
+      prev.units,
+      prev.localPlayerId,
+      current.animal,
+      otherMonarchKind(current.kind as MonarchKind)
+    );
+    if (!sibling) return {};
+
+    pilotInput.reset();
+    return { pilotedUnitId: sibling.id, selectedUnitIds: [sibling.id] };
+  }),
+
+  // Toggle "rally" on the piloted monarch (Space). When on, every living army
+  // Unit of the same animal and owner trails the monarch (the tick keeps their
+  // move order pinned to its position). Pressing again clears the rally.
+  rallyToMonarch: () => set((prev) =>
+    produce(prev, (draft) => {
+      if (!draft.localPlayerId || !draft.pilotedUnitId) return;
+      const monarch = draft.units.find((u) => u.id === draft.pilotedUnitId);
+      if (!monarch) return;
+
+      const isFollower = (u: Unit) =>
+        u.ownerId === draft.localPlayerId &&
+        u.kind === 'Unit' &&
+        u.animal === monarch.animal;
+
+      // Toggle off when this animal's units are already rallying to this monarch.
+      const alreadyRallying = draft.units.some(
+        (u) => isFollower(u) && u.followMonarchId === monarch.id
+      );
+
+      for (const unit of draft.units) {
+        if (!isFollower(unit)) continue;
+        if (alreadyRallying) {
+          delete unit.followMonarchId;
+        } else {
+          unit.followMonarchId = monarch.id;
+        }
+      }
+    })
+  ),
+
+  // Stop piloting entirely (used on death / match end / explicit cancel).
+  clearPilot: () => {
+    pilotInput.reset();
+    set({ pilotedUnitId: null });
+  },
 
   // Toggle the "shell" lock on the local player's Turtle units in the given
   // selection. Shelling pins the unit in place (see checkCollision) and the

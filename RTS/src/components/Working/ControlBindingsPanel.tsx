@@ -24,12 +24,13 @@ import {
  * change. Each device keeps its own independent layout.
  */
 
-const CATEGORY_ORDER: readonly ControlCategory[] = ['Camera', 'Selection', 'Commands', 'System'];
+const CATEGORY_ORDER: readonly ControlCategory[] = ['Camera', 'Selection', 'Commands', 'Pilot', 'System'];
 
 const CATEGORY_ICONS: Record<ControlCategory, string> = {
   Camera: '🎥',
   Selection: '🎯',
   Commands: '⚔️',
+  Pilot: '👑',
   System: '⚙️',
 };
 

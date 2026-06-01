@@ -40,7 +40,8 @@ const CAMERA_ACTIONS: ReadonlySet<ControlActionId> = new Set([
 // Discrete actions fired once per press (rising edge).
 const TAP_ACTIONS: readonly ControlActionId[] = [
   'primaryAction', 'secondaryAction', 'selectAll',
-  'selectGroup1', 'selectGroup2', 'selectGroup3', 'deselect', 'pause',
+  'selectGroup1', 'selectGroup2', 'selectGroup3', 'deselect',
+  'pilotMonarch1', 'pilotMonarch2', 'pilotMonarch3', 'pilotToggleMonarch', 'pause',
 ];
 
 function getActiveGamepad(): GamepadLike | null {
@@ -162,6 +163,13 @@ export function GamepadController() {
         break;
       }
       case 'selectAll': {
+        // Mirror the keyboard: while piloting, this rallies the monarch's army
+        // to follow it instead of selecting everything (which would just clear
+        // the single-unit pilot selection).
+        if (state.pilotedUnitId) {
+          state.rallyToMonarch();
+          break;
+        }
         const ids = state.units
           .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base')
           .map((u) => u.id);
@@ -182,6 +190,18 @@ export function GamepadController() {
       }
       case 'deselect':
         state.clearSelection();
+        break;
+      case 'pilotMonarch1':
+        state.pilotMonarchBySlot(0);
+        break;
+      case 'pilotMonarch2':
+        state.pilotMonarchBySlot(1);
+        break;
+      case 'pilotMonarch3':
+        state.pilotMonarchBySlot(2);
+        break;
+      case 'pilotToggleMonarch':
+        state.togglePilotMonarchKind();
         break;
       default:
         break;
