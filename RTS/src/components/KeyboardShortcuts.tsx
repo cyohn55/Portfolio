@@ -1,7 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useGameStore } from '../game/state';
 import { keyboardCoordinator } from '../utils/keyboardCoordination';
 import { keyboardEventToToken } from './Working/controlBindings';
+
+// While piloting, two Space presses within this window count as a "double tap"
+// that selects the whole army rather than just rallying the current animal's.
+const DOUBLE_PRESS_WINDOW_MS = 350;
 
 export function KeyboardShortcuts() {
   const matchStarted = useGameStore((s) => s.matchStarted);
@@ -15,6 +19,9 @@ export function KeyboardShortcuts() {
   const pilotCycleMonarch = useGameStore((s) => s.pilotCycleMonarch);
   const togglePilotMonarchKind = useGameStore((s) => s.togglePilotMonarchKind);
   const rallyToMonarch = useGameStore((s) => s.rallyToMonarch);
+
+  // Timestamp of the last Space press while piloting, for double-tap detection.
+  const lastRallyPressMsRef = useRef(0);
 
   useEffect(() => {
     if (!matchStarted) return;
@@ -58,12 +65,21 @@ export function KeyboardShortcuts() {
 
       if (token === keyboardBindings.selectAll) {
         event.preventDefault();
-        // While piloting, the Select-All key instead rallies the piloted monarch's
-        // army to follow it (the two contexts are mutually exclusive — select-all
-        // would only clear the single-unit pilot selection). Don't block camera
-        // input here so the ESDF keys keep driving the piloted unit.
+        // While piloting, Space rallies the piloted monarch's army to follow it
+        // AND selects that army (so a right-click immediately redirects it — see
+        // rallyToMonarch). Two quick presses escalate to selecting *every* unit.
+        // Don't block camera input here so the ESDF keys keep driving the unit.
         if (pilotedUnitId) {
-          rallyToMonarch();
+          const now = performance.now();
+          const isDoublePress = now - lastRallyPressMsRef.current <= DOUBLE_PRESS_WINDOW_MS;
+          lastRallyPressMsRef.current = now;
+
+          if (isDoublePress) {
+            const ids = playerUnits.map(u => u.id);
+            if (ids.length > 0) selectUnits(ids);
+          } else {
+            rallyToMonarch();
+          }
           return;
         }
         keyboardCoordinator.blockCameraInput(250);

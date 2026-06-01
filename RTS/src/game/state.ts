@@ -1807,6 +1807,12 @@ export const useGameStore = create<Store>((set, get) => ({
         // Set new movement order
         draft.unitOrders[id] = cmd.target;
 
+        // Break any monarch rally: an explicit destination means the player wants
+        // this unit *here*, not pinned to the King/Queen. Without this the tick's
+        // follow logic re-pins the order to the monarch every frame, so a rallied
+        // unit could never be redirected.
+        delete u.followMonarchId;
+
         // Reset unit state to prioritize new player order
         u.unitState = 'moving_to_order';
         delete u.arrivedAtDestinationMs;
@@ -1871,6 +1877,11 @@ export const useGameStore = create<Store>((set, get) => ({
 
         // Set movement target to enemy position
         draft.unitOrders[id] = { x: target.position.x, y: 0, z: target.position.z };
+
+        // Break any monarch rally (see moveCommand): an explicit attack order
+        // takes the unit off "follow the King/Queen" so it isn't re-pinned to
+        // the monarch by the follow logic each tick.
+        delete unit.followMonarchId;
 
         // Reset unit state to prioritize attack order
         unit.unitState = 'pursuing_enemy';
@@ -1993,9 +2004,12 @@ export const useGameStore = create<Store>((set, get) => ({
     return { pilotedUnitId: sibling.id, selectedUnitIds: [sibling.id] };
   }),
 
-  // Toggle "rally" on the piloted monarch (Space). When on, every living army
-  // Unit of the same animal and owner trails the monarch (the tick keeps their
-  // move order pinned to its position). Pressing again clears the rally.
+  // Toggle "rally" on the piloted monarch (Space) and select that animal's army.
+  // When rally is on, every living army Unit of the same animal and owner trails
+  // the monarch (the tick keeps their move order pinned to its position);
+  // pressing again clears the rally. Either way the army is left selected so the
+  // player can immediately redirect it with a right-click — and issuing that
+  // move order breaks the unit off the monarch (see moveCommand).
   rallyToMonarch: () => set((prev) =>
     produce(prev, (draft) => {
       if (!draft.localPlayerId || !draft.pilotedUnitId) return;
@@ -2012,6 +2026,7 @@ export const useGameStore = create<Store>((set, get) => ({
         (u) => isFollower(u) && u.followMonarchId === monarch.id
       );
 
+      const followerIds: string[] = [];
       for (const unit of draft.units) {
         if (!isFollower(unit)) continue;
         if (alreadyRallying) {
@@ -2019,6 +2034,13 @@ export const useGameStore = create<Store>((set, get) => ({
         } else {
           unit.followMonarchId = monarch.id;
         }
+        followerIds.push(unit.id);
+      }
+
+      // Select the army (when any exists) so a right-click redirects it. Leaves
+      // the current selection untouched when this animal has no army units.
+      if (followerIds.length > 0) {
+        draft.selectedUnitIds = followerIds;
       }
     })
   ),

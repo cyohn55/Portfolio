@@ -154,7 +154,7 @@ export function HUD() {
           </span>
         </div>
         <div style={{ color: '#94a3b8', fontSize: '10px' }}>
-          ESDF: drive · A: switch · G: King/Queen · Space: rally{rallyCount > 0 ? ` (${rallyCount})` : ''}
+          ESDF: drive · A: switch · G: King/Queen · Space: rally + select{rallyCount > 0 ? ` (${rallyCount})` : ''} · 2×Space: all
         </div>
       </div>
     )}
