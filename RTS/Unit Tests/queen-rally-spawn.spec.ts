@@ -222,8 +222,12 @@ test.describe('Queen spawn rally point', () => {
         const everySpawnedFollows = spawnedCount > 0 && spawned.every(
           (u: any) => u.followMonarchId === 'test-king',
         );
+        // Gating: only the QUEEN is selected here (not the King), so the new
+        // followers must NOT be auto-folded into the selection.
+        const selectedIds = new Set(after.selectedUnitIds);
+        const noneAutoSelected = spawned.every((u: any) => !selectedIds.has(u.id));
 
-        return { followRecorded, spawnedCount, everySpawnedFollows };
+        return { followRecorded, spawnedCount, everySpawnedFollows, noneAutoSelected };
       },
       { queenPosition: QUEEN_POSITION, dtMs: SIM_DT_MS, spawnIntervalMs: 5000 },
     );
@@ -233,5 +237,86 @@ test.describe('Queen spawn rally point', () => {
     expect(result.followRecorded, 'setQueenRally should record a follow target for the friendly King').toBe(true);
     expect(result.spawnedCount, 'the Queen should have spawned a Unit this tick').toBeGreaterThan(0);
     expect(result.everySpawnedFollows, 'every freshly spawned Unit should be set to follow the King').toBe(true);
+    expect(result.noneAutoSelected, 'followers must not be auto-selected when the King is not selected').toBe(true);
+  });
+
+  test('spawned followers are auto-selected while the King is selected', async ({ page }) => {
+    test.setTimeout(60_000);
+    await openMatchWithTerrain(page);
+
+    const result = await page.evaluate(
+      async ({ queenPosition, dtMs, spawnIntervalMs }) => {
+        const store = (window as any).__rtsStore;
+        const state = store.getState();
+
+        const local = state.localPlayerId;
+        const otherOwner = state.units.find((u: any) => u.ownerId !== local)?.ownerId;
+        if (!otherOwner) return { setupError: 'no enemy player present' } as const;
+
+        const playerBase = {
+          id: 'test-player-base', ownerId: local, animal: 'Bear', kind: 'Base',
+          position: { x: 250, y: 0, z: 250 }, hp: 10000, maxHp: 10000,
+          attackDamage: 0, moveSpeed: 0, attackRange: 4, attackCooldownMs: 1000,
+          lastAttackAtMs: 0, rotation: 0,
+        };
+        const enemyBase = {
+          id: 'test-enemy-base', ownerId: otherOwner, animal: 'Bear', kind: 'Base',
+          position: { x: -250, y: 0, z: -250 }, hp: 10000, maxHp: 10000,
+          attackDamage: 0, moveSpeed: 0, attackRange: 4, attackCooldownMs: 1000,
+          lastAttackAtMs: 0, rotation: 0,
+        };
+        const queen: any = {
+          id: 'test-queen', ownerId: local, animal: 'Bear', kind: 'Queen',
+          position: { ...queenPosition }, hp: 200, maxHp: 200,
+          attackDamage: 10, moveSpeed: 18, attackRange: 4, attackCooldownMs: 1000,
+          lastAttackAtMs: 0, rotation: 0,
+        };
+        const king: any = {
+          id: 'test-king', ownerId: local, animal: 'Bear', kind: 'King',
+          position: { x: queenPosition.x - 30, y: 0, z: queenPosition.z - 20 },
+          hp: 500, maxHp: 500,
+          attackDamage: 50, moveSpeed: 18, attackRange: 4, attackCooldownMs: 1000,
+          lastAttackAtMs: 0, rotation: 0,
+        };
+
+        const preexistingIds = new Set([playerBase.id, enemyBase.id, queen.id, king.id]);
+
+        store.setState({
+          units: [playerBase, enemyBase, queen, king],
+          matchStarted: true, isPaused: false, gameOver: false, winner: null,
+          unitOrders: {}, queenPatrols: {}, queenRallyTargets: {},
+          lastSpawnAtMsByQueenId: {},
+          // The KING is the active selection — the trigger for auto-selecting
+          // followers as they spawn.
+          selectedUnitIds: ['test-king'], deadUnitsToRemove: [],
+          targetCache: {}, aiThinkingOffset: {},
+        });
+
+        store.getState().setQueenRally({ queenId: 'test-queen', target: { mode: 'follow', monarchId: 'test-king' } });
+
+        const nowMs = Date.now() + spawnIntervalMs + 1;
+        store.getState().tick(dtMs / 1000, nowMs);
+
+        const after = store.getState();
+        const spawned = after.units.filter(
+          (u: any) => u.ownerId === local && u.kind === 'Unit' && !preexistingIds.has(u.id),
+        );
+        const spawnedCount = spawned.length;
+        const selectedIds = new Set(after.selectedUnitIds);
+        // Every newborn follower must have been folded into the selection, and the
+        // King must remain selected alongside them.
+        const everySpawnedSelected = spawnedCount > 0 && spawned.every((u: any) => selectedIds.has(u.id));
+        const kingStillSelected = selectedIds.has('test-king');
+
+        return { spawnedCount, everySpawnedSelected, kingStillSelected };
+      },
+      { queenPosition: QUEEN_POSITION, dtMs: SIM_DT_MS, spawnIntervalMs: 5000 },
+    );
+
+    if ('setupError' in result) throw new Error(`setup failed: ${result.setupError}`);
+
+    expect(result.spawnedCount, 'the Queen should have spawned a Unit this tick').toBeGreaterThan(0);
+    expect(result.everySpawnedSelected, 'a follower spawned while the King is selected should be auto-selected').toBe(true);
+    expect(result.kingStillSelected, 'the King should stay selected alongside its new followers').toBe(true);
   });
 });

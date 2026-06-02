@@ -850,6 +850,14 @@ export const useGameStore = create<Store>((set, get) => ({
                 if (monarch && monarch.hp > 0) {
                   tempUnit.followMonarchId = rally.monarchId;
                   tempUnit.unitState = 'moving_to_order';
+                  // If the player currently has the followed monarch selected, fold
+                  // the newborn into the selection too, so it joins the band the
+                  // player is actively commanding the moment it spawns rather than
+                  // appearing unselected behind the King. (tempUnit is pushed to
+                  // draft.units just below, so the id resolves on the next read.)
+                  if (draft.selectedUnitIds.includes(monarch.id)) {
+                    draft.selectedUnitIds.push(tempUnit.id);
+                  }
                 } else {
                   // The designated monarch is gone — drop the now-stale follow rally.
                   delete draft.queenRallyTargets[q.id];
