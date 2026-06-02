@@ -11,6 +11,11 @@ import { tokenToMouseButton } from './Working/controlBindings';
 // exact mesh raycast was unreliable; screen-space proximity is dependable.
 const UNIT_PICK_RADIUS_PX = 40;
 
+// How long the secondary (command) button must be held on a point, with a lone
+// Queen selected, before the gesture commits a patrol route instead of a normal
+// move order. A quicker press is treated as a plain move command for the Queen.
+const PATROL_HOLD_MS = 750;
+
 // MouseEvent.button (0=left, 1=middle, 2=right) -> MouseEvent.buttons bitmask
 // (1=left, 2=right, 4=middle). Lets us tell which buttons are held *together*
 // from a single event, independent of which one triggered it.
@@ -24,10 +29,17 @@ interface DragState {
 }
 
 interface PatrolDragState {
-  isDragging: boolean;
+  // Secondary button is down on a lone selected Queen; we are waiting to classify
+  // the gesture as a quick click (move order) or a PATROL_HOLD_MS hold (patrol).
+  pending: boolean;
+  // The hold passed PATROL_HOLD_MS: the patrol line is shown and releasing now
+  // commits a patrol route from the Queen's gold ring to the cursor.
+  armed: boolean;
   queenId: string | null;
-  startWorldPos: THREE.Vector3 | null;
+  // Latest cursor position on the ground plane (patrol end / move destination).
   currentWorldPos: THREE.Vector3 | null;
+  // setTimeout handle that arms the patrol once the hold threshold elapses.
+  holdTimerId: number | null;
 }
 
 export function MapInteraction() {
@@ -65,12 +77,13 @@ export function MapInteraction() {
     currentMouse: { x: 0, y: 0 }
   });
 
-  // Patrol drag state for right-click drag on queens
+  // Patrol drag state for the secondary-button hold-on-a-queen gesture.
   const patrolDragRef = useRef<PatrolDragState>({
-    isDragging: false,
+    pending: false,
+    armed: false,
     queenId: null,
-    startWorldPos: null,
-    currentWorldPos: null
+    currentWorldPos: null,
+    holdTimerId: null
   });
 
   // Create selection box visual element
@@ -90,21 +103,31 @@ export function MapInteraction() {
     document.body.appendChild(selectionBox);
     selectionBoxRef.current = selectionBox;
 
-    // Create patrol arrow element
+    // Create the patrol indicator: a flat yellow dotted line drawn from the
+    // Queen's gold ring to the cursor, capped by a yellow arrowhead at the
+    // cursor end. The line itself is a zero-height div whose dotted top border
+    // is the visible stroke; the arrowhead is a child glyph pinned to the far
+    // end so it inherits the parent's rotation and points along the line.
     const patrolArrow = document.createElement('div');
     patrolArrow.style.position = 'absolute';
-    patrolArrow.style.height = '3px';
-    patrolArrow.style.backgroundColor = '#1e3a8a'; // Navy blue
+    patrolArrow.style.height = '0px';
+    patrolArrow.style.borderTop = '3px dotted #ffd700'; // gold-yellow, matches the ring
     patrolArrow.style.transformOrigin = 'left center';
     patrolArrow.style.pointerEvents = 'none';
     patrolArrow.style.display = 'none';
     patrolArrow.style.zIndex = '1001';
-    patrolArrow.innerHTML = '→'; // Arrow symbol at the end
-    patrolArrow.style.color = '#1e3a8a';
-    patrolArrow.style.fontWeight = 'bold';
-    patrolArrow.style.fontSize = '16px';
-    patrolArrow.style.textAlign = 'right';
-    patrolArrow.style.lineHeight = '3px';
+
+    const patrolArrowHead = document.createElement('span');
+    patrolArrowHead.innerHTML = '➤'; // ➤ points along the line's +x axis
+    patrolArrowHead.style.position = 'absolute';
+    patrolArrowHead.style.right = '0px';
+    patrolArrowHead.style.top = '50%';
+    patrolArrowHead.style.transform = 'translate(50%, -50%)';
+    patrolArrowHead.style.color = '#ffd700';
+    patrolArrowHead.style.fontSize = '18px';
+    patrolArrowHead.style.lineHeight = '0';
+    patrolArrow.appendChild(patrolArrowHead);
+
     document.body.appendChild(patrolArrow);
     patrolArrowRef.current = patrolArrow;
 
@@ -184,6 +207,16 @@ export function MapInteraction() {
     }
 
     return selectedUnit;
+  };
+
+  // Current world position of the patrol Queen (the gold-ring / line origin),
+  // looked up live so the indicator and committed route track the Queen even if
+  // it shifts during the hold. Null once the Queen is gone (died/deselected).
+  const queenWorldPos = (queenId: string | null): THREE.Vector3 | null => {
+    if (!queenId) return null;
+    const queen = units.find((unit) => unit.id === queenId);
+    if (!queen) return null;
+    return new THREE.Vector3(queen.position.x, queen.position.y, queen.position.z);
   };
 
   // The local player's currently-selected Turtle units — the targets of the
@@ -344,7 +377,7 @@ export function MapInteraction() {
           hideSelectionBox();
           hidePatrolArrow();
           dragStateRef.current = { isDragging: false, startMouse: { x: 0, y: 0 }, currentMouse: { x: 0, y: 0 } };
-          patrolDragRef.current = { isDragging: false, queenId: null, startWorldPos: null, currentWorldPos: null };
+          resetPatrolDrag();
         }
         event.preventDefault();
         return;
@@ -359,21 +392,32 @@ export function MapInteraction() {
         currentMouse: screenPos
       };
     } else if (event.button === secondaryButton) { // Secondary (command) button
-      // Check if exactly one queen is selected
+      // With exactly one Queen selected, the secondary button is the patrol
+      // gesture: arm it only after a PATROL_HOLD_MS hold (a quick release falls
+      // back to a normal move order in handleMouseUp). The competing immediate
+      // move from handleGroundClick is suppressed for this case.
       const queen = isSelectedQueenOnly();
       if (queen) {
         const screenPos = getScreenPosition(event);
         const worldPos = getWorldPositionFromMouse(screenPos.x, screenPos.y);
 
+        resetPatrolDrag();
         patrolDragRef.current = {
-          isDragging: true,
+          pending: true,
+          armed: false,
           queenId: queen.id,
-          startWorldPos: new THREE.Vector3(queen.position.x, queen.position.y, queen.position.z),
-          currentWorldPos: worldPos
+          currentWorldPos: worldPos,
+          holdTimerId: window.setTimeout(() => {
+            // Hold threshold reached: arm patrol and reveal the line from the
+            // Queen's gold ring to the cursor's last known ground position.
+            patrolDragRef.current.armed = true;
+            patrolDragRef.current.holdTimerId = null;
+            const origin = queenWorldPos(patrolDragRef.current.queenId);
+            if (origin && patrolDragRef.current.currentWorldPos) {
+              updatePatrolArrow(origin, patrolDragRef.current.currentWorldPos);
+            }
+          }, PATROL_HOLD_MS)
         };
-
-        // Show initial arrow
-        updatePatrolArrow(patrolDragRef.current.startWorldPos!, worldPos);
       }
     }
   };
@@ -403,14 +447,17 @@ export function MapInteraction() {
       }
     }
 
-    if (patrolDragRef.current.isDragging) {
+    if (patrolDragRef.current.pending) {
       const currentScreen = getScreenPosition(event);
-      const currentWorldPos = getWorldPositionFromMouse(currentScreen.x, currentScreen.y);
-      patrolDragRef.current.currentWorldPos = currentWorldPos;
+      patrolDragRef.current.currentWorldPos = getWorldPositionFromMouse(currentScreen.x, currentScreen.y);
 
-      // Update patrol arrow visual
-      if (patrolDragRef.current.startWorldPos) {
-        updatePatrolArrow(patrolDragRef.current.startWorldPos, currentWorldPos);
+      // Only the armed (post-hold) gesture draws the line, from the Queen's
+      // current gold-ring position to the cursor.
+      if (patrolDragRef.current.armed) {
+        const origin = queenWorldPos(patrolDragRef.current.queenId);
+        if (origin) {
+          updatePatrolArrow(origin, patrolDragRef.current.currentWorldPos);
+        }
       }
     }
   };
@@ -424,13 +471,23 @@ export function MapInteraction() {
         startMouse: { x: 0, y: 0 },
         currentMouse: { x: 0, y: 0 }
       };
-      patrolDragRef.current = {
-        isDragging: false,
-        queenId: null,
-        startWorldPos: null,
-        currentWorldPos: null
-      };
+      resetPatrolDrag();
     }
+  };
+
+  // Cancel any in-progress patrol gesture: stop the pending hold timer and clear
+  // the drag state so a stray timer can't arm the line after release/cancel.
+  const resetPatrolDrag = () => {
+    if (patrolDragRef.current.holdTimerId !== null) {
+      window.clearTimeout(patrolDragRef.current.holdTimerId);
+    }
+    patrolDragRef.current = {
+      pending: false,
+      armed: false,
+      queenId: null,
+      currentWorldPos: null,
+      holdTimerId: null
+    };
   };
 
   const hideSelectionBox = () => {
@@ -506,34 +563,33 @@ export function MapInteraction() {
       }
     }
 
-    if (patrolDragRef.current.isDragging && event.button === secondaryButton) {
-      // Complete patrol drag
+    if (patrolDragRef.current.pending && event.button === secondaryButton) {
+      const { armed, queenId } = patrolDragRef.current;
       hidePatrolArrow();
 
-      if (patrolDragRef.current.queenId && patrolDragRef.current.startWorldPos && patrolDragRef.current.currentWorldPos) {
+      const endScreen = getScreenPosition(event);
+      const endWorld = getWorldPositionFromMouse(endScreen.x, endScreen.y);
 
-        setPatrol({
-          queenId: patrolDragRef.current.queenId,
-          startPosition: {
-            x: patrolDragRef.current.startWorldPos.x,
-            y: patrolDragRef.current.startWorldPos.y,
-            z: patrolDragRef.current.startWorldPos.z
-          },
-          endPosition: {
-            x: patrolDragRef.current.currentWorldPos.x,
-            y: patrolDragRef.current.currentWorldPos.y,
-            z: patrolDragRef.current.currentWorldPos.z
-          }
-        });
+      if (armed && queenId) {
+        // Held past the threshold: commit a patrol route between the Queen's
+        // current position (the gold ring) and the released point. The Queen
+        // then walks back and forth along this line (see tick in state.ts).
+        const origin = queenWorldPos(queenId);
+        if (origin && endWorld) {
+          setPatrol({
+            queenId,
+            startPosition: { x: origin.x, y: origin.y, z: origin.z },
+            endPosition: { x: endWorld.x, y: 0, z: endWorld.z }
+          });
+        }
+      } else if (queenId && endWorld) {
+        // Released before the hold threshold: a quick right-click is a normal
+        // move order for the Queen (handleGroundClick deferred to us so the
+        // move and the patrol gesture never both fire on one press).
+        moveCommand({ unitIds: [queenId], target: { x: endWorld.x, y: 0, z: endWorld.z } });
       }
 
-      // Reset patrol drag state
-      patrolDragRef.current = {
-        isDragging: false,
-        queenId: null,
-        startWorldPos: null,
-        currentWorldPos: null
-      };
+      resetPatrolDrag();
     }
   };
 
@@ -574,6 +630,15 @@ export function MapInteraction() {
       }
 
       if (selectedUnitIds.length === 0) {
+        return;
+      }
+
+      // A lone selected Queen drives the secondary button through the patrol
+      // gesture (quick click = move, PATROL_HOLD_MS hold = patrol), resolved on
+      // mouse-up in handleMouseUp. Don't also issue an immediate move here — that
+      // would send the Queen off mid-hold and detach the patrol line's origin
+      // from its gold ring.
+      if (isSelectedQueenOnly()) {
         return;
       }
 
