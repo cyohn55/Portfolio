@@ -35,6 +35,7 @@ const KEYBOARD_MOUSE_GROUPS: readonly ControlGroup[] = [
     label: 'Selection',
     entries: [
       { input: 'Left-Click', action: 'Select an animal' },
+      { input: 'Shift + Left-Click', action: 'Add an animal to the selection' },
       { input: 'Click & Drag', action: 'Box-select multiple animals' },
       { input: 'Shift + A / S / D', action: 'Select your 1st / 2nd / 3rd animal' },
       { input: 'Double-Tap Space', action: 'Select all your animals' },
@@ -45,6 +46,7 @@ const KEYBOARD_MOUSE_GROUPS: readonly ControlGroup[] = [
     label: 'Commands',
     entries: [
       { input: 'Right-Click', action: 'Move / Attack' },
+      { input: 'Left + Right Click', action: "Use the selected animal's special ability" },
       { input: 'Right-Hold on Queen', action: 'Draw a patrol route' },
       { input: 'R, then R', action: "Set a lone Queen's spawn rally point" },
     ],
