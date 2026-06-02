@@ -97,17 +97,19 @@ export function KeyboardShortcuts() {
           return;
         }
 
-        // Not piloting: select the army (kind 'Unit') of the currently anchored animal — the
-        // animal of the first selected own unit. With nothing to anchor on, fall back to
-        // selecting everything.
+        // Not piloting: a single press selects the army (kind 'Unit') of the currently
+        // anchored animal — the animal of the first selected own unit. With nothing selected
+        // to anchor on, the press does nothing rather than grabbing every unit: that fallback
+        // made a first press select everything and a confusing second press narrow it back to
+        // the anchor animal's units. Use a double tap to select all (handled above).
         keyboardCoordinator.blockCameraInput(250);
         const selectedSet = new Set(selectedUnitIds);
         const anchor = playerUnits.find(u => selectedSet.has(u.id));
-        const armyIds = anchor
-          ? playerUnits.filter(u => u.kind === 'Unit' && u.animal === anchor.animal).map(u => u.id)
-          : [];
+        if (!anchor) return; // nothing to anchor on — leave the selection untouched
+        const armyIds = playerUnits
+          .filter(u => u.kind === 'Unit' && u.animal === anchor.animal)
+          .map(u => u.id);
         if (armyIds.length > 0) selectUnits(armyIds);
-        else selectEveryUnit();
       } else if (token === keyboardBindings.selectGroup1) {
         selectByAnimal(selectedAnimalPool[0]);
       } else if (token === keyboardBindings.selectGroup2) {
