@@ -1,9 +1,16 @@
 import { useRef, useState, useEffect, type RefObject } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useGameStore } from '../game/state';
-import { ANIMAL_MOVEMENT_TYPES } from '../game/types';
 import * as THREE from 'three';
 import { tokenToMouseButton, keyboardEventToToken } from './Working/controlBindings';
+import {
+  type AbilityComboActions,
+  type AbilityComboCursor,
+  abilityPlanIsActionable,
+  executeAbilityCombo,
+  planAbilityCombo,
+  tryFireAbilityCombo,
+} from './Working/abilityCombo';
 
 // A single left-click selects the nearest own unit whose projected center is
 // within this many screen pixels of the cursor. The instanced unit models are
@@ -311,14 +318,6 @@ export function MapInteraction() {
       .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Owl' && unit.kind === 'Unit' && selectedUnitIds.includes(unit.id))
       .map((unit) => unit.id);
 
-  // Selected Owls currently hovering with friendly cargo, awaiting a delivery order. When any
-  // exist, the next both-buttons press is a delivery (drop-off at the cursor) rather than a new
-  // pickup — this is the second press that "shows the Owls where to deliver their cargo".
-  const selectedOwlsHoldingCargo = (): string[] =>
-    units
-      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Owl' && selectedUnitIds.includes(unit.id) && unit.owlPickup?.phase === 'holding')
-      .map((unit) => unit.id);
-
   // The unit (any owner) whose projected center is nearest the cursor within
   // UNIT_PICK_RADIUS_PX, excluding Bases — the Owl Pickup target whose animal type and owner
   // define which units the selected Owls grab. Returns null when no unit is under the cursor.
@@ -424,57 +423,38 @@ export function MapInteraction() {
     hideRallyArrow();
   };
 
+  // The combo abilities and their store dispatchers, packaged for the shared
+  // abilityCombo module so the mouse gesture, an optional rebound key, and the
+  // controller all fire identical behaviour.
+  const abilityActions: AbilityComboActions = {
+    toggleTurtleShell, throwEggs, fireTongues, hiss, swarm, pickup, deliverCargo,
+  };
+
+  // The combo aimed at a screen point: the ground beneath it (thrown/delivered
+  // abilities) and the nearest unit under it (the Owl's grab target).
+  const abilityCursorAt = (screen: { x: number; y: number }): AbilityComboCursor => ({
+    groundPoint: () => {
+      const point = getWorldPositionFromMouse(screen.x, screen.y);
+      return { x: point.x, y: point.y, z: point.z };
+    },
+    unitUnderCursor: () => unitUnderCursor(screen),
+  });
+
+  const abilityContext = () => ({ units, localPlayerId, selectedUnitIds });
+
   const handleMouseDown = (event: MouseEvent) => {
-    // Simultaneous primary+secondary press drives the per-animal combo abilities:
-    // it toggles the shell lock on any selected Turtle, throws an egg from any
-    // selected Chicken (toward the cursor), fires any selected Frog's tongue,
-    // triggers any selected Cat's Hiss knockback, sends any selected Bee into a
-    // Swarm dive, and sends any selected Owl swooping to pick up the unit under the
-    // cursor. Only intercepts when such a unit is selected, so pressing both buttons
-    // otherwise keeps the per-button behavior.
+    // A simultaneous primary+secondary press fires the selected animal's special
+    // ability (shell, eggs, tongue, hiss, swarm, owl pickup/deliver) via the shared
+    // abilityCombo logic. It only intercepts when an ability would actually fire, so
+    // otherwise pressing both buttons keeps the per-button behavior.
     if (areShellButtonsHeld(event.buttons)) {
-      const turtleIds = selectedFriendlyTurtleIds();
-      const chickenIds = selectedFriendlyChickenIds();
-      const frogIds = selectedFriendlyFrogIds();
-      const catIds = selectedFriendlyCatIds();
-      const beeIds = selectedFriendlyBeeIds();
-      // Owls have two combo modes. If any selected Owl is already holding friendly cargo, this
-      // press is a DELIVERY — it sends those Owls to the cursor location, where each sets its
-      // cargo down beneath itself on arrival. Otherwise it is a PICKUP, and only fires when a
-      // grabbable unit is under the cursor (that unit's animal type and owner decide what the
-      // Owls grab). Flying units (Owls, Bees) can't be plucked out of the air, so they are not
-      // valid pickup targets — clicking one is treated as no target.
-      const owlIds = selectedFriendlyOwlIds();
-      const deliveringOwlIds = owlIds.length > 0 ? selectedOwlsHoldingCargo() : [];
-      const deliverActive = deliveringOwlIds.length > 0;
-      const cursorUnit = (owlIds.length > 0 && !deliverActive) ? unitUnderCursor(getScreenPosition(event)) : null;
-      const owlTarget = (cursorUnit && ANIMAL_MOVEMENT_TYPES[cursorUnit.animal] !== 'air') ? cursorUnit : null;
-      const owlsActive = deliverActive || owlTarget !== null;
-      if (turtleIds.length > 0 || chickenIds.length > 0 || frogIds.length > 0 || catIds.length > 0 || beeIds.length > 0 || owlsActive) {
+      const plan = planAbilityCombo(abilityContext(), abilityCursorAt(getScreenPosition(event)));
+      if (abilityPlanIsActionable(plan)) {
+        // One ability fire per press: the flag dedupes the second mousedown the
+        // other button raises while both are held (reset in handleMouseUp).
         if (!shellComboHandledRef.current) {
           shellComboHandledRef.current = true;
-          if (turtleIds.length > 0) toggleTurtleShell(turtleIds);
-          // Hiss is radial from each cat's own position, so it needs no cursor target.
-          if (catIds.length > 0) hiss({ unitIds: catIds });
-          // Swarm has each bee pick its own nearest enemy, so it needs no cursor target.
-          if (beeIds.length > 0) swarm({ unitIds: beeIds });
-          if (deliverActive) {
-            // Deliver: send the holding Owls to the cursor's ground position; each sets its cargo
-            // down beneath itself on arrival, so multiple deliveries spread out around the point.
-            const screenPos = getScreenPosition(event);
-            const dropOff = getWorldPositionFromMouse(screenPos.x, screenPos.y);
-            deliverCargo({ unitIds: deliveringOwlIds, target: { x: dropOff.x, y: 0, z: dropOff.z } });
-          } else if (owlTarget) {
-            // Pickup: grab units matching the clicked unit's animal type AND owner.
-            pickup({ unitIds: owlIds, targetAnimal: owlTarget.animal, targetOwnerId: owlTarget.ownerId });
-          }
-          if (chickenIds.length > 0 || frogIds.length > 0) {
-            const screenPos = getScreenPosition(event);
-            const target = getWorldPositionFromMouse(screenPos.x, screenPos.y);
-            const cursor = { x: target.x, y: 0, z: target.z };
-            if (chickenIds.length > 0) throwEggs({ unitIds: chickenIds, target: cursor });
-            if (frogIds.length > 0) fireTongues({ unitIds: frogIds, cursor });
-          }
+          executeAbilityCombo(plan, abilityActions);
           // Discard the selection/patrol drag the first button may have started.
           hideSelectionBox();
           hidePatrolArrow();
@@ -596,11 +576,23 @@ export function MapInteraction() {
       return;
     }
 
+    const token = keyboardEventToToken(event);
+
+    // Use-Ability key (unbound by default; the left+right mouse click is the shipped
+    // keyboard & mouse gesture). When the player binds a key, it fires the selected
+    // animal's ability aimed at the live cursor position — the same shared logic as
+    // the mouse gesture and the controller.
+    if (token !== '' && token === keyboardBindings.useAbility) {
+      event.preventDefault();
+      if (event.repeat) return; // ignore OS key-repeat so a held key fires once
+      tryFireAbilityCombo(abilityContext(), abilityCursorAt(lastMouseScreenRef.current), abilityActions);
+      return;
+    }
+
     // Spawn-rally gesture (default 'R'): a two-tap toggle on a lone selected Queen.
     // First tap arms placement and reveals the blue line; second tap commits the
     // rally — on a friendly King the Queen's future spawns follow him, otherwise
     // they march to the cursor's ground point.
-    const token = keyboardEventToToken(event);
     if (token !== '' && token === keyboardBindings.setQueenRally) {
       event.preventDefault();
       // The OS auto-repeats keydown while the key is held; ignore the repeats so a

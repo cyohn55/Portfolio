@@ -9,6 +9,7 @@ import {
   controllerTokenMagnitude,
   isControllerTokenActive,
 } from './controlBindings';
+import { type AbilityComboCursor, tryFireAbilityCombo } from './abilityCombo';
 import { gamepadInput } from './gamepadInput';
 
 /**
@@ -39,7 +40,7 @@ const CAMERA_ACTIONS: ReadonlySet<ControlActionId> = new Set([
 
 // Discrete actions fired once per press (rising edge).
 const TAP_ACTIONS: readonly ControlActionId[] = [
-  'primaryAction', 'secondaryAction', 'selectAll',
+  'primaryAction', 'secondaryAction', 'useAbility', 'selectAll',
   'selectGroup1', 'selectGroup2', 'selectGroup3', 'deselect',
   'pilotCycleMonarch', 'pilotMonarch1', 'pilotMonarch2', 'pilotMonarch3', 'pilotToggleMonarch', 'pause',
 ];
@@ -126,6 +127,35 @@ export function GamepadController() {
     return bestId;
   };
 
+  // Nearest non-Base unit (any owner) to the reticle in screen space, or null —
+  // the grab target the Owl Pickup ability reads, mirroring the mouse's
+  // unitUnderCursor pick.
+  const nearestUnitToReticle = () => {
+    const state = useGameStore.getState();
+    let nearest: typeof state.units[number] | null = null;
+    let nearestDist = UNIT_PICK_RADIUS_PX;
+    for (const unit of state.units) {
+      if (unit.kind === 'Base') continue;
+      const screen = projectToScreen(unit.position.x, unit.position.y, unit.position.z);
+      const dist = Math.hypot(screen.x - reticlePos.current.x, screen.y - reticlePos.current.y);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = unit;
+      }
+    }
+    return nearest;
+  };
+
+  // The combo gesture aimed at the reticle: ground point under it for thrown/
+  // delivered abilities, and the nearest unit for the Owl's grab.
+  const abilityCursor: AbilityComboCursor = {
+    groundPoint: () => {
+      const world = reticleWorldPosition();
+      return world ? { x: world.x, y: 0, z: world.z } : null;
+    },
+    unitUnderCursor: () => nearestUnitToReticle(),
+  };
+
   const fireAction = (actionId: ControlActionId) => {
     const state = useGameStore.getState();
 
@@ -188,6 +218,15 @@ export function GamepadController() {
         if (ids.length > 0) state.selectUnits(ids);
         break;
       }
+      case 'useAbility':
+        // Fire the selected animal's special ability at the reticle, shared with
+        // the keyboard/mouse left+right gesture so behaviour can't drift.
+        tryFireAbilityCombo(
+          { units: state.units, localPlayerId: state.localPlayerId, selectedUnitIds: state.selectedUnitIds },
+          abilityCursor,
+          state
+        );
+        break;
       case 'deselect':
         state.clearSelection();
         break;
