@@ -900,44 +900,63 @@ export const useGameStore = create<Store>((set, get) => ({
         // order is dropped so mouse orders and WASD don't fight, and we skip the rest of the
         // per-unit AI/combat for it this tick.
         if (draft.pilotedUnitId !== null && unit.id === draft.pilotedUnitId) {
-          if (draft.unitOrders[unit.id]) delete draft.unitOrders[unit.id];
-
           const move = pilotInput.getMove();
           const inputMagnitude = Math.hypot(move.x, move.z);
-          if (inputMagnitude > 0.0001) {
-            // Normalize the steering direction but let an analog stick scale speed
-            // (clamped so a digital key press, which reports magnitude 1, is full speed).
-            const dirX = move.x / inputMagnitude;
-            const dirZ = move.z / inputMagnitude;
-            const moveDistance = unit.moveSpeed * dtSec * Math.min(inputMagnitude, 1);
-            unit.rotation = Math.atan2(dirX, dirZ);
 
-            // Locomotion animation flags, matching the rest of the movement code.
-            if (unit.animal === 'Frog' || unit.animal === 'Bunny') {
-              unit.isHopping = true;
-              const hopSpeed = unit.moveSpeed / 5;
-              unit.hopPhase = ((unit.hopPhase || 0) + hopSpeed * dtSec) % 1;
-            }
-            if (unit.animal === 'Owl') {
-              unit.isFlying = true;
-              const flapSpeed = 3;
-              unit.wingPhase = ((unit.wingPhase || 0) + flapSpeed * dtSec) % 1;
+          // A Queen the player toggles/cycles piloting onto (G/A) keeps walking an
+          // active patrol route — toggling control onto her is not a stop command.
+          // With no drive input this frame, fall through to the normal player logic
+          // so the patrol branch (Priority 1b) keeps driving her, rather than holding
+          // her in place. The patrol ends only when she is actively driven (the clause
+          // below cancels it) or given a new move/patrol order, matching moveCommand.
+          const passivelyPatrolling =
+            inputMagnitude <= 0.0001 && unit.kind === 'Queen' && draft.queenPatrols[unit.id] !== undefined;
+
+          if (!passivelyPatrolling) {
+            if (draft.unitOrders[unit.id]) delete draft.unitOrders[unit.id];
+
+            if (inputMagnitude > 0.0001) {
+              // Actively driving the unit takes manual control, so abandon any patrol
+              // route — like issuing a move order (see moveCommand). Without this she
+              // would snap back to the route the moment the drive key is released.
+              if (draft.queenPatrols[unit.id]) delete draft.queenPatrols[unit.id];
+
+              // Normalize the steering direction but let an analog stick scale speed
+              // (clamped so a digital key press, which reports magnitude 1, is full speed).
+              const dirX = move.x / inputMagnitude;
+              const dirZ = move.z / inputMagnitude;
+              const moveDistance = unit.moveSpeed * dtSec * Math.min(inputMagnitude, 1);
+              unit.rotation = Math.atan2(dirX, dirZ);
+
+              // Locomotion animation flags, matching the rest of the movement code.
+              if (unit.animal === 'Frog' || unit.animal === 'Bunny') {
+                unit.isHopping = true;
+                const hopSpeed = unit.moveSpeed / 5;
+                unit.hopPhase = ((unit.hopPhase || 0) + hopSpeed * dtSec) % 1;
+              }
+              if (unit.animal === 'Owl') {
+                unit.isFlying = true;
+                const flapSpeed = 3;
+                unit.wingPhase = ((unit.wingPhase || 0) + flapSpeed * dtSec) % 1;
+              }
+
+              const newPosition = {
+                x: unit.position.x + dirX * moveDistance,
+                y: unit.position.y,
+                z: unit.position.z + dirZ * moveDistance,
+              };
+              unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
+            } else {
+              // No input this frame: hold position and drop the moving animations.
+              if (unit.animal === 'Frog' || unit.animal === 'Bunny') unit.isHopping = false;
+              if (unit.animal === 'Owl') unit.isFlying = false;
             }
 
-            const newPosition = {
-              x: unit.position.x + dirX * moveDistance,
-              y: unit.position.y,
-              z: unit.position.z + dirZ * moveDistance,
-            };
-            unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
-          } else {
-            // No input this frame: hold position and drop the moving animations.
-            if (unit.animal === 'Frog' || unit.animal === 'Bunny') unit.isHopping = false;
-            if (unit.animal === 'Owl') unit.isFlying = false;
+            unit.unitState = 'idle';
+            continue;
           }
-
-          unit.unitState = 'idle';
-          continue;
+          // else: piloted Queen with a live patrol and no drive input — fall through
+          // so the patrol branch below keeps her walking the route.
         }
 
         // Patrol-draw hold: while the player holds the secondary button to draw a

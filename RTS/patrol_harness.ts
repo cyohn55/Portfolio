@@ -1,4 +1,5 @@
 import { useGameStore } from './src/game/state';
+import { pilotInput } from './src/components/Working/monarchPilot';
 
 const store = useGameStore;
 
@@ -119,3 +120,30 @@ for (let i = 0; i < 120; i++) {
 const afterPilotPatrol = store.getState().units.find((u: any) => u.id === 'Q').position;
 const pilotPatrolDrift = Math.hypot(afterPilotPatrol.x - beforePilotPatrol.x, afterPilotPatrol.z - beforePilotPatrol.z);
 console.log(`piloted-queen patrol: drift over 120 ticks = ${pilotPatrolDrift.toFixed(2)} (expect > 0 => she walks the route without a move order first)`);
+
+// --- Toggling pilot (G) onto a patrolling queen keeps her patrolling ---------
+// Reproduces the second report: a Queen who is ALREADY patrolling and is then
+// piloted (e.g. A selects King, G toggles to the patrolling Queen) must keep
+// walking her route. Piloting with NO drive input must not freeze her.
+store.getState().setPatrol({ queenId: 'Q', startPosition: patrolStart, endPosition: patrolEnd });
+store.setState({ pilotedUnitId: 'Q' } as any); // simulate G toggling control onto her
+pilotInput.reset(); // no drive keys held, as right after the toggle
+const beforeTogglePatrol = { ...store.getState().units.find((u: any) => u.id === 'Q').position };
+for (let i = 0; i < 120; i++) {
+  now += dt;
+  store.getState().tick(dt / 1000, now);
+}
+const afterTogglePatrol = store.getState().units.find((u: any) => u.id === 'Q').position;
+const togglePatrolDrift = Math.hypot(afterTogglePatrol.x - beforeTogglePatrol.x, afterTogglePatrol.z - beforeTogglePatrol.z);
+console.log(`piloted+patrolling, no drive input: drift over 120 ticks = ${togglePatrolDrift.toFixed(2)} (expect > 0 => keeps patrolling), patrol still set? ${store.getState().queenPatrols['Q'] !== undefined}`);
+
+// --- Actively driving the piloted queen cancels the patrol -------------------
+// Manual drive input is direct control and ends the patrol, like a move order,
+// so she does not snap back to the route when the key is released.
+pilotInput.setMove(0, 1); // hold a drive key
+for (let i = 0; i < 5; i++) {
+  now += dt;
+  store.getState().tick(dt / 1000, now);
+}
+console.log(`after driving piloted queen: patrol = ${JSON.stringify(store.getState().queenPatrols['Q'])} (expect undefined => manual control cancels patrol)`);
+pilotInput.reset();
