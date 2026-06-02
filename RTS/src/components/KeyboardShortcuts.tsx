@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useGameStore } from '../game/state';
 import { keyboardCoordinator } from '../utils/keyboardCoordination';
 import { keyboardEventToToken } from './Working/controlBindings';
+import { UNIT_PLACEMENT_INTERVAL_MS } from './Working/monarchPilot';
 
 // Two Space presses within this window count as a "double tap" that escalates
 // the selection from one animal's army to every unit. (While piloting the first
@@ -20,12 +21,28 @@ export function KeyboardShortcuts() {
   const pilotCycleMonarch = useGameStore((s) => s.pilotCycleMonarch);
   const togglePilotMonarchKind = useGameStore((s) => s.togglePilotMonarchKind);
   const rallyToMonarch = useGameStore((s) => s.rallyToMonarch);
+  const incrementUnitPlacement = useGameStore((s) => s.incrementUnitPlacement);
+  const placeRalliedUnits = useGameStore((s) => s.placeRalliedUnits);
+  const resetUnitPlacement = useGameStore((s) => s.resetUnitPlacement);
 
   // Timestamp of the last Space press, for double-tap detection (both modes).
   const lastSpacePressMsRef = useRef(0);
+  // Interval id ticking once per UNIT_PLACEMENT_INTERVAL_MS while Space is held,
+  // and a flag marking that a single (non-double) press is awaiting its release.
+  // Together they let keyup tell a quick tap (rally) from a hold (place units).
+  const placementHoldTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const spacePressAwaitingReleaseRef = useRef(false);
 
   useEffect(() => {
     if (!matchStarted) return;
+
+    // Stop the placement-hold timer (release, blur, or a double tap interrupting it).
+    const stopPlacementHold = () => {
+      if (placementHoldTimerRef.current !== null) {
+        clearInterval(placementHoldTimerRef.current);
+        placementHoldTimerRef.current = null;
+      }
+    };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const token = keyboardEventToToken(event);
@@ -66,6 +83,9 @@ export function KeyboardShortcuts() {
 
       if (token === keyboardBindings.selectAll) {
         event.preventDefault();
+        // The OS auto-repeats keydown while a key is held; the hold timer (below)
+        // owns the held-key cadence, so ignore the repeats here.
+        if (event.repeat) return;
 
         const now = performance.now();
         const isDoublePress = now - lastSpacePressMsRef.current <= DOUBLE_PRESS_WINDOW_MS;
@@ -75,16 +95,29 @@ export function KeyboardShortcuts() {
         // anything currently selected or not). The camera-input block is skipped while piloting
         // so the ESDF drive keys keep working; off-pilot it stops the key from also panning.
         if (isDoublePress) {
+          // The first tap already started (and its release may have started) a hold;
+          // abandon it so the double tap doesn't also place units or re-toggle rally.
+          stopPlacementHold();
+          spacePressAwaitingReleaseRef.current = false;
+          resetUnitPlacement();
           if (!pilotedUnitId) keyboardCoordinator.blockCameraInput(250);
           const ids = playerUnits.map(u => u.id);
           if (ids.length > 0) selectUnits(ids);
           return;
         }
 
-        // A single press only does something while piloting: it rallies the piloted monarch's
-        // army to follow it (and selects that army — see rallyToMonarch). In every other context
-        // a single press does nothing; only a double tap changes the selection here.
-        if (pilotedUnitId) rallyToMonarch();
+        // Single press. Its meaning is decided on release: a quick tap rallies (see
+        // keyup), while holding past UNIT_PLACEMENT_INTERVAL_MS designates units to
+        // place. Start the designation timer only while piloting, where a placement
+        // (a monarch with a trailing rally) is possible.
+        spacePressAwaitingReleaseRef.current = true;
+        if (pilotedUnitId) {
+          stopPlacementHold();
+          placementHoldTimerRef.current = setInterval(() => {
+            incrementUnitPlacement();
+          }, UNIT_PLACEMENT_INTERVAL_MS);
+        }
+        return;
       } else if (token === keyboardBindings.selectGroup1) {
         selectByAnimal(selectedAnimalPool[0]);
       } else if (token === keyboardBindings.selectGroup2) {
@@ -96,14 +129,40 @@ export function KeyboardShortcuts() {
       }
     };
 
-    // Add event listener
-    document.addEventListener('keydown', handleKeyDown);
+    const handleKeyUp = (event: KeyboardEvent) => {
+      const token = keyboardEventToToken(event);
+      if (token !== keyboardBindings.selectAll) return;
 
-    // Cleanup
+      stopPlacementHold();
+
+      // Only the release of a single (non-double) press carries an action; a
+      // double tap already cleared this flag after selecting every unit.
+      if (!spacePressAwaitingReleaseRef.current) return;
+      spacePressAwaitingReleaseRef.current = false;
+
+      // A hold that reached at least one designated unit places them at the
+      // monarch; a quick tap (none designated) rallies the army instead.
+      const designated = useGameStore.getState().unitPlacementCount;
+      if (designated >= 1) {
+        placeRalliedUnits(designated);
+      } else if (pilotedUnitId) {
+        rallyToMonarch();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+    // A lost focus (alt-tab, clicking a menu) never delivers keyup, so abandon any
+    // in-progress hold to avoid a stuck timer/teardrop.
+    window.addEventListener('blur', stopPlacementHold);
+
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', stopPlacementHold);
+      stopPlacementHold();
     };
-  }, [matchStarted, localPlayerId, selectedAnimalPool, units, selectUnits, clearSelection, keyboardBindings, pilotedUnitId, pilotCycleMonarch, togglePilotMonarchKind, rallyToMonarch]);
+  }, [matchStarted, localPlayerId, selectedAnimalPool, units, selectUnits, clearSelection, keyboardBindings, pilotedUnitId, pilotCycleMonarch, togglePilotMonarchKind, rallyToMonarch, incrementUnitPlacement, placeRalliedUnits, resetUnitPlacement]);
 
   // This component doesn't render anything, it just handles keyboard events
   return null;

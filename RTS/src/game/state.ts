@@ -17,10 +17,12 @@ import {
   type MonarchKind,
   MONARCH_FOLLOW_STOP_DISTANCE,
   MONARCH_FOLLOW_GAP,
+  clampPlacementCount,
   findMonarch,
   followGapClearance,
   otherMonarchKind,
   pilotInput,
+  selectFollowersForPlacement,
   shouldChaseMonarch,
 } from '../components/Working/monarchPilot';
 import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, CommandOwlDeliver, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
@@ -241,6 +243,14 @@ type Store = GameState & {
   pilotCycleMonarch: () => void;
   togglePilotMonarchKind: () => void;
   rallyToMonarch: () => void;
+  // Hold-to-place: while the rally key is held over a piloted monarch, the input
+  // layer calls incrementUnitPlacement once per UNIT_PLACEMENT_INTERVAL_MS to
+  // designate one more follower; on release placeRalliedUnits peels that many
+  // followers off to the monarch's position; resetUnitPlacement clears a gesture
+  // that ended without placing (a quick tap, a cancel, or the monarch dying).
+  incrementUnitPlacement: () => number;
+  placeRalliedUnits: (count: number) => void;
+  resetUnitPlacement: () => void;
   clearPilot: () => void;
   toggleTurtleShell: (unitIds: string[]) => void;
   throwEggs: (cmd: CommandThrowEggs) => void;
@@ -417,6 +427,7 @@ export const useGameStore = create<Store>((set, get) => ({
   winner: null,
   selectedUnitIds: [],
   pilotedUnitId: null,
+  unitPlacementCount: 0,
   unitOrders: {},
   queenPatrols: {},
   unitCountCache: {},
@@ -531,7 +542,7 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
@@ -580,6 +591,7 @@ export const useGameStore = create<Store>((set, get) => ({
       winner: null,
       selectedUnitIds: [],
       pilotedUnitId: null,
+      unitPlacementCount: 0,
       unitOrders: {},
       lastSpawnAtMsByQueenId: {},
       unitCountCache: {},
@@ -1713,9 +1725,11 @@ export const useGameStore = create<Store>((set, get) => ({
           }
         }
 
-        // Stop piloting if the piloted King/Queen just died.
+        // Stop piloting if the piloted King/Queen just died (and cancel any
+        // in-progress placement hold so the teardrop doesn't linger over a ghost).
         if (draft.pilotedUnitId && deadSet.has(draft.pilotedUnitId)) {
           draft.pilotedUnitId = null;
+          draft.unitPlacementCount = 0;
           pilotInput.reset();
         }
 
@@ -1981,6 +1995,7 @@ export const useGameStore = create<Store>((set, get) => ({
       produce(prev, (draft) => {
         draft.selectedUnitIds = [];
         draft.pilotedUnitId = null;
+        draft.unitPlacementCount = 0; // cancel any in-progress placement hold
         for (const unit of draft.units) {
           if (unit.followMonarchId !== undefined) {
             delete unit.followMonarchId;
@@ -2118,10 +2133,97 @@ export const useGameStore = create<Store>((set, get) => ({
     })
   ),
 
+  // Designate one more follower for a placement order while the rally key is held
+  // (called once per UNIT_PLACEMENT_INTERVAL_MS by the input layer). The count is
+  // capped at the number of followers currently trailing the piloted monarch, so
+  // the teardrop indicator stops climbing once the whole rally has been claimed.
+  // Returns the resulting count so the caller knows whether a hold (>= 1) or a
+  // quick tap (0) occurred on release.
+  incrementUnitPlacement: () => {
+    const prev = get();
+    if (!prev.localPlayerId || !prev.pilotedUnitId) return prev.unitPlacementCount;
+
+    const monarch = prev.units.find((u) => u.id === prev.pilotedUnitId);
+    if (!monarch) return prev.unitPlacementCount;
+
+    const followerCount = prev.units.reduce(
+      (count, unit) =>
+        unit.ownerId === prev.localPlayerId &&
+        unit.kind === 'Unit' &&
+        unit.animal === monarch.animal &&
+        unit.followMonarchId === monarch.id
+          ? count + 1
+          : count,
+      0
+    );
+
+    const next = clampPlacementCount(prev.unitPlacementCount + 1, followerCount);
+    if (next !== prev.unitPlacementCount) set({ unitPlacementCount: next });
+    return next;
+  },
+
+  // Execute a placement hold: peel the `count` followers nearest the piloted
+  // monarch off the rally and send them to its current position, leaving the rest
+  // trailing it. Mirrors moveCommand's per-unit order reset (clears combat,
+  // blocking and the stale A* path cache) so the placed units actually travel.
+  placeRalliedUnits: (count) => set((prev) =>
+    produce(prev, (draft) => {
+      draft.unitPlacementCount = 0; // the gesture is consumed regardless of outcome
+      if (count <= 0 || !draft.localPlayerId || !draft.pilotedUnitId) return;
+
+      const monarch = draft.units.find((u) => u.id === draft.pilotedUnitId);
+      if (!monarch) return;
+
+      const followers = draft.units.filter(
+        (unit) =>
+          unit.ownerId === draft.localPlayerId &&
+          unit.kind === 'Unit' &&
+          unit.animal === monarch.animal &&
+          unit.followMonarchId === monarch.id
+      );
+
+      const destination = { x: monarch.position.x, y: 0, z: monarch.position.z };
+      const chosen = selectFollowersForPlacement(followers, monarch.position, count);
+
+      for (const unit of chosen) {
+        // Break off the rally and pin an explicit destination at the monarch.
+        delete unit.followMonarchId;
+        draft.unitOrders[unit.id] = destination;
+        unit.unitState = 'moving_to_order';
+        delete unit.arrivedAtDestinationMs;
+
+        // Clear combat, blocking and landing carry-over so the new order wins.
+        delete unit.lastCombatTargetId;
+        delete unit.lastCombatEngagementMs;
+        delete unit.priorityAttacker;
+        unit.collisionAttempts = 0;
+        delete unit.movementPausedUntilMs;
+        delete unit.firstBlockedAtMs;
+        delete unit.nearDestinationSinceMs;
+
+        // Drop the cached A* path so the unit re-routes to the placement point
+        // instead of steering toward its previous goal (see moveCommand).
+        delete unit.pathWaypoints;
+        delete unit.pathIndex;
+        delete unit.pathDestX;
+        delete unit.pathDestZ;
+        delete unit.pathVersion;
+        delete unit.pathStall;
+        delete unit.pathProgressDist;
+      }
+    })
+  ),
+
+  // Cancel a placement hold without issuing an order (a quick tap, a deselect, or
+  // the monarch dying) so the teardrop indicator disappears.
+  resetUnitPlacement: () => {
+    if (get().unitPlacementCount !== 0) set({ unitPlacementCount: 0 });
+  },
+
   // Stop piloting entirely (used on death / match end / explicit cancel).
   clearPilot: () => {
     pilotInput.reset();
-    set({ pilotedUnitId: null });
+    set({ pilotedUnitId: null, unitPlacementCount: 0 });
   },
 
   // Toggle the "shell" lock on the local player's Turtle units in the given

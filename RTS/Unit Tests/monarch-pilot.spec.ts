@@ -3,10 +3,13 @@ import type { AnimalId, Unit, UnitKind } from '../src/game/types';
 import {
   MONARCH_FOLLOW_STOP_DISTANCE,
   MONARCH_FOLLOW_GAP,
+  UNIT_PLACEMENT_INTERVAL_MS,
+  clampPlacementCount,
   findMonarch,
   followGapClearance,
   otherMonarchKind,
   pilotInput,
+  selectFollowersForPlacement,
   shouldChaseMonarch,
 } from '../src/components/Working/monarchPilot';
 
@@ -140,6 +143,68 @@ test.describe('followGapClearance', () => {
     const result = followGapClearance(follower, monarch, wideGap);
     expect(result).not.toBeNull();
     expect(distanceXZ(result!, monarch)).toBeCloseTo(wideGap, 5);
+  });
+});
+
+test.describe('clampPlacementCount', () => {
+  test('caps a requested count at the available followers', () => {
+    // Holding past the size of the rally must not designate phantom units.
+    expect(clampPlacementCount(5, 20)).toBe(5);
+    expect(clampPlacementCount(20, 20)).toBe(20);
+    expect(clampPlacementCount(21, 20)).toBe(20);
+  });
+
+  test('floors negative or empty cases at zero', () => {
+    expect(clampPlacementCount(3, 0)).toBe(0); // a rally with no followers designates none
+    expect(clampPlacementCount(-1, 5)).toBe(0);
+    expect(clampPlacementCount(2, -1)).toBe(0);
+  });
+});
+
+test.describe('UNIT_PLACEMENT_INTERVAL_MS', () => {
+  test('matches the documented 750ms-per-unit hold cadence', () => {
+    // The teardrop indicator increments once per interval, so N seconds of hold
+    // designates floor((N*1000)/interval) units.
+    expect(UNIT_PLACEMENT_INTERVAL_MS).toBe(750);
+    expect(Math.floor(3750 / UNIT_PLACEMENT_INTERVAL_MS)).toBe(5); // the 5-unit example
+  });
+});
+
+test.describe('selectFollowersForPlacement', () => {
+  const local = 'player-1';
+
+  const followerAt = (x: number, z: number) =>
+    makeUnit({ ownerId: local, animal: 'Bee', kind: 'Unit', position: { x, y: 0, z } });
+
+  test('returns the requested number of followers nearest the destination', () => {
+    const destination = { x: 0, z: 0 };
+    const near = followerAt(1, 0); // distance 1
+    const mid = followerAt(5, 0); // distance 5
+    const far = followerAt(20, 0); // distance 20
+    const followers = [far, near, mid]; // deliberately unsorted
+
+    const chosen = selectFollowersForPlacement(followers, destination, 2);
+    expect(chosen.map((u) => u.id)).toEqual([near.id, mid.id]);
+  });
+
+  test('returns an empty list for a non-positive count', () => {
+    const followers = [followerAt(1, 1), followerAt(2, 2)];
+    expect(selectFollowersForPlacement(followers, { x: 0, z: 0 }, 0)).toEqual([]);
+    expect(selectFollowersForPlacement(followers, { x: 0, z: 0 }, -3)).toEqual([]);
+  });
+
+  test('never returns more followers than exist', () => {
+    const followers = [followerAt(1, 0), followerAt(2, 0)];
+    const chosen = selectFollowersForPlacement(followers, { x: 0, z: 0 }, 10);
+    expect(chosen).toHaveLength(2);
+  });
+
+  test('does not mutate the input array order', () => {
+    const a = followerAt(9, 0);
+    const b = followerAt(1, 0);
+    const followers = [a, b];
+    selectFollowersForPlacement(followers, { x: 0, z: 0 }, 1);
+    expect(followers).toEqual([a, b]); // sorting happens on a copy
   });
 });
 

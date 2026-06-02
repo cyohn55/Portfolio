@@ -280,6 +280,12 @@ export interface GameState {
   // (the ESDF/stick movement vector) and ignores its AI, orders, and combat.
   // See monarchPilot.ts.
   pilotedUnitId: string | null;
+  // How many units the current "hold rally to place units" gesture has
+  // designated so far (0 when no hold is in progress). Drives the blue teardrop
+  // indicator above the piloted monarch; the input layer increments it once per
+  // UNIT_PLACEMENT_INTERVAL_MS while the rally key is held, and it is cleared
+  // when the order executes or the gesture is cancelled. See monarchPilot.ts.
+  unitPlacementCount: number;
 }
 
 export interface CommandMoveUnits {

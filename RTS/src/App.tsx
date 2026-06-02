@@ -5,6 +5,7 @@ import './App.css';
 import { BattleMap } from './components/HexGrid';
 import { CameraController } from './components/CameraController';
 import { GamepadController } from './components/Working/GamepadController';
+import { UnitPlacementIndicator } from './components/Working/UnitPlacementIndicator';
 import { HUD } from './components/HUD';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { ModelPreloader } from './utils/ModelPreloader';
@@ -222,6 +223,8 @@ export default function App() {
           maxDistance={200}
         />
         <GamepadController />
+        {/* Blue teardrop above a piloted monarch while holding the rally key to place units. */}
+        <UnitPlacementIndicator />
       </Canvas>
     </>
   );
