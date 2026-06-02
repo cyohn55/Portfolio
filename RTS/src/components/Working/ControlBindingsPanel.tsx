@@ -162,6 +162,20 @@ export function ControlBindingsPanel() {
         ))}
       </div>
 
+      {device === 'keyboard' && (
+        <div style={{
+          color: '#94a3b8',
+          fontSize: '12px',
+          marginBottom: '16px',
+          padding: '10px 14px',
+          background: 'rgba(88,120,255,0.08)',
+          border: '1px solid rgba(88,120,255,0.2)',
+          borderRadius: '8px',
+        }}>
+          Click a binding, then press the key, mouse button, or scroll to rebind. Pan the camera with the screen edges or a middle-mouse drag; the Move keys drive a piloted King/Queen.
+        </div>
+      )}
+
       {device === 'controller' && (
         <div style={{
           color: '#94a3b8',
@@ -172,7 +186,7 @@ export function ControlBindingsPanel() {
           border: '1px solid rgba(88,120,255,0.2)',
           borderRadius: '8px',
         }}>
-          Connect a controller and press a button to rebind. Left stick pans the camera, right stick moves the on-screen reticle. Standard (Xbox) layout shown.
+          Connect a controller and press a button to rebind. The left stick pans the camera (or drives a piloted King/Queen); the right stick moves the on-screen reticle. Standard (Xbox) layout shown.
         </div>
       )}
 
