@@ -280,6 +280,12 @@ export interface GameState {
   // (the ESDF/stick movement vector) and ignores its AI, orders, and combat.
   // See monarchPilot.ts.
   pilotedUnitId: string | null;
+  // Id of a Queen whose movement is frozen for the duration of the secondary
+  // (command) button hold while drawing a patrol route, or null. Holding the
+  // button pins the Queen in place so the patrol line's origin (her gold ring)
+  // stays anchored to her instead of drifting if a prior order/patrol were
+  // still carrying her. Cleared on release/cancel. See HexInteraction.tsx.
+  movementHeldUnitId: string | null;
   // How many units the current "hold rally to place units" gesture has
   // designated so far (0 when no hold is in progress). Drives the blue teardrop
   // indicator above the piloted monarch; the input layer increments it once per

@@ -52,6 +52,7 @@ export function MapInteraction() {
   const selectUnits = useGameStore((s) => s.selectUnits);
   const addToSelection = useGameStore((s) => s.addToSelection);
   const setPatrol = useGameStore((s) => s.setPatrol);
+  const setMovementHold = useGameStore((s) => s.setMovementHold);
   const toggleTurtleShell = useGameStore((s) => s.toggleTurtleShell);
   const throwEggs = useGameStore((s) => s.throwEggs);
   const fireTongues = useGameStore((s) => s.fireTongues);
@@ -402,6 +403,9 @@ export function MapInteraction() {
         const worldPos = getWorldPositionFromMouse(screenPos.x, screenPos.y);
 
         resetPatrolDrag();
+        // Pin the Queen in place for the whole hold so the patrol line's origin
+        // (her gold ring) stays anchored to her while the player aims the route.
+        setMovementHold(queen.id);
         patrolDragRef.current = {
           pending: true,
           armed: false,
@@ -481,6 +485,9 @@ export function MapInteraction() {
     if (patrolDragRef.current.holdTimerId !== null) {
       window.clearTimeout(patrolDragRef.current.holdTimerId);
     }
+    // Release the movement pin: the hold is over (released, cancelled, or
+    // superseded), so the Queen resumes her order/patrol/AI next tick.
+    setMovementHold(null);
     patrolDragRef.current = {
       pending: false,
       armed: false,

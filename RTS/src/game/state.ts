@@ -233,6 +233,7 @@ type Store = GameState & {
   tick: (dtSec: number, nowMs: number) => void;
   moveCommand: (cmd: CommandMoveUnits) => void;
   setPatrol: (cmd: CommandSetPatrol) => void;
+  setMovementHold: (unitId: string | null) => void;
   attackTarget: (cmd: CommandAttackTarget) => void;
   selectUnits: (unitIds: string[]) => void;
   addToSelection: (unitIds: string[]) => void;
@@ -427,6 +428,7 @@ export const useGameStore = create<Store>((set, get) => ({
   winner: null,
   selectedUnitIds: [],
   pilotedUnitId: null,
+  movementHeldUnitId: null,
   unitPlacementCount: 0,
   unitOrders: {},
   queenPatrols: {},
@@ -542,7 +544,7 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, movementHeldUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
@@ -591,6 +593,7 @@ export const useGameStore = create<Store>((set, get) => ({
       winner: null,
       selectedUnitIds: [],
       pilotedUnitId: null,
+      movementHeldUnitId: null,
       unitPlacementCount: 0,
       unitOrders: {},
       lastSpawnAtMsByQueenId: {},
@@ -933,6 +936,17 @@ export const useGameStore = create<Store>((set, get) => ({
             if (unit.animal === 'Owl') unit.isFlying = false;
           }
 
+          unit.unitState = 'idle';
+          continue;
+        }
+
+        // Patrol-draw hold: while the player holds the secondary button to draw a
+        // patrol route from this Queen, she stays pinned in place so the line's
+        // origin (her gold ring) doesn't drift. Hold position and skip her AI,
+        // orders, patrol, and combat movement for this tick. Released on button-up.
+        if (draft.movementHeldUnitId !== null && unit.id === draft.movementHeldUnitId) {
+          if (unit.animal === 'Frog' || unit.animal === 'Bunny') unit.isHopping = false;
+          if (unit.animal === 'Owl') unit.isFlying = false;
           unit.unitState = 'idle';
           continue;
         }
@@ -1957,6 +1971,17 @@ export const useGameStore = create<Store>((set, get) => ({
       delete queen.nearDestinationSinceMs;
     })
   ),
+
+  // Freeze (unitId) or release (null) a unit's movement for the duration of the
+  // secondary-button patrol-draw hold. Validated to the local player so a held
+  // id can only ever pin one of their own units. The tick honors this by holding
+  // the unit's position and skipping its AI/order/patrol movement that tick.
+  setMovementHold: (unitId) => set((prev) => {
+    if (unitId === null) return { movementHeldUnitId: null };
+    const unit = prev.units.find(u => u.id === unitId);
+    if (!unit || unit.ownerId !== prev.localPlayerId) return {};
+    return { movementHeldUnitId: unitId };
+  }),
 
   attackTarget: (cmd) => set((prev) =>
     produce(prev, (draft) => {
