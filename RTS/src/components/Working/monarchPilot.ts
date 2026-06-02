@@ -35,13 +35,19 @@ export const MONARCH_FOLLOW_STOP_DISTANCE = 6;
 export const MONARCH_FOLLOW_GAP = 5;
 
 /**
- * How long (milliseconds) the player must keep the rally key held to designate
- * one more unit for a placement order. Holding for N * this interval designates
- * N units; the on-screen teardrop indicator increments once per interval. Kept
- * here (rather than in the input layer) so the constant is unit-testable and the
- * "750ms per placed unit" rule has a single source of truth.
+ * How long (milliseconds) the player must hold the rally key before the FIRST
+ * unit is designated (and the teardrop indicator appears). Kept here (rather
+ * than in the input layer) so the timing is unit-testable and has a single
+ * source of truth.
  */
 export const UNIT_PLACEMENT_INTERVAL_MS = 750;
+
+/**
+ * How long (milliseconds) each SUBSEQUENT unit takes once the first has been
+ * designated — shorter than the initial hold so designating a large group ramps
+ * up quickly. Tunable independently of the initial delay.
+ */
+export const UNIT_PLACEMENT_REPEAT_INTERVAL_MS = 500;
 
 /** The two pilotable monarch kinds, in the order the toggle cycles them. */
 export type MonarchKind = Extract<UnitKind, 'King' | 'Queen'>;

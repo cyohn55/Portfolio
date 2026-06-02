@@ -84,7 +84,9 @@ const teardropShapeStyle: React.CSSProperties = {
   background: '#2f6bff',
   border: '2px solid #cfe0ff',
   borderRadius: '50% 50% 50% 0',
-  transform: 'rotate(45deg)',
+  // Rotate so the one sharp corner points straight DOWN at the monarch (rotate(45deg)
+  // would aim it left; -45deg swings it the extra 90° to vertical).
+  transform: 'rotate(-45deg)',
   boxShadow: '0 2px 6px rgba(0, 0, 0, 0.45)',
 };
 

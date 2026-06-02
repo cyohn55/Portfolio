@@ -2,7 +2,10 @@ import { useEffect, useRef } from 'react';
 import { useGameStore } from '../game/state';
 import { keyboardCoordinator } from '../utils/keyboardCoordination';
 import { keyboardEventToToken } from './Working/controlBindings';
-import { UNIT_PLACEMENT_INTERVAL_MS } from './Working/monarchPilot';
+import {
+  UNIT_PLACEMENT_INTERVAL_MS,
+  UNIT_PLACEMENT_REPEAT_INTERVAL_MS,
+} from './Working/monarchPilot';
 
 // Two Space presses within this window count as a "double tap" that escalates
 // the selection from one animal's army to every unit. (While piloting the first
@@ -21,20 +24,28 @@ export function KeyboardShortcuts() {
 
   // Timestamp of the last Space press, for double-tap detection (both modes).
   const lastSpacePressMsRef = useRef(0);
-  // Interval id ticking once per UNIT_PLACEMENT_INTERVAL_MS while Space is held,
-  // and a flag marking that a single (non-double) press is awaiting its release.
-  // Together they let keyup tell a quick tap (rally) from a hold (place units).
-  const placementHoldTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // The placement hold runs a two-phase timer: a one-shot timeout designates the
+  // first unit after UNIT_PLACEMENT_INTERVAL_MS, then an interval designates each
+  // subsequent unit every UNIT_PLACEMENT_REPEAT_INTERVAL_MS. The flag marks that a
+  // single (non-double) press is awaiting its release, so keyup can tell a quick
+  // tap (rally) from a hold (place units).
+  const placementFirstTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const placementRepeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const spacePressAwaitingReleaseRef = useRef(false);
 
   useEffect(() => {
     if (!matchStarted) return;
 
-    // Stop the placement-hold timer (release, blur, or a double tap interrupting it).
+    // Stop both phases of the placement-hold timer (release, blur, or a double tap
+    // interrupting it). Only one is ever active at a time, but clear both to be safe.
     const stopPlacementHold = () => {
-      if (placementHoldTimerRef.current !== null) {
-        clearInterval(placementHoldTimerRef.current);
-        placementHoldTimerRef.current = null;
+      if (placementFirstTimeoutRef.current !== null) {
+        clearTimeout(placementFirstTimeoutRef.current);
+        placementFirstTimeoutRef.current = null;
+      }
+      if (placementRepeatIntervalRef.current !== null) {
+        clearInterval(placementRepeatIntervalRef.current);
+        placementRepeatIntervalRef.current = null;
       }
     };
 
@@ -121,8 +132,13 @@ export function KeyboardShortcuts() {
         spacePressAwaitingReleaseRef.current = true;
         if (pilotedUnitId) {
           stopPlacementHold();
-          placementHoldTimerRef.current = setInterval(() => {
+          // First unit after the initial hold, then ramp up at the faster repeat rate.
+          placementFirstTimeoutRef.current = setTimeout(() => {
+            placementFirstTimeoutRef.current = null;
             incrementUnitPlacement();
+            placementRepeatIntervalRef.current = setInterval(() => {
+              incrementUnitPlacement();
+            }, UNIT_PLACEMENT_REPEAT_INTERVAL_MS);
           }, UNIT_PLACEMENT_INTERVAL_MS);
         }
         return;

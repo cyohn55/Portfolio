@@ -4,6 +4,7 @@ import {
   MONARCH_FOLLOW_STOP_DISTANCE,
   MONARCH_FOLLOW_GAP,
   UNIT_PLACEMENT_INTERVAL_MS,
+  UNIT_PLACEMENT_REPEAT_INTERVAL_MS,
   clampPlacementCount,
   findMonarch,
   followGapClearance,
@@ -161,12 +162,25 @@ test.describe('clampPlacementCount', () => {
   });
 });
 
-test.describe('UNIT_PLACEMENT_INTERVAL_MS', () => {
-  test('matches the documented 750ms-per-unit hold cadence', () => {
-    // The teardrop indicator increments once per interval, so N seconds of hold
-    // designates floor((N*1000)/interval) units.
+test.describe('placement hold cadence', () => {
+  test('first unit takes the initial hold, subsequent units ramp up faster', () => {
+    // The teardrop appears (count 1) only after the initial hold, then each extra
+    // unit lands on the shorter repeat interval, so the group ramps up quickly.
     expect(UNIT_PLACEMENT_INTERVAL_MS).toBe(750);
-    expect(Math.floor(3750 / UNIT_PLACEMENT_INTERVAL_MS)).toBe(5); // the 5-unit example
+    expect(UNIT_PLACEMENT_REPEAT_INTERVAL_MS).toBeGreaterThan(0);
+    expect(UNIT_PLACEMENT_REPEAT_INTERVAL_MS).toBeLessThanOrEqual(UNIT_PLACEMENT_INTERVAL_MS);
+
+    // Helper mirroring the input-layer timing: how many units a hold of `heldMs`
+    // designates — one after the initial delay, then one per repeat interval.
+    const designatedAfter = (heldMs: number) =>
+      heldMs < UNIT_PLACEMENT_INTERVAL_MS
+        ? 0
+        : 1 + Math.floor((heldMs - UNIT_PLACEMENT_INTERVAL_MS) / UNIT_PLACEMENT_REPEAT_INTERVAL_MS);
+
+    expect(designatedAfter(700)).toBe(0); // quick tap, below the initial hold
+    expect(designatedAfter(750)).toBe(1); // first unit at the initial hold
+    expect(designatedAfter(1250)).toBe(2); // +1 repeat interval (750 + 500)
+    expect(designatedAfter(2250)).toBe(4); // 750 + 3*500
   });
 });
 
