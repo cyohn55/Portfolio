@@ -13,9 +13,7 @@ export function KeyboardShortcuts() {
   const localPlayerId = useGameStore((s) => s.localPlayerId);
   const selectedAnimalPool = useGameStore((s) => s.selectedAnimalPool);
   const units = useGameStore((s) => s.units);
-  const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
   const selectUnits = useGameStore((s) => s.selectUnits);
-  const addToSelection = useGameStore((s) => s.addToSelection);
   const clearSelection = useGameStore((s) => s.clearSelection);
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
   const pilotedUnitId = useGameStore((s) => s.pilotedUnitId);
@@ -73,46 +71,20 @@ export function KeyboardShortcuts() {
         const isDoublePress = now - lastSpacePressMsRef.current <= DOUBLE_PRESS_WINDOW_MS;
         lastSpacePressMsRef.current = now;
 
-        const selectEveryUnit = () => {
-          const ids = playerUnits.map(u => u.id);
-          if (ids.length > 0) selectUnits(ids);
-        };
-
         // A double tap ALWAYS selects every unit, regardless of context (piloting or not,
-        // anything currently selected or not). Handled first so neither the piloting rally
-        // nor the anchored-army single-press path can shadow it. The camera-input block is
-        // skipped while piloting so the ESDF drive keys keep working; off-pilot it stops the
-        // shortcut's keys from also panning the camera (matching the single-press path).
+        // anything currently selected or not). The camera-input block is skipped while piloting
+        // so the ESDF drive keys keep working; off-pilot it stops the key from also panning.
         if (isDoublePress) {
           if (!pilotedUnitId) keyboardCoordinator.blockCameraInput(250);
-          selectEveryUnit();
+          const ids = playerUnits.map(u => u.id);
+          if (ids.length > 0) selectUnits(ids);
           return;
         }
 
-        // Single press is contextual.
-        if (pilotedUnitId) {
-          // Piloting: rally the piloted monarch's army to follow it AND select that army (so a
-          // right-click immediately redirects it — see rallyToMonarch). No camera-input block
-          // here so the ESDF keys keep driving the unit.
-          rallyToMonarch();
-          return;
-        }
-
-        // Not piloting: a single press only acts when a King or Queen is selected. It then
-        // ADDS that monarch's animal army to the current selection — the press only ever grows
-        // the selection, never narrows it (the monarch and anything else stay selected). With
-        // no King/Queen selected it does nothing, so it can't silently drop a selection down to
-        // one animal. Use a double tap to select all (handled above).
-        keyboardCoordinator.blockCameraInput(250);
-        const selectedSet = new Set(selectedUnitIds);
-        const anchorMonarch = playerUnits.find(
-          u => selectedSet.has(u.id) && (u.kind === 'King' || u.kind === 'Queen')
-        );
-        if (!anchorMonarch) return; // single press only works with a King/Queen selected
-        const armyIds = playerUnits
-          .filter(u => u.kind === 'Unit' && u.animal === anchorMonarch.animal)
-          .map(u => u.id);
-        if (armyIds.length > 0) addToSelection(armyIds);
+        // A single press only does something while piloting: it rallies the piloted monarch's
+        // army to follow it (and selects that army — see rallyToMonarch). In every other context
+        // a single press does nothing; only a double tap changes the selection here.
+        if (pilotedUnitId) rallyToMonarch();
       } else if (token === keyboardBindings.selectGroup1) {
         selectByAnimal(selectedAnimalPool[0]);
       } else if (token === keyboardBindings.selectGroup2) {
@@ -131,7 +103,7 @@ export function KeyboardShortcuts() {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [matchStarted, localPlayerId, selectedAnimalPool, units, selectedUnitIds, selectUnits, addToSelection, clearSelection, keyboardBindings, pilotedUnitId, pilotCycleMonarch, togglePilotMonarchKind, rallyToMonarch]);
+  }, [matchStarted, localPlayerId, selectedAnimalPool, units, selectUnits, clearSelection, keyboardBindings, pilotedUnitId, pilotCycleMonarch, togglePilotMonarchKind, rallyToMonarch]);
 
   // This component doesn't render anything, it just handles keyboard events
   return null;
