@@ -1924,6 +1924,28 @@ export const useGameStore = create<Store>((set, get) => ({
       // Clear any existing unit orders for this queen
       delete draft.unitOrders[cmd.queenId];
 
+      // Drop the queen's cached A* path and movement-blocking state, exactly as
+      // moveCommand/attackTarget do. The patrol tick steers a ground queen via
+      // steeringTarget -> pathfinder.nextWaypoint, which reuses a cached path
+      // whose goal is within ~12 units of the new one (hasUsablePath). A queen
+      // that previously moved and stopped would otherwise keep steering toward
+      // her old cached goal — her current position — yielding a (0,0,0)
+      // direction, so she'd sit still and never start patrolling. See the
+      // stale-path-cache fix in moveCommand and the move-command-stale-path test.
+      delete queen.pathWaypoints;
+      delete queen.pathIndex;
+      delete queen.pathDestX;
+      delete queen.pathDestZ;
+      delete queen.pathVersion;
+      delete queen.pathStall;
+      delete queen.pathProgressDist;
+
+      // Reset blocking/stall bookkeeping so a stale "paused" window can't carry
+      // over and stall the first leg of the patrol.
+      queen.collisionAttempts = 0;
+      delete queen.movementPausedUntilMs;
+      delete queen.firstBlockedAtMs;
+      delete queen.nearDestinationSinceMs;
     })
   ),
 
