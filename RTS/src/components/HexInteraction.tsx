@@ -608,38 +608,27 @@ export function MapInteraction() {
     }
   };
 
-  // Safety net for the patrol-draw freeze: the gesture pins the Queen in place
-  // (setMovementHold) on mouse-down, and the canvas mouse-up is what releases her.
-  // But a release that lands off the canvas — over a HUD overlay or outside the
-  // window — never reaches the canvas listener, so the pin (and thus the Queen's
-  // refusal to patrol) would leak indefinitely until the next on-canvas right
-  // press. Resolve any still-pending gesture on a window-level release or focus
-  // loss. The canvas mouse-up fires first for in-canvas releases (clearing
-  // `pending`), making this a no-op for the normal path.
-  const releaseStrandedPatrolGesture = () => {
-    if (patrolDragRef.current.pending) {
-      hidePatrolArrow();
-      resetPatrolDrag();
-    }
-  };
-
   useEffect(() => {
     const canvas = gl.domElement;
 
+    // Gestures START on the canvas (mousedown), so selection/patrol drags can only
+    // begin over the 3D view. But the RELEASE is bound to `window`, not the canvas:
+    // the patrol-draw gesture pins the Queen in place (setMovementHold) for the whole
+    // hold and relies on mouse-up to commit the route and release her. A release that
+    // lands off the canvas — over a HUD overlay or just outside it — would never reach
+    // a canvas-bound mouse-up, stranding the pin so the Queen silently refuses to
+    // patrol. Handling mouse-up at the window level guarantees the gesture is always
+    // resolved (route committed, freeze cleared) wherever the button comes up.
     canvas.addEventListener('mousedown', handleMouseDown);
     canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mouseup', handleMouseUp);
     document.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('mouseup', releaseStrandedPatrolGesture);
-    window.addEventListener('blur', releaseStrandedPatrolGesture);
 
     return () => {
       canvas.removeEventListener('mousedown', handleMouseDown);
       canvas.removeEventListener('mousemove', handleMouseMove);
-      canvas.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('mouseup', releaseStrandedPatrolGesture);
-      window.removeEventListener('blur', releaseStrandedPatrolGesture);
     };
   }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, hiss, swarm, pickup, deliverCargo, primaryButton, secondaryButton]);
 

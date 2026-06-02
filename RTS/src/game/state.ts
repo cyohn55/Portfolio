@@ -1962,6 +1962,15 @@ export const useGameStore = create<Store>((set, get) => ({
       // Clear any existing unit orders for this queen
       delete draft.unitOrders[cmd.queenId];
 
+      // Committing a patrol means the patrol-draw hold is over, so lift the
+      // movement freeze on this queen here rather than relying solely on the
+      // gesture handler's separate setMovementHold(null). Otherwise a missed or
+      // out-of-order release would leave her pinned (the tick's freeze block
+      // skips all order/patrol movement), so she'd hold the route but never walk it.
+      if (draft.movementHeldUnitId === cmd.queenId) {
+        draft.movementHeldUnitId = null;
+      }
+
       // Drop the queen's cached A* path and movement-blocking state, exactly as
       // moveCommand/attackTarget do. The patrol tick steers a ground queen via
       // steeringTarget -> pathfinder.nextWaypoint, which reuses a cached path
