@@ -87,7 +87,10 @@ const CONTROLLER_GROUPS: readonly ControlGroup[] = [
   },
   {
     label: 'Commands',
-    entries: [{ input: 'B', action: 'Move / Attack at the reticle' }],
+    entries: [
+      { input: 'B', action: 'Move / Attack at the reticle' },
+      { input: 'RB', action: "Use the selected animal's special ability" },
+    ],
   },
   {
     label: 'Pilot a Monarch',
