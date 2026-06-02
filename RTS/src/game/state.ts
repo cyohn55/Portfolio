@@ -16,7 +16,9 @@ import { clampToArena } from '../components/Working/arenaBoundary';
 import {
   type MonarchKind,
   MONARCH_FOLLOW_STOP_DISTANCE,
+  MONARCH_FOLLOW_GAP,
   findMonarch,
+  followGapClearance,
   otherMonarchKind,
   pilotInput,
   shouldChaseMonarch,
@@ -1674,6 +1676,11 @@ export const useGameStore = create<Store>((set, get) => ({
       // (per its own rule) won't pull the shoved units back toward the selected royal.
       clearPathForSelectedRoyals(draft);
 
+      // Hold rallying followers off their piloted monarch (>= MONARCH_FOLLOW_GAP), BEFORE the
+      // relaxation pass so it tidies the formation and won't pull followers back onto the
+      // monarch (the monarch is skipped by that pass, so the gap it sets is preserved).
+      enforceMonarchFollowGap(draft, unitById);
+
       // Relax any unit pile-ups now that all movement, combat, and Owl drops have settled this
       // tick. Idle/arrived/just-delivered units don't go through the moving-unit collision, so
       // without this pass their models would stack and clip on a single point.
@@ -2854,6 +2861,46 @@ function clearPathForSelectedRoyals(draft: Store): void {
   }
 }
 
+// Keep every rallying follower at least MONARCH_FOLLOW_GAP from the monarch it is trailing.
+// The piloted monarch is player-driven and immovable by the spacing passes, so this pushes
+// ONLY the follower radially outward to the gap — the monarch holds its driven position and
+// is never shoved by its own army crowding in. The gap is widened to the pair's normal
+// spacing when that is larger (e.g. a Yetti follower) so big models still don't overlap the
+// monarch. Ground followers pushed onto forbidden water slide along whichever axis stays
+// walkable, mirroring clearPathForSelectedRoyals/separateOverlappingUnits. Runs after the
+// royal make-way shove and before the relaxation pass so the formation is then tidied.
+function enforceMonarchFollowGap(draft: Store, unitById: Map<string, Unit>): void {
+  for (const follower of draft.units) {
+    if (follower.followMonarchId === undefined) continue;
+    const monarch = unitById.get(follower.followMonarchId);
+    if (!monarch || monarch.hp <= 0) continue;
+
+    const gap = Math.max(MONARCH_FOLLOW_GAP, minimumSpacingBetween(monarch, follower));
+    const resolved = followGapClearance(follower.position, monarch.position, gap);
+    if (!resolved) continue; // already outside the gap
+
+    const target: Position3D = { x: resolved.x, y: follower.position.y, z: resolved.z };
+    clampToArena(target);
+
+    if (ANIMAL_MOVEMENT_TYPES[follower.animal] === 'ground' &&
+        !terrainValidator.canAnimalMoveTo(follower.animal, target)) {
+      const slideAlongX = { x: target.x, y: follower.position.y, z: follower.position.z };
+      if (terrainValidator.canAnimalMoveTo(follower.animal, slideAlongX)) {
+        follower.position.x = slideAlongX.x;
+      } else {
+        const slideAlongZ = { x: follower.position.x, y: follower.position.y, z: target.z };
+        if (terrainValidator.canAnimalMoveTo(follower.animal, slideAlongZ)) {
+          follower.position.z = slideAlongZ.z;
+        }
+      }
+      continue; // boxed against water — push what we can this tick
+    }
+
+    follower.position.x = target.x;
+    follower.position.z = target.z;
+  }
+}
+
 function separateOverlappingUnits(draft: Store): void {
   const grid = draft.spatialGrid;
   const nowMs = performance.now();
@@ -2870,6 +2917,11 @@ function separateOverlappingUnits(draft: Store): void {
     if (unit.isFlying || (unit.flightLift ?? 0) > 0 || unit.owlPickup !== undefined) continue;
     if (unit.isShelled || unit.tongue) continue;
     if (unit.hissUntilMs !== undefined && nowMs < unit.hissUntilMs) continue;
+    // The piloted monarch's position is owned by the player's pilot input — like carried or
+    // flying units above, it is not ours to nudge. Skipping it here is what stops rallying
+    // followers (now selected alongside it) from shoving the King/Queen as they crowd in;
+    // the followers' own spacing and the follow-gap pass keep them off it instead.
+    if (unit.id === draft.pilotedUnitId) continue;
 
     const neighbors = grid
       ? grid.getNearbyUnits(unit.position, SEPARATION_QUERY_RADIUS)

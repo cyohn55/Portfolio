@@ -23,6 +23,17 @@ import type { AnimalId, Unit, UnitKind } from '../../game/types';
  */
 export const MONARCH_FOLLOW_STOP_DISTANCE = 6;
 
+/**
+ * The hard minimum distance (world units) a rallying follower is allowed to sit from the
+ * monarch it is trailing. The piloted monarch is driven by the player and is immovable by
+ * the spacing passes, so without this floor the follow chase and crowd relaxation would let
+ * front-rank followers drift right up against it (and, before the monarch was made immovable,
+ * shove it around). It is kept below MONARCH_FOLLOW_STOP_DISTANCE so followers settle into the
+ * stop band rather than fighting this floor every tick — the floor only bites when the monarch
+ * reverses into the crowd or a rear rank presses a front rank inward.
+ */
+export const MONARCH_FOLLOW_GAP = 5;
+
 /** The two pilotable monarch kinds, in the order the toggle cycles them. */
 export type MonarchKind = Extract<UnitKind, 'King' | 'Queen'>;
 
@@ -106,4 +117,37 @@ export function shouldChaseMonarch(
   stopDistance: number = MONARCH_FOLLOW_STOP_DISTANCE
 ): boolean {
   return distanceToMonarch > stopDistance;
+}
+
+/** A point on the XZ plane. Kept local so this geometry helper stays framework-free. */
+export interface PointXZ {
+  x: number;
+  z: number;
+}
+
+/**
+ * The XZ position a follower must move to so it sits no closer than `gap` to its monarch,
+ * pushing it straight out along the monarch->follower direction. Returns `null` when the
+ * follower is already at or beyond the gap (nothing to do). A follower coincident with the
+ * monarch is pushed out along +X so the result is deterministic (and unit-testable) rather
+ * than random. Pure geometry: the caller applies terrain/arena constraints to the result.
+ */
+export function followGapClearance(
+  follower: PointXZ,
+  monarch: PointXZ,
+  gap: number
+): PointXZ | null {
+  const dx = follower.x - monarch.x;
+  const dz = follower.z - monarch.z;
+  const distanceSquared = dx * dx + dz * dz;
+  if (distanceSquared >= gap * gap) return null; // already outside the gap
+
+  const distance = Math.sqrt(distanceSquared);
+  // Coincident with the monarch: choose a fixed escape heading so the push is deterministic.
+  const directionX = distance < 1e-6 ? 1 : dx / distance;
+  const directionZ = distance < 1e-6 ? 0 : dz / distance;
+  return {
+    x: monarch.x + directionX * gap,
+    z: monarch.z + directionZ * gap,
+  };
 }

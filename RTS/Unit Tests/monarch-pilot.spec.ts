@@ -2,7 +2,9 @@ import { test, expect } from '@playwright/test';
 import type { AnimalId, Unit, UnitKind } from '../src/game/types';
 import {
   MONARCH_FOLLOW_STOP_DISTANCE,
+  MONARCH_FOLLOW_GAP,
   findMonarch,
+  followGapClearance,
   otherMonarchKind,
   pilotInput,
   shouldChaseMonarch,
@@ -82,6 +84,62 @@ test.describe('shouldChaseMonarch', () => {
   test('honors a custom stop distance', () => {
     expect(shouldChaseMonarch(5, 10)).toBe(false);
     expect(shouldChaseMonarch(15, 10)).toBe(true);
+  });
+});
+
+test.describe('followGapClearance', () => {
+  const distanceXZ = (a: { x: number; z: number }, b: { x: number; z: number }) =>
+    Math.hypot(a.x - b.x, a.z - b.z);
+
+  test('the follow gap is positive and below the chase stop band', () => {
+    // A follower must be able to settle inside the stop band without immediately fighting the
+    // gap floor, so the floor has to sit below where chasing stops.
+    expect(MONARCH_FOLLOW_GAP).toBeGreaterThan(0);
+    expect(MONARCH_FOLLOW_GAP).toBeLessThan(MONARCH_FOLLOW_STOP_DISTANCE);
+  });
+
+  test('returns null when the follower is already at or beyond the gap', () => {
+    const monarch = { x: 0, z: 0 };
+    expect(followGapClearance({ x: 0, z: MONARCH_FOLLOW_GAP }, monarch, MONARCH_FOLLOW_GAP)).toBeNull();
+    expect(followGapClearance({ x: 0, z: MONARCH_FOLLOW_GAP + 3 }, monarch, MONARCH_FOLLOW_GAP)).toBeNull();
+  });
+
+  test('pushes a crowding follower straight out to exactly the gap', () => {
+    const monarch = { x: 10, z: 10 };
+    const follower = { x: 12, z: 10 }; // 2 units east of the monarch — inside a gap of 5
+    const result = followGapClearance(follower, monarch, MONARCH_FOLLOW_GAP);
+    expect(result).not.toBeNull();
+    // Pushed along the same monarch->follower heading (+X here), out to the gap distance.
+    expect(distanceXZ(result!, monarch)).toBeCloseTo(MONARCH_FOLLOW_GAP, 5);
+    expect(result!.z).toBeCloseTo(10, 5); // heading preserved, no lateral drift
+    expect(result!.x).toBeGreaterThan(follower.x); // moved further out, not pulled in
+  });
+
+  test('preserves the bearing from the monarch when pushing out', () => {
+    const monarch = { x: 0, z: 0 };
+    const follower = { x: 3, z: 3 }; // diagonal, distance ~4.24 < gap
+    const result = followGapClearance(follower, monarch, MONARCH_FOLLOW_GAP);
+    expect(result).not.toBeNull();
+    // Same 45-degree bearing, just at the gap radius: x and z stay equal.
+    expect(result!.x).toBeCloseTo(result!.z, 5);
+    expect(distanceXZ(result!, monarch)).toBeCloseTo(MONARCH_FOLLOW_GAP, 5);
+  });
+
+  test('escapes deterministically when coincident with the monarch', () => {
+    const monarch = { x: 4, z: -2 };
+    const result = followGapClearance({ x: 4, z: -2 }, monarch, MONARCH_FOLLOW_GAP);
+    expect(result).not.toBeNull();
+    // No real heading exists, so the helper picks +X and pushes out one gap — never NaN.
+    expect(result).toEqual({ x: 4 + MONARCH_FOLLOW_GAP, z: -2 });
+  });
+
+  test('honors a wider gap for larger models', () => {
+    const monarch = { x: 0, z: 0 };
+    const follower = { x: 2, z: 0 };
+    const wideGap = MONARCH_FOLLOW_GAP + 1.5; // e.g. a Yetti's larger spacing
+    const result = followGapClearance(follower, monarch, wideGap);
+    expect(result).not.toBeNull();
+    expect(distanceXZ(result!, monarch)).toBeCloseTo(wideGap, 5);
   });
 });
 
