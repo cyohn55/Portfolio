@@ -61,6 +61,13 @@ export interface ControlActionMeta {
   label: string;
   category: ControlCategory;
   description: string;
+  /**
+   * Optional always-visible sub-line for multi-gesture actions whose single
+   * binding carries several behaviors (tap / double-tap / hold). Kept terser than
+   * `description` (the hover tooltip) so the Settings row stays scannable while
+   * still surfacing the gestures without a hover. Omitted for single-behavior actions.
+   */
+  gestureHint?: string;
 }
 
 export const UNBOUND_TOKEN = '';
@@ -81,7 +88,7 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
   { id: 'cameraRight', label: 'Move Right', category: 'Camera', description: 'Drives a piloted King/Queen right. On a controller, the left stick also pans the camera.' },
   { id: 'cameraZoomIn', label: 'Zoom In', category: 'Camera', description: 'Bring the camera closer to the map.' },
   { id: 'cameraZoomOut', label: 'Zoom Out', category: 'Camera', description: 'Pull the camera back from the map.' },
-  { id: 'selectAll', label: 'Select All / Rally', category: 'Selection', description: 'A multi-gesture input that works the same on keyboard and controller. Double-tap to select every one of your units. While piloting a King/Queen, a quick tap rallies that animal’s units to follow the monarch, and holding it down designates units to deploy at the monarch — the longer you hold, the more units peel off (the teardrop count above the monarch).' },
+  { id: 'selectAll', label: 'Select All / Rally', category: 'Selection', description: 'A multi-gesture input that works the same on keyboard and controller. Double-tap to select every one of your units. While piloting a King/Queen, a quick tap rallies that animal’s units to follow the monarch, and holding it down designates units to deploy at the monarch — the longer you hold, the more units peel off (the teardrop count above the monarch).', gestureHint: 'Tap: rally · Double-tap: select all · Hold: deploy units' },
   { id: 'selectGroup1', label: 'Select Animal Type 1', category: 'Selection', description: 'Select all units of your first animal.' },
   { id: 'selectGroup2', label: 'Select Animal Type 2', category: 'Selection', description: 'Select all units of your second animal.' },
   { id: 'selectGroup3', label: 'Select Animal Type 3', category: 'Selection', description: 'Select all units of your third animal.' },

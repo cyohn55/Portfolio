@@ -217,8 +217,15 @@ export function ControlBindingsPanel() {
                       borderRadius: '8px',
                     }}
                   >
-                    <span style={{ color: '#cbd5e1' }} title={action.description}>{action.label}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
+                      <span style={{ color: '#cbd5e1' }} title={action.description}>{action.label}</span>
+                      {action.gestureHint && (
+                        <span style={{ color: '#8b97a8', fontSize: '11px', lineHeight: 1.2 }}>
+                          {action.gestureHint}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                       {conflict && (
                         <span title="This input is shared with another action" style={{ color: '#fbbf24', fontSize: '12px' }}>
                           ⚠ conflict
