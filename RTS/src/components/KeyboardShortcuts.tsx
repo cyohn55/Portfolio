@@ -77,32 +77,37 @@ export function KeyboardShortcuts() {
           if (ids.length > 0) selectUnits(ids);
         };
 
-        if (pilotedUnitId) {
-          // Piloting: the first press rallies the piloted monarch's army to follow
-          // it AND selects that army (so a right-click immediately redirects it —
-          // see rallyToMonarch); two quick presses escalate to every unit. No
-          // camera-input block here so the ESDF keys keep driving the unit.
-          if (isDoublePress) selectEveryUnit();
-          else rallyToMonarch();
+        // A double tap ALWAYS selects every unit, regardless of context (piloting or not,
+        // anything currently selected or not). Handled first so neither the piloting rally
+        // nor the anchored-army single-press path can shadow it. The camera-input block is
+        // skipped while piloting so the ESDF drive keys keep working; off-pilot it stops the
+        // shortcut's keys from also panning the camera (matching the single-press path).
+        if (isDoublePress) {
+          if (!pilotedUnitId) keyboardCoordinator.blockCameraInput(250);
+          selectEveryUnit();
           return;
         }
 
-        // Not piloting: mirror the same escalation. A single press selects the
-        // army (kind 'Unit') of the currently anchored animal — the animal of the
-        // first selected own unit — and two quick presses select every unit.
-        // With nothing to anchor on, a single press already means "everything".
-        keyboardCoordinator.blockCameraInput(250);
-        if (isDoublePress) {
-          selectEveryUnit();
-        } else {
-          const selectedSet = new Set(selectedUnitIds);
-          const anchor = playerUnits.find(u => selectedSet.has(u.id));
-          const armyIds = anchor
-            ? playerUnits.filter(u => u.kind === 'Unit' && u.animal === anchor.animal).map(u => u.id)
-            : [];
-          if (armyIds.length > 0) selectUnits(armyIds);
-          else selectEveryUnit();
+        // Single press is contextual.
+        if (pilotedUnitId) {
+          // Piloting: rally the piloted monarch's army to follow it AND select that army (so a
+          // right-click immediately redirects it — see rallyToMonarch). No camera-input block
+          // here so the ESDF keys keep driving the unit.
+          rallyToMonarch();
+          return;
         }
+
+        // Not piloting: select the army (kind 'Unit') of the currently anchored animal — the
+        // animal of the first selected own unit. With nothing to anchor on, fall back to
+        // selecting everything.
+        keyboardCoordinator.blockCameraInput(250);
+        const selectedSet = new Set(selectedUnitIds);
+        const anchor = playerUnits.find(u => selectedSet.has(u.id));
+        const armyIds = anchor
+          ? playerUnits.filter(u => u.kind === 'Unit' && u.animal === anchor.animal).map(u => u.id)
+          : [];
+        if (armyIds.length > 0) selectUnits(armyIds);
+        else selectEveryUnit();
       } else if (token === keyboardBindings.selectGroup1) {
         selectByAnimal(selectedAnimalPool[0]);
       } else if (token === keyboardBindings.selectGroup2) {
