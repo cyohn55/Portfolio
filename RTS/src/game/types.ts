@@ -212,6 +212,13 @@ export interface PatrolRoute {
   currentTarget: 'start' | 'end'; // which position the queen is currently moving toward
 }
 
+// A Queen's spawn rally target. Her freshly spawned Units either march to a fixed
+// ground point, or fall in behind a friendly monarch (King/Queen) and follow it
+// wherever it goes (via the unit's followMonarchId).
+export type QueenRallyTarget =
+  | { mode: 'point'; position: Position3D }
+  | { mode: 'follow'; monarchId: string };
+
 // Per-match scoring counters for the local player and a mirrored set for the
 // AI, so the post-game screen can show a symmetric comparison. Reset on every
 // startMatch so each round produces an independent leaderboard score. Tracked
@@ -272,11 +279,13 @@ export interface GameState {
   selectedUnitIds: string[]; // currently selected units
   unitOrders: Record<string, Position3D>; // unit id -> target position for movement orders
   queenPatrols: Record<string, PatrolRoute>; // queen id -> patrol route
-  // Per-Queen spawn rally point. When set, every Unit that Queen spawns is
-  // immediately given a move order to this point, so reinforcements gather at a
-  // player-chosen staging location instead of milling around the Queen. Only the
-  // local player's Queens ever appear here (setQueenRally validates ownership).
-  queenRallyPoints: Record<string, Position3D>; // queen id -> spawn rally point
+  // Per-Queen spawn rally target. When set, every Unit that Queen spawns is sent
+  // there in the spawn loop — either marched to a fixed ground point, or made to
+  // fall in behind a friendly monarch and follow it. Reinforcements thus gather
+  // at a player-chosen staging spot (or join the King) instead of milling around
+  // the Queen. Only the local player's Queens appear here (setQueenRally validates
+  // ownership).
+  queenRallyTargets: Record<string, QueenRallyTarget>; // queen id -> spawn rally target
   matchStats: MatchStats; // scoring counters for the current match (local player)
   projectiles: Projectile[]; // in-flight egg projectiles (Chicken ability)
   // Id of the local player's King/Queen the player is directly piloting (A
@@ -312,7 +321,7 @@ export interface CommandSetPatrol {
 
 export interface CommandSetQueenRally {
   queenId: string;
-  rallyPoint: Position3D;
+  target: QueenRallyTarget;
 }
 
 export interface CommandAttackTarget {

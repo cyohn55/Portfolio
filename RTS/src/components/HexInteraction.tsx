@@ -339,6 +339,41 @@ export function MapInteraction() {
     return nearest;
   };
 
+  // The local player's King whose projected center is nearest the cursor within
+  // UNIT_PICK_RADIUS_PX, else null. Used by the spawn-rally gesture: dropping the
+  // rally on your own King makes the Queen's future spawns follow him instead of
+  // marching to a fixed point.
+  const friendlyKingUnderCursor = (screen: { x: number; y: number }): typeof units[number] | null => {
+    let nearest: typeof units[number] | null = null;
+    let nearestDistPx = UNIT_PICK_RADIUS_PX;
+    for (const unit of units) {
+      if (unit.ownerId !== localPlayerId || unit.kind !== 'King') continue;
+      const projected = worldToScreen(
+        new THREE.Vector3(unit.position.x, unit.position.y, unit.position.z)
+      );
+      const distPx = Math.hypot(projected.x - screen.x, projected.y - screen.y);
+      if (distPx < nearestDistPx) {
+        nearestDistPx = distPx;
+        nearest = unit;
+      }
+    }
+    return nearest;
+  };
+
+  // Resolve where the rally line currently points. If a friendly King is under the
+  // cursor the line snaps to him (and `king` is returned so the commit can make the
+  // spawns follow him); otherwise it falls to the cursor's ground point. Shared by
+  // the live aim (handleMouseMove) and the commit (second key tap) so both agree.
+  const resolveRallyAim = (
+    screen: { x: number; y: number }
+  ): { king: typeof units[number] | null; world: THREE.Vector3 } => {
+    const king = friendlyKingUnderCursor(screen);
+    if (king) {
+      return { king, world: new THREE.Vector3(king.position.x, king.position.y, king.position.z) };
+    }
+    return { king: null, world: getWorldPositionFromMouse(screen.x, screen.y) };
+  };
+
   // True when the primary and secondary action buttons are held at the same time
   // (read from a single event's `buttons` bitmask, so press order doesn't matter).
   const areShellButtonsHeld = (buttons: number): boolean =>
@@ -497,16 +532,14 @@ export function MapInteraction() {
     // and commit its blue line at the current pointer position.
     lastMouseScreenRef.current = getScreenPosition(event);
 
-    // While aiming a spawn rally point, redraw the blue line from the Queen to
-    // the cursor so the player sees where the next batch of units will gather.
+    // While aiming a spawn rally point, redraw the blue line from the Queen to the
+    // cursor — snapping to a friendly King under the cursor — so the player sees
+    // where the next batch of units will gather (or which King they will follow).
     if (rallyPlacementRef.current.active) {
       const origin = queenWorldPos(rallyPlacementRef.current.queenId);
-      const cursorWorld = getWorldPositionFromMouse(
-        lastMouseScreenRef.current.x,
-        lastMouseScreenRef.current.y
-      );
-      if (origin && cursorWorld) {
-        updateRallyArrow(origin, cursorWorld);
+      const aim = resolveRallyAim(lastMouseScreenRef.current);
+      if (origin && aim.world) {
+        updateRallyArrow(origin, aim.world);
       }
     }
 
@@ -564,8 +597,9 @@ export function MapInteraction() {
     }
 
     // Spawn-rally gesture (default 'R'): a two-tap toggle on a lone selected Queen.
-    // First tap arms placement and reveals the blue line; second tap drops the
-    // rally point at the cursor, after which the Queen's spawns march there.
+    // First tap arms placement and reveals the blue line; second tap commits the
+    // rally — on a friendly King the Queen's future spawns follow him, otherwise
+    // they march to the cursor's ground point.
     const token = keyboardEventToToken(event);
     if (token !== '' && token === keyboardBindings.setQueenRally) {
       event.preventDefault();
@@ -580,23 +614,24 @@ export function MapInteraction() {
         rallyPlacementRef.current = { active: true, queenId: queen.id };
 
         const origin = queenWorldPos(queen.id);
-        const cursorWorld = getWorldPositionFromMouse(
-          lastMouseScreenRef.current.x,
-          lastMouseScreenRef.current.y
-        );
-        if (origin && cursorWorld) {
-          updateRallyArrow(origin, cursorWorld);
+        const aim = resolveRallyAim(lastMouseScreenRef.current);
+        if (origin && aim.world) {
+          updateRallyArrow(origin, aim.world);
         }
       } else {
-        // Second tap: commit the rally point at the current cursor position.
+        // Second tap: commit. A King under the cursor becomes a follow target; an
+        // empty spot becomes a fixed ground rally point.
         const { queenId } = rallyPlacementRef.current;
-        const cursorWorld = getWorldPositionFromMouse(
-          lastMouseScreenRef.current.x,
-          lastMouseScreenRef.current.y
-        );
+        const aim = resolveRallyAim(lastMouseScreenRef.current);
         resetRallyPlacement();
-        if (queenId && cursorWorld) {
-          setQueenRally({ queenId, rallyPoint: { x: cursorWorld.x, y: 0, z: cursorWorld.z } });
+        if (!queenId) return;
+        if (aim.king) {
+          setQueenRally({ queenId, target: { mode: 'follow', monarchId: aim.king.id } });
+        } else if (aim.world) {
+          setQueenRally({
+            queenId,
+            target: { mode: 'point', position: { x: aim.world.x, y: 0, z: aim.world.z } },
+          });
         }
       }
     }

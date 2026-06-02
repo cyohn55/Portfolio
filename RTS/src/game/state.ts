@@ -433,7 +433,7 @@ export const useGameStore = create<Store>((set, get) => ({
   unitPlacementCount: 0,
   unitOrders: {},
   queenPatrols: {},
-  queenRallyPoints: {},
+  queenRallyTargets: {},
   unitCountCache: {},
   spatialGrid: null,
   lastRegenCheckMs: 0,
@@ -546,7 +546,7 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, movementHeldUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyPoints: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, movementHeldUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
@@ -598,7 +598,7 @@ export const useGameStore = create<Store>((set, get) => ({
       movementHeldUnitId: null,
       unitPlacementCount: 0,
       unitOrders: {},
-      queenRallyPoints: {},
+      queenRallyTargets: {},
       lastSpawnAtMsByQueenId: {},
       unitCountCache: {},
       spatialGrid: null,
@@ -837,14 +837,27 @@ export const useGameStore = create<Store>((set, get) => ({
             const finalSpawnPos = checkCollision(tentativeSpawnPos, tempUnit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
             tempUnit.position = finalSpawnPos;
 
-            // Spawn rally point: if the player has set one on this Queen, march the
-            // newborn straight there instead of letting it idle by the Queen. A fresh
-            // unit has no cached path or combat state, so simply seeding the order and
-            // the moving_to_order state is enough for PRIORITY 1 movement to pick it up.
-            const rallyPoint = draft.queenRallyPoints[q.id];
-            if (rallyPoint) {
-              draft.unitOrders[tempUnit.id] = { ...rallyPoint };
-              tempUnit.unitState = 'moving_to_order';
+            // Spawn rally target: if the player set one on this Queen, send the
+            // newborn there instead of letting it idle by the Queen. A 'point' rally
+            // marches it to a fixed spot; a 'follow' rally makes it fall in behind a
+            // monarch (the follow branch in tick() then pins its order to the monarch
+            // each tick). A fresh unit has no cached path or combat state, so seeding
+            // the order / follow id plus moving_to_order is enough for movement.
+            const rally = draft.queenRallyTargets[q.id];
+            if (rally) {
+              if (rally.mode === 'follow') {
+                const monarch = unitById.get(rally.monarchId);
+                if (monarch && monarch.hp > 0) {
+                  tempUnit.followMonarchId = rally.monarchId;
+                  tempUnit.unitState = 'moving_to_order';
+                } else {
+                  // The designated monarch is gone — drop the now-stale follow rally.
+                  delete draft.queenRallyTargets[q.id];
+                }
+              } else {
+                draft.unitOrders[tempUnit.id] = { ...rally.position };
+                tempUnit.unitState = 'moving_to_order';
+              }
             }
 
             draft.units.push(tempUnit);
@@ -2042,15 +2055,32 @@ export const useGameStore = create<Store>((set, get) => ({
     })
   ),
 
-  // Set a Queen's spawn rally point (the two-tap 'R' gesture). Validated to the
+  // Set a Queen's spawn rally target (the two-tap 'R' gesture). Validated to the
   // local player's Queens so a stray id can't redirect an enemy's spawns. From
-  // here on, every Unit this Queen spawns is handed a move order to rallyPoint in
-  // the spawn loop, gathering reinforcements at the player's chosen staging spot.
+  // here on, every Unit this Queen spawns is sent to the target in the spawn loop:
+  // a 'point' marches them to a fixed staging spot; a 'follow' makes them fall in
+  // behind a friendly monarch. A 'follow' target is itself validated to a living
+  // friendly monarch so the rally never points at a dead or enemy unit.
   setQueenRally: (cmd) => set((prev) =>
     produce(prev, (draft) => {
       const queen = draft.units.find(u => u.id === cmd.queenId);
       if (!queen || queen.ownerId !== draft.localPlayerId || queen.kind !== 'Queen') return;
-      draft.queenRallyPoints[cmd.queenId] = { x: cmd.rallyPoint.x, y: 0, z: cmd.rallyPoint.z };
+
+      const target = cmd.target; // capture so the narrowing survives the find() closure
+      if (target.mode === 'follow') {
+        // Validate the follow target is a living friendly monarch (King/Queen) so the
+        // rally never points at a dead or enemy unit.
+        const monarch = draft.units.find(u => u.id === target.monarchId);
+        if (!monarch || monarch.ownerId !== draft.localPlayerId || monarch.hp <= 0 ||
+            (monarch.kind !== 'King' && monarch.kind !== 'Queen')) return;
+        draft.queenRallyTargets[cmd.queenId] = { mode: 'follow', monarchId: monarch.id };
+      } else {
+        const { position } = target;
+        draft.queenRallyTargets[cmd.queenId] = {
+          mode: 'point',
+          position: { x: position.x, y: 0, z: position.z },
+        };
+      }
     })
   ),
 

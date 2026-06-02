@@ -5,7 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
  *
  * The player selects a lone Queen and taps the rally key twice — once to start
  * aiming the blue line, once to drop the rally point — committing a per-Queen
- * `queenRallyPoints` entry via the `setQueenRally` store action. From then on,
+ * `queenRallyTargets` entry via the `setQueenRally` store action. From then on,
  * every Unit that Queen spawns is handed a move order to that point in the spawn
  * loop (`src/game/state.ts`), so reinforcements march to a staging spot instead
  * of idling beside the Queen.
@@ -96,7 +96,7 @@ test.describe('Queen spawn rally point', () => {
           winner: null,
           unitOrders: {},
           queenPatrols: {},
-          queenRallyPoints: {},
+          queenRallyTargets: {},
           // Force the very next tick over the spawn interval threshold.
           lastSpawnAtMsByQueenId: {},
           selectedUnitIds: ['test-queen'],
@@ -107,14 +107,15 @@ test.describe('Queen spawn rally point', () => {
 
         // Contract 1a: rejecting a non-Queen target (the enemy Base) must not
         // create a rally entry — ownership/kind are validated in the action.
-        store.getState().setQueenRally({ queenId: 'test-enemy-base', rallyPoint });
-        const rejectedNonQueen = store.getState().queenRallyPoints['test-enemy-base'] === undefined;
+        store.getState().setQueenRally({ queenId: 'test-enemy-base', target: { mode: 'point', position: rallyPoint } });
+        const rejectedNonQueen = store.getState().queenRallyTargets['test-enemy-base'] === undefined;
 
         // Contract 1b: the owned Queen records the rally point.
-        store.getState().setQueenRally({ queenId: 'test-queen', rallyPoint });
-        const recorded = store.getState().queenRallyPoints['test-queen'];
+        store.getState().setQueenRally({ queenId: 'test-queen', target: { mode: 'point', position: rallyPoint } });
+        const recorded = store.getState().queenRallyTargets['test-queen'];
         const rallyRecorded =
-          Boolean(recorded) && recorded.x === rallyPoint.x && recorded.z === rallyPoint.z;
+          Boolean(recorded) && recorded.mode === 'point' &&
+          recorded.position.x === rallyPoint.x && recorded.position.z === rallyPoint.z;
 
         // Tick once past the spawn interval so the Queen spawns exactly one Unit.
         const nowMs = Date.now() + spawnIntervalMs + 1;
@@ -146,5 +147,91 @@ test.describe('Queen spawn rally point', () => {
     expect(result.rallyRecorded, 'setQueenRally should record the rally point for the owned Queen').toBe(true);
     expect(result.spawnedCount, 'the Queen should have spawned a Unit this tick').toBeGreaterThan(0);
     expect(result.everySpawnedRallied, 'every freshly spawned Unit should carry a move order to the rally point').toBe(true);
+  });
+
+  test('a follow rally on a friendly King makes the Queen\'s spawns trail him', async ({ page }) => {
+    test.setTimeout(60_000);
+    await openMatchWithTerrain(page);
+
+    const result = await page.evaluate(
+      async ({ queenPosition, dtMs, spawnIntervalMs }) => {
+        const store = (window as any).__rtsStore;
+        const state = store.getState();
+
+        const local = state.localPlayerId;
+        const otherOwner = state.units.find((u: any) => u.ownerId !== local)?.ownerId;
+        if (!otherOwner) return { setupError: 'no enemy player present' } as const;
+
+        const playerBase = {
+          id: 'test-player-base', ownerId: local, animal: 'Bear', kind: 'Base',
+          position: { x: 250, y: 0, z: 250 }, hp: 10000, maxHp: 10000,
+          attackDamage: 0, moveSpeed: 0, attackRange: 4, attackCooldownMs: 1000,
+          lastAttackAtMs: 0, rotation: 0,
+        };
+        const enemyBase = {
+          id: 'test-enemy-base', ownerId: otherOwner, animal: 'Bear', kind: 'Base',
+          position: { x: -250, y: 0, z: -250 }, hp: 10000, maxHp: 10000,
+          attackDamage: 0, moveSpeed: 0, attackRange: 4, attackCooldownMs: 1000,
+          lastAttackAtMs: 0, rotation: 0,
+        };
+        const queen: any = {
+          id: 'test-queen', ownerId: local, animal: 'Bear', kind: 'Queen',
+          position: { ...queenPosition }, hp: 200, maxHp: 200,
+          attackDamage: 10, moveSpeed: 18, attackRange: 4, attackCooldownMs: 1000,
+          lastAttackAtMs: 0, rotation: 0,
+        };
+        // The King the spawns should follow, set apart from the Queen so the follow
+        // order points somewhere distinct.
+        const king: any = {
+          id: 'test-king', ownerId: local, animal: 'Bear', kind: 'King',
+          position: { x: queenPosition.x - 30, y: 0, z: queenPosition.z - 20 },
+          hp: 500, maxHp: 500,
+          attackDamage: 50, moveSpeed: 18, attackRange: 4, attackCooldownMs: 1000,
+          lastAttackAtMs: 0, rotation: 0,
+        };
+
+        const preexistingIds = new Set([playerBase.id, enemyBase.id, queen.id, king.id]);
+
+        store.setState({
+          units: [playerBase, enemyBase, queen, king],
+          matchStarted: true, isPaused: false, gameOver: false, winner: null,
+          unitOrders: {}, queenPatrols: {}, queenRallyTargets: {},
+          lastSpawnAtMsByQueenId: {},
+          selectedUnitIds: ['test-queen'], deadUnitsToRemove: [],
+          targetCache: {}, aiThinkingOffset: {},
+        });
+
+        // Designate the King as the rally target. The action validates it is a
+        // living friendly monarch and stores a 'follow' target.
+        store.getState().setQueenRally({ queenId: 'test-queen', target: { mode: 'follow', monarchId: 'test-king' } });
+        const recorded = store.getState().queenRallyTargets['test-queen'];
+        const followRecorded =
+          Boolean(recorded) && recorded.mode === 'follow' && recorded.monarchId === 'test-king';
+
+        // Tick once past the spawn interval so the Queen spawns exactly one Unit.
+        const nowMs = Date.now() + spawnIntervalMs + 1;
+        store.getState().tick(dtMs / 1000, nowMs);
+
+        const after = store.getState();
+        const spawned = after.units.filter(
+          (u: any) => u.ownerId === local && u.kind === 'Unit' && !preexistingIds.has(u.id),
+        );
+        const spawnedCount = spawned.length;
+        // The newborn must be bound to follow the King (followMonarchId), and the
+        // follow branch in tick() must have already pinned its order toward him.
+        const everySpawnedFollows = spawnedCount > 0 && spawned.every(
+          (u: any) => u.followMonarchId === 'test-king',
+        );
+
+        return { followRecorded, spawnedCount, everySpawnedFollows };
+      },
+      { queenPosition: QUEEN_POSITION, dtMs: SIM_DT_MS, spawnIntervalMs: 5000 },
+    );
+
+    if ('setupError' in result) throw new Error(`setup failed: ${result.setupError}`);
+
+    expect(result.followRecorded, 'setQueenRally should record a follow target for the friendly King').toBe(true);
+    expect(result.spawnedCount, 'the Queen should have spawned a Unit this tick').toBeGreaterThan(0);
+    expect(result.everySpawnedFollows, 'every freshly spawned Unit should be set to follow the King').toBe(true);
   });
 });
