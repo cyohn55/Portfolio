@@ -1962,6 +1962,19 @@ export const useGameStore = create<Store>((set, get) => ({
       // Clear any existing unit orders for this queen
       delete draft.unitOrders[cmd.queenId];
 
+      // Drawing a patrol takes manual control back from a piloted Queen, exactly
+      // as moveCommand/attackTarget do: stop piloting her so the patrol actually
+      // takes effect. The pilot tick block (see the pilotedUnitId branch in tick())
+      // runs BEFORE the patrol branch, drives the unit purely from ESDF/pilotInput,
+      // drops any order, and continues past the rest of the per-unit logic — so a
+      // still-piloted Queen would hold the route but never walk it until a separate
+      // move order released piloting. This is the A→G (select King, toggle to Queen)
+      // case, where the Queen is left as the piloted unit when the patrol is drawn.
+      if (draft.pilotedUnitId === cmd.queenId) {
+        draft.pilotedUnitId = null;
+        pilotInput.reset();
+      }
+
       // Committing a patrol means the patrol-draw hold is over, so lift the
       // movement freeze on this queen here rather than relying solely on the
       // gesture handler's separate setMovementHold(null). Otherwise a missed or
