@@ -1196,7 +1196,15 @@ export const useGameStore = create<Store>((set, get) => ({
               // Update rotation to face movement direction
               unit.rotation = Math.atan2(direction.x, direction.z);
 
-              // Owl flying animation (Queen patrol)
+              // Locomotion animation flags. A patrolling Queen walks like any other
+              // moving unit, so drive the same per-animal cycle the order/piloting
+              // movers use — without this the renderer holds a single pose and the
+              // Queen appears to slide (e.g. a Frog stuck on Frog_F0 instead of hopping).
+              if (unit.animal === 'Frog' || unit.animal === 'Bunny') {
+                unit.isHopping = true;
+                const hopSpeed = unit.moveSpeed / 5; // Hop frequency
+                unit.hopPhase = ((unit.hopPhase || 0) + (hopSpeed * dtSec)) % 1;
+              }
               if (unit.animal === 'Owl') {
                 unit.isFlying = true;
                 const flapSpeed = 3; // Flaps per second
@@ -1214,10 +1222,10 @@ export const useGameStore = create<Store>((set, get) => ({
             } else {
               // Reached this patrol point, turn around toward the other end
               draft.queenPatrols[unit.id].currentTarget = patrol.currentTarget === 'end' ? 'start' : 'end';
-              // Owl landed when patrol point reached
-              if (unit.animal === 'Owl') {
-                unit.isFlying = false;
-              }
+              // Drop the moving-locomotion flags during the momentary pause at the
+              // turnaround so the pose settles to idle before the next leg.
+              if (unit.animal === 'Frog' || unit.animal === 'Bunny') unit.isHopping = false;
+              if (unit.animal === 'Owl') unit.isFlying = false;
             }
           }
 

@@ -220,32 +220,40 @@ export function MapInteraction() {
     return new THREE.Vector3(queen.position.x, queen.position.y, queen.position.z);
   };
 
-  // The local player's currently-selected Turtle units — the targets of the
-  // shell-lock toggle.
+  // The local player's currently-selected regular Turtle units — the targets of the
+  // shell-lock toggle (simultaneous primary+secondary press). Restricted to the Unit
+  // kind, like every combo caster, so a Turtle King/Queen is never shell-locked and a
+  // royal-only selection keeps the normal both-button behavior (move / patrol draw).
   const selectedFriendlyTurtleIds = (): string[] =>
     units
-      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Turtle' && selectedUnitIds.includes(unit.id))
+      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Turtle' && unit.kind === 'Unit' && selectedUnitIds.includes(unit.id))
       .map((unit) => unit.id);
 
-  // The local player's currently-selected Chicken units — the throwers of the
-  // egg ability (simultaneous primary+secondary press).
+  // The local player's currently-selected regular Chicken units — the throwers of the
+  // egg ability (simultaneous primary+secondary press). Restricted to the Unit kind so a
+  // Chicken King/Queen never throws and a royal-only selection keeps the normal both-button
+  // behavior (move / patrol draw).
   const selectedFriendlyChickenIds = (): string[] =>
     units
-      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Chicken' && selectedUnitIds.includes(unit.id))
+      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Chicken' && unit.kind === 'Unit' && selectedUnitIds.includes(unit.id))
       .map((unit) => unit.id);
 
-  // The local player's currently-selected Frog units — the casters of the
-  // tongue-grab ability (simultaneous primary+secondary press).
+  // The local player's currently-selected regular Frog units — the casters of the
+  // tongue-grab ability (simultaneous primary+secondary press). Restricted to the Unit kind
+  // so a Frog King/Queen never casts and a royal-only selection keeps the normal both-button
+  // behavior — crucially the lone-Queen patrol-draw gesture, which the combo would otherwise hijack.
   const selectedFriendlyFrogIds = (): string[] =>
     units
-      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Frog' && selectedUnitIds.includes(unit.id))
+      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Frog' && unit.kind === 'Unit' && selectedUnitIds.includes(unit.id))
       .map((unit) => unit.id);
 
-  // The local player's currently-selected Cat units — the casters of the Hiss
-  // knockback ability (simultaneous primary+secondary press).
+  // The local player's currently-selected regular Cat units — the casters of the Hiss
+  // knockback ability (simultaneous primary+secondary press). Restricted to the Unit kind so a
+  // Cat King/Queen never hisses and a royal-only selection keeps the normal both-button behavior
+  // (move / patrol draw).
   const selectedFriendlyCatIds = (): string[] =>
     units
-      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Cat' && selectedUnitIds.includes(unit.id))
+      .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Cat' && unit.kind === 'Unit' && selectedUnitIds.includes(unit.id))
       .map((unit) => unit.id);
 
   // The local player's currently-selected regular Bee units — the casters of the
@@ -600,6 +608,21 @@ export function MapInteraction() {
     }
   };
 
+  // Safety net for the patrol-draw freeze: the gesture pins the Queen in place
+  // (setMovementHold) on mouse-down, and the canvas mouse-up is what releases her.
+  // But a release that lands off the canvas — over a HUD overlay or outside the
+  // window — never reaches the canvas listener, so the pin (and thus the Queen's
+  // refusal to patrol) would leak indefinitely until the next on-canvas right
+  // press. Resolve any still-pending gesture on a window-level release or focus
+  // loss. The canvas mouse-up fires first for in-canvas releases (clearing
+  // `pending`), making this a no-op for the normal path.
+  const releaseStrandedPatrolGesture = () => {
+    if (patrolDragRef.current.pending) {
+      hidePatrolArrow();
+      resetPatrolDrag();
+    }
+  };
+
   useEffect(() => {
     const canvas = gl.domElement;
 
@@ -607,12 +630,16 @@ export function MapInteraction() {
     canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('mouseup', handleMouseUp);
     document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('mouseup', releaseStrandedPatrolGesture);
+    window.addEventListener('blur', releaseStrandedPatrolGesture);
 
     return () => {
       canvas.removeEventListener('mousedown', handleMouseDown);
       canvas.removeEventListener('mousemove', handleMouseMove);
       canvas.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('mouseup', releaseStrandedPatrolGesture);
+      window.removeEventListener('blur', releaseStrandedPatrolGesture);
     };
   }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, hiss, swarm, pickup, deliverCargo, primaryButton, secondaryButton]);
 
