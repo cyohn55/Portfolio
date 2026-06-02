@@ -23,6 +23,7 @@ import {
   otherMonarchKind,
   pilotInput,
   selectFollowersForPlacement,
+  selectionForMonarch,
   shouldChaseMonarch,
 } from '../components/Working/monarchPilot';
 import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandSetQueenRally, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, CommandOwlDeliver, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
@@ -2215,7 +2216,7 @@ export const useGameStore = create<Store>((set, get) => ({
     if (!monarch) return {};
 
     pilotInput.reset();
-    return { pilotedUnitId: monarch.id, selectedUnitIds: [monarch.id] };
+    return { pilotedUnitId: monarch.id, selectedUnitIds: selectionForMonarch(prev.units, monarch.id) };
   }),
 
   // Cycle the piloted monarch through the local player's animal pool (the "A"
@@ -2247,7 +2248,7 @@ export const useGameStore = create<Store>((set, get) => ({
         findMonarch(prev.units, prev.localPlayerId, animal, 'Queen');
       if (monarch) {
         pilotInput.reset();
-        return { pilotedUnitId: monarch.id, selectedUnitIds: [monarch.id] };
+        return { pilotedUnitId: monarch.id, selectedUnitIds: selectionForMonarch(prev.units, monarch.id) };
       }
     }
 
@@ -2270,7 +2271,7 @@ export const useGameStore = create<Store>((set, get) => ({
     if (!sibling) return {};
 
     pilotInput.reset();
-    return { pilotedUnitId: sibling.id, selectedUnitIds: [sibling.id] };
+    return { pilotedUnitId: sibling.id, selectedUnitIds: selectionForMonarch(prev.units, sibling.id) };
   }),
 
   // Toggle "rally" on the piloted monarch (Space) and select that animal's army.

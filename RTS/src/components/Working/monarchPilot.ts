@@ -123,6 +123,22 @@ export function findMonarch(
 }
 
 /**
+ * The selection to apply when a monarch becomes the piloted/selected unit: the
+ * monarch itself plus every army Unit currently following it (followMonarchId ===
+ * monarchId). Any unit trailing a King must be selected alongside him so the
+ * player can immediately command the band — otherwise reselecting a King that
+ * already has followers (e.g. cycling back to him with "A") would leave those
+ * followers trailing but unselected and unorderable. The monarch leads the list
+ * so its gold piloting ring / HUD highlight stays anchored to it.
+ */
+export function selectionForMonarch(units: readonly Unit[], monarchId: string): string[] {
+  const followerIds = units
+    .filter((unit) => unit.kind === 'Unit' && unit.followMonarchId === monarchId)
+    .map((unit) => unit.id);
+  return [monarchId, ...followerIds];
+}
+
+/**
  * A rallying follower keeps chasing its monarch only while it is farther than
  * the stop band; once inside it idles. Kept as a pure predicate so the rally
  * behaviour is testable without the whole tick.
