@@ -10,20 +10,14 @@ import { UNIT_PLACEMENT_INTERVAL_MS } from './Working/monarchPilot';
 const DOUBLE_PRESS_WINDOW_MS = 350;
 
 export function KeyboardShortcuts() {
+  // Only gate listener attachment on matchStarted. Every other piece of state the
+  // handlers need (units, bindings, the piloted unit, selection actions) is read
+  // fresh from the store via getState() at event time. This is deliberate: the
+  // store publishes a NEW units array reference every tick, so depending on it
+  // here would re-run this effect ~60x/sec — and each cleanup would clear the
+  // hold-to-place interval before it could reach UNIT_PLACEMENT_INTERVAL_MS,
+  // silently breaking the hold gesture.
   const matchStarted = useGameStore((s) => s.matchStarted);
-  const localPlayerId = useGameStore((s) => s.localPlayerId);
-  const selectedAnimalPool = useGameStore((s) => s.selectedAnimalPool);
-  const units = useGameStore((s) => s.units);
-  const selectUnits = useGameStore((s) => s.selectUnits);
-  const clearSelection = useGameStore((s) => s.clearSelection);
-  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
-  const pilotedUnitId = useGameStore((s) => s.pilotedUnitId);
-  const pilotCycleMonarch = useGameStore((s) => s.pilotCycleMonarch);
-  const togglePilotMonarchKind = useGameStore((s) => s.togglePilotMonarchKind);
-  const rallyToMonarch = useGameStore((s) => s.rallyToMonarch);
-  const incrementUnitPlacement = useGameStore((s) => s.incrementUnitPlacement);
-  const placeRalliedUnits = useGameStore((s) => s.placeRalliedUnits);
-  const resetUnitPlacement = useGameStore((s) => s.resetUnitPlacement);
 
   // Timestamp of the last Space press, for double-tap detection (both modes).
   const lastSpacePressMsRef = useRef(0);
@@ -47,6 +41,20 @@ export function KeyboardShortcuts() {
     const handleKeyDown = (event: KeyboardEvent) => {
       const token = keyboardEventToToken(event);
       if (token === '') return; // bare modifier press
+
+      const {
+        localPlayerId,
+        selectedAnimalPool,
+        units,
+        keyboardBindings,
+        pilotedUnitId,
+        selectUnits,
+        clearSelection,
+        pilotCycleMonarch,
+        togglePilotMonarchKind,
+        incrementUnitPlacement,
+        resetUnitPlacement,
+      } = useGameStore.getState();
 
       // Pause toggles regardless of selection state. Dispatch the shared toggle
       // event so the existing HUD pause menu opens (and drives the sim-halt).
@@ -131,6 +139,8 @@ export function KeyboardShortcuts() {
 
     const handleKeyUp = (event: KeyboardEvent) => {
       const token = keyboardEventToToken(event);
+      const { keyboardBindings, pilotedUnitId, placeRalliedUnits, rallyToMonarch } =
+        useGameStore.getState();
       if (token !== keyboardBindings.selectAll) return;
 
       stopPlacementHold();
@@ -162,7 +172,7 @@ export function KeyboardShortcuts() {
       window.removeEventListener('blur', stopPlacementHold);
       stopPlacementHold();
     };
-  }, [matchStarted, localPlayerId, selectedAnimalPool, units, selectUnits, clearSelection, keyboardBindings, pilotedUnitId, pilotCycleMonarch, togglePilotMonarchKind, rallyToMonarch, incrementUnitPlacement, placeRalliedUnits, resetUnitPlacement]);
+  }, [matchStarted]);
 
   // This component doesn't render anything, it just handles keyboard events
   return null;
