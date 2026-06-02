@@ -11,6 +11,7 @@ import { SpatialGrid } from '../utils/SpatialGrid';
 setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import { pathfinder } from '../components/Working/pathfinder';
+import { BLOCKER_LOOKAHEAD, deflectAroundBlockers, type SteerBlocker } from '../components/Working/movementSteering';
 import { clampToArena } from '../components/Working/arenaBoundary';
 import {
   type MonarchKind,
@@ -1047,7 +1048,32 @@ export const useGameStore = create<Store>((set, get) => ({
 
             // Move toward ordered position (but allow combat interruption)
             if (distanceToOrder > 0.5 && !isMovementPaused) {
-              const direction = normalize3D(subtract3D(steeringTarget(unit, order), unit.position));
+              let direction = normalize3D(subtract3D(steeringTarget(unit, order), unit.position));
+
+              // Bias the course around stationary friendly clumps so the unit commits to a way
+              // around instead of ramming them head-on (see movementSteering). Only own,
+              // currently-stationary teammates count as blockers: enemies are left to combat,
+              // and teammates that are themselves moving (have an order) are excluded so a group
+              // marching together doesn't deflect off one another. Restricted to army Units:
+              // a King/Queen instead plows straight through its own army via the make-way shove
+              // (clearPathForSelectedRoyals) and must not detour. Skipped on a bridge deck, where
+              // steering sideways would push toward the water — there the pathfinder's deck
+              // waypoints already track the centerline.
+              if (unit.kind === 'Unit' && ANIMAL_MOVEMENT_TYPES[unit.animal] === 'ground' && !onBridgeMidCrossing) {
+                const scanRadius = BLOCKER_LOOKAHEAD + UNIT_MINIMUM_SPACING + YETI_SPACING_BONUS;
+                const neighbors = draft.spatialGrid
+                  ? draft.spatialGrid.getNearbyUnits(unit.position, scanRadius)
+                  : draft.units;
+                const blockers: SteerBlocker[] = [];
+                for (const other of neighbors) {
+                  if (other.id === unit.id || other.kind === 'Base') continue;
+                  if (other.ownerId !== unit.ownerId) continue; // only own side; enemies are combat
+                  if (draft.unitOrders[other.id] !== undefined) continue; // moving teammate, not a clump
+                  blockers.push({ position: other.position, laneHalfWidth: minimumSpacingBetween(unit, other) });
+                }
+                direction = deflectAroundBlockers(unit.position, direction, blockers);
+              }
+
               const moveDistance = unit.moveSpeed * dtSec;
 
               // Update rotation to face movement direction (unless in combat)
@@ -2042,11 +2068,11 @@ export const useGameStore = create<Store>((set, get) => ({
         followerIds.push(unit.id);
       }
 
-      // Select the army (when any exists) so a right-click redirects it. Leaves
-      // the current selection untouched when this animal has no army units.
-      if (followerIds.length > 0) {
-        draft.selectedUnitIds = followerIds;
-      }
+      // Select the piloted monarch alongside its army so a right-click redirects
+      // the army while the monarch's gold piloting ring stays visible — a piloted
+      // King/Queen is always selected (see pilotMonarchBySlot), and rally must not
+      // drop it. The monarch leads the id list; followers (if any) trail it.
+      draft.selectedUnitIds = [monarch.id, ...followerIds];
     })
   ),
 
