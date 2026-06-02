@@ -1148,6 +1148,65 @@ export const useGameStore = create<Store>((set, get) => ({
             }
           }
 
+          // PRIORITY 1b: A lone Queen with a patrol route walks back and forth
+          // between her two patrol points until given a new order. This sits
+          // between the explicit move order (Priority 1) and the idle/combat
+          // fallback (Priority 2): an active patrol drives the Queen's movement,
+          // while a Queen without one still falls through to defend herself.
+          // Patrols only ever exist for the local player's Queen (see setPatrol),
+          // so this branch must live inside the isPlayerUnit block to run at all.
+          else if (patrol && unit.kind === 'Queen') {
+            unit.unitState = 'moving_to_order';
+            const targetPos = patrol.currentTarget === 'end' ? patrol.endPosition : patrol.startPosition;
+            const dist = distance3D(unit.position, targetPos);
+
+            // Owl landing logic - land if within 15 units for more than 5 seconds
+            if (unit.animal === 'Owl' && unit.isFlying && dist <= 15) {
+              if (!unit.nearDestinationSinceMs) {
+                unit.nearDestinationSinceMs = nowMs;
+              } else if (nowMs - unit.nearDestinationSinceMs >= 5000) {
+                // Been near destination for 5+ seconds, land
+                unit.isFlying = false;
+                delete unit.nearDestinationSinceMs;
+              }
+            } else if (unit.animal === 'Owl' && dist > 15) {
+              // Reset timer if moved away from destination
+              delete unit.nearDestinationSinceMs;
+            }
+
+            if (dist > 1) {
+              // Move toward the current patrol target
+              const direction = normalize3D(subtract3D(steeringTarget(unit, targetPos), unit.position));
+              const moveDistance = unit.moveSpeed * dtSec;
+
+              // Update rotation to face movement direction
+              unit.rotation = Math.atan2(direction.x, direction.z);
+
+              // Owl flying animation (Queen patrol)
+              if (unit.animal === 'Owl') {
+                unit.isFlying = true;
+                const flapSpeed = 3; // Flaps per second
+                unit.wingPhase = ((unit.wingPhase || 0) + (flapSpeed * dtSec)) % 1;
+              }
+
+              const newPosition = {
+                x: unit.position.x + direction.x * moveDistance,
+                y: unit.position.y,
+                z: unit.position.z + direction.z * moveDistance
+              };
+
+              // Apply collision detection
+              unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
+            } else {
+              // Reached this patrol point, turn around toward the other end
+              draft.queenPatrols[unit.id].currentTarget = patrol.currentTarget === 'end' ? 'start' : 'end';
+              // Owl landed when patrol point reached
+              if (unit.animal === 'Owl') {
+                unit.isFlying = false;
+              }
+            }
+          }
+
           // PRIORITY 2: When idle (no movement orders), check for attack response
           else {
             // Debug: Log when entering Priority 2 (idle state) logic
@@ -1315,56 +1374,6 @@ export const useGameStore = create<Store>((set, get) => ({
           if (distanceToOrder <= 0.5) {
             delete draft.unitOrders[unit.id];
             delete unit.arrivedAtDestinationMs;
-          }
-        } else if (patrol && unit.kind === 'Queen') {
-          // Queen patrol behavior
-          const targetPos = patrol.currentTarget === 'end' ? patrol.endPosition : patrol.startPosition;
-          const dist = distance3D(unit.position, targetPos);
-
-          // Owl landing logic - land if within 15 units for more than 5 seconds
-          if (unit.animal === 'Owl' && unit.isFlying && dist <= 15) {
-            if (!unit.nearDestinationSinceMs) {
-              unit.nearDestinationSinceMs = nowMs;
-            } else if (nowMs - unit.nearDestinationSinceMs >= 5000) {
-              // Been near destination for 5+ seconds, land
-              unit.isFlying = false;
-              delete unit.nearDestinationSinceMs;
-            }
-          } else if (unit.animal === 'Owl' && dist > 15) {
-            // Reset timer if moved away from destination
-            delete unit.nearDestinationSinceMs;
-          }
-
-          if (dist > 1) {
-            // Move toward patrol target
-            const direction = normalize3D(subtract3D(steeringTarget(unit, targetPos), unit.position));
-            const moveDistance = unit.moveSpeed * dtSec;
-
-            // Update rotation to face movement direction
-            unit.rotation = Math.atan2(direction.x, direction.z);
-
-            // Owl flying animation (Queen patrol)
-            if (unit.animal === 'Owl') {
-              unit.isFlying = true;
-              const flapSpeed = 3; // Flaps per second
-              unit.wingPhase = ((unit.wingPhase || 0) + (flapSpeed * dtSec)) % 1;
-            }
-
-            const newPosition = {
-              x: unit.position.x + direction.x * moveDistance,
-              y: unit.position.y,
-              z: unit.position.z + direction.z * moveDistance
-            };
-
-            // Apply collision detection
-            unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
-          } else {
-            // Reached patrol point, switch to other end
-            draft.queenPatrols[unit.id].currentTarget = patrol.currentTarget === 'end' ? 'start' : 'end';
-            // Owl landed when patrol point reached
-            if (unit.animal === 'Owl') {
-              unit.isFlying = false;
-            }
           }
         }
 
