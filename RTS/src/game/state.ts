@@ -1891,6 +1891,13 @@ export const useGameStore = create<Store>((set, get) => ({
         // Set new movement order
         draft.unitOrders[id] = cmd.target;
 
+        // Cancel any patrol route: an explicit move order replaces the patrol, so
+        // the Queen must NOT resume walking the route once she reaches the order's
+        // destination. Without this the order's arrival deletes only unitOrders and
+        // the still-present patrol immediately recaptures her. A patrol resumes only
+        // when the player draws a new one. See the Queen patrol branch in tick().
+        delete draft.queenPatrols[id];
+
         // Break any monarch rally: an explicit destination means the player wants
         // this unit *here*, not pinned to the King/Queen. Without this the tick's
         // follow logic re-pins the order to the monarch every frame, so a rallied
@@ -2001,6 +2008,11 @@ export const useGameStore = create<Store>((set, get) => ({
 
         // Set movement target to enemy position
         draft.unitOrders[id] = { x: target.position.x, y: 0, z: target.position.z };
+
+        // Cancel any patrol route (see moveCommand): an explicit attack order
+        // replaces the patrol so the Queen won't snap back to her route after the
+        // engagement instead of staying on the new command.
+        delete draft.queenPatrols[id];
 
         // Break any monarch rally (see moveCommand): an explicit attack order
         // takes the unit off "follow the King/Queen" so it isn't re-pinned to
