@@ -1816,6 +1816,15 @@ export const useGameStore = create<Store>((set, get) => ({
         const u = draft.units.find((x) => x.id === id);
         if (!u || u.ownerId !== draft.localPlayerId) continue; // Only allow moving own units
 
+        // A mouse move order takes manual control back from a piloted King/Queen: stop
+        // piloting it so the order actually takes effect. The pilot tick block drives the
+        // unit purely from ESDF/pilotInput and deletes any move order each frame, so a
+        // selected-but-piloted monarch would otherwise ignore the right-click.
+        if (draft.pilotedUnitId === id) {
+          draft.pilotedUnitId = null;
+          pilotInput.reset();
+        }
+
         // Validate the destination tile only — whether the unit can actually
         // reach it is the pathfinder's job (grid A* routes around water/bridges),
         // not a per-unit straight-line raster precheck.
@@ -1912,6 +1921,13 @@ export const useGameStore = create<Store>((set, get) => ({
       for (const id of cmd.unitIds) {
         const unit = draft.units.find(u => u.id === id);
         if (!unit || unit.ownerId !== draft.localPlayerId) continue;
+
+        // A mouse attack order takes manual control back from a piloted King/Queen (see
+        // moveCommand): stop piloting it so the order isn't dropped by the pilot tick block.
+        if (draft.pilotedUnitId === id) {
+          draft.pilotedUnitId = null;
+          pilotInput.reset();
+        }
 
         // Set movement target to enemy position
         draft.unitOrders[id] = { x: target.position.x, y: 0, z: target.position.z };
