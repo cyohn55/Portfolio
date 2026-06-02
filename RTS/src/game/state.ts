@@ -1954,7 +1954,26 @@ export const useGameStore = create<Store>((set, get) => ({
     selectedUnitIds: Array.from(new Set([...prev.selectedUnitIds, ...unitIds]))
   })),
   
-  clearSelection: () => set({ selectedUnitIds: [] }),
+  // Deselecting fully releases control of the player's units, not just the selection
+  // highlight: it stops piloting the monarch (so ESDF/stick no longer drives it) and breaks
+  // any rally (followers drop their follow order and stop trailing). Without this a deselect
+  // only emptied selectedUnitIds while pilotedUnitId and followMonarchId persisted, leaving
+  // the King/Queen and its army still under the player's control after they had let go.
+  clearSelection: () => {
+    pilotInput.reset();
+    set((prev) =>
+      produce(prev, (draft) => {
+        draft.selectedUnitIds = [];
+        draft.pilotedUnitId = null;
+        for (const unit of draft.units) {
+          if (unit.followMonarchId !== undefined) {
+            delete unit.followMonarchId;
+            delete draft.unitOrders[unit.id]; // drop the synthetic follow order so it halts
+          }
+        }
+      })
+    );
+  },
 
   // --- Direct monarch piloting -------------------------------------------------
   // Start piloting the King of the local player's animal in `slotIndex`
