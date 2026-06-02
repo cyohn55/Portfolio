@@ -49,6 +49,14 @@ export const UNIT_PLACEMENT_INTERVAL_MS = 750;
  */
 export const UNIT_PLACEMENT_REPEAT_INTERVAL_MS = 500;
 
+/**
+ * Two presses of the Select All / Rally input within this window count as a
+ * "double tap" that escalates from rallying one animal's army to selecting every
+ * unit. Shared by both input layers (keyboard Space and the controller's bound
+ * button) so the tap / double-tap / hold gesture behaves identically on each.
+ */
+export const DOUBLE_PRESS_WINDOW_MS = 350;
+
 /** The two pilotable monarch kinds, in the order the toggle cycles them. */
 export type MonarchKind = Extract<UnitKind, 'King' | 'Queen'>;
 

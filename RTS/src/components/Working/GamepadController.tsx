@@ -11,6 +11,11 @@ import {
 } from './controlBindings';
 import { type AbilityComboCursor, tryFireAbilityCombo } from './abilityCombo';
 import { gamepadInput } from './gamepadInput';
+import {
+  DOUBLE_PRESS_WINDOW_MS,
+  UNIT_PLACEMENT_INTERVAL_MS,
+  UNIT_PLACEMENT_REPEAT_INTERVAL_MS,
+} from './monarchPilot';
 
 /**
  * GamepadController — the single per-frame gamepad poller. It lives inside the
@@ -38,9 +43,12 @@ const CAMERA_ACTIONS: ReadonlySet<ControlActionId> = new Set([
   'cameraForward', 'cameraBackward', 'cameraLeft', 'cameraRight', 'cameraZoomIn', 'cameraZoomOut',
 ]);
 
-// Discrete actions fired once per press (rising edge).
+// Discrete actions fired once per press (rising edge). 'selectAll' is handled
+// separately below: like the keyboard's Space it is a multi-gesture action (tap
+// rallies, double-tap selects everything, hold deploys a proportionate number of
+// units), so it needs both the rising AND falling edge, not a one-shot tap.
 const TAP_ACTIONS: readonly ControlActionId[] = [
-  'primaryAction', 'secondaryAction', 'useAbility', 'selectAll',
+  'primaryAction', 'secondaryAction', 'useAbility',
   'selectGroup1', 'selectGroup2', 'selectGroup3', 'deselect',
   'pilotCycleMonarch', 'pilotMonarch1', 'pilotMonarch2', 'pilotMonarch3', 'pilotToggleMonarch', 'pause',
 ];
@@ -62,6 +70,85 @@ export function GamepadController() {
   // Previous-frame active state per tap action, for edge detection.
   const prevActive = useRef<Record<string, boolean>>({});
 
+  // Select All / Rally gesture state, mirroring the keyboard's hold-Space handling
+  // (see KeyboardShortcuts). The bound button (default X, or e.g. a trigger once
+  // rebound) is multi-gesture: a quick tap rallies the piloted army, a double tap
+  // selects every unit, and a sustained hold designates one follower per interval
+  // (the teardrop count) to deploy at the monarch on release. Held off the React
+  // path in refs so the 60 Hz poll never triggers a re-render.
+  const lastSelectAllPressMsRef = useRef(0);
+  const placementFirstTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const placementRepeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const selectAllAwaitingReleaseRef = useRef(false);
+
+  // Stop both phases of the placement-hold timer (on release, double tap, pad
+  // disconnect, or unmount). Only one phase is ever live, but clearing both is safe.
+  const stopPlacementHold = () => {
+    if (placementFirstTimeoutRef.current !== null) {
+      clearTimeout(placementFirstTimeoutRef.current);
+      placementFirstTimeoutRef.current = null;
+    }
+    if (placementRepeatIntervalRef.current !== null) {
+      clearInterval(placementRepeatIntervalRef.current);
+      placementRepeatIntervalRef.current = null;
+    }
+  };
+
+  // Rising edge of the Select All / Rally button. A double tap immediately selects
+  // every unit; a single press starts the hold-to-deploy timer (only while piloting,
+  // where a placement is possible) and defers its tap-vs-hold meaning to the release.
+  const handleSelectAllPress = () => {
+    const state = useGameStore.getState();
+    if (state.isPaused || state.gameOver || !state.matchStarted) return;
+
+    const now = performance.now();
+    const isDoublePress = now - lastSelectAllPressMsRef.current <= DOUBLE_PRESS_WINDOW_MS;
+    lastSelectAllPressMsRef.current = now;
+
+    if (isDoublePress) {
+      // Abandon the first tap's in-progress hold so the double tap neither places
+      // units nor re-toggles a rally; just select everything (piloting or not).
+      stopPlacementHold();
+      selectAllAwaitingReleaseRef.current = false;
+      state.resetUnitPlacement();
+      const ids = state.units
+        .filter((unit) => unit.ownerId === state.localPlayerId && unit.kind !== 'Base')
+        .map((unit) => unit.id);
+      if (ids.length > 0) state.selectUnits(ids);
+      return;
+    }
+
+    selectAllAwaitingReleaseRef.current = true;
+    if (state.pilotedUnitId) {
+      stopPlacementHold();
+      // First follower after the initial hold, then ramp up at the faster repeat rate.
+      placementFirstTimeoutRef.current = setTimeout(() => {
+        placementFirstTimeoutRef.current = null;
+        useGameStore.getState().incrementUnitPlacement();
+        placementRepeatIntervalRef.current = setInterval(() => {
+          useGameStore.getState().incrementUnitPlacement();
+        }, UNIT_PLACEMENT_REPEAT_INTERVAL_MS);
+      }, UNIT_PLACEMENT_INTERVAL_MS);
+    }
+  };
+
+  // Falling edge of the Select All / Rally button. A hold that designated at least
+  // one follower deploys them at the monarch; a quick tap while piloting rallies the
+  // army instead. A double tap already consumed (and cleared) the awaiting flag.
+  const handleSelectAllRelease = () => {
+    const state = useGameStore.getState();
+    stopPlacementHold();
+    if (!selectAllAwaitingReleaseRef.current) return;
+    selectAllAwaitingReleaseRef.current = false;
+
+    const designated = useGameStore.getState().unitPlacementCount;
+    if (designated >= 1) {
+      state.placeRalliedUnits(designated);
+    } else if (state.pilotedUnitId) {
+      state.rallyToMonarch();
+    }
+  };
+
   // Create / tear down the reticle DOM element. Hidden until a stick is moved.
   useEffect(() => {
     const reticle = document.createElement('div');
@@ -81,9 +168,13 @@ export function GamepadController() {
 
     return () => {
       gamepadInput.reset();
+      stopPlacementHold();
       if (reticleElRef.current) document.body.removeChild(reticleElRef.current);
       reticleElRef.current = null;
     };
+    // stopPlacementHold only touches refs (stable), so this one-time setup/teardown
+    // effect intentionally runs once; re-subscribing per render is unnecessary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Project a unit's world position to screen pixels.
@@ -192,20 +283,6 @@ export function GamepadController() {
         }
         break;
       }
-      case 'selectAll': {
-        // Mirror the keyboard: while piloting, this rallies the monarch's army
-        // to follow it instead of selecting everything (which would just clear
-        // the single-unit pilot selection).
-        if (state.pilotedUnitId) {
-          state.rallyToMonarch();
-          break;
-        }
-        const ids = state.units
-          .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base')
-          .map((u) => u.id);
-        if (ids.length > 0) state.selectUnits(ids);
-        break;
-      }
       case 'selectGroup1':
       case 'selectGroup2':
       case 'selectGroup3': {
@@ -257,6 +334,10 @@ export function GamepadController() {
     if (!gamepad) {
       gamepadInput.reset();
       prevActive.current = {};
+      // Abandon any in-progress hold so a disconnect mid-gesture can't strand the
+      // timer (and a lingering teardrop) with no falling edge ever arriving.
+      stopPlacementHold();
+      selectAllAwaitingReleaseRef.current = false;
       if (reticle) reticle.style.display = 'none';
       return;
     }
@@ -304,6 +385,13 @@ export function GamepadController() {
       if (active && !wasActive) fireAction(actionId);
       prevActive.current[actionId] = active;
     }
+
+    // --- Select All / Rally (tap / double-tap / hold), on both edges. ---
+    const selectAllActive = isControllerTokenActive(gamepad, controllerBindings.selectAll);
+    const selectAllWasActive = prevActive.current.selectAll ?? false;
+    if (selectAllActive && !selectAllWasActive) handleSelectAllPress();
+    else if (!selectAllActive && selectAllWasActive) handleSelectAllRelease();
+    prevActive.current.selectAll = selectAllActive;
   });
 
   return null;

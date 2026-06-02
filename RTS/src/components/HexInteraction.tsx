@@ -474,6 +474,30 @@ export function MapInteraction() {
         currentMouse: screenPos
       };
     } else if (event.button === secondaryButton) { // Secondary (command) button
+      // When a spawn-rally aim is armed (player pressed the rally key), the
+      // secondary click COMMITS the rally instead of starting a patrol or move:
+      // a friendly King under the cursor makes the Queen's future spawns follow
+      // him, otherwise the cursor's ground point becomes a fixed staging spot.
+      // Resetting here re-readies the gesture so a fresh key-press + click can set
+      // a new rally point at any time.
+      if (rallyPlacementRef.current.active) {
+        event.preventDefault();
+        const { queenId } = rallyPlacementRef.current;
+        const aim = resolveRallyAim(getScreenPosition(event));
+        resetRallyPlacement();
+        if (queenId) {
+          if (aim.king) {
+            setQueenRally({ queenId, target: { mode: 'follow', monarchId: aim.king.id } });
+          } else if (aim.world) {
+            setQueenRally({
+              queenId,
+              target: { mode: 'point', position: { x: aim.world.x, y: 0, z: aim.world.z } },
+            });
+          }
+        }
+        return;
+      }
+
       // With exactly one Queen selected, the secondary button is the patrol
       // gesture: arm it only after a PATROL_HOLD_MS hold (a quick release falls
       // back to a normal move order in handleMouseUp). The competing immediate
@@ -589,42 +613,31 @@ export function MapInteraction() {
       return;
     }
 
-    // Spawn-rally gesture (default 'R'): a two-tap toggle on a lone selected Queen.
-    // First tap arms placement and reveals the blue line; second tap commits the
-    // rally — on a friendly King the Queen's future spawns follow him, otherwise
-    // they march to the cursor's ground point.
+    // Spawn-rally gesture (default 'R'): press the rally key with a single Queen
+    // selected to ARM placement (the blue line follows the cursor), then commit
+    // the point with a secondary-button (right) click — handled in handleMouseDown.
+    // Pressing the key again re-anchors the aim to the current selection; Escape
+    // cancels. Splitting arm (key) from commit (click) lets the player aim with
+    // the cursor and drop the rally with the same button used for move orders.
     if (token !== '' && token === keyboardBindings.setQueenRally) {
       event.preventDefault();
       // The OS auto-repeats keydown while the key is held; ignore the repeats so a
-      // held key can't arm and immediately commit on a single press.
+      // single press arms exactly once.
       if (event.repeat) return;
 
-      if (!rallyPlacementRef.current.active) {
-        // First tap: only a single owned Queen can carry a rally point.
-        const queen = isSelectedQueenOnly();
-        if (!queen) return;
-        rallyPlacementRef.current = { active: true, queenId: queen.id };
-
-        const origin = queenWorldPos(queen.id);
-        const aim = resolveRallyAim(lastMouseScreenRef.current);
-        if (origin && aim.world) {
-          updateRallyArrow(origin, aim.world);
-        }
-      } else {
-        // Second tap: commit. A King under the cursor becomes a follow target; an
-        // empty spot becomes a fixed ground rally point.
-        const { queenId } = rallyPlacementRef.current;
-        const aim = resolveRallyAim(lastMouseScreenRef.current);
+      // Only a single owned Queen can carry a rally point. If the selection is no
+      // longer a lone Queen, abandon any stale aim rather than leaving it armed.
+      const queen = isSelectedQueenOnly();
+      if (!queen) {
         resetRallyPlacement();
-        if (!queenId) return;
-        if (aim.king) {
-          setQueenRally({ queenId, target: { mode: 'follow', monarchId: aim.king.id } });
-        } else if (aim.world) {
-          setQueenRally({
-            queenId,
-            target: { mode: 'point', position: { x: aim.world.x, y: 0, z: aim.world.z } },
-          });
-        }
+        return;
+      }
+      rallyPlacementRef.current = { active: true, queenId: queen.id };
+
+      const origin = queenWorldPos(queen.id);
+      const aim = resolveRallyAim(lastMouseScreenRef.current);
+      if (origin && aim.world) {
+        updateRallyArrow(origin, aim.world);
       }
     }
   };

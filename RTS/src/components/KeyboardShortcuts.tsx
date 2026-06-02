@@ -3,14 +3,10 @@ import { useGameStore } from '../game/state';
 import { keyboardCoordinator } from '../utils/keyboardCoordination';
 import { keyboardEventToToken } from './Working/controlBindings';
 import {
+  DOUBLE_PRESS_WINDOW_MS,
   UNIT_PLACEMENT_INTERVAL_MS,
   UNIT_PLACEMENT_REPEAT_INTERVAL_MS,
 } from './Working/monarchPilot';
-
-// Two Space presses within this window count as a "double tap" that escalates
-// the selection from one animal's army to every unit. (While piloting the first
-// press also rallies; otherwise the first press just selects the army.)
-const DOUBLE_PRESS_WINDOW_MS = 350;
 
 export function KeyboardShortcuts() {
   // Only gate listener attachment on matchStarted. Every other piece of state the

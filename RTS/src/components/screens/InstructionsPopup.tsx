@@ -48,7 +48,7 @@ const KEYBOARD_MOUSE_GROUPS: readonly ControlGroup[] = [
       { input: 'Right-Click', action: 'Move / Attack' },
       { input: 'Left + Right Click', action: "Use the selected animal's special ability" },
       { input: 'Right-Hold on Queen', action: 'Draw a patrol route' },
-      { input: 'R, then R', action: "Set a lone Queen's spawn rally point" },
+      { input: 'R, then Right-Click', action: "Set a lone Queen's spawn rally point" },
     ],
   },
   {
@@ -81,7 +81,7 @@ const CONTROLLER_GROUPS: readonly ControlGroup[] = [
     entries: [
       { input: 'A', action: 'Select the animal under the reticle' },
       { input: 'LB + A / B / Y', action: 'Select your 1st / 2nd / 3rd animal' },
-      { input: 'X', action: 'Select all your animals' },
+      { input: 'Double-Tap X', action: 'Select all your animals' },
       { input: 'Y', action: 'Deselect all' },
     ],
   },
@@ -97,7 +97,8 @@ const CONTROLLER_GROUPS: readonly ControlGroup[] = [
     entries: [
       { input: 'D-Pad ↑ / ← / →', action: 'Pilot your 1st / 2nd / 3rd King' },
       { input: 'D-Pad ↓', action: 'Toggle the King / Queen' },
-      { input: 'X (while piloting)', action: 'Rally that army to follow' },
+      { input: 'Tap X', action: 'Rally that army to follow' },
+      { input: 'Hold X', action: 'Deploy units at the monarch' },
     ],
   },
   {
