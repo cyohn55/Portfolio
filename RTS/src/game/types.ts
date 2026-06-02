@@ -272,6 +272,11 @@ export interface GameState {
   selectedUnitIds: string[]; // currently selected units
   unitOrders: Record<string, Position3D>; // unit id -> target position for movement orders
   queenPatrols: Record<string, PatrolRoute>; // queen id -> patrol route
+  // Per-Queen spawn rally point. When set, every Unit that Queen spawns is
+  // immediately given a move order to this point, so reinforcements gather at a
+  // player-chosen staging location instead of milling around the Queen. Only the
+  // local player's Queens ever appear here (setQueenRally validates ownership).
+  queenRallyPoints: Record<string, Position3D>; // queen id -> spawn rally point
   matchStats: MatchStats; // scoring counters for the current match (local player)
   projectiles: Projectile[]; // in-flight egg projectiles (Chicken ability)
   // Id of the local player's King/Queen the player is directly piloting (A
@@ -303,6 +308,11 @@ export interface CommandSetPatrol {
   queenId: string;
   startPosition: Position3D;
   endPosition: Position3D;
+}
+
+export interface CommandSetQueenRally {
+  queenId: string;
+  rallyPoint: Position3D;
 }
 
 export interface CommandAttackTarget {

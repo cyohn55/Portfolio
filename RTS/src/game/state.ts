@@ -25,7 +25,7 @@ import {
   selectFollowersForPlacement,
   shouldChaseMonarch,
 } from '../components/Working/monarchPilot';
-import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, CommandOwlDeliver, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
+import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandSetQueenRally, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, CommandOwlDeliver, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 import * as leaderboardModule from '../components/Working/leaderboard';
 import * as leaderboardRemoteModule from '../components/Working/leaderboardRemote';
@@ -233,6 +233,7 @@ type Store = GameState & {
   tick: (dtSec: number, nowMs: number) => void;
   moveCommand: (cmd: CommandMoveUnits) => void;
   setPatrol: (cmd: CommandSetPatrol) => void;
+  setQueenRally: (cmd: CommandSetQueenRally) => void;
   setMovementHold: (unitId: string | null) => void;
   attackTarget: (cmd: CommandAttackTarget) => void;
   selectUnits: (unitIds: string[]) => void;
@@ -432,6 +433,7 @@ export const useGameStore = create<Store>((set, get) => ({
   unitPlacementCount: 0,
   unitOrders: {},
   queenPatrols: {},
+  queenRallyPoints: {},
   unitCountCache: {},
   spatialGrid: null,
   lastRegenCheckMs: 0,
@@ -544,7 +546,7 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, movementHeldUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, movementHeldUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyPoints: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
@@ -596,6 +598,7 @@ export const useGameStore = create<Store>((set, get) => ({
       movementHeldUnitId: null,
       unitPlacementCount: 0,
       unitOrders: {},
+      queenRallyPoints: {},
       lastSpawnAtMsByQueenId: {},
       unitCountCache: {},
       spatialGrid: null,
@@ -833,6 +836,17 @@ export const useGameStore = create<Store>((set, get) => ({
             // Find a collision-free spawn position
             const finalSpawnPos = checkCollision(tentativeSpawnPos, tempUnit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
             tempUnit.position = finalSpawnPos;
+
+            // Spawn rally point: if the player has set one on this Queen, march the
+            // newborn straight there instead of letting it idle by the Queen. A fresh
+            // unit has no cached path or combat state, so simply seeding the order and
+            // the moving_to_order state is enough for PRIORITY 1 movement to pick it up.
+            const rallyPoint = draft.queenRallyPoints[q.id];
+            if (rallyPoint) {
+              draft.unitOrders[tempUnit.id] = { ...rallyPoint };
+              tempUnit.unitState = 'moving_to_order';
+            }
+
             draft.units.push(tempUnit);
 
             // Scoring + post-game stats: count units generated per side. Only
@@ -2025,6 +2039,18 @@ export const useGameStore = create<Store>((set, get) => ({
       delete queen.movementPausedUntilMs;
       delete queen.firstBlockedAtMs;
       delete queen.nearDestinationSinceMs;
+    })
+  ),
+
+  // Set a Queen's spawn rally point (the two-tap 'R' gesture). Validated to the
+  // local player's Queens so a stray id can't redirect an enemy's spawns. From
+  // here on, every Unit this Queen spawns is handed a move order to rallyPoint in
+  // the spawn loop, gathering reinforcements at the player's chosen staging spot.
+  setQueenRally: (cmd) => set((prev) =>
+    produce(prev, (draft) => {
+      const queen = draft.units.find(u => u.id === cmd.queenId);
+      if (!queen || queen.ownerId !== draft.localPlayerId || queen.kind !== 'Queen') return;
+      draft.queenRallyPoints[cmd.queenId] = { x: cmd.rallyPoint.x, y: 0, z: cmd.rallyPoint.z };
     })
   ),
 

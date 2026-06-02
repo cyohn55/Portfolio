@@ -1,9 +1,9 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, type RefObject } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useGameStore } from '../game/state';
 import { ANIMAL_MOVEMENT_TYPES } from '../game/types';
 import * as THREE from 'three';
-import { tokenToMouseButton } from './Working/controlBindings';
+import { tokenToMouseButton, keyboardEventToToken } from './Working/controlBindings';
 
 // A single left-click selects the nearest own unit whose projected center is
 // within this many screen pixels of the cursor. The instanced unit models are
@@ -21,6 +21,40 @@ const PATROL_HOLD_MS = 750;
 // from a single event, independent of which one triggered it.
 const DOM_BUTTON_TO_BUTTONS_MASK: Record<number, number> = { 0: 1, 1: 4, 2: 2 };
 const buttonsMaskFor = (domButton: number): number => DOM_BUTTON_TO_BUTTONS_MASK[domButton] ?? 0;
+
+// Stroke colors for the two dotted-line indicators. The Queen's patrol route is
+// gold (matching her gold ring); her spawn rally line is blue so the two
+// gestures read as visually distinct at a glance.
+const PATROL_ARROW_COLOR = '#ffd700';
+const RALLY_ARROW_COLOR = '#1e90ff';
+
+// Build a flat dotted-line-with-arrowhead indicator in the given color. The line
+// itself is a zero-height div whose dotted top border is the visible stroke; the
+// arrowhead is a child glyph pinned to the far end so it inherits the parent's
+// rotation and points along the line. Shared by the patrol and rally indicators.
+function createDottedArrow(strokeColor: string): HTMLDivElement {
+  const arrow = document.createElement('div');
+  arrow.style.position = 'absolute';
+  arrow.style.height = '0px';
+  arrow.style.borderTop = `3px dotted ${strokeColor}`;
+  arrow.style.transformOrigin = 'left center';
+  arrow.style.pointerEvents = 'none';
+  arrow.style.display = 'none';
+  arrow.style.zIndex = '1001';
+
+  const arrowHead = document.createElement('span');
+  arrowHead.innerHTML = '➤'; // ➤ points along the line's +x axis
+  arrowHead.style.position = 'absolute';
+  arrowHead.style.right = '0px';
+  arrowHead.style.top = '50%';
+  arrowHead.style.transform = 'translate(50%, -50%)';
+  arrowHead.style.color = strokeColor;
+  arrowHead.style.fontSize = '18px';
+  arrowHead.style.lineHeight = '0';
+  arrow.appendChild(arrowHead);
+
+  return arrow;
+}
 
 interface DragState {
   isDragging: boolean;
@@ -52,6 +86,7 @@ export function MapInteraction() {
   const selectUnits = useGameStore((s) => s.selectUnits);
   const addToSelection = useGameStore((s) => s.addToSelection);
   const setPatrol = useGameStore((s) => s.setPatrol);
+  const setQueenRally = useGameStore((s) => s.setQueenRally);
   const setMovementHold = useGameStore((s) => s.setMovementHold);
   const toggleTurtleShell = useGameStore((s) => s.toggleTurtleShell);
   const throwEggs = useGameStore((s) => s.throwEggs);
@@ -87,10 +122,25 @@ export function MapInteraction() {
     holdTimerId: null
   });
 
+  // Spawn-rally gesture state. The rally key is a two-tap toggle on a lone selected
+  // Queen: the first tap arms placement (the blue line follows the cursor), the
+  // second drops the rally point. queenId is captured on the first tap so the
+  // commit targets that Queen even if the cursor wanders.
+  const rallyPlacementRef = useRef<{ active: boolean; queenId: string | null }>({
+    active: false,
+    queenId: null,
+  });
+
+  // Latest cursor position in screen pixels, refreshed on every mouse move. The
+  // rally gesture is keyboard-driven, so the key handler has no event coordinates
+  // of its own; it reads the cursor from here to anchor and commit the blue line.
+  const lastMouseScreenRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
   // Create selection box visual element
   const selectionBoxRef = useRef<HTMLDivElement | null>(null);
-  // Create patrol arrow visual element
+  // Create patrol arrow visual element (gold) and spawn-rally arrow (blue)
   const patrolArrowRef = useRef<HTMLDivElement | null>(null);
+  const rallyArrowRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     // Create selection box element
@@ -104,33 +154,17 @@ export function MapInteraction() {
     document.body.appendChild(selectionBox);
     selectionBoxRef.current = selectionBox;
 
-    // Create the patrol indicator: a flat yellow dotted line drawn from the
-    // Queen's gold ring to the cursor, capped by a yellow arrowhead at the
-    // cursor end. The line itself is a zero-height div whose dotted top border
-    // is the visible stroke; the arrowhead is a child glyph pinned to the far
-    // end so it inherits the parent's rotation and points along the line.
-    const patrolArrow = document.createElement('div');
-    patrolArrow.style.position = 'absolute';
-    patrolArrow.style.height = '0px';
-    patrolArrow.style.borderTop = '3px dotted #ffd700'; // gold-yellow, matches the ring
-    patrolArrow.style.transformOrigin = 'left center';
-    patrolArrow.style.pointerEvents = 'none';
-    patrolArrow.style.display = 'none';
-    patrolArrow.style.zIndex = '1001';
-
-    const patrolArrowHead = document.createElement('span');
-    patrolArrowHead.innerHTML = '➤'; // ➤ points along the line's +x axis
-    patrolArrowHead.style.position = 'absolute';
-    patrolArrowHead.style.right = '0px';
-    patrolArrowHead.style.top = '50%';
-    patrolArrowHead.style.transform = 'translate(50%, -50%)';
-    patrolArrowHead.style.color = '#ffd700';
-    patrolArrowHead.style.fontSize = '18px';
-    patrolArrowHead.style.lineHeight = '0';
-    patrolArrow.appendChild(patrolArrowHead);
-
+    // Patrol indicator (gold): the line drawn from the Queen's gold ring to the
+    // cursor when she's given a patrol route. Spawn-rally indicator (blue): the
+    // line drawn while the player aims a Queen's spawn rally point. Both are the
+    // same dotted-line-with-arrowhead shape, distinguished only by color.
+    const patrolArrow = createDottedArrow(PATROL_ARROW_COLOR);
     document.body.appendChild(patrolArrow);
     patrolArrowRef.current = patrolArrow;
+
+    const rallyArrow = createDottedArrow(RALLY_ARROW_COLOR);
+    document.body.appendChild(rallyArrow);
+    rallyArrowRef.current = rallyArrow;
 
     return () => {
       if (selectionBoxRef.current) {
@@ -138,6 +172,9 @@ export function MapInteraction() {
       }
       if (patrolArrowRef.current) {
         document.body.removeChild(patrolArrowRef.current);
+      }
+      if (rallyArrowRef.current) {
+        document.body.removeChild(rallyArrowRef.current);
       }
     };
   }, []);
@@ -307,14 +344,20 @@ export function MapInteraction() {
   const areShellButtonsHeld = (buttons: number): boolean =>
     (buttons & buttonsMaskFor(primaryButton)) !== 0 && (buttons & buttonsMaskFor(secondaryButton)) !== 0;
 
-  const hidePatrolArrow = () => {
-    if (patrolArrowRef.current) {
-      patrolArrowRef.current.style.display = 'none';
+  // Hide / re-aim one of the dotted-line indicators. Shared by the patrol (gold)
+  // and rally (blue) gestures so each only differs by which ref it drives.
+  const hideArrow = (arrowRef: RefObject<HTMLDivElement | null>) => {
+    if (arrowRef.current) {
+      arrowRef.current.style.display = 'none';
     }
   };
 
-  const updatePatrolArrow = (startWorld: THREE.Vector3, endWorld: THREE.Vector3) => {
-    if (!patrolArrowRef.current) return;
+  const updateArrow = (
+    arrowRef: RefObject<HTMLDivElement | null>,
+    startWorld: THREE.Vector3,
+    endWorld: THREE.Vector3
+  ) => {
+    if (!arrowRef.current) return;
 
     const startScreen = worldToScreen(startWorld);
     const endScreen = worldToScreen(endWorld);
@@ -324,11 +367,26 @@ export function MapInteraction() {
     const length = Math.sqrt(dx * dx + dy * dy);
     const angle = Math.atan2(dy, dx);
 
-    patrolArrowRef.current.style.left = `${startScreen.x}px`;
-    patrolArrowRef.current.style.top = `${startScreen.y}px`;
-    patrolArrowRef.current.style.width = `${length}px`;
-    patrolArrowRef.current.style.transform = `rotate(${angle}rad)`;
-    patrolArrowRef.current.style.display = 'block';
+    arrowRef.current.style.left = `${startScreen.x}px`;
+    arrowRef.current.style.top = `${startScreen.y}px`;
+    arrowRef.current.style.width = `${length}px`;
+    arrowRef.current.style.transform = `rotate(${angle}rad)`;
+    arrowRef.current.style.display = 'block';
+  };
+
+  const hidePatrolArrow = () => hideArrow(patrolArrowRef);
+  const updatePatrolArrow = (startWorld: THREE.Vector3, endWorld: THREE.Vector3) =>
+    updateArrow(patrolArrowRef, startWorld, endWorld);
+
+  const hideRallyArrow = () => hideArrow(rallyArrowRef);
+  const updateRallyArrow = (startWorld: THREE.Vector3, endWorld: THREE.Vector3) =>
+    updateArrow(rallyArrowRef, startWorld, endWorld);
+
+  // Cancel an in-progress rally aim and clear the blue line. Used by Escape, a
+  // committed placement, and the combo handler that discards stray gestures.
+  const resetRallyPlacement = () => {
+    rallyPlacementRef.current = { active: false, queenId: null };
+    hideRallyArrow();
   };
 
   const handleMouseDown = (event: MouseEvent) => {
@@ -435,6 +493,23 @@ export function MapInteraction() {
   };
 
   const handleMouseMove = (event: MouseEvent) => {
+    // Always remember the cursor so the keyboard-driven rally gesture can anchor
+    // and commit its blue line at the current pointer position.
+    lastMouseScreenRef.current = getScreenPosition(event);
+
+    // While aiming a spawn rally point, redraw the blue line from the Queen to
+    // the cursor so the player sees where the next batch of units will gather.
+    if (rallyPlacementRef.current.active) {
+      const origin = queenWorldPos(rallyPlacementRef.current.queenId);
+      const cursorWorld = getWorldPositionFromMouse(
+        lastMouseScreenRef.current.x,
+        lastMouseScreenRef.current.y
+      );
+      if (origin && cursorWorld) {
+        updateRallyArrow(origin, cursorWorld);
+      }
+    }
+
     if (dragStateRef.current.isDragging) {
       const currentScreen = getScreenPosition(event);
       dragStateRef.current.currentMouse = currentScreen;
@@ -484,6 +559,46 @@ export function MapInteraction() {
         currentMouse: { x: 0, y: 0 }
       };
       resetPatrolDrag();
+      resetRallyPlacement();
+      return;
+    }
+
+    // Spawn-rally gesture (default 'R'): a two-tap toggle on a lone selected Queen.
+    // First tap arms placement and reveals the blue line; second tap drops the
+    // rally point at the cursor, after which the Queen's spawns march there.
+    const token = keyboardEventToToken(event);
+    if (token !== '' && token === keyboardBindings.setQueenRally) {
+      event.preventDefault();
+      // The OS auto-repeats keydown while the key is held; ignore the repeats so a
+      // held key can't arm and immediately commit on a single press.
+      if (event.repeat) return;
+
+      if (!rallyPlacementRef.current.active) {
+        // First tap: only a single owned Queen can carry a rally point.
+        const queen = isSelectedQueenOnly();
+        if (!queen) return;
+        rallyPlacementRef.current = { active: true, queenId: queen.id };
+
+        const origin = queenWorldPos(queen.id);
+        const cursorWorld = getWorldPositionFromMouse(
+          lastMouseScreenRef.current.x,
+          lastMouseScreenRef.current.y
+        );
+        if (origin && cursorWorld) {
+          updateRallyArrow(origin, cursorWorld);
+        }
+      } else {
+        // Second tap: commit the rally point at the current cursor position.
+        const { queenId } = rallyPlacementRef.current;
+        const cursorWorld = getWorldPositionFromMouse(
+          lastMouseScreenRef.current.x,
+          lastMouseScreenRef.current.y
+        );
+        resetRallyPlacement();
+        if (queenId && cursorWorld) {
+          setQueenRally({ queenId, rallyPoint: { x: cursorWorld.x, y: 0, z: cursorWorld.z } });
+        }
+      }
     }
   };
 
@@ -630,7 +745,7 @@ export function MapInteraction() {
       window.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, hiss, swarm, pickup, deliverCargo, primaryButton, secondaryButton]);
+  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, hiss, swarm, pickup, deliverCargo, primaryButton, secondaryButton, setQueenRally, keyboardBindings]);
 
   const handleGroundClick = (e: any) => {
     // Prevent browser context menu on right-click - check if preventDefault exists

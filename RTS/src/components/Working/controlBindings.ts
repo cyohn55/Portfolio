@@ -40,6 +40,7 @@ export type ControlActionId =
   | 'deselect'
   | 'primaryAction'
   | 'secondaryAction'
+  | 'setQueenRally'
   | 'pilotCycleMonarch'
   | 'pilotMonarch1'
   | 'pilotMonarch2'
@@ -86,6 +87,7 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
   { id: 'deselect', label: 'Deselect All', category: 'Selection', description: 'Clear the current selection.' },
   { id: 'primaryAction', label: 'Select / Confirm', category: 'Commands', description: 'Select the unit under the cursor / reticle.' },
   { id: 'secondaryAction', label: 'Move / Attack', category: 'Commands', description: 'Order selected units to the cursor / reticle.' },
+  { id: 'setQueenRally', label: 'Set Spawn Rally Point', category: 'Commands', description: 'With a single Queen selected, press once to start aiming the blue rally line, then press again to drop the rally point. Units she spawns afterward march straight to it.' },
   { id: 'pilotCycleMonarch', label: 'Cycle Piloted Monarch', category: 'Pilot', description: 'Tap to start piloting your first animal’s King, then cycle through your other animals’ monarchs. Drive it with the Move keys.' },
   { id: 'pilotMonarch1', label: 'Pilot Monarch 1', category: 'Pilot', description: 'Directly pilot the King of your first animal (toggle Queen with Toggle Monarch). Drive it with the Move keys/stick.' },
   { id: 'pilotMonarch2', label: 'Pilot Monarch 2', category: 'Pilot', description: 'Directly pilot the King of your second animal. Drive it with the Move keys/stick.' },
@@ -113,6 +115,8 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   deselect: 'escape',
   primaryAction: 'mouse:left',
   secondaryAction: 'mouse:right',
+  // R aims and drops a Queen's spawn rally point (two taps; see HexInteraction).
+  setQueenRally: 'r',
   // A cycles through the three animals' monarchs; G swaps the current King/Queen.
   // The per-slot pilot keys stay unbound on keyboard (they exist for the
   // controller's D-Pad), so the home row stays free for the cycle/toggle keys.
@@ -138,6 +142,7 @@ export const DEFAULT_CONTROLLER_BINDINGS: ControlBindings = {
   deselect: 'button:3', // Y
   primaryAction: 'button:0', // A
   secondaryAction: 'button:1', // B
+  setQueenRally: '', // keyboard-only gesture for now
   pilotCycleMonarch: '', // keyboard-only; the controller uses the per-slot D-Pad pilots below
   pilotMonarch1: 'button:12', // D-Pad Up
   pilotMonarch2: 'button:14', // D-Pad Left
