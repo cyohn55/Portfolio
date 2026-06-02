@@ -15,6 +15,7 @@ export function KeyboardShortcuts() {
   const units = useGameStore((s) => s.units);
   const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
   const selectUnits = useGameStore((s) => s.selectUnits);
+  const addToSelection = useGameStore((s) => s.addToSelection);
   const clearSelection = useGameStore((s) => s.clearSelection);
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
   const pilotedUnitId = useGameStore((s) => s.pilotedUnitId);
@@ -97,19 +98,21 @@ export function KeyboardShortcuts() {
           return;
         }
 
-        // Not piloting: a single press selects the army (kind 'Unit') of the currently
-        // anchored animal — the animal of the first selected own unit. With nothing selected
-        // to anchor on, the press does nothing rather than grabbing every unit: that fallback
-        // made a first press select everything and a confusing second press narrow it back to
-        // the anchor animal's units. Use a double tap to select all (handled above).
+        // Not piloting: a single press only acts when a King or Queen is selected. It then
+        // ADDS that monarch's animal army to the current selection — the press only ever grows
+        // the selection, never narrows it (the monarch and anything else stay selected). With
+        // no King/Queen selected it does nothing, so it can't silently drop a selection down to
+        // one animal. Use a double tap to select all (handled above).
         keyboardCoordinator.blockCameraInput(250);
         const selectedSet = new Set(selectedUnitIds);
-        const anchor = playerUnits.find(u => selectedSet.has(u.id));
-        if (!anchor) return; // nothing to anchor on — leave the selection untouched
+        const anchorMonarch = playerUnits.find(
+          u => selectedSet.has(u.id) && (u.kind === 'King' || u.kind === 'Queen')
+        );
+        if (!anchorMonarch) return; // single press only works with a King/Queen selected
         const armyIds = playerUnits
-          .filter(u => u.kind === 'Unit' && u.animal === anchor.animal)
+          .filter(u => u.kind === 'Unit' && u.animal === anchorMonarch.animal)
           .map(u => u.id);
-        if (armyIds.length > 0) selectUnits(armyIds);
+        if (armyIds.length > 0) addToSelection(armyIds);
       } else if (token === keyboardBindings.selectGroup1) {
         selectByAnimal(selectedAnimalPool[0]);
       } else if (token === keyboardBindings.selectGroup2) {
@@ -128,7 +131,7 @@ export function KeyboardShortcuts() {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [matchStarted, localPlayerId, selectedAnimalPool, units, selectedUnitIds, selectUnits, clearSelection, keyboardBindings, pilotedUnitId, pilotCycleMonarch, togglePilotMonarchKind, rallyToMonarch]);
+  }, [matchStarted, localPlayerId, selectedAnimalPool, units, selectedUnitIds, selectUnits, addToSelection, clearSelection, keyboardBindings, pilotedUnitId, pilotCycleMonarch, togglePilotMonarchKind, rallyToMonarch]);
 
   // This component doesn't render anything, it just handles keyboard events
   return null;
