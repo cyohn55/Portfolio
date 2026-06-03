@@ -808,6 +808,40 @@ function sendToSMSGateway(formData) {
 document.addEventListener('DOMContentLoaded', function() {
     const loadGameBtn = document.getElementById('load-game-btn');
     const rtsIframe = document.getElementById('rts-iframe');
+    const gameContainer = document.querySelector('.game-container');
+
+    // -------------------------------------------------------------------------
+    // RTS scroll-lock helpers (shared by the Load Game click handler and the
+    // screen-change bridge below)
+    // -------------------------------------------------------------------------
+    // While the game is loaded we lock mouse-wheel scrolling so the player
+    // can't accidentally spin off the 100vh game canvas. The browser's
+    // scrollbar still works for manual navigation because dragging the
+    // scrollbar doesn't fire `wheel` events — only the wheel does — so this is
+    // a targeted lock, not a full `overflow: hidden`.
+    let wheelLockEngaged = false;
+
+    // Marked non-passive so preventDefault() actually blocks the scroll.
+    // Without { passive: false }, modern browsers ignore preventDefault on
+    // wheel events for performance and the page would still scroll.
+    const blockWheel = (event) => {
+        event.preventDefault();
+    };
+
+    const engageScrollLock = () => {
+        // Align the 100vh game container's top with the viewport top so the
+        // game fills the screen and nothing is cut off at the bottom. We
+        // re-assert this on first load and on every screen transition to
+        // override the browser's tendency to auto-scroll a freshly focused
+        // iframe to the bottom of the page.
+        if (gameContainer) {
+            gameContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        if (wheelLockEngaged) return;
+        window.addEventListener('wheel', blockWheel, { passive: false });
+        wheelLockEngaged = true;
+    };
 
     if (loadGameBtn && rtsIframe) {
         loadGameBtn.addEventListener('click', function() {
@@ -866,14 +900,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Show iframe immediately
                 rtsIframe.style.display = 'block';
 
+                // Show only the game and lock wheel-scrolling the moment the
+                // iframe is visible — don't wait for the game to report its
+                // screen. This is what makes the very first Load Game press
+                // snap the canvas fully into view instead of leaving it
+                // half-cut at the bottom of the page.
+                engageScrollLock();
+
                 // Wait a moment then hide button
                 setTimeout(() => {
                     loadGameBtn.style.display = 'none';
                 }, 1000);
 
-                // Add load event listener
+                // Re-assert the scroll position once the game grabs keyboard
+                // focus on load — that focus otherwise makes the browser
+                // auto-scroll the iframe to the bottom of the page.
                 rtsIframe.addEventListener('load', function() {
-                    // Game loaded successfully
+                    engageScrollLock();
                 });
 
                 // Add error event listener
@@ -893,51 +936,17 @@ document.addEventListener('DOMContentLoaded', function() {
     // -------------------------------------------------------------------------
     // The embedded RTS iframe broadcasts `{ type: 'rts:screen', screen }` via
     // postMessage whenever its current screen changes (see RTS
-    // src/components/Working/parentScrollBridge.ts). We use that signal to:
-    //
-    //   * Scroll the game container fully into view when the player presses
-    //     Quick Play (or otherwise leaves the title menu). The container is
-    //     sized at 100vh, so aligning its top with the viewport top means it
-    //     fills the window.
-    //   * Disable mouse-wheel scrolling on the portfolio page while in-game,
-    //     so the player can't accidentally scroll off the game by spinning
-    //     the wheel. The browser's scrollbar still works for manual navigation
-    //     because the scrollbar doesn't fire `wheel` events — only the wheel
-    //     does — so this is a targeted lock, not a full overflow:hidden.
-    //   * Release the lock when the player returns to the title menu (the
-    //     screen that hosts Quick Play and Leader Board).
+    // src/components/Working/parentScrollBridge.ts). Once the game is loaded we
+    // keep it fully in view and the mouse-wheel locked on EVERY screen —
+    // including the title menu — so the player never accidentally scrolls off
+    // the 100vh canvas by spinning the wheel. Re-asserting on each screen
+    // transition also keeps the game in view if the player manually scrolls
+    // the page and then navigates (e.g. menu → lobby). Manual escape is always
+    // available via the browser's scrollbar, which doesn't fire wheel events.
     //
     // The host page never reaches into the iframe's DOM; the iframe never
     // reaches into the host's. The whole bridge is the message shape.
-    const gameContainer = document.querySelector('.game-container');
     if (rtsIframe && gameContainer) {
-        let wheelLockEngaged = false;
-
-        // Marked non-passive so preventDefault() actually blocks the scroll.
-        // Without { passive: false }, modern browsers ignore preventDefault on
-        // wheel events for performance and the page would still scroll.
-        const blockWheel = (event) => {
-            event.preventDefault();
-        };
-
-        const engageScrollLock = () => {
-            // Always re-scroll on every non-menu transition: the player might
-            // navigate menu → lobby, watch a few seconds, scroll the parent
-            // page manually, then return to lobby. We want the game back in
-            // view regardless of whether the lock was previously engaged.
-            gameContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-            if (wheelLockEngaged) return;
-            window.addEventListener('wheel', blockWheel, { passive: false });
-            wheelLockEngaged = true;
-        };
-
-        const releaseScrollLock = () => {
-            if (!wheelLockEngaged) return;
-            window.removeEventListener('wheel', blockWheel, { passive: false });
-            wheelLockEngaged = false;
-        };
-
         window.addEventListener('message', (event) => {
             // Only honor messages from our embedded RTS iframe. Other widgets
             // (or browser extensions) shouldn't be able to drive the page's
@@ -947,14 +956,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = event.data;
             if (!data || data.type !== 'rts:screen') return;
 
-            // 'menu' is the title screen (Quick Play / Leader Board). Any
-            // other screen — lobby, playing, postgame, leaderboard — is
-            // considered "in the game experience" and gets the lock.
-            if (data.screen === 'menu') {
-                releaseScrollLock();
-            } else {
-                engageScrollLock();
-            }
+            engageScrollLock();
         });
     }
 });
