@@ -125,7 +125,7 @@ const TONGUE_HIT_RADIUS = 2.0;       // the tongue latches an enemy whose center
 const TONGUE_HIT_RADIUS_SQ = TONGUE_HIT_RADIUS * TONGUE_HIT_RADIUS;
 const TONGUE_WINDUP_MS = 100;        // Frog_F2 mouth-open beat before the tongue shoots out
 const TONGUE_COOLDOWN_MS = 1500;     // minimum time between a frog's tongue grabs
-const TONGUE_MOUTH_HEIGHT = 1.0;     // height above the frog's base the tongue emerges from
+const TONGUE_MOUTH_HEIGHT = 1.5;     // height above the frog's base the tongue emerges from
 const TONGUE_DRAG_STOP_DIST = 2.5;   // a dragged enemy stops once this close to the frog's mouth
 
 // Cat "Hiss" ability tuning. A player-activated burst fired by holding both mouse
