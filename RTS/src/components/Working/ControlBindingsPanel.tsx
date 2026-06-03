@@ -13,6 +13,83 @@ import {
   scanGamepadToken,
   wheelDeltaToToken,
 } from './controlBindings';
+import {
+  type ActivationMode,
+  ACTIVATION_MODES,
+  ACTIVATION_MODE_HINTS,
+  ACTIVATION_MODE_LABELS,
+} from './gestureModes';
+
+/** Mouse `buttons` bitmask (1=left, 2=right, 4=middle) → the held atom tokens. */
+function mouseChordAtoms(buttons: number): string[] {
+  const atoms: string[] = [];
+  if (buttons & 1) atoms.push('mouse:left');
+  if (buttons & 2) atoms.push('mouse:right');
+  if (buttons & 4) atoms.push('mouse:middle');
+  return atoms;
+}
+
+/** Indices of the gamepad buttons currently pressed (for capturing a chord). */
+function pressedGamepadButtons(pad: Gamepad): number[] {
+  const out: number[] = [];
+  pad.buttons.forEach((button, index) => {
+    if (button.pressed || button.value > 0.5) out.push(index);
+  });
+  return out;
+}
+
+/** The four-way Tap / Double-Tap / Hold / Chord radio for one action's binding. */
+function ModeRadial({
+  selected,
+  onSelect,
+}: {
+  selected: ActivationMode;
+  onSelect: (mode: ActivationMode) => void;
+}) {
+  return (
+    <div role="radiogroup" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+      {ACTIVATION_MODES.map((mode) => {
+        const isSelected = selected === mode;
+        return (
+          <button
+            key={mode}
+            role="radio"
+            aria-checked={isSelected}
+            title={ACTIVATION_MODE_HINTS[mode]}
+            onClick={() => onSelect(mode)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '5px 10px',
+              fontSize: '12px',
+              fontWeight: 600,
+              color: isSelected ? '#0b1020' : '#cbd5e1',
+              background: isSelected
+                ? 'linear-gradient(135deg, #ffd34d 0%, #f59e0b 100%)'
+                : 'rgba(148,163,184,0.08)',
+              border: isSelected ? '1px solid #f59e0b' : '1px solid rgba(148,163,184,0.2)',
+              borderRadius: '999px',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <span
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                border: isSelected ? '3px solid #0b1020' : '2px solid #94a3b8',
+                display: 'inline-block',
+              }}
+            />
+            {ACTIVATION_MODE_LABELS[mode]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /**
  * ControlBindingsPanel renders the Settings → Controls body: a Keyboard & Mouse
@@ -42,19 +119,27 @@ const SUB_TABS: readonly { device: InputDevice; label: string }[] = [
 export function ControlBindingsPanel() {
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
   const controllerBindings = useGameStore((s) => s.controllerBindings);
+  const keyboardBindingModes = useGameStore((s) => s.keyboardBindingModes);
+  const controllerBindingModes = useGameStore((s) => s.controllerBindingModes);
   const setBinding = useGameStore((s) => s.setBinding);
+  const setBindingMode = useGameStore((s) => s.setBindingMode);
   const resetBindings = useGameStore((s) => s.resetBindings);
 
   const [device, setDevice] = useState<InputDevice>('keyboard');
   const [listeningFor, setListeningFor] = useState<ControlActionId | null>(null);
 
   const bindings = device === 'keyboard' ? keyboardBindings : controllerBindings;
+  const modes = device === 'keyboard' ? keyboardBindingModes : controllerBindingModes;
 
-  // Keep capture handlers reading the latest values without re-subscribing.
+  // Keep capture handlers reading the latest values without re-subscribing. The
+  // mode of the action being rebound decides single-input vs. two-input (chord)
+  // capture, so it is mirrored into a ref the capture effects read.
   const deviceRef = useRef(device);
   const listeningRef = useRef(listeningFor);
+  const listeningModeRef = useRef<ActivationMode>('tap');
   deviceRef.current = device;
   listeningRef.current = listeningFor;
+  listeningModeRef.current = listeningFor ? modes[listeningFor] : 'tap';
 
   const commit = (token: string) => {
     const actionId = listeningRef.current;
@@ -82,6 +167,13 @@ export function ControlBindingsPanel() {
     const onMouseDown = (event: MouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
+      // Chord mode captures two buttons held at once (e.g. Left + Right); wait
+      // until a second button joins before committing the combined token.
+      if (listeningModeRef.current === 'chord') {
+        const atoms = mouseChordAtoms(event.buttons);
+        if (atoms.length >= 2) commit(atoms.slice(0, 2).join('+'));
+        return;
+      }
       commit(mouseButtonToToken(event.button));
     };
     const onWheel = (event: WheelEvent) => {
@@ -114,12 +206,23 @@ export function ControlBindingsPanel() {
     const poll = () => {
       const pad = Array.from(navigator.getGamepads()).find((p) => p && p.connected);
       if (pad) {
-        const token = scanGamepadToken(pad as any);
-        if (!armed) {
-          if (token === null) armed = true; // wait for release first
-        } else if (token !== null) {
-          commit(token);
-          return;
+        if (listeningModeRef.current === 'chord') {
+          // Capture two buttons held simultaneously, e.g. LB + A.
+          const pressed = pressedGamepadButtons(pad as Gamepad);
+          if (!armed) {
+            if (pressed.length === 0) armed = true;
+          } else if (pressed.length >= 2) {
+            commit(`button:${pressed[0]}+button:${pressed[1]}`);
+            return;
+          }
+        } else {
+          const token = scanGamepadToken(pad as any);
+          if (!armed) {
+            if (token === null) armed = true; // wait for release first
+          } else if (token !== null) {
+            commit(token);
+            return;
+          }
         }
       }
       rafId = requestAnimationFrame(poll);
@@ -172,7 +275,7 @@ export function ControlBindingsPanel() {
           border: '1px solid rgba(88,120,255,0.2)',
           borderRadius: '8px',
         }}>
-          Click a binding, then press the key, mouse button, or scroll to rebind. Pan the camera with the screen edges or a middle-mouse drag; the Move keys drive a piloted King/Queen.
+          Click a binding, then press the key, mouse button, or scroll to rebind. Under each action, pick how its input fires: Tap, Double-Tap, Hold, or Chord (two inputs at once — e.g. Left + Right Click for an ability). One input can drive several actions when their modes differ. Pan the camera with the screen edges or a middle-mouse drag; the Move keys drive a piloted King/Queen.
         </div>
       )}
 
@@ -186,7 +289,7 @@ export function ControlBindingsPanel() {
           border: '1px solid rgba(88,120,255,0.2)',
           borderRadius: '8px',
         }}>
-          Connect a controller and press a button to rebind. The left stick pans the camera (or drives a piloted King/Queen); the right stick moves the on-screen reticle. Standard (Xbox) layout shown.
+          Connect a controller and press a button to rebind. Under each action, pick how its button fires: Tap, Double-Tap, Hold, or Chord (two buttons at once, e.g. LB + A). One button can drive several actions when their modes differ. The left stick pans the camera (or drives a piloted King/Queen); the right stick moves the on-screen reticle. Standard (Xbox) layout shown.
         </div>
       )}
 
@@ -200,23 +303,24 @@ export function ControlBindingsPanel() {
               {group.actions.map((action) => {
                 const token = bindings[action.id];
                 const isListening = listeningFor === action.id;
+                const mode = modes[action.id];
                 const conflict = token !== UNBOUND_TOKEN
-                  ? findConflict(bindings, token, action.id)
+                  ? findConflict(bindings, modes, token, mode, action.id)
                   : null;
                 return (
                   <div
                     key={action.id}
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '12px',
-                      padding: '8px 12px',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      padding: '10px 12px',
                       background: 'rgba(88,120,255,0.06)',
                       border: '1px solid rgba(88,120,255,0.15)',
                       borderRadius: '8px',
                     }}
                   >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
                       <span style={{ color: '#cbd5e1' }} title={action.description}>{action.label}</span>
                       {action.gestureHint && (
@@ -267,6 +371,11 @@ export function ControlBindingsPanel() {
                         ✕
                       </button>
                     </div>
+                    </div>
+                    <ModeRadial
+                      selected={mode}
+                      onSelect={(nextMode) => setBindingMode(device, action.id, nextMode)}
+                    />
                   </div>
                 );
               })}

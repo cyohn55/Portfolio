@@ -11,11 +11,13 @@ import {
 } from './controlBindings';
 import { type AbilityComboCursor, tryFireAbilityCombo } from './abilityCombo';
 import { gamepadInput } from './gamepadInput';
+import { UNIT_PLACEMENT_REPEAT_INTERVAL_MS } from './monarchPilot';
 import {
-  DOUBLE_PRESS_WINDOW_MS,
-  UNIT_PLACEMENT_INTERVAL_MS,
-  UNIT_PLACEMENT_REPEAT_INTERVAL_MS,
-} from './monarchPilot';
+  type ActivationMode,
+  type TokenDispatch,
+  type TokenGestureConfig,
+  buildTokenDispatch,
+} from './gestureModes';
 import {
   PATROL_ARROW_COLOR,
   RALLY_ARROW_COLOR,
@@ -58,13 +60,16 @@ const CAMERA_ACTIONS: ReadonlySet<ControlActionId> = new Set([
   'cameraForward', 'cameraBackward', 'cameraLeft', 'cameraRight', 'cameraZoomIn', 'cameraZoomOut',
 ]);
 
-// Discrete actions fired once per press (rising edge). 'selectAll' is handled
-// separately below: like the keyboard's Space it is a multi-gesture action (tap
-// rallies, double-tap selects everything, hold deploys a proportionate number of
-// units), so it needs both the rising AND falling edge, not a one-shot tap.
-const TAP_ACTIONS: readonly ControlActionId[] = [
+// The discrete "fire" actions the gamepad poller drives through the activation-mode
+// dispatch (tap / double-tap / hold / chord). primaryAction is listed before the
+// LB-chord group selects so that, when a chord like LB+A is pressed, the plain A
+// fires first and the group select fires after and wins — preserving prior feel.
+// Excluded: analog camera pan/zoom (driven by stick magnitude) and the Queen
+// rally/patrol aim gestures (their own reticle-aimed handlers below).
+const GAMEPAD_GESTURE_ACTIONS: readonly ControlActionId[] = [
   'primaryAction', 'secondaryAction', 'useAbility',
   'selectGroup1', 'selectGroup2', 'selectGroup3', 'deselect',
+  'rally', 'selectAllUnits', 'deployUnits',
   'pilotCycleMonarch', 'pilotMonarch1', 'pilotMonarch2', 'pilotMonarch3', 'pilotToggleMonarch', 'pause',
 ];
 
@@ -82,19 +87,23 @@ export function GamepadController() {
 
   const reticlePos = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   const reticleElRef = useRef<HTMLDivElement | null>(null);
-  // Previous-frame active state per tap action, for edge detection.
+  // Latest controller layout, subscribed so the dispatch rebuilds on a rebind.
+  const controllerBindings = useGameStore((s) => s.controllerBindings);
+  const controllerBindingModes = useGameStore((s) => s.controllerBindingModes);
+
+  // Previous-frame active state per token, for press/release edge detection of the
+  // activation-mode dispatch (and of the chord-mode actions, keyed "chord:<action>").
   const prevActive = useRef<Record<string, boolean>>({});
 
-  // Select All / Rally gesture state, mirroring the keyboard's hold-Space handling
-  // (see KeyboardShortcuts). The bound button (default X, or e.g. a trigger once
-  // rebound) is multi-gesture: a quick tap rallies the piloted army, a double tap
-  // selects every unit, and a sustained hold designates one follower per interval
-  // (the teardrop count) to deploy at the monarch on release. Held off the React
-  // path in refs so the 60 Hz poll never triggers a re-render.
-  const lastSelectAllPressMsRef = useRef(0);
-  const placementFirstTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The activation-mode dispatch (token -> resolver + chord actions), rebuilt when
+  // the controller layout changes. Held in a ref so the per-frame poll reads a stable
+  // object without re-subscribing each frame.
+  const dispatchRef = useRef<TokenDispatch>({ resolvers: new Map(), chordActions: [] });
+
+  // Deploy Units (Hold mode) designation timer: one more follower each interval while
+  // held, deployed on release. Kept off the React path so the 60 Hz poll never
+  // triggers a re-render.
   const placementRepeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const selectAllAwaitingReleaseRef = useRef(false);
 
   // Queen spawn-rally gesture state (default R3): the rally button arms a blue aim
   // line that follows the reticle, and the next Move / Attack (B) drops the point —
@@ -118,13 +127,8 @@ export function GamepadController() {
   const rallyPrevRef = useRef(false);
   const patrolPrevRef = useRef(false);
 
-  // Stop both phases of the placement-hold timer (on release, double tap, pad
-  // disconnect, or unmount). Only one phase is ever live, but clearing both is safe.
+  // Stop the deploy designation interval (on release, pad disconnect, or unmount).
   const stopPlacementHold = () => {
-    if (placementFirstTimeoutRef.current !== null) {
-      clearTimeout(placementFirstTimeoutRef.current);
-      placementFirstTimeoutRef.current = null;
-    }
     if (placementRepeatIntervalRef.current !== null) {
       clearInterval(placementRepeatIntervalRef.current);
       placementRepeatIntervalRef.current = null;
@@ -167,59 +171,21 @@ export function GamepadController() {
     hideDottedArrow(patrolArrowElRef.current);
   };
 
-  // Rising edge of the Select All / Rally button. A double tap immediately selects
-  // every unit; a single press starts the hold-to-deploy timer (only while piloting,
-  // where a placement is possible) and defers its tap-vs-hold meaning to the release.
-  const handleSelectAllPress = () => {
+  // Deploy Units in Hold mode: designate the first follower at the hold threshold,
+  // then one more each interval (the teardrop count), and deploy the batch on release.
+  const startDeployDesignate = () => {
     const state = useGameStore.getState();
-    if (state.isPaused || state.gameOver || !state.matchStarted) return;
-
-    const now = performance.now();
-    const isDoublePress = now - lastSelectAllPressMsRef.current <= DOUBLE_PRESS_WINDOW_MS;
-    lastSelectAllPressMsRef.current = now;
-
-    if (isDoublePress) {
-      // Abandon the first tap's in-progress hold so the double tap neither places
-      // units nor re-toggles a rally; just select everything (piloting or not).
-      stopPlacementHold();
-      selectAllAwaitingReleaseRef.current = false;
-      state.resetUnitPlacement();
-      const ids = state.units
-        .filter((unit) => unit.ownerId === state.localPlayerId && unit.kind !== 'Base')
-        .map((unit) => unit.id);
-      if (ids.length > 0) state.selectUnits(ids);
-      return;
-    }
-
-    selectAllAwaitingReleaseRef.current = true;
-    if (state.pilotedUnitId) {
-      stopPlacementHold();
-      // First follower after the initial hold, then ramp up at the faster repeat rate.
-      placementFirstTimeoutRef.current = setTimeout(() => {
-        placementFirstTimeoutRef.current = null;
-        useGameStore.getState().incrementUnitPlacement();
-        placementRepeatIntervalRef.current = setInterval(() => {
-          useGameStore.getState().incrementUnitPlacement();
-        }, UNIT_PLACEMENT_REPEAT_INTERVAL_MS);
-      }, UNIT_PLACEMENT_INTERVAL_MS);
-    }
-  };
-
-  // Falling edge of the Select All / Rally button. A hold that designated at least
-  // one follower deploys them at the monarch; a quick tap while piloting rallies the
-  // army instead. A double tap already consumed (and cleared) the awaiting flag.
-  const handleSelectAllRelease = () => {
-    const state = useGameStore.getState();
+    if (state.isPaused || state.gameOver || !state.matchStarted || !state.pilotedUnitId) return;
     stopPlacementHold();
-    if (!selectAllAwaitingReleaseRef.current) return;
-    selectAllAwaitingReleaseRef.current = false;
-
-    const designated = useGameStore.getState().unitPlacementCount;
-    if (designated >= 1) {
-      state.placeRalliedUnits(designated);
-    } else if (state.pilotedUnitId) {
-      state.rallyToMonarch();
-    }
+    state.incrementUnitPlacement();
+    placementRepeatIntervalRef.current = setInterval(() => {
+      useGameStore.getState().incrementUnitPlacement();
+    }, UNIT_PLACEMENT_REPEAT_INTERVAL_MS);
+  };
+  const commitDeploy = () => {
+    stopPlacementHold();
+    const count = useGameStore.getState().unitPlacementCount;
+    if (count >= 1) useGameStore.getState().placeRalliedUnits(count);
   };
 
   // Create / tear down the reticle DOM element. Hidden until a stick is moved.
@@ -252,6 +218,7 @@ export function GamepadController() {
     return () => {
       gamepadInput.reset();
       stopPlacementHold();
+      dispatchRef.current.resolvers.forEach((resolver) => resolver.reset());
       cancelRallyAim();
       cancelPatrolAim();
       if (reticleElRef.current) document.body.removeChild(reticleElRef.current);
@@ -547,6 +514,22 @@ export function GamepadController() {
       case 'deselect':
         state.clearSelection();
         break;
+      case 'rally':
+        // Rally the piloted army to follow; a no-op when not piloting.
+        if (state.pilotedUnitId) state.rallyToMonarch();
+        break;
+      case 'selectAllUnits': {
+        const ids = state.units
+          .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base')
+          .map((u) => u.id);
+        if (ids.length > 0) state.selectUnits(ids);
+        break;
+      }
+      case 'deployUnits':
+        // The one-shot path (tap / double-tap / chord): deploy a single unit. The
+        // proportionate batch is the Hold lifecycle (startDeployDesignate/commitDeploy).
+        if (state.pilotedUnitId) state.placeRalliedUnits(1);
+        break;
       case 'pilotCycleMonarch':
         state.pilotCycleMonarch();
         break;
@@ -567,6 +550,33 @@ export function GamepadController() {
     }
   };
 
+  // (Re)build the activation-mode dispatch whenever the controller layout changes.
+  // Most actions are one-shot via fireAction in their chosen mode; Deploy Units in
+  // Hold mode gets the designate/commit lifecycle. Old resolvers are reset so any
+  // pending hold/double-tap timing can't outlive the rebind.
+  useEffect(() => {
+    const configFor = (actionId: string, mode: ActivationMode): Partial<TokenGestureConfig> | undefined => {
+      if (mode === 'tap') return { onTap: () => fireAction(actionId as ControlActionId) };
+      if (mode === 'double-tap') return { onDoubleTap: () => fireAction(actionId as ControlActionId) };
+      if (mode === 'hold') {
+        if (actionId === 'deployUnits') return { onHoldStart: startDeployDesignate, onHoldEnd: commitDeploy };
+        return { onHoldStart: () => fireAction(actionId as ControlActionId) };
+      }
+      return undefined; // chord fired on the rising edge in the poll loop
+    };
+
+    dispatchRef.current.resolvers.forEach((resolver) => resolver.reset());
+    dispatchRef.current = buildTokenDispatch({
+      bindings: controllerBindings,
+      modes: controllerBindingModes,
+      actionIds: GAMEPAD_GESTURE_ACTIONS,
+      configFor,
+    });
+    // fireAction / the deploy lifecycle read everything via getState(), so an older
+    // closure behaves identically; rebuild only when the layout changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controllerBindings, controllerBindingModes]);
+
   useFrame((_, delta) => {
     const gamepad = getActiveGamepad();
     const reticle = reticleElRef.current;
@@ -574,10 +584,10 @@ export function GamepadController() {
     if (!gamepad) {
       gamepadInput.reset();
       prevActive.current = {};
-      // Abandon any in-progress hold/aim so a disconnect mid-gesture can't strand a
+      // Abandon any in-progress timing/aim so a disconnect mid-gesture can't strand a
       // timer, a movement pin, or a lingering line with no falling edge ever arriving.
       stopPlacementHold();
-      selectAllAwaitingReleaseRef.current = false;
+      dispatchRef.current.resolvers.forEach((resolver) => resolver.reset());
       cancelRallyAim();
       cancelPatrolAim();
       rallyPrevRef.current = false;
@@ -621,21 +631,25 @@ export function GamepadController() {
       reticle.style.display = 'none';
     }
 
-    // --- Discrete taps (rising edge). ---
-    for (const actionId of TAP_ACTIONS) {
-      const token = controllerBindings[actionId];
+    // --- Activation-mode dispatch: feed each bound token's press/release edges to
+    // its resolver (which fires tap / double-tap / hold per the player's choice). ---
+    const dispatch = dispatchRef.current;
+    for (const [token, resolver] of dispatch.resolvers) {
       const active = isControllerTokenActive(gamepad, token);
-      const wasActive = prevActive.current[actionId] ?? false;
-      if (active && !wasActive) fireAction(actionId);
-      prevActive.current[actionId] = active;
+      const wasActive = prevActive.current[token] ?? false;
+      if (active && !wasActive) resolver.press(performance.now());
+      else if (!active && wasActive) resolver.release(performance.now());
+      prevActive.current[token] = active;
     }
 
-    // --- Select All / Rally (tap / double-tap / hold), on both edges. ---
-    const selectAllActive = isControllerTokenActive(gamepad, controllerBindings.selectAll);
-    const selectAllWasActive = prevActive.current.selectAll ?? false;
-    if (selectAllActive && !selectAllWasActive) handleSelectAllPress();
-    else if (!selectAllActive && selectAllWasActive) handleSelectAllRelease();
-    prevActive.current.selectAll = selectAllActive;
+    // --- Chord-mode actions: fire once on the rising edge of the (multi-atom) token. ---
+    for (const chord of dispatch.chordActions) {
+      const key = `chord:${chord.actionId}`;
+      const active = isControllerTokenActive(gamepad, chord.token);
+      const wasActive = prevActive.current[key] ?? false;
+      if (active && !wasActive) fireAction(chord.actionId as ControlActionId);
+      prevActive.current[key] = active;
+    }
 
     // --- Queen spawn-rally aim + patrol hold. Only meaningful while the match is
     // live; otherwise abandon any in-progress aim (releasing a patrol pin) and reset

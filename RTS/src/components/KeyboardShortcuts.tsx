@@ -2,190 +2,185 @@ import { useEffect, useRef } from 'react';
 import { useGameStore } from '../game/state';
 import { keyboardCoordinator } from '../utils/keyboardCoordination';
 import { keyboardEventToToken } from './Working/controlBindings';
+import { UNIT_PLACEMENT_REPEAT_INTERVAL_MS } from './Working/monarchPilot';
 import {
-  DOUBLE_PRESS_WINDOW_MS,
-  UNIT_PLACEMENT_INTERVAL_MS,
-  UNIT_PLACEMENT_REPEAT_INTERVAL_MS,
-} from './Working/monarchPilot';
+  type ActivationMode,
+  type TokenGestureConfig,
+  buildTokenDispatch,
+} from './Working/gestureModes';
+
+// The actions the keyboard layer owns. Excluded on purpose: the analog camera
+// drive (CameraController reads those keys directly) and the mouse-domain gestures
+// — select/confirm, move/attack, use-ability, and the Queen rally/patrol aims —
+// which HexInteraction owns. Each listed action's bound input fires it by the
+// activation mode the player picked (tap / double-tap / hold / chord); several can
+// share one input when their modes differ (e.g. Space = rally/select-all/deploy).
+const KEYBOARD_GESTURE_ACTIONS: readonly string[] = [
+  'selectGroup1',
+  'selectGroup2',
+  'selectGroup3',
+  'deselect',
+  'pilotCycleMonarch',
+  'pilotToggleMonarch',
+  'pause',
+  'rally',
+  'selectAllUnits',
+  'deployUnits',
+];
 
 export function KeyboardShortcuts() {
-  // Only gate listener attachment on matchStarted. Every other piece of state the
-  // handlers need (units, bindings, the piloted unit, selection actions) is read
-  // fresh from the store via getState() at event time. This is deliberate: the
-  // store publishes a NEW units array reference every tick, so depending on it
-  // here would re-run this effect ~60x/sec — and each cleanup would clear the
-  // hold-to-place interval before it could reach UNIT_PLACEMENT_INTERVAL_MS,
-  // silently breaking the hold gesture.
+  // Re-subscribe only when the match starts/stops or the layout changes. Per-frame
+  // state (units, selection, the piloted unit) is read fresh via getState() inside
+  // the handlers so the store's new-array-every-tick never re-runs this effect and
+  // tears down an in-progress deploy-hold timer.
   const matchStarted = useGameStore((s) => s.matchStarted);
+  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
+  const keyboardBindingModes = useGameStore((s) => s.keyboardBindingModes);
 
-  // Timestamp of the last Space press, for double-tap detection (both modes).
-  const lastSpacePressMsRef = useRef(0);
-  // The placement hold runs a two-phase timer: a one-shot timeout designates the
-  // first unit after UNIT_PLACEMENT_INTERVAL_MS, then an interval designates each
-  // subsequent unit every UNIT_PLACEMENT_REPEAT_INTERVAL_MS. The flag marks that a
-  // single (non-double) press is awaiting its release, so keyup can tell a quick
-  // tap (rally) from a hold (place units).
-  const placementFirstTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Deploy-hold designation timer (progressive batch), kept off the React path.
   const placementRepeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const spacePressAwaitingReleaseRef = useRef(false);
 
   useEffect(() => {
     if (!matchStarted) return;
 
-    // Stop both phases of the placement-hold timer (release, blur, or a double tap
-    // interrupting it). Only one is ever active at a time, but clear both to be safe.
     const stopPlacementHold = () => {
-      if (placementFirstTimeoutRef.current !== null) {
-        clearTimeout(placementFirstTimeoutRef.current);
-        placementFirstTimeoutRef.current = null;
-      }
       if (placementRepeatIntervalRef.current !== null) {
         clearInterval(placementRepeatIntervalRef.current);
         placementRepeatIntervalRef.current = null;
       }
     };
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const token = keyboardEventToToken(event);
-      if (token === '') return; // bare modifier press
+    // Select every own unit of one animal type; a brief camera-input block keeps the
+    // shortcut's keys from also panning the camera.
+    const selectByAnimal = (index: number) => {
+      const state = useGameStore.getState();
+      const animal = state.selectedAnimalPool[index];
+      if (!animal) return;
+      keyboardCoordinator.blockCameraInput(250);
+      const ids = state.units
+        .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base' && u.animal === animal)
+        .map((u) => u.id);
+      if (ids.length > 0) state.selectUnits(ids);
+    };
 
-      const {
-        localPlayerId,
-        selectedAnimalPool,
-        units,
-        keyboardBindings,
-        pilotedUnitId,
-        selectUnits,
-        clearSelection,
-        pilotCycleMonarch,
-        togglePilotMonarchKind,
-        incrementUnitPlacement,
-        resetUnitPlacement,
-      } = useGameStore.getState();
-
-      // Pause toggles regardless of selection state. Dispatch the shared toggle
-      // event so the existing HUD pause menu opens (and drives the sim-halt).
-      if (token === keyboardBindings.pause) {
-        event.preventDefault();
+    // Fire an action once (used by tap, double-tap, a simple hold, and chord). The
+    // `mode` lets Deploy Units differ: a single unit on tap/double-tap.
+    const runAction = (actionId: string, _mode: ActivationMode) => {
+      // Pause toggles regardless of paused/over so the player can always resume.
+      if (actionId === 'pause') {
         window.dispatchEvent(new CustomEvent('rts:toggle-pause'));
         return;
       }
+      const state = useGameStore.getState();
+      if (state.isPaused || state.gameOver || !state.matchStarted) return;
 
-      const playerUnits = units.filter(u => u.ownerId === localPlayerId && u.kind !== 'Base');
-
-      // Select every own unit of one animal type; brief camera-input block keeps
-      // the shortcut's keys from also panning the camera.
-      const selectByAnimal = (animal: string | undefined) => {
-        if (!animal) return;
-        event.preventDefault();
-        keyboardCoordinator.blockCameraInput(250);
-        const ids = playerUnits.filter(u => u.animal === animal).map(u => u.id);
-        if (ids.length > 0) selectUnits(ids);
-      };
-
-      // Cycle through the animals' monarchs (A) and swap King<->Queen (G). No
-      // camera-input block here: blocking would briefly swallow the ESDF presses
-      // used to drive the piloted unit.
-      if (token === keyboardBindings.pilotCycleMonarch) {
-        event.preventDefault();
-        pilotCycleMonarch();
-        return;
-      } else if (token === keyboardBindings.pilotToggleMonarch) {
-        event.preventDefault();
-        togglePilotMonarchKind();
-        return;
-      }
-
-      if (token === keyboardBindings.selectAll) {
-        event.preventDefault();
-        // The OS auto-repeats keydown while a key is held; the hold timer (below)
-        // owns the held-key cadence, so ignore the repeats here.
-        if (event.repeat) return;
-
-        const now = performance.now();
-        const isDoublePress = now - lastSpacePressMsRef.current <= DOUBLE_PRESS_WINDOW_MS;
-        lastSpacePressMsRef.current = now;
-
-        // A double tap ALWAYS selects every unit, regardless of context (piloting or not,
-        // anything currently selected or not). The camera-input block is skipped while piloting
-        // so the ESDF drive keys keep working; off-pilot it stops the key from also panning.
-        if (isDoublePress) {
-          // The first tap already started (and its release may have started) a hold;
-          // abandon it so the double tap doesn't also place units or re-toggle rally.
-          stopPlacementHold();
-          spacePressAwaitingReleaseRef.current = false;
-          resetUnitPlacement();
-          if (!pilotedUnitId) keyboardCoordinator.blockCameraInput(250);
-          const ids = playerUnits.map(u => u.id);
-          if (ids.length > 0) selectUnits(ids);
-          return;
+      switch (actionId) {
+        case 'selectGroup1': selectByAnimal(0); break;
+        case 'selectGroup2': selectByAnimal(1); break;
+        case 'selectGroup3': selectByAnimal(2); break;
+        case 'deselect': state.clearSelection(); break;
+        case 'pilotCycleMonarch': state.pilotCycleMonarch(); break;
+        case 'pilotToggleMonarch': state.togglePilotMonarchKind(); break;
+        case 'rally':
+          // Only meaningful while piloting; rallyToMonarch no-ops otherwise.
+          if (state.pilotedUnitId) state.rallyToMonarch();
+          break;
+        case 'selectAllUnits': {
+          if (!state.pilotedUnitId) keyboardCoordinator.blockCameraInput(250);
+          const ids = state.units
+            .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base')
+            .map((u) => u.id);
+          if (ids.length > 0) state.selectUnits(ids);
+          break;
         }
-
-        // Single press. Its meaning is decided on release: a quick tap rallies (see
-        // keyup), while holding past UNIT_PLACEMENT_INTERVAL_MS designates units to
-        // place. Start the designation timer only while piloting, where a placement
-        // (a monarch with a trailing rally) is possible.
-        spacePressAwaitingReleaseRef.current = true;
-        if (pilotedUnitId) {
-          stopPlacementHold();
-          // First unit after the initial hold, then ramp up at the faster repeat rate.
-          placementFirstTimeoutRef.current = setTimeout(() => {
-            placementFirstTimeoutRef.current = null;
-            incrementUnitPlacement();
-            placementRepeatIntervalRef.current = setInterval(() => {
-              incrementUnitPlacement();
-            }, UNIT_PLACEMENT_REPEAT_INTERVAL_MS);
-          }, UNIT_PLACEMENT_INTERVAL_MS);
-        }
-        return;
-      } else if (token === keyboardBindings.selectGroup1) {
-        selectByAnimal(selectedAnimalPool[0]);
-      } else if (token === keyboardBindings.selectGroup2) {
-        selectByAnimal(selectedAnimalPool[1]);
-      } else if (token === keyboardBindings.selectGroup3) {
-        selectByAnimal(selectedAnimalPool[2]);
-      } else if (token === keyboardBindings.deselect) {
-        clearSelection();
+        case 'deployUnits':
+          // Tap / double-tap deploy a single unit; the proportionate batch is the
+          // Hold lifecycle below.
+          if (state.pilotedUnitId) state.placeRalliedUnits(1);
+          break;
+        default: break;
       }
+    };
+
+    // Deploy Units in Hold mode: designate the first follower at the hold threshold,
+    // then one more each interval (the teardrop count), and deploy them on release.
+    const startDeployDesignate = () => {
+      const state = useGameStore.getState();
+      if (state.isPaused || state.gameOver || !state.matchStarted || !state.pilotedUnitId) return;
+      stopPlacementHold();
+      state.incrementUnitPlacement();
+      placementRepeatIntervalRef.current = setInterval(() => {
+        useGameStore.getState().incrementUnitPlacement();
+      }, UNIT_PLACEMENT_REPEAT_INTERVAL_MS);
+    };
+    const commitDeploy = () => {
+      stopPlacementHold();
+      const count = useGameStore.getState().unitPlacementCount;
+      if (count >= 1) useGameStore.getState().placeRalliedUnits(count);
+    };
+
+    const configFor = (actionId: string, mode: ActivationMode): Partial<TokenGestureConfig> | undefined => {
+      if (mode === 'tap') return { onTap: () => runAction(actionId, 'tap') };
+      if (mode === 'double-tap') return { onDoubleTap: () => runAction(actionId, 'double-tap') };
+      if (mode === 'hold') {
+        if (actionId === 'deployUnits') {
+          return { onHoldStart: startDeployDesignate, onHoldEnd: commitDeploy };
+        }
+        return { onHoldStart: () => runAction(actionId, 'hold') };
+      }
+      return undefined; // chord is fired on press below
+    };
+
+    const dispatch = buildTokenDispatch({
+      bindings: keyboardBindings,
+      modes: keyboardBindingModes,
+      actionIds: KEYBOARD_GESTURE_ACTIONS,
+      configFor,
+    });
+
+    const ownsToken = (token: string) =>
+      dispatch.resolvers.has(token) || dispatch.chordActions.some((c) => c.token === token);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const token = keyboardEventToToken(event);
+      if (token === '') return; // bare modifier
+      if (!ownsToken(token)) return;
+      event.preventDefault();
+      // The OS auto-repeats keydown while a key is held; the resolver owns the held
+      // cadence (hold timer), so ignore the repeats.
+      if (event.repeat) return;
+
+      // Chord-mode actions fire on the rising edge of their (typically modified) token.
+      for (const chord of dispatch.chordActions) {
+        if (chord.token === token) runAction(chord.actionId, 'chord');
+      }
+      dispatch.resolvers.get(token)?.press(performance.now());
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
       const token = keyboardEventToToken(event);
-      const { keyboardBindings, pilotedUnitId, placeRalliedUnits, rallyToMonarch } =
-        useGameStore.getState();
-      if (token !== keyboardBindings.selectAll) return;
+      dispatch.resolvers.get(token)?.release(performance.now());
+    };
 
+    // A lost focus never delivers keyup, so abandon any in-progress hold/timing.
+    const handleBlur = () => {
       stopPlacementHold();
-
-      // Only the release of a single (non-double) press carries an action; a
-      // double tap already cleared this flag after selecting every unit.
-      if (!spacePressAwaitingReleaseRef.current) return;
-      spacePressAwaitingReleaseRef.current = false;
-
-      // A hold that reached at least one designated unit places them at the
-      // monarch; a quick tap (none designated) rallies the army instead.
-      const designated = useGameStore.getState().unitPlacementCount;
-      if (designated >= 1) {
-        placeRalliedUnits(designated);
-      } else if (pilotedUnitId) {
-        rallyToMonarch();
-      }
+      dispatch.resolvers.forEach((resolver) => resolver.reset());
     };
 
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
-    // A lost focus (alt-tab, clicking a menu) never delivers keyup, so abandon any
-    // in-progress hold to avoid a stuck timer/teardrop.
-    window.addEventListener('blur', stopPlacementHold);
+    window.addEventListener('blur', handleBlur);
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('blur', stopPlacementHold);
+      window.removeEventListener('blur', handleBlur);
       stopPlacementHold();
+      dispatch.resolvers.forEach((resolver) => resolver.reset());
     };
-  }, [matchStarted]);
+  }, [matchStarted, keyboardBindings, keyboardBindingModes]);
 
-  // This component doesn't render anything, it just handles keyboard events
+  // This component renders nothing; it only wires keyboard gestures.
   return null;
 }

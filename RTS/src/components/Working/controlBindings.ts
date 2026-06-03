@@ -26,6 +26,11 @@
  * An empty string ("") means the action is intentionally unbound.
  */
 
+import {
+  type ActivationMode,
+  isActivationMode,
+} from './gestureModes';
+
 export type ControlActionId =
   | 'cameraForward'
   | 'cameraBackward'
@@ -33,7 +38,9 @@ export type ControlActionId =
   | 'cameraRight'
   | 'cameraZoomIn'
   | 'cameraZoomOut'
-  | 'selectAll'
+  | 'rally'
+  | 'selectAllUnits'
+  | 'deployUnits'
   | 'selectGroup1'
   | 'selectGroup2'
   | 'selectGroup3'
@@ -57,6 +64,15 @@ export type ControlCategory = 'Camera' | 'Selection' | 'Commands' | 'Pilot' | 'S
 /** A binding map assigns one input token to every bindable action. */
 export type ControlBindings = Record<ControlActionId, string>;
 
+/**
+ * The activation mode for each action's bound input: whether the action triggers
+ * on a Tap, Double-Tap, Hold, or Chord of that input. Kept as a parallel map to
+ * ControlBindings (rather than folded into it) so the token (what input) and the
+ * mode (how it's pressed) persist and rebind independently — and so the many
+ * token-only consumers keep reading a plain string and stay untouched.
+ */
+export type ControlBindingModes = Record<ControlActionId, ActivationMode>;
+
 export interface ControlActionMeta {
   id: ControlActionId;
   label: string;
@@ -76,6 +92,8 @@ export const CONTROLLER_DEADZONE = 0.35;
 
 const KEYBOARD_STORAGE_KEY = 'rts-keyboard-bindings';
 const CONTROLLER_STORAGE_KEY = 'rts-controller-bindings';
+const KEYBOARD_MODES_STORAGE_KEY = 'rts-keyboard-binding-modes';
+const CONTROLLER_MODES_STORAGE_KEY = 'rts-controller-binding-modes';
 
 /**
  * Catalog of every bindable action. Order here drives the order rows appear in
@@ -89,7 +107,9 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
   { id: 'cameraRight', label: 'Move Right', category: 'Camera', description: 'Drives a piloted King/Queen right. On a controller, the left stick also pans the camera.' },
   { id: 'cameraZoomIn', label: 'Zoom In', category: 'Camera', description: 'Bring the camera closer to the map.' },
   { id: 'cameraZoomOut', label: 'Zoom Out', category: 'Camera', description: 'Pull the camera back from the map.' },
-  { id: 'selectAll', label: 'Select All / Rally', category: 'Selection', description: 'A multi-gesture input that works the same on keyboard and controller. Double-tap to select every one of your units. While piloting a King/Queen, a quick tap rallies that animal’s units to follow the monarch, and holding it down designates units to deploy at the monarch — the longer you hold, the more units peel off (the teardrop count above the monarch).', gestureHint: 'Tap: rally · Double-tap: select all · Hold: deploy units' },
+  { id: 'rally', label: 'Rally to Monarch', category: 'Selection', description: 'While piloting a King/Queen, rally that animal’s units to fall in and follow the monarch. (Shares the Space / X input with Select All Units and Deploy Units by default, told apart by the activation mode.)' },
+  { id: 'selectAllUnits', label: 'Select All Units', category: 'Selection', description: 'Select every one of your units. Defaults to a double-tap so it can share an input with Rally and Deploy Units.' },
+  { id: 'deployUnits', label: 'Deploy Units', category: 'Selection', description: 'While piloting a King/Queen, deploy units at the monarch. Hold to designate a proportionate batch (the longer the hold, the more units peel off — the teardrop count); a Tap or Double-Tap deploys a single unit.', gestureHint: 'Hold = a batch · Tap = one unit' },
   { id: 'selectGroup1', label: 'Select Animal Type 1', category: 'Selection', description: 'Select all units of your first animal.' },
   { id: 'selectGroup2', label: 'Select Animal Type 2', category: 'Selection', description: 'Select all units of your second animal.' },
   { id: 'selectGroup3', label: 'Select Animal Type 3', category: 'Selection', description: 'Select all units of your third animal.' },
@@ -119,7 +139,12 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   cameraRight: 'f',
   cameraZoomIn: 'wheelup',
   cameraZoomOut: 'wheeldown',
-  selectAll: 'space',
+  // Rally / Select All Units / Deploy Units share Space by default; their distinct
+  // activation modes (tap / double-tap / hold — see DEFAULT_BINDING_MODES) keep them
+  // apart, reproducing the classic one-key Space gesture while staying remappable.
+  rally: 'space',
+  selectAllUnits: 'space',
+  deployUnits: 'space',
   selectGroup1: 'shift+a',
   selectGroup2: 'shift+s',
   selectGroup3: 'shift+d',
@@ -153,7 +178,10 @@ export const DEFAULT_CONTROLLER_BINDINGS: ControlBindings = {
   cameraRight: 'axis:0+',
   cameraZoomIn: 'button:7', // RT
   cameraZoomOut: 'button:6', // LT
-  selectAll: 'button:2', // X
+  // X carries Rally / Select All Units / Deploy Units, told apart by activation mode.
+  rally: 'button:2', // X
+  selectAllUnits: 'button:2', // X
+  deployUnits: 'button:2', // X
   selectGroup1: 'button:4+button:0', // LB + A
   selectGroup2: 'button:4+button:1', // LB + B
   selectGroup3: 'button:4+button:3', // LB + Y
@@ -177,8 +205,52 @@ export function getDefaultBindings(device: InputDevice): ControlBindings {
     : { ...DEFAULT_CONTROLLER_BINDINGS };
 }
 
+/**
+ * Default activation mode for every action. Most actions are a plain Tap. The
+ * three Space/X-sharing actions and the inherently-held gestures take distinct
+ * modes so they coexist on one input and preserve today's feel:
+ *   - selectAllUnits: Double-Tap (the classic double-tap-Space select-all),
+ *   - deployUnits: Hold (hold to deploy a proportionate batch),
+ *   - setPatrol: Hold (its hold-to-aim gesture).
+ * Modes are device-agnostic by default, so both devices start from this map.
+ */
+export const DEFAULT_BINDING_MODES: ControlBindingModes = {
+  cameraForward: 'tap',
+  cameraBackward: 'tap',
+  cameraLeft: 'tap',
+  cameraRight: 'tap',
+  cameraZoomIn: 'tap',
+  cameraZoomOut: 'tap',
+  rally: 'tap',
+  selectAllUnits: 'double-tap',
+  deployUnits: 'hold',
+  selectGroup1: 'tap',
+  selectGroup2: 'tap',
+  selectGroup3: 'tap',
+  deselect: 'tap',
+  primaryAction: 'tap',
+  secondaryAction: 'tap',
+  useAbility: 'tap',
+  setQueenRally: 'tap',
+  setPatrol: 'hold',
+  pilotCycleMonarch: 'tap',
+  pilotMonarch1: 'tap',
+  pilotMonarch2: 'tap',
+  pilotMonarch3: 'tap',
+  pilotToggleMonarch: 'tap',
+  pause: 'tap',
+};
+
+export function getDefaultModes(_device: InputDevice): ControlBindingModes {
+  return { ...DEFAULT_BINDING_MODES };
+}
+
 function storageKey(device: InputDevice): string {
   return device === 'keyboard' ? KEYBOARD_STORAGE_KEY : CONTROLLER_STORAGE_KEY;
+}
+
+function modesStorageKey(device: InputDevice): string {
+  return device === 'keyboard' ? KEYBOARD_MODES_STORAGE_KEY : CONTROLLER_MODES_STORAGE_KEY;
 }
 
 /**
@@ -221,19 +293,60 @@ export function saveBindings(device: InputDevice, bindings: ControlBindings): vo
 }
 
 /**
- * Apply a single rebind immutably. Assigning a token already used by another
- * action transfers it: the previous holder is unbound so two actions never share
- * one input. Returns a new map; the input is not mutated.
+ * Merge a partial/persisted activation-mode map over the defaults. Unknown keys and
+ * any value that isn't a real ActivationMode are ignored, so older saves (which had
+ * no modes at all) and forward-compatible additions both resolve sanely.
+ */
+export function mergeModesWithDefaults(
+  device: InputDevice,
+  stored: Partial<ControlBindingModes> | null | undefined
+): ControlBindingModes {
+  const merged = getDefaultModes(device);
+  if (!stored) return merged;
+  for (const id of ACTION_IDS) {
+    const value = stored[id];
+    if (isActivationMode(value)) {
+      merged[id] = value;
+    }
+  }
+  return merged;
+}
+
+export function loadModes(device: InputDevice): ControlBindingModes {
+  try {
+    const raw = localStorage.getItem(modesStorageKey(device));
+    if (!raw) return getDefaultModes(device);
+    return mergeModesWithDefaults(device, JSON.parse(raw) as Partial<ControlBindingModes>);
+  } catch {
+    return getDefaultModes(device);
+  }
+}
+
+export function saveModes(device: InputDevice, modes: ControlBindingModes): void {
+  try {
+    localStorage.setItem(modesStorageKey(device), JSON.stringify(modes));
+  } catch {
+    /* localStorage unavailable; the in-memory mode still applies this session */
+  }
+}
+
+/**
+ * Apply a single token rebind immutably. Two actions may now share one input as
+ * long as their activation modes differ, so a token is "in use" only when another
+ * action holds the SAME token AND the SAME mode — that holder is unbound (the input
+ * transfers). Returns a new bindings map; inputs are not mutated.
  */
 export function applyBinding(
   bindings: ControlBindings,
+  modes: ControlBindingModes,
   actionId: ControlActionId,
   token: string
 ): ControlBindings {
   const next: ControlBindings = { ...bindings };
   if (token !== UNBOUND_TOKEN) {
+    const mode = modes[actionId];
     for (const id of ACTION_IDS) {
-      if (id !== actionId && next[id] === token) {
+      if (id !== actionId && next[id] === token && modes[id] === mode) {
         next[id] = UNBOUND_TOKEN;
       }
     }
@@ -242,15 +355,44 @@ export function applyBinding(
   return next;
 }
 
-/** Return the action currently holding `token`, ignoring `exceptId`, else null. */
+/**
+ * Apply a single activation-mode change immutably. Changing a mode can collide with
+ * another action that shares this action's token under the new mode; that holder is
+ * unbound so each (token, mode) pair stays unique. Returns new maps.
+ */
+export function applyBindingMode(
+  bindings: ControlBindings,
+  modes: ControlBindingModes,
+  actionId: ControlActionId,
+  mode: ActivationMode
+): { bindings: ControlBindings; modes: ControlBindingModes } {
+  const nextModes: ControlBindingModes = { ...modes, [actionId]: mode };
+  const nextBindings: ControlBindings = { ...bindings };
+  const token = nextBindings[actionId];
+  if (token !== UNBOUND_TOKEN) {
+    for (const id of ACTION_IDS) {
+      if (id !== actionId && nextBindings[id] === token && nextModes[id] === mode) {
+        nextBindings[id] = UNBOUND_TOKEN;
+      }
+    }
+  }
+  return { bindings: nextBindings, modes: nextModes };
+}
+
+/**
+ * Return another action sharing the SAME (token, mode) pair, ignoring `exceptId`,
+ * else null. Same token under a different mode is not a conflict.
+ */
 export function findConflict(
   bindings: ControlBindings,
+  modes: ControlBindingModes,
   token: string,
+  mode: ActivationMode,
   exceptId: ControlActionId
 ): ControlActionId | null {
   if (token === UNBOUND_TOKEN) return null;
   for (const id of ACTION_IDS) {
-    if (id !== exceptId && bindings[id] === token) return id;
+    if (id !== exceptId && bindings[id] === token && modes[id] === mode) return id;
   }
   return null;
 }

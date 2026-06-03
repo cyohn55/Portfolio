@@ -191,7 +191,8 @@ export const InstructionsPopup: React.FC<InstructionsPopupProps> = ({ onClose })
               />
 
               <p className="controls-note">
-                Rebind any of these in Settings → Controls.
+                Rebind any of these in Settings → Controls — and choose how each input
+                fires: Tap, Double-Tap, Hold, or Chord (two inputs at once).
               </p>
             </>
           )}

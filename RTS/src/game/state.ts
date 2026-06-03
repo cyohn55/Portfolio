@@ -33,12 +33,18 @@ import * as leaderboardRemoteModule from '../components/Working/leaderboardRemot
 import {
   type ControlActionId,
   type ControlBindings,
+  type ControlBindingModes,
   type InputDevice,
   applyBinding,
+  applyBindingMode,
   getDefaultBindings,
+  getDefaultModes,
   loadBindings,
+  loadModes,
   saveBindings,
+  saveModes,
 } from '../components/Working/controlBindings';
+import type { ActivationMode } from '../components/Working/gestureModes';
 
 type BridgeAnimationState = 'up' | 'lowering' | 'down' | 'raising';
 type BridgeFrame = 'Fully_Up' | 'Almost_Up' | 'Almost_Down' | 'Fully_Down';
@@ -301,11 +307,15 @@ type Store = GameState & {
   togglePause: () => void;
 
   // Remappable controls. Keyboard/mouse and controller each carry a full binding
-  // map; see components/Working/controlBindings.ts for the token grammar. Setters
-  // persist to localStorage so a player's layout survives reloads.
+  // map (which input) plus a parallel activation-mode map (tap / double-tap / hold /
+  // chord); see components/Working/controlBindings.ts. Setters persist to
+  // localStorage so a player's layout survives reloads.
   keyboardBindings: ControlBindings;
   controllerBindings: ControlBindings;
+  keyboardBindingModes: ControlBindingModes;
+  controllerBindingModes: ControlBindingModes;
   setBinding: (device: InputDevice, actionId: ControlActionId, token: string) => void;
+  setBindingMode: (device: InputDevice, actionId: ControlActionId, mode: ActivationMode) => void;
   resetBindings: (device: InputDevice) => void;
   // Lighting settings
   lightingSettings: {
@@ -462,20 +472,37 @@ export const useGameStore = create<Store>((set, get) => ({
 
   keyboardBindings: loadBindings('keyboard'),
   controllerBindings: loadBindings('controller'),
+  keyboardBindingModes: loadModes('keyboard'),
+  controllerBindingModes: loadModes('controller'),
   setBinding: (device, actionId, token) => set((state) => {
-    const current = device === 'keyboard' ? state.keyboardBindings : state.controllerBindings;
-    const updated = applyBinding(current, actionId, token);
+    const isKeyboard = device === 'keyboard';
+    const bindings = isKeyboard ? state.keyboardBindings : state.controllerBindings;
+    const modes = isKeyboard ? state.keyboardBindingModes : state.controllerBindingModes;
+    // Pass the mode map so a transfer only unbinds another action sharing the same
+    // (token, mode) pair — two actions may share one input under different modes.
+    const updated = applyBinding(bindings, modes, actionId, token);
     saveBindings(device, updated);
-    return device === 'keyboard'
-      ? { keyboardBindings: updated }
-      : { controllerBindings: updated };
+    return isKeyboard ? { keyboardBindings: updated } : { controllerBindings: updated };
+  }),
+  setBindingMode: (device, actionId, mode) => set((state) => {
+    const isKeyboard = device === 'keyboard';
+    const bindings = isKeyboard ? state.keyboardBindings : state.controllerBindings;
+    const modes = isKeyboard ? state.keyboardBindingModes : state.controllerBindingModes;
+    const next = applyBindingMode(bindings, modes, actionId, mode);
+    saveBindings(device, next.bindings);
+    saveModes(device, next.modes);
+    return isKeyboard
+      ? { keyboardBindings: next.bindings, keyboardBindingModes: next.modes }
+      : { controllerBindings: next.bindings, controllerBindingModes: next.modes };
   }),
   resetBindings: (device) => set(() => {
     const defaults = getDefaultBindings(device);
+    const defaultModes = getDefaultModes(device);
     saveBindings(device, defaults);
+    saveModes(device, defaultModes);
     return device === 'keyboard'
-      ? { keyboardBindings: defaults }
-      : { controllerBindings: defaults };
+      ? { keyboardBindings: defaults, keyboardBindingModes: defaultModes }
+      : { controllerBindings: defaults, controllerBindingModes: defaultModes };
   }),
   lightingSettings: loadLightingSettings(),
   updateLightingSettings: (settings) => set((state) => ({

@@ -1,17 +1,20 @@
 import { test, expect } from '@playwright/test';
 import {
   type ControlBindings,
+  type ControlBindingModes,
   type GamepadLike,
   CONTROL_ACTIONS,
   DEFAULT_KEYBOARD_BINDINGS,
   DEFAULT_CONTROLLER_BINDINGS,
   UNBOUND_TOKEN,
   applyBinding,
+  applyBindingMode,
   controllerTokenMagnitude,
   findConflict,
   formatControllerToken,
   formatKeyboardToken,
   getDefaultBindings,
+  getDefaultModes,
   isControllerTokenActive,
   keyboardEventToToken,
   loadBindings,
@@ -68,21 +71,33 @@ test.describe('default binding maps', () => {
     }
   });
 
-  // Only *bound* tokens must be unique; an action may be intentionally left
-  // unbound on a device (e.g. the per-slot pilots are keyboard-unbound, and the
-  // cycle pilot is controller-unbound), and several actions may share UNBOUND.
-  test('default keyboard tokens are unique among bound actions', () => {
-    const bound = actionIds()
-      .map((id) => DEFAULT_KEYBOARD_BINDINGS[id as keyof ControlBindings])
-      .filter((token) => token !== UNBOUND_TOKEN);
-    expect(new Set(bound).size).toBe(bound.length);
+  // A bound (token, mode) PAIR must be unique: two actions may share one input as
+  // long as their activation modes differ (e.g. Space drives rally on tap,
+  // select-all on double-tap, deploy on hold). Unbound actions are exempt.
+  const boundPairs = (bindings: ControlBindings, modes: ControlBindingModes): string[] =>
+    actionIds()
+      .filter((id) => bindings[id as keyof ControlBindings] !== UNBOUND_TOKEN)
+      .map((id) => `${bindings[id as keyof ControlBindings]}|${modes[id as keyof ControlBindingModes]}`);
+
+  test('default keyboard (token, mode) pairs are unique among bound actions', () => {
+    const pairs = boundPairs(DEFAULT_KEYBOARD_BINDINGS, getDefaultModes('keyboard'));
+    expect(new Set(pairs).size).toBe(pairs.length);
   });
 
-  test('default controller tokens are unique among bound actions', () => {
-    const bound = actionIds()
-      .map((id) => DEFAULT_CONTROLLER_BINDINGS[id as keyof ControlBindings])
-      .filter((token) => token !== UNBOUND_TOKEN);
-    expect(new Set(bound).size).toBe(bound.length);
+  test('default controller (token, mode) pairs are unique among bound actions', () => {
+    const pairs = boundPairs(DEFAULT_CONTROLLER_BINDINGS, getDefaultModes('controller'));
+    expect(new Set(pairs).size).toBe(pairs.length);
+  });
+
+  test('the Space/X-sharing actions reproduce the classic one-input gesture', () => {
+    // Rally / Select All Units / Deploy Units share one input but stay distinct via
+    // their tap / double-tap / hold modes.
+    const kbModes = getDefaultModes('keyboard');
+    expect(DEFAULT_KEYBOARD_BINDINGS.rally).toBe(DEFAULT_KEYBOARD_BINDINGS.selectAllUnits);
+    expect(DEFAULT_KEYBOARD_BINDINGS.selectAllUnits).toBe(DEFAULT_KEYBOARD_BINDINGS.deployUnits);
+    expect(kbModes.rally).toBe('tap');
+    expect(kbModes.selectAllUnits).toBe('double-tap');
+    expect(kbModes.deployUnits).toBe('hold');
   });
 
   test('getDefaultBindings returns an independent copy', () => {
@@ -110,7 +125,7 @@ test.describe('mergeWithDefaults', () => {
 test.describe('persistence round-trip', () => {
   test('saveBindings then loadBindings returns the same map', () => {
     (globalThis as any).localStorage = new MemoryStorage();
-    const custom = applyBinding(getDefaultBindings('keyboard'), 'cameraForward', 'arrowup');
+    const custom = applyBinding(getDefaultBindings('keyboard'), getDefaultModes('keyboard'), 'cameraForward', 'arrowup');
     saveBindings('keyboard', custom);
     expect(loadBindings('keyboard')).toEqual(custom);
     delete (globalThis as any).localStorage;
@@ -125,30 +140,55 @@ test.describe('persistence round-trip', () => {
   });
 });
 
-test.describe('applyBinding and findConflict', () => {
-  test('assigning an in-use token transfers it and unbinds the previous owner', () => {
+test.describe('applyBinding, applyBindingMode and findConflict', () => {
+  test('assigning a token already used under the SAME mode transfers it', () => {
     const base = getDefaultBindings('keyboard');
-    const forwardToken = base.cameraForward; // whatever the Move Forward default is
-    const next = applyBinding(base, 'cameraBackward', forwardToken);
+    const modes = getDefaultModes('keyboard'); // cameraForward & cameraBackward are both 'tap'
+    const forwardToken = base.cameraForward;
+    const next = applyBinding(base, modes, 'cameraBackward', forwardToken);
     expect(next.cameraBackward).toBe(forwardToken);
     expect(next.cameraForward).toBe(UNBOUND_TOKEN);
     expect(base.cameraForward).toBe(forwardToken); // original not mutated
   });
 
+  test('a token shared under a DIFFERENT mode is not a conflict and does not transfer', () => {
+    const base = getDefaultBindings('keyboard');
+    const modes = getDefaultModes('keyboard');
+    // rally(tap) and selectAllUnits(double-tap) already share Space by default.
+    expect(base.rally).toBe(base.selectAllUnits);
+    expect(findConflict(base, modes, base.rally, modes.rally, 'selectAllUnits')).toBeNull();
+    // Re-asserting rally's own token under its own mode leaves the sibling bound.
+    const next = applyBinding(base, modes, 'rally', base.rally);
+    expect(next.selectAllUnits).toBe(base.selectAllUnits);
+  });
+
   test('unbinding an action does not disturb others', () => {
     const base = getDefaultBindings('keyboard');
+    const modes = getDefaultModes('keyboard');
     const backwardToken = base.cameraBackward;
-    const next = applyBinding(base, 'cameraForward', UNBOUND_TOKEN);
+    const next = applyBinding(base, modes, 'cameraForward', UNBOUND_TOKEN);
     expect(next.cameraForward).toBe(UNBOUND_TOKEN);
     expect(next.cameraBackward).toBe(backwardToken);
   });
 
-  test('findConflict detects the holder, skips the excepted action, ignores unbound', () => {
+  test('changing a mode into an existing (token, mode) pair unbinds the previous holder', () => {
     const base = getDefaultBindings('keyboard');
+    const modes = getDefaultModes('keyboard');
+    // Move rally to double-tap, colliding with selectAllUnits (Space, double-tap).
+    const result = applyBindingMode(base, modes, 'rally', 'double-tap');
+    expect(result.modes.rally).toBe('double-tap');
+    expect(result.bindings.selectAllUnits).toBe(UNBOUND_TOKEN);
+    expect(result.bindings.rally).toBe(base.rally);
+    expect(modes.rally).toBe('tap'); // original not mutated
+  });
+
+  test('findConflict matches only the same (token, mode), skips excepted, ignores unbound', () => {
+    const base = getDefaultBindings('keyboard');
+    const modes = getDefaultModes('keyboard');
     const forwardToken = base.cameraForward;
-    expect(findConflict(base, forwardToken, 'cameraBackward')).toBe('cameraForward');
-    expect(findConflict(base, forwardToken, 'cameraForward')).toBeNull();
-    expect(findConflict(base, UNBOUND_TOKEN, 'cameraForward')).toBeNull();
+    expect(findConflict(base, modes, forwardToken, modes.cameraBackward, 'cameraBackward')).toBe('cameraForward');
+    expect(findConflict(base, modes, forwardToken, modes.cameraForward, 'cameraForward')).toBeNull();
+    expect(findConflict(base, modes, UNBOUND_TOKEN, 'tap', 'cameraForward')).toBeNull();
   });
 });
 
