@@ -22,6 +22,7 @@ export function PostGameScreen() {
   const initializeGame = useGameStore((s) => s.initializeGame);
   const chooseAnimalsForLocal = useGameStore((s) => s.chooseAnimalsForLocal);
   const startMatch = useGameStore((s) => s.startMatch);
+  const unpauseGame = useGameStore((s) => s.unpauseGame);
 
   // Local UI state for leaderboard submission. Kept inside the component because
   // it has no meaning outside the postgame screen and shouldn't survive a
@@ -131,10 +132,19 @@ export function PostGameScreen() {
   const matchTimeDisplay = formatMatchTime(matchTimeMs);
 
   const handlePlayAgain = () => {
-    // Replay with same animals
+    // Replay with the same local animal pool. Capture it before initializeGame()
+    // resets state, then re-apply it so startMatch() spawns the same lineup.
+    const previousAnimalPool = selectedAnimalPool;
     initializeGame();
-    chooseAnimalsForLocal(selectedAnimalPool);
+    chooseAnimalsForLocal(previousAnimalPool);
     startMatch(true);
+    // startMatch() leaves the match paused so the lobby→play flow can gate it
+    // behind the InstructionsPopup. On Play Again we never leave the 'playing'
+    // screen, so that popup (and the unpauseGame() it would trigger on close)
+    // never fires — without this the replayed match stays frozen: no timer,
+    // no scoring, no spawns. Unpause directly since the player has already
+    // seen the instructions this session.
+    unpauseGame();
     transitionToScreen('playing');
   };
 
