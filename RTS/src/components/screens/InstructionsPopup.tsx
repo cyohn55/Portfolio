@@ -122,7 +122,7 @@ const TOUCH_GROUPS: readonly ControlGroup[] = [
 ];
 
 const ControlGroupList: React.FC<{ groups: readonly ControlGroup[] }> = ({ groups }) => (
-  <>
+  <div className="controls-groups">
     {groups.map((group) => (
       <div key={group.label} className="controls-group">
         <h4 className="controls-group-label">{group.label}</h4>
@@ -136,7 +136,7 @@ const ControlGroupList: React.FC<{ groups: readonly ControlGroup[] }> = ({ group
         </ul>
       </div>
     ))}
-  </>
+  </div>
 );
 
 type InputView = 'keyboard' | 'controller';
