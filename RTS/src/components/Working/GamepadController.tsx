@@ -16,6 +16,14 @@ import {
   UNIT_PLACEMENT_INTERVAL_MS,
   UNIT_PLACEMENT_REPEAT_INTERVAL_MS,
 } from './monarchPilot';
+import {
+  PATROL_ARROW_COLOR,
+  RALLY_ARROW_COLOR,
+  createDottedArrow,
+  hideDottedArrow,
+  positionDottedArrow,
+} from './dottedArrow';
+import type { Unit } from '../../game/types';
 
 /**
  * GamepadController — the single per-frame gamepad poller. It lives inside the
@@ -23,7 +31,9 @@ import {
  * move/attack orders. Responsibilities:
  *   - publish analog camera pan/zoom intent (read by CameraController),
  *   - drive an on-screen reticle with the right stick,
- *   - fire selection/command/pause actions on the rising edge of bound buttons.
+ *   - fire selection/command/pause actions on the rising edge of bound buttons,
+ *   - run the multi-edge gestures (Select All hold-to-deploy, Queen spawn-rally
+ *     aim, Queen patrol hold) with their on-screen indicator lines.
  *
  * Bindings, units, and selection are read fresh from the store each frame via
  * getState() so the poll loop never holds a stale closure and never forces a
@@ -37,6 +47,11 @@ const RETICLE_SIZE_PX = 28;
 // A button press counts as a "tap" only on the frame it transitions to active,
 // so holding a button doesn't repeat the order every frame.
 const UNIT_PICK_RADIUS_PX = 40;
+
+// How long the patrol button must be held (with a lone Queen selected) before the
+// gold route line arms and a release commits the patrol. Mirrors PATROL_HOLD_MS in
+// HexInteraction so the controller hold-gesture feels identical to the mouse one.
+const PATROL_HOLD_MS = 750;
 
 // Camera-pan actions handled analogically (held), not as discrete taps.
 const CAMERA_ACTIONS: ReadonlySet<ControlActionId> = new Set([
@@ -81,6 +96,28 @@ export function GamepadController() {
   const placementRepeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectAllAwaitingReleaseRef = useRef(false);
 
+  // Queen spawn-rally gesture state (default R3): the rally button arms a blue aim
+  // line that follows the reticle, and the next Move / Attack (B) drops the point —
+  // mirroring the mouse's arm-then-right-click. queenId is captured at arm time so
+  // the commit targets that Queen even if the reticle wanders. The blue line is a
+  // DOM element drawn each frame while armed.
+  const rallyArmedRef = useRef(false);
+  const rallyQueenIdRef = useRef<string | null>(null);
+  const rallyArrowElRef = useRef<HTMLDivElement | null>(null);
+
+  // Queen patrol gesture state (default L3 held): after PATROL_HOLD_MS the gold
+  // route line arms and a release commits the patrol, mirroring the mouse right-hold.
+  // The Queen is pinned (setMovementHold) for the whole hold so the line's origin
+  // stays anchored to her, and is released when the gesture resolves or is cancelled.
+  const patrolPendingRef = useRef(false);
+  const patrolArmedRef = useRef(false);
+  const patrolQueenIdRef = useRef<string | null>(null);
+  const patrolHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const patrolArrowElRef = useRef<HTMLDivElement | null>(null);
+  // Previous-frame active state of the rally / patrol buttons, for edge detection.
+  const rallyPrevRef = useRef(false);
+  const patrolPrevRef = useRef(false);
+
   // Stop both phases of the placement-hold timer (on release, double tap, pad
   // disconnect, or unmount). Only one phase is ever live, but clearing both is safe.
   const stopPlacementHold = () => {
@@ -92,6 +129,42 @@ export function GamepadController() {
       clearInterval(placementRepeatIntervalRef.current);
       placementRepeatIntervalRef.current = null;
     }
+  };
+
+  // The lone owned Queen, if exactly one Queen of the local player is selected,
+  // else null — the only selection that can carry a rally point or a patrol route
+  // (mirrors isSelectedQueenOnly in the mouse path).
+  const loneSelectedQueen = (): Unit | null => {
+    const state = useGameStore.getState();
+    if (state.selectedUnitIds.length !== 1) return null;
+    const unit = state.units.find((candidate) => candidate.id === state.selectedUnitIds[0]);
+    if (!unit || unit.kind !== 'Queen' || unit.ownerId !== state.localPlayerId) return null;
+    return unit;
+  };
+
+  // Abandon an in-progress spawn-rally aim and hide the blue line. Used on commit,
+  // selection change, pad disconnect, pause, and unmount.
+  const cancelRallyAim = () => {
+    rallyArmedRef.current = false;
+    rallyQueenIdRef.current = null;
+    hideDottedArrow(rallyArrowElRef.current);
+  };
+
+  // Abandon an in-progress patrol hold: stop the arm timer, release the Queen's
+  // movement pin, hide the gold line, and clear the gesture refs.
+  const cancelPatrolAim = () => {
+    if (patrolHoldTimerRef.current !== null) {
+      clearTimeout(patrolHoldTimerRef.current);
+      patrolHoldTimerRef.current = null;
+    }
+    if (patrolPendingRef.current) {
+      // Only the gesture that pinned the Queen should release her.
+      useGameStore.getState().setMovementHold(null);
+    }
+    patrolPendingRef.current = false;
+    patrolArmedRef.current = false;
+    patrolQueenIdRef.current = null;
+    hideDottedArrow(patrolArrowElRef.current);
   };
 
   // Rising edge of the Select All / Rally button. A double tap immediately selects
@@ -166,14 +239,30 @@ export function GamepadController() {
     document.body.appendChild(reticle);
     reticleElRef.current = reticle;
 
+    // The blue spawn-rally line and the gold patrol line the Queen gestures draw,
+    // hidden until their gesture arms. Same dotted-arrow shape as the mouse path.
+    const rallyArrow = createDottedArrow(RALLY_ARROW_COLOR);
+    document.body.appendChild(rallyArrow);
+    rallyArrowElRef.current = rallyArrow;
+
+    const patrolArrow = createDottedArrow(PATROL_ARROW_COLOR);
+    document.body.appendChild(patrolArrow);
+    patrolArrowElRef.current = patrolArrow;
+
     return () => {
       gamepadInput.reset();
       stopPlacementHold();
+      cancelRallyAim();
+      cancelPatrolAim();
       if (reticleElRef.current) document.body.removeChild(reticleElRef.current);
+      if (rallyArrowElRef.current) document.body.removeChild(rallyArrowElRef.current);
+      if (patrolArrowElRef.current) document.body.removeChild(patrolArrowElRef.current);
       reticleElRef.current = null;
+      rallyArrowElRef.current = null;
+      patrolArrowElRef.current = null;
     };
-    // stopPlacementHold only touches refs (stable), so this one-time setup/teardown
-    // effect intentionally runs once; re-subscribing per render is unnecessary.
+    // The helpers cleared here only touch refs (stable), so this one-time
+    // setup/teardown effect intentionally runs once; re-subscribing is unnecessary.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -196,6 +285,151 @@ export function GamepadController() {
     const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const point = new THREE.Vector3();
     return raycaster.ray.intersectPlane(ground, point) ? point : null;
+  };
+
+  // The local player's King nearest the reticle within UNIT_PICK_RADIUS_PX, else
+  // null. Dropping a rally on your own King makes the Queen's spawns follow him
+  // instead of marching to a fixed point (mirrors friendlyKingUnderCursor on mouse).
+  const friendlyKingUnderReticle = (): Unit | null => {
+    const state = useGameStore.getState();
+    let nearest: Unit | null = null;
+    let nearestDist = UNIT_PICK_RADIUS_PX;
+    for (const unit of state.units) {
+      if (unit.ownerId !== state.localPlayerId || unit.kind !== 'King') continue;
+      const screen = projectToScreen(unit.position.x, unit.position.y, unit.position.z);
+      const dist = Math.hypot(screen.x - reticlePos.current.x, screen.y - reticlePos.current.y);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = unit;
+      }
+    }
+    return nearest;
+  };
+
+  // The live Unit for a gesture's captured Queen id (looked up fresh so the line
+  // origin tracks her if she shifts), or null once she has died / been removed.
+  const queenById = (queenId: string | null): Unit | null => {
+    if (!queenId) return null;
+    return useGameStore.getState().units.find((unit) => unit.id === queenId) ?? null;
+  };
+
+  // Rising edge of the spawn-rally button: arm (or re-anchor) the blue aim line to
+  // the lone selected Queen. The commit happens on the next Move / Attack (B) in
+  // fireAction. With no lone Queen selected, abandon any stale aim.
+  const handleRallyArm = () => {
+    const state = useGameStore.getState();
+    if (state.isPaused || state.gameOver || !state.matchStarted) return;
+    const queen = loneSelectedQueen();
+    if (!queen) {
+      cancelRallyAim();
+      return;
+    }
+    rallyArmedRef.current = true;
+    rallyQueenIdRef.current = queen.id;
+  };
+
+  // Commit the armed spawn-rally point at the reticle: a friendly King under it
+  // becomes a follow target, otherwise the ground point is a fixed staging spot.
+  // Invoked by the Move / Attack handler so it takes precedence over a move order.
+  const commitRallyAim = () => {
+    const queenId = rallyQueenIdRef.current;
+    cancelRallyAim();
+    if (!queenId) return;
+    const king = friendlyKingUnderReticle();
+    if (king) {
+      useGameStore.getState().setQueenRally({ queenId, target: { mode: 'follow', monarchId: king.id } });
+      return;
+    }
+    const world = reticleWorldPosition();
+    if (world) {
+      useGameStore.getState().setQueenRally({
+        queenId,
+        target: { mode: 'point', position: { x: world.x, y: 0, z: world.z } },
+      });
+    }
+  };
+
+  // Rising edge of the patrol button: with a lone Queen selected, pin her and start
+  // the hold timer; once it elapses the gold route line arms (drawn each frame).
+  const handlePatrolPress = () => {
+    const state = useGameStore.getState();
+    if (state.isPaused || state.gameOver || !state.matchStarted) return;
+    const queen = loneSelectedQueen();
+    if (!queen) return;
+
+    cancelPatrolAim();
+    state.setMovementHold(queen.id); // keep her still so the line origin stays anchored
+    patrolPendingRef.current = true;
+    patrolQueenIdRef.current = queen.id;
+    patrolHoldTimerRef.current = setTimeout(() => {
+      patrolArmedRef.current = true;
+      patrolHoldTimerRef.current = null;
+    }, PATROL_HOLD_MS);
+  };
+
+  // Falling edge of the patrol button: an armed hold commits a back-and-forth route
+  // from the Queen to the reticle; a too-quick release just cancels (no patrol).
+  const handlePatrolRelease = () => {
+    if (!patrolPendingRef.current) return;
+    if (patrolArmedRef.current) {
+      const queen = queenById(patrolQueenIdRef.current);
+      const end = reticleWorldPosition();
+      if (queen && end) {
+        useGameStore.getState().setPatrol({
+          queenId: queen.id,
+          startPosition: { x: queen.position.x, y: queen.position.y, z: queen.position.z },
+          endPosition: { x: end.x, y: 0, z: end.z },
+        });
+      }
+    }
+    cancelPatrolAim();
+  };
+
+  // Redraw the armed Queen-gesture lines from the Queen to the reticle. Called each
+  // frame while the match is live; cancels a gesture whose Queen is gone or whose
+  // lone-Queen selection has changed, so a stale line can never linger.
+  const drawQueenGestureLines = () => {
+    if (rallyArmedRef.current) {
+      const queen = queenById(rallyQueenIdRef.current);
+      if (!queen || loneSelectedQueen()?.id !== queen.id) {
+        cancelRallyAim();
+      } else {
+        const start = projectToScreen(queen.position.x, queen.position.y, queen.position.z);
+        const king = friendlyKingUnderReticle();
+        const end = king
+          ? projectToScreen(king.position.x, king.position.y, king.position.z)
+          : { x: reticlePos.current.x, y: reticlePos.current.y };
+        positionDottedArrow(rallyArrowElRef.current, start, end);
+      }
+    }
+
+    if (patrolArmedRef.current) {
+      const queen = queenById(patrolQueenIdRef.current);
+      if (!queen) {
+        cancelPatrolAim();
+      } else {
+        const start = projectToScreen(queen.position.x, queen.position.y, queen.position.z);
+        positionDottedArrow(patrolArrowElRef.current, start, {
+          x: reticlePos.current.x,
+          y: reticlePos.current.y,
+        });
+      }
+    }
+  };
+
+  // Edge-detect the rally / patrol buttons and run their handlers. Kept together so
+  // the frame loop can gate the whole gesture set behind "match live, not paused".
+  const updateQueenGestures = (gamepad: GamepadLike, bindings: Record<ControlActionId, string>) => {
+    const rallyActive = isControllerTokenActive(gamepad, bindings.setQueenRally);
+    if (rallyActive && !rallyPrevRef.current) handleRallyArm();
+    rallyPrevRef.current = rallyActive;
+
+    const patrolActive = isControllerTokenActive(gamepad, bindings.setPatrol);
+    if (patrolActive && !patrolPrevRef.current) handlePatrolPress();
+    else if (!patrolActive && patrolPrevRef.current) handlePatrolRelease();
+    patrolPrevRef.current = patrolActive;
+
+    drawQueenGestureLines();
   };
 
   // Nearest unit to the reticle (screen space) matching the owner predicate.
@@ -268,6 +502,12 @@ export function GamepadController() {
         break;
       }
       case 'secondaryAction': {
+        // While a spawn-rally aim is armed, Move / Attack drops the rally point
+        // instead of issuing a move — mirroring the mouse's right-click commit.
+        if (rallyArmedRef.current) {
+          commitRallyAim();
+          break;
+        }
         if (state.selectedUnitIds.length === 0) break;
         const enemyId = nearestUnitId((ownerId, localId) => ownerId !== localId);
         if (enemyId) {
@@ -334,10 +574,14 @@ export function GamepadController() {
     if (!gamepad) {
       gamepadInput.reset();
       prevActive.current = {};
-      // Abandon any in-progress hold so a disconnect mid-gesture can't strand the
-      // timer (and a lingering teardrop) with no falling edge ever arriving.
+      // Abandon any in-progress hold/aim so a disconnect mid-gesture can't strand a
+      // timer, a movement pin, or a lingering line with no falling edge ever arriving.
       stopPlacementHold();
       selectAllAwaitingReleaseRef.current = false;
+      cancelRallyAim();
+      cancelPatrolAim();
+      rallyPrevRef.current = false;
+      patrolPrevRef.current = false;
       if (reticle) reticle.style.display = 'none';
       return;
     }
@@ -392,6 +636,18 @@ export function GamepadController() {
     if (selectAllActive && !selectAllWasActive) handleSelectAllPress();
     else if (!selectAllActive && selectAllWasActive) handleSelectAllRelease();
     prevActive.current.selectAll = selectAllActive;
+
+    // --- Queen spawn-rally aim + patrol hold. Only meaningful while the match is
+    // live; otherwise abandon any in-progress aim (releasing a patrol pin) and reset
+    // the edge state so a press that began during a pause can't commit on resume. ---
+    if (matchStarted && !isPaused) {
+      updateQueenGestures(gamepad, controllerBindings);
+    } else {
+      cancelRallyAim();
+      cancelPatrolAim();
+      rallyPrevRef.current = false;
+      patrolPrevRef.current = false;
+    }
   });
 
   return null;

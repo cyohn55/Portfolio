@@ -42,6 +42,7 @@ export type ControlActionId =
   | 'secondaryAction'
   | 'useAbility'
   | 'setQueenRally'
+  | 'setPatrol'
   | 'pilotCycleMonarch'
   | 'pilotMonarch1'
   | 'pilotMonarch2'
@@ -96,7 +97,8 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
   { id: 'primaryAction', label: 'Select / Confirm', category: 'Commands', description: 'Select the unit under the cursor / reticle.' },
   { id: 'secondaryAction', label: 'Move / Attack', category: 'Commands', description: 'Order selected units to the cursor / reticle.' },
   { id: 'useAbility', label: 'Use Ability', category: 'Commands', description: "Trigger the selected animal's special ability (Turtle shell, Chicken eggs, Frog tongue, Cat hiss, Bee swarm, Owl pickup/deliver), aimed at the cursor/reticle. Keyboard & mouse can also fire this with a simultaneous left + right click." },
-  { id: 'setQueenRally', label: 'Set Spawn Rally Point', category: 'Commands', description: 'With a single Queen selected, press to start aiming the blue rally line, then right-click to drop the rally point. Units she spawns afterward march straight to it.' },
+  { id: 'setQueenRally', label: 'Set Spawn Rally Point', category: 'Commands', description: 'With a single Queen selected, press to start aiming the blue rally line, then issue Move / Attack (right-click on mouse) to drop the rally point. Units she spawns afterward march straight to it — or follow a friendly King dropped on.', gestureHint: 'Aim, then Move/Attack to drop' },
+  { id: 'setPatrol', label: 'Set Patrol Route', category: 'Commands', description: 'With a single Queen selected, hold to aim a back-and-forth patrol route along the gold line, then release to commit it. Keyboard & mouse use a held right-click on the Queen instead, so this stays unbound there by default.', gestureHint: 'Hold to aim · release to set the route' },
   { id: 'pilotCycleMonarch', label: 'Cycle Piloted Monarch', category: 'Pilot', description: 'Tap to start piloting your first animal’s King, then cycle through your other animals’ monarchs. Drive it with the Move keys.' },
   { id: 'pilotMonarch1', label: 'Pilot Monarch 1', category: 'Pilot', description: 'Directly pilot the King of your first animal (toggle Queen with Toggle Monarch). Drive it with the Move keys/stick.' },
   { id: 'pilotMonarch2', label: 'Pilot Monarch 2', category: 'Pilot', description: 'Directly pilot the King of your second animal. Drive it with the Move keys/stick.' },
@@ -128,8 +130,11 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   // HexInteraction), so the rebindable key stays unbound by default; binding a key
   // here also triggers it (HexInteraction reads the live cursor for aiming).
   useAbility: '',
-  // R aims and drops a Queen's spawn rally point (two taps; see HexInteraction).
+  // R arms a Queen's spawn rally aim; a right-click then drops it (see HexInteraction).
   setQueenRally: 'r',
+  // Patrol on keyboard & mouse is the held right-click on a lone Queen (a mouse
+  // gesture in HexInteraction), so no dedicated key is bound here by default.
+  setPatrol: '',
   // A cycles through the three animals' monarchs; G swaps the current King/Queen.
   // The per-slot pilot keys stay unbound on keyboard (they exist for the
   // controller's D-Pad), so the home row stays free for the cycle/toggle keys.
@@ -156,7 +161,8 @@ export const DEFAULT_CONTROLLER_BINDINGS: ControlBindings = {
   primaryAction: 'button:0', // A
   secondaryAction: 'button:1', // B
   useAbility: 'button:5', // RB — fires the selected animal's ability at the reticle
-  setQueenRally: '', // keyboard-only gesture for now
+  setQueenRally: 'button:11', // R3 (right-stick click) arms the rally aim; B drops it
+  setPatrol: 'button:10', // L3 (left-stick click) held arms the patrol aim; release commits
   pilotCycleMonarch: '', // keyboard-only; the controller uses the per-slot D-Pad pilots below
   pilotMonarch1: 'button:12', // D-Pad Up
   pilotMonarch2: 'button:14', // D-Pad Left

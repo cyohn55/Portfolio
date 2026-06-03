@@ -4,6 +4,13 @@ import { useGameStore } from '../game/state';
 import * as THREE from 'three';
 import { tokenToMouseButton, keyboardEventToToken } from './Working/controlBindings';
 import {
+  PATROL_ARROW_COLOR,
+  RALLY_ARROW_COLOR,
+  createDottedArrow,
+  hideDottedArrow,
+  positionDottedArrow,
+} from './Working/dottedArrow';
+import {
   type AbilityComboActions,
   type AbilityComboCursor,
   abilityPlanIsActionable,
@@ -28,40 +35,6 @@ const PATROL_HOLD_MS = 750;
 // from a single event, independent of which one triggered it.
 const DOM_BUTTON_TO_BUTTONS_MASK: Record<number, number> = { 0: 1, 1: 4, 2: 2 };
 const buttonsMaskFor = (domButton: number): number => DOM_BUTTON_TO_BUTTONS_MASK[domButton] ?? 0;
-
-// Stroke colors for the two dotted-line indicators. The Queen's patrol route is
-// gold (matching her gold ring); her spawn rally line is blue so the two
-// gestures read as visually distinct at a glance.
-const PATROL_ARROW_COLOR = '#ffd700';
-const RALLY_ARROW_COLOR = '#1e90ff';
-
-// Build a flat dotted-line-with-arrowhead indicator in the given color. The line
-// itself is a zero-height div whose dotted top border is the visible stroke; the
-// arrowhead is a child glyph pinned to the far end so it inherits the parent's
-// rotation and points along the line. Shared by the patrol and rally indicators.
-function createDottedArrow(strokeColor: string): HTMLDivElement {
-  const arrow = document.createElement('div');
-  arrow.style.position = 'absolute';
-  arrow.style.height = '0px';
-  arrow.style.borderTop = `3px dotted ${strokeColor}`;
-  arrow.style.transformOrigin = 'left center';
-  arrow.style.pointerEvents = 'none';
-  arrow.style.display = 'none';
-  arrow.style.zIndex = '1001';
-
-  const arrowHead = document.createElement('span');
-  arrowHead.innerHTML = '➤'; // ➤ points along the line's +x axis
-  arrowHead.style.position = 'absolute';
-  arrowHead.style.right = '0px';
-  arrowHead.style.top = '50%';
-  arrowHead.style.transform = 'translate(50%, -50%)';
-  arrowHead.style.color = strokeColor;
-  arrowHead.style.fontSize = '18px';
-  arrowHead.style.lineHeight = '0';
-  arrow.appendChild(arrowHead);
-
-  return arrow;
-}
 
 interface DragState {
   isDragging: boolean;
@@ -379,11 +352,11 @@ export function MapInteraction() {
     (buttons & buttonsMaskFor(primaryButton)) !== 0 && (buttons & buttonsMaskFor(secondaryButton)) !== 0;
 
   // Hide / re-aim one of the dotted-line indicators. Shared by the patrol (gold)
-  // and rally (blue) gestures so each only differs by which ref it drives.
+  // and rally (blue) gestures so each only differs by which ref it drives. The
+  // pixel math lives in the shared dottedArrow module; here we only project the
+  // two world points into screen space first.
   const hideArrow = (arrowRef: RefObject<HTMLDivElement | null>) => {
-    if (arrowRef.current) {
-      arrowRef.current.style.display = 'none';
-    }
+    hideDottedArrow(arrowRef.current);
   };
 
   const updateArrow = (
@@ -391,21 +364,7 @@ export function MapInteraction() {
     startWorld: THREE.Vector3,
     endWorld: THREE.Vector3
   ) => {
-    if (!arrowRef.current) return;
-
-    const startScreen = worldToScreen(startWorld);
-    const endScreen = worldToScreen(endWorld);
-
-    const dx = endScreen.x - startScreen.x;
-    const dy = endScreen.y - startScreen.y;
-    const length = Math.sqrt(dx * dx + dy * dy);
-    const angle = Math.atan2(dy, dx);
-
-    arrowRef.current.style.left = `${startScreen.x}px`;
-    arrowRef.current.style.top = `${startScreen.y}px`;
-    arrowRef.current.style.width = `${length}px`;
-    arrowRef.current.style.transform = `rotate(${angle}rad)`;
-    arrowRef.current.style.display = 'block';
+    positionDottedArrow(arrowRef.current, worldToScreen(startWorld), worldToScreen(endWorld));
   };
 
   const hidePatrolArrow = () => hideArrow(patrolArrowRef);

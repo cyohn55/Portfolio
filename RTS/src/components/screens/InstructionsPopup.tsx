@@ -90,6 +90,8 @@ const CONTROLLER_GROUPS: readonly ControlGroup[] = [
     entries: [
       { input: 'B', action: 'Move / Attack at the reticle' },
       { input: 'RB', action: "Use the selected animal's special ability" },
+      { input: 'R3, then B', action: "Aim & set a lone Queen's spawn rally point" },
+      { input: 'Hold L3', action: "Draw a lone Queen's patrol route" },
     ],
   },
   {
