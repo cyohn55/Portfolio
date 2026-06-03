@@ -5,6 +5,9 @@ import { keyboardCoordinator } from '../utils/keyboardCoordination';
 import { useGameStore } from '../game/state';
 import { gamepadInput } from './Working/gamepadInput';
 import { pilotInput } from './Working/monarchPilot';
+import { getArenaBoundary } from './Working/arenaBoundary';
+import { clampCameraFocus } from './Working/cameraFocusBounds';
+import { computeActiveEdges, edgePanIndicator } from './Working/edgePanIndicator';
 
 /**
  * A camera-movement binding is only usable as a held key when it's a single
@@ -46,7 +49,7 @@ export function CameraController({
   minDistance = 2,
   maxDistance = 100,
   followSpeed = 1.5,
-  edgePanMargin = 12,
+  edgePanMargin = 24,
   dragPanSensitivity = 0.6
 }: CameraControllerProps) {
   instanceCounter++;
@@ -321,6 +324,8 @@ export function CameraController({
       canvas.removeEventListener('touchmove', handleTouchMove);
       canvas.removeEventListener('touchend', handleTouchEnd);
       canvas.removeEventListener('touchcancel', handleTouchEnd);
+      // Drop any lit edge chevrons so none lingers after the camera unmounts.
+      edgePanIndicator.reset();
     };
   }, [handleKeyDown, handleKeyUp, handleWheel, handleMouseDown, handleMouseMove, handleMouseUp, handleMouseLeaveWindow, handleTouchStart, handleTouchMove, handleTouchEnd, clearPressedKeys, handleVisibilityChange, gl, instanceId]);
 
@@ -390,6 +395,9 @@ export function CameraController({
       }
       pilotInput.setMove(drive.x, drive.z);
 
+      // No edge-pan while piloting, so no edge chevrons should be lit.
+      edgePanIndicator.reset();
+
       // Ease the camera focus onto the piloted unit. Selection auto-follow stays
       // off while piloting so the two follow behaviours don't fight.
       followEnabled.current = false;
@@ -409,12 +417,17 @@ export function CameraController({
       const pan = gamepadMove;
       if (mouseOverCanvas.current && !isMiddleDragging.current) {
         const { x: mouseX, y: mouseY } = mousePos.current;
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        if (mouseX <= edgePanMargin) pan.sub(right.current);
-        else if (mouseX >= viewportWidth - edgePanMargin) pan.add(right.current);
-        if (mouseY <= edgePanMargin) pan.add(forward.current);
-        else if (mouseY >= viewportHeight - edgePanMargin) pan.sub(forward.current);
+        // One shared computation drives both the pan and the on-screen chevrons,
+        // so the chevron for an edge is lit exactly when that edge's pan fires.
+        const edges = computeActiveEdges(mouseX, mouseY, window.innerWidth, window.innerHeight, edgePanMargin);
+        if (edges.left) pan.sub(right.current);
+        else if (edges.right) pan.add(right.current);
+        if (edges.top) pan.add(forward.current);
+        else if (edges.bottom) pan.sub(forward.current);
+        edgePanIndicator.setEdges(edges);
+      } else {
+        // Cursor off-canvas or mid middle-drag: edge-pan is suppressed, so are the chevrons.
+        edgePanIndicator.reset();
       }
 
       if (pan.length() > 0) {
@@ -466,6 +479,17 @@ export function CameraController({
     if (zoomDirection !== 0) {
       const zoomAmount = zoomDirection * zoomSpeed * 30 * delta;
       currentDistance.current = Math.max(minDistance, Math.min(maxDistance, currentDistance.current + zoomAmount));
+    }
+
+    // Confine the focus to the playable map. Every pan source above (controller stick, edge-pan,
+    // middle-drag, auto-follow, piloted-unit follow) mutates target.current without bounds, so a
+    // continuous input — most notably analog stick drift — could otherwise slide the view off the
+    // map with no way to stop it. Clamping the focus (not the eye) keeps the map edges visible.
+    const focusBounds = getArenaBoundary();
+    if (focusBounds) {
+      const clamped = clampCameraFocus(focusBounds, target.current.x, target.current.z);
+      target.current.x = clamped.x;
+      target.current.z = clamped.z;
     }
 
     // Update camera position based on target and current distance

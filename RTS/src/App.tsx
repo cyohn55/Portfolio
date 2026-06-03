@@ -6,6 +6,7 @@ import { BattleMap } from './components/HexGrid';
 import { CameraController } from './components/CameraController';
 import { GamepadController } from './components/Working/GamepadController';
 import { UnitPlacementIndicator } from './components/Working/UnitPlacementIndicator';
+import { EdgePanChevrons } from './components/Working/EdgePanChevrons';
 import { HUD } from './components/HUD';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { ModelPreloader } from './utils/ModelPreloader';
@@ -133,6 +134,8 @@ export default function App() {
       <div className="hud">
         <HUD />
       </div>
+      {/* Yellow edge-scroll chevrons, lit only while the cursor is in a pan-trigger band. */}
+      <EdgePanChevrons />
       <Canvas
         camera={{ fov: 45, far: 200000 }}
         shadows
