@@ -828,6 +828,29 @@ document.addEventListener('DOMContentLoaded', function() {
         event.preventDefault();
     };
 
+    // Stop the iframe from chaining its scroll up to the portfolio page.
+    //
+    // The parent `window` wheel listener only sees wheel events that happen
+    // over the parent's own DOM. Once the game fills the viewport the cursor
+    // is over the iframe, so wheel events fire inside the iframe's document
+    // and the parent listener never runs — the iframe then "overscroll
+    // chains" the gesture up to this page and it scrolls anyway.
+    //
+    // `overscroll-behavior: none` on the iframe's scroll root contains that
+    // chaining without swallowing the wheel itself, so the RTS still gets its
+    // wheel events for camera zoom. RTS/dist is same-origin, so we can reach
+    // into its document; the try/catch keeps us safe if that ever changes.
+    const containIframeOverscroll = () => {
+        try {
+            const doc = rtsIframe.contentDocument;
+            if (!doc || !doc.documentElement) return;
+            doc.documentElement.style.overscrollBehavior = 'none';
+            if (doc.body) doc.body.style.overscrollBehavior = 'none';
+        } catch (_) {
+            // Cross-origin (shouldn't happen in production) — nothing to do.
+        }
+    };
+
     const engageScrollLock = () => {
         // Align the 100vh game container's top with the viewport top so the
         // game fills the screen and nothing is cut off at the bottom. We
@@ -837,6 +860,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (gameContainer) {
             gameContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+
+        // Contain the iframe's overscroll every time we engage — the iframe's
+        // document may have (re)loaded between calls.
+        containIframeOverscroll();
 
         if (wheelLockEngaged) return;
         window.addEventListener('wheel', blockWheel, { passive: false });
