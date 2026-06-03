@@ -318,7 +318,7 @@ export function AnimalSelectionButtons() {
     <div
       style={{
         position: 'fixed',
-        bottom: '30px',
+        bottom: '35px',
         left: '50%',
         transform: 'translateX(-50%)',
         display: 'flex',
