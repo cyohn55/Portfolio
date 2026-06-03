@@ -25,6 +25,13 @@ function plainKeyToken(token: string): string | null {
 // Global instance counter to detect multiple mounting
 let instanceCounter = 0;
 
+// The view a match opens on: focus point on the player's side of the map and
+// the starting zoom distance. Hoisted to module scope so the ref initializers
+// and the per-match reset (see the matchStartNonce effect) share one source of
+// truth instead of duplicating the literals.
+const INITIAL_FOCUS = new THREE.Vector3(0, 0, 225);
+const INITIAL_DISTANCE = 200;
+
 interface CameraControllerProps {
   moveSpeed?: number;
   zoomSpeed?: number;
@@ -57,8 +64,8 @@ export function CameraController({
 
   const { camera, gl } = useThree();
   const keysPressed = useRef(new Set<string>());
-  const target = useRef(new THREE.Vector3(0, 0, 225));
-  const currentDistance = useRef(200);
+  const target = useRef(INITIAL_FOCUS.clone());
+  const currentDistance = useRef(INITIAL_DISTANCE);
   const forward = useRef(new THREE.Vector3());
   const right = useRef(new THREE.Vector3());
   const up = useRef(new THREE.Vector3(0, 1, 0));
@@ -81,6 +88,20 @@ export function CameraController({
   useEffect(() => {
     followEnabled.current = selectedUnitIds.length > 0;
   }, [selectedUnitIds]);
+
+  // Snap the view back to the opening shot at the start of every match. This
+  // component stays mounted across "Play Again" (the Canvas never leaves the
+  // 'playing' screen), so its focus/zoom refs would otherwise carry over
+  // wherever the player last panned the previous match. Keyed on matchStartNonce
+  // rather than matchStarted because the latter never changes value across a
+  // replay (see types.ts). The initial mount also runs this — harmless, since
+  // the refs already hold these defaults.
+  const matchStartNonce = useGameStore((s) => s.matchStartNonce);
+  useEffect(() => {
+    target.current.copy(INITIAL_FOCUS);
+    currentDistance.current = INITIAL_DISTANCE;
+    followEnabled.current = false;
+  }, [matchStartNonce]);
 
   // Touch handling refs
   const lastTouchPos = useRef<{ x: number; y: number } | null>(null);

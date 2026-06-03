@@ -274,6 +274,13 @@ export interface GameState {
   selectedAnimalPool: AnimalId[]; // UI selection for local player pre-game
   localPlayerId: string | null;
   matchStarted: boolean;
+  // Monotonic counter bumped once per startMatch(). Lets long-lived views that
+  // never unmount between matches (e.g. CameraController, which stays mounted
+  // across "Play Again" because the Canvas doesn't leave the 'playing' screen)
+  // detect a fresh match and reset per-match view state. A boolean matchStarted
+  // flag can't carry this signal: initializeGame()+startMatch() run in one
+  // synchronous handler, so subscribers only ever observe the final `true`.
+  matchStartNonce: number;
   gameOver: boolean;
   winner: string | null; // player id who won
   selectedUnitIds: string[]; // currently selected units

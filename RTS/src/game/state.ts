@@ -436,6 +436,7 @@ export const useGameStore = create<Store>((set, get) => ({
   selectedAnimalPool: ['Bee', 'Bear', 'Fox'],
   localPlayerId: null,
   matchStarted: false,
+  matchStartNonce: 0,
   gameOver: false,
   winner: null,
   selectedUnitIds: [],
@@ -618,6 +619,8 @@ export const useGameStore = create<Store>((set, get) => ({
     set({
       units,
       matchStarted: true,
+      // Bump so views that persist across matches reset their per-match state.
+      matchStartNonce: state.matchStartNonce + 1,
       isPaused: true,
       gameOver: false,
       winner: null,
