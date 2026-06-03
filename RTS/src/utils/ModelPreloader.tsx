@@ -255,7 +255,14 @@ export function beeFrameVariantKey(frameIndex: number): string {
 export const FROG_FRAME_COUNT = 4;
 export const FROG_WINDUP_FRAME = 2;  // Frog_F2 (mouth-open windup / reel-in pose)
 export const FROG_STRIKE_FRAME = 3;  // Frog_F3 (tongue extended toward target)
-export const FROG_TONGUE_NODE_NAME = 'Tongue';
+// The tongue is anchored by two marker nodes baked into the model: Tongue_Origin
+// sits at the frog's mouth (where the beam emerges) and Tongue_Tip marks the
+// beam's resting far end. The beam stretches along the Origin->Tip axis, and the
+// Tip mesh doubles as the stretchable beam geometry (see getBakedFrogTongueParts
+// and getFrogTongueAnchors). Driving the beam off these nodes lets the model
+// author position the mouth and aim in Blender instead of hand-tuning constants.
+export const FROG_TONGUE_ORIGIN_NODE_NAME = 'Tongue_Origin';
+export const FROG_TONGUE_TIP_NODE_NAME = 'Tongue_Tip';
 
 export function frogFrameNodeName(frameIndex: number): string {
   return `Frog_F${frameIndex}`;
@@ -490,11 +497,12 @@ export function getBakedFrogFrameParts(gltf: any, frameIndex: number): BakedPart
   return parts;
 }
 
-// Return cached baked parts for the Frog's tongue beam. Like the flying egg, the
-// Tongue mesh is normalized on its own bounds (longest edge -> 1) and centered at
-// the origin (no feet-to-ground drop) so the renderer can stretch and orient it
-// freely each frame: the tongue is drawn as a beam from the frog's mouth to its
-// current tip, scaled along its length axis by the live extension distance.
+// Return cached baked parts for the Frog's tongue beam. The Tongue_Tip marker
+// mesh doubles as the beam: like the flying egg it is normalized on its own
+// bounds (longest edge -> 1) and centered at the origin (no feet-to-ground drop)
+// so the renderer can stretch and orient it freely each frame, drawing the beam
+// from the Tongue_Origin anchor out along the Origin->Tip axis and scaling it by
+// the live extension distance (see the tongue block in UnitsLayer).
 export function getBakedFrogTongueParts(gltf: any): BakedPart[] {
   const cached = bakedVariantCache.get(FROG_TONGUE_VARIANT_KEY);
   if (cached) return cached;
@@ -502,7 +510,7 @@ export function getBakedFrogTongueParts(gltf: any): BakedPart[] {
   if (gltf?.scene) {
     const root = gltf.scene.clone(true);
     root.updateWorldMatrix(true, true);
-    const tongueNode = root.getObjectByName(FROG_TONGUE_NODE_NAME);
+    const tongueNode = root.getObjectByName(FROG_TONGUE_TIP_NODE_NAME);
     if (tongueNode) {
       const box = new THREE.Box3().setFromObject(tongueNode);
       const size = new THREE.Vector3();
@@ -528,6 +536,66 @@ export function getBakedFrogTongueParts(gltf: any): BakedPart[] {
   }
   bakedVariantCache.set(FROG_TONGUE_VARIANT_KEY, parts);
   return parts;
+}
+
+// Local-space tongue anchors, expressed in the same normalized frame the Frog's
+// pose meshes are baked into (longest edge -> 1, feet on y=0, centered on x/z by
+// the whole model's bounds — see bakePoseFrame). `origin` is the mouth point the
+// beam emerges from; `axis` is the unit direction from the origin to the tip,
+// i.e. the way the tongue shoots "straight outward". The renderer scales these by
+// the unit's world scale, rotates them by its yaw, and offsets by its position to
+// place and aim the beam — so the mouth height and aim follow the model markers
+// (Tongue_Origin / Tongue_Tip) instead of a hand-tuned constant.
+export type FrogTongueAnchors = {
+  origin: { x: number; y: number; z: number };
+  axis: { x: number; y: number; z: number };
+};
+
+let frogTongueAnchorsCache: FrogTongueAnchors | null = null;
+
+export function getFrogTongueAnchors(gltf: any): FrogTongueAnchors | null {
+  if (frogTongueAnchorsCache) return frogTongueAnchorsCache;
+  if (!gltf?.scene) return null;
+
+  // Reproduce bakePoseFrame's normalization so the anchors land in the exact
+  // frame the rendered frog body occupies. The clone is left at identity, so each
+  // node's world position is its untransformed model-space position.
+  const root = gltf.scene.clone(true);
+  root.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(root);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const normalizeScale = 1 / (Math.max(size.x, size.y, size.z) || 1);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+
+  // A node's baked position mirrors bakePoseFrame: scale by normalizeScale, then
+  // recenter horizontally on the model center and drop feet (box.min.y) to y=0.
+  const scratch = new THREE.Vector3();
+  const toBakedFrame = (nodeName: string): THREE.Vector3 | null => {
+    const node = root.getObjectByName(nodeName);
+    if (!node) return null;
+    node.getWorldPosition(scratch);
+    return new THREE.Vector3(
+      (scratch.x - center.x) * normalizeScale,
+      (scratch.y - box.min.y) * normalizeScale,
+      (scratch.z - center.z) * normalizeScale
+    );
+  };
+
+  const origin = toBakedFrame(FROG_TONGUE_ORIGIN_NODE_NAME);
+  const tip = toBakedFrame(FROG_TONGUE_TIP_NODE_NAME);
+  if (!origin || !tip) return null;
+
+  const axis = tip.clone().sub(origin);
+  if (axis.lengthSq() < 1e-8) axis.set(0, 0, 1); // degenerate markers: shoot forward
+  axis.normalize();
+
+  frogTongueAnchorsCache = {
+    origin: { x: origin.x, y: origin.y, z: origin.z },
+    axis: { x: axis.x, y: axis.y, z: axis.z },
+  };
+  return frogTongueAnchorsCache;
 }
 
 // Return cached baked parts for one Chicken pose-frame variant. The walk/idle

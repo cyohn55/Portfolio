@@ -125,7 +125,6 @@ const TONGUE_HIT_RADIUS = 2.0;       // the tongue latches an enemy whose center
 const TONGUE_HIT_RADIUS_SQ = TONGUE_HIT_RADIUS * TONGUE_HIT_RADIUS;
 const TONGUE_WINDUP_MS = 100;        // Frog_F2 mouth-open beat before the tongue shoots out
 const TONGUE_COOLDOWN_MS = 1500;     // minimum time between a frog's tongue grabs
-const TONGUE_MOUTH_HEIGHT = 2.6;     // height above the frog's base the tongue emerges from
 const TONGUE_DRAG_STOP_DIST = 2.5;   // a dragged enemy stops once this close to the frog's mouth
 
 // Cat "Hiss" ability tuning. A player-activated burst fired by holding both mouse
@@ -2555,7 +2554,11 @@ export const useGameStore = create<Store>((set, get) => ({
         unit.tongue = {
           phase: 'windup',
           targetId,
-          origin: { x: unit.position.x, y: unit.position.y + TONGUE_MOUTH_HEIGHT, z: unit.position.z },
+          // Horizontal anchor for the grab's hit/drag math (the frog is pinned for
+          // the whole grab, so this stays put). The beam's visible mouth point and
+          // upward aim are derived from the model's Tongue_Origin / Tongue_Tip
+          // markers at render time (see UnitsLayer), not from this y.
+          origin: { x: unit.position.x, y: unit.position.y, z: unit.position.z },
           direction,
           length: 0,
           maxLength: TONGUE_RANGE,

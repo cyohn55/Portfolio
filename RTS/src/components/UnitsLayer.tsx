@@ -39,9 +39,11 @@ import {
   getBakedBeeFrameParts,
   getBakedFrogFrameParts,
   getBakedFrogTongueParts,
+  getFrogTongueAnchors,
   getBakedChickenFrameParts,
   getBakedEggProjectileParts,
   type BakedPart,
+  type FrogTongueAnchors,
 } from '../utils/ModelPreloader';
 import * as THREE from 'three';
 
@@ -56,8 +58,13 @@ const MAX_RENDER_DISTANCE = 400;
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
-// Reusable scratch for the frog tongue beam's aim direction (no per-frame alloc).
-const tongueDir = new THREE.Vector3();
+// Reusable scratch for the frog tongue beam (no per-frame alloc): the world-space
+// mouth point and aim axis derived from the model's Tongue_Origin / Tongue_Tip
+// markers, plus the yaw quaternion that rotates those model-space offsets into the
+// frog's current facing.
+const tongueMouth = new THREE.Vector3();
+const tongueAxis = new THREE.Vector3();
+const tongueYaw = new THREE.Quaternion();
 const FLAT_ROTATION = -Math.PI / 2;
 
 const isMobileDevice = (): boolean =>
@@ -510,6 +517,16 @@ function InstancedUnits() {
     return Array.from(set);
   }, [players, selectedAnimalPool]);
 
+  // Local-space mouth point and aim axis for the frog tongue beam, read from the
+  // model's Tongue_Origin / Tongue_Tip markers. Resolved once when frogs enter
+  // play; the render loop scales/rotates these onto each live frog (see below).
+  const frogTongueAnchors = useMemo<FrogTongueAnchors | null>(() => {
+    if (!inPlayAnimals.includes('Frog')) return null;
+    const animalIds = Object.keys(ANIMAL_FILE_MAP) as AnimalId[];
+    const frogGltf = gltfs[animalIds.indexOf('Frog')];
+    return frogGltf ? getFrogTongueAnchors(frogGltf) : null;
+  }, [gltfs, inPlayAnimals]);
+
   // Build the baked variant specs (one entry per animal, plus owl wing frames
   // when owls are present). Geometry baking itself is cached module-side.
   const variants = useMemo<VariantSpec[]>(() => {
@@ -925,26 +942,55 @@ function InstancedUnits() {
     }
 
     // Frog tongue beams (Frog ability). For every frog with an active tongue, draw
-    // the baked tongue stretched from the mouth origin to the current tip: it is
-    // centered at the midpoint, oriented so its local +Z points along the aim
-    // direction, and scaled to TONGUE_BEAM_THICKNESS across by the live extension
-    // length. A zero-length (just-fired / fully-reeled) tongue is skipped.
+    // the baked tongue stretched from the model's Tongue_Origin marker (the mouth)
+    // out along the Origin->Tip axis to the current tip. The mouth point and axis
+    // come from the frog's own model markers (frogTongueAnchors): they are scaled
+    // by the unit's world scale, rotated by its yaw (the frog turns to face the
+    // throw, so the model's forward aligns with the aim), and offset by its
+    // position. The beam is centered at its midpoint, oriented so its local +Z
+    // runs along that world axis, and scaled to TONGUE_BEAM_THICKNESS across by the
+    // live extension length. A zero-length (just-fired / fully-reeled) tongue is
+    // skipped. Without anchors (frog model missing the markers) no beam is drawn.
     const tongueMeshes = meshRefs.current.get(FROG_TONGUE_VARIANT_KEY);
-    if (tongueMeshes && tongueMeshes.length > 0) {
+    if (tongueMeshes && tongueMeshes.length > 0 && frogTongueAnchors) {
       let tongueCount = 0;
       for (const unit of s.units) {
         if (tongueCount >= MAX_INSTANCES_PER_VARIANT) break;
         const tongue = unit.tongue;
         if (!tongue || tongue.length <= 0.001) continue;
 
+        const unitScale = getKindTargetScale(unit.animal, unit.kind);
+        tongueYaw.setFromAxisAngle(Y_AXIS, unit.rotation);
+
+        // World mouth point: the Tongue_Origin marker, scaled and yawed onto the
+        // live frog. A frog mid-grab is pinned with no vertical offset, so the
+        // body sits at unit.position — the same anchor the body render uses.
+        tongueMouth
+          .set(
+            frogTongueAnchors.origin.x * unitScale,
+            frogTongueAnchors.origin.y * unitScale,
+            frogTongueAnchors.origin.z * unitScale
+          )
+          .applyQuaternion(tongueYaw);
+        tongueMouth.x += unit.position.x;
+        tongueMouth.y += unit.position.y;
+        tongueMouth.z += unit.position.z;
+
+        // World aim axis (unit length): the Origin->Tip direction rotated into the
+        // frog's facing. The tip extends "straight outward" along this axis.
+        tongueAxis
+          .set(frogTongueAnchors.axis.x, frogTongueAnchors.axis.y, frogTongueAnchors.axis.z)
+          .applyQuaternion(tongueYaw);
+
         const length = tongue.length;
-        const midX = tongue.origin.x + tongue.direction.x * (length / 2);
-        const midZ = tongue.origin.z + tongue.direction.z * (length / 2);
-        position.set(midX, tongue.origin.y, midZ);
+        position.set(
+          tongueMouth.x + tongueAxis.x * (length / 2),
+          tongueMouth.y + tongueAxis.y * (length / 2),
+          tongueMouth.z + tongueAxis.z * (length / 2)
+        );
         if (!frustum.containsPoint(position)) continue; // off-screen tongues cost nothing
 
-        tongueDir.set(tongue.direction.x, 0, tongue.direction.z).normalize();
-        quaternion.setFromUnitVectors(Z_AXIS, tongueDir);
+        quaternion.setFromUnitVectors(Z_AXIS, tongueAxis);
         scale.set(TONGUE_BEAM_THICKNESS, TONGUE_BEAM_THICKNESS, length);
         matrix.compose(position, quaternion, scale);
         for (let p = 0; p < tongueMeshes.length; p++) {
