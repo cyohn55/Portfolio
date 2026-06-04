@@ -57,6 +57,11 @@ const BUTTON_POSE_NODE: Partial<Record<AnimalId, string>> = {
   Chicken: 'Chicken_F0',
 };
 
+// Royal head accessories baked into several models for the in-game King/Queen
+// units. The button shows a plain animal, so these are always stripped (mirrors
+// ROYAL_ACCESSORY_NODE_NAMES in ModelPreloader).
+const ROYAL_ACCESSORY_NODE_NAMES = ['Blue_Crown', 'Blue_Tiara', 'Red_Crown', 'Red_Tiara'] as const;
+
 // 3D Model component for buttons
 function AnimalModel({ animal }: { animal: AnimalId }) {
   const path = getModelPath(animal);
@@ -75,6 +80,13 @@ function AnimalModel({ animal }: { animal: AnimalId }) {
         mesh.castShadow = false;
         mesh.receiveShadow = false;
       }
+    });
+
+    // Strip royal crowns/tiaras so the button shows the bare animal (the
+    // pose-frame strip below already removes them for pose animals, but
+    // base-variant animals like Bear/Bunny/Owl/Pig need this explicit removal).
+    ROYAL_ACCESSORY_NODE_NAMES.forEach((name) => {
+      scene.getObjectByName(name)?.removeFromParent();
     });
 
     // For pose-frame animals, keep only the chosen pose object and drop every
