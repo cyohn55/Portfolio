@@ -2,6 +2,7 @@ import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { useGameStore } from '../game/state';
+import { getActiveNetEngine } from './Working/net/netMatch';
 import { registerArenaBoundary, confineBoundaryToPoints } from './Working/arenaBoundary';
 import { computeArenaBoundary } from './Working/arenaBoundaryScene';
 import { UnitsLayer } from './UnitsLayer';
@@ -205,9 +206,21 @@ export function BattleMap() {
     // SYNCHRONIZED: Game logic at 60 FPS matching rendering frequency.
     // Units render directly from store positions (logic already runs at 60 FPS),
     // so no separate interpolation buffer is needed.
-    while (accumulator.current >= FIXED_TIMESTEP) {
-      tick(FIXED_TIMESTEP / 1000, now);
-      accumulator.current -= FIXED_TIMESTEP;
+    //
+    // In multiplayer the lockstep engine — not this free-running accumulator —
+    // owns tick advancement: it only steps the simulation once both peers' inputs
+    // for a tick have arrived, so we hand it the elapsed wall time and let it
+    // decide how many ticks to run (it calls store.tick internally). The local
+    // accumulator is drained so a later return to single-player starts clean.
+    const netEngine = useGameStore.getState().netMode === 'single' ? null : getActiveNetEngine();
+    if (netEngine) {
+      netEngine.update(frameTime);
+      accumulator.current = 0;
+    } else {
+      while (accumulator.current >= FIXED_TIMESTEP) {
+        tick(FIXED_TIMESTEP / 1000, now);
+        accumulator.current -= FIXED_TIMESTEP;
+      }
     }
 
 

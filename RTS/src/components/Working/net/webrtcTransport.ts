@@ -77,6 +77,10 @@ export class WebRtcTransport {
   // lockstep engine's disconnect handling) all observe status without fighting
   // over the single constructor callback slot.
   private readonly statusListeners = new Set<(status: TransportStatus) => void>();
+  // Extra message subscribers beyond the constructor callback, for the same
+  // reason as statusListeners: the lockstep engine consumes messages while the
+  // UI/signaling may also want to observe them.
+  private readonly messageListeners = new Set<(message: unknown) => void>();
 
   constructor(callbacks: WebRtcTransportCallbacks = {}) {
     this.callbacks = callbacks;
@@ -133,6 +137,16 @@ export class WebRtcTransport {
   addStatusListener(listener: (status: TransportStatus) => void): () => void {
     this.statusListeners.add(listener);
     return () => this.statusListeners.delete(listener);
+  }
+
+  /**
+   * Subscribe to decoded inbound messages in addition to the constructor
+   * callback. Returns an unsubscribe function. The lockstep engine uses this to
+   * receive input frames and checksums.
+   */
+  addMessageListener(listener: (message: unknown) => void): () => void {
+    this.messageListeners.add(listener);
+    return () => this.messageListeners.delete(listener);
   }
 
   /**
@@ -224,7 +238,9 @@ export class WebRtcTransport {
     channel.onclose = () => this.updateStatus('closed');
     channel.onmessage = (event) => {
       const decoded = decodeMessage(event.data);
-      if (decoded !== undefined) this.callbacks.onMessage?.(decoded);
+      if (decoded === undefined) return;
+      this.callbacks.onMessage?.(decoded);
+      this.messageListeners.forEach((listener) => listener(decoded));
     };
   }
 

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { produce, setAutoFreeze } from 'immer';
 import { SpatialGrid } from '../utils/SpatialGrid';
 import { SeededRng } from '../components/Working/net/prng';
+import type { NetCommand } from '../components/Working/net/netMessages';
 
 // The per-frame `tick` mutates unit objects in place for performance (see the
 // comment on `tick`). The other store actions still use Immer's produce(), whose
@@ -239,6 +240,52 @@ function resetDeterministicState(seed: number): SeededRng {
   entitySeq = 0;
   simRng = new SeededRng(seed);
   return simRng;
+}
+
+// ---------------------------------------------------------------------------
+// Command routing seam (lockstep multiplayer).
+//
+// In single-player the public command actions (moveCommand, attackTarget, the
+// abilities, …) mutate the store immediately. In multiplayer they must instead
+// be scheduled by the lockstep engine and executed on an agreed future tick on
+// BOTH peers, so the simulations stay identical. Rather than fork every action,
+// one router seam intercepts them:
+//
+//   * setCommandRouter(fn) installs a sink (the engine's enqueue). While set,
+//     each action hands its serialized command to the sink and returns without
+//     mutating (routeCommand → true).
+//   * The engine later replays every command — local AND remote — at its tick by
+//     calling applyNetCommand, which sets `applyingNetCommand` so routeCommand
+//     returns false and the SAME action falls through to its real mutation.
+//   * actingPlayerIdOverride lets a replayed command act on its issuer's units
+//     rather than the local player's, so a remote order moves remote units. It
+//     defaults to the local player (single-player and local input), so the gate
+//     logic is unchanged outside of replay.
+// ---------------------------------------------------------------------------
+
+let commandRouter: ((command: NetCommand) => void) | null = null;
+let applyingNetCommand = false;
+let actingPlayerIdOverride: string | null = null;
+
+/** Install (or clear with null) the lockstep command sink. Set on match start/end. */
+export function setCommandRouter(router: ((command: NetCommand) => void) | null): void {
+  commandRouter = router;
+  applyingNetCommand = false;
+  actingPlayerIdOverride = null;
+}
+
+/** Hand a command to the router if one is installed and we are not mid-replay. */
+function routeCommand(command: NetCommand): boolean {
+  if (commandRouter && !applyingNetCommand) {
+    commandRouter(command);
+    return true;
+  }
+  return false;
+}
+
+/** The owner a command currently acts on: the replay override, else the local player. */
+function actingOwnerId(state: { localPlayerId: string | null }): string | null {
+  return actingPlayerIdOverride ?? state.localPlayerId;
 }
 
 /**
@@ -2052,11 +2099,15 @@ export const useGameStore = create<Store>((set, get) => ({
       set({ units: draft.units.slice() });
   },
 
-  moveCommand: (cmd) => set((prev) =>
+  // In multiplayer, routeCommand hands this to the lockstep engine (returning
+  // undefined here) instead of mutating now; the engine replays it on its
+  // scheduled tick via applyNetCommand. In single-player routeCommand is a no-op
+  // and the set() runs immediately. Same pattern on every routed action below.
+  moveCommand: (cmd) => routeCommand({ type: 'moveUnits', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       for (const id of cmd.unitIds) {
         const u = draft.units.find((x) => x.id === id);
-        if (!u || u.ownerId !== draft.localPlayerId) continue; // Only allow moving own units
+        if (!u || u.ownerId !== actingOwnerId(draft)) continue; // Only allow moving the acting player's units
 
         // A mouse move order takes manual control back from a piloted King/Queen: stop
         // piloting it so the order actually takes effect. The pilot tick block drives the
@@ -2144,10 +2195,10 @@ export const useGameStore = create<Store>((set, get) => ({
     })
   ),
 
-  setPatrol: (cmd) => set((prev) =>
+  setPatrol: (cmd) => routeCommand({ type: 'setPatrol', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       const queen = draft.units.find(u => u.id === cmd.queenId);
-      if (!queen || queen.ownerId !== draft.localPlayerId || queen.kind !== 'Queen') return;
+      if (!queen || queen.ownerId !== actingOwnerId(draft) || queen.kind !== 'Queen') return;
 
       // Set patrol route for the queen
       draft.queenPatrols[cmd.queenId] = {
@@ -2212,17 +2263,17 @@ export const useGameStore = create<Store>((set, get) => ({
   // a 'point' marches them to a fixed staging spot; a 'follow' makes them fall in
   // behind a friendly monarch. A 'follow' target is itself validated to a living
   // friendly monarch so the rally never points at a dead or enemy unit.
-  setQueenRally: (cmd) => set((prev) =>
+  setQueenRally: (cmd) => routeCommand({ type: 'setQueenRally', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       const queen = draft.units.find(u => u.id === cmd.queenId);
-      if (!queen || queen.ownerId !== draft.localPlayerId || queen.kind !== 'Queen') return;
+      if (!queen || queen.ownerId !== actingOwnerId(draft) || queen.kind !== 'Queen') return;
 
       const target = cmd.target; // capture so the narrowing survives the find() closure
       if (target.mode === 'follow') {
         // Validate the follow target is a living friendly monarch (King/Queen) so the
         // rally never points at a dead or enemy unit.
         const monarch = draft.units.find(u => u.id === target.monarchId);
-        if (!monarch || monarch.ownerId !== draft.localPlayerId || monarch.hp <= 0 ||
+        if (!monarch || monarch.ownerId !== actingOwnerId(draft) || monarch.hp <= 0 ||
             (monarch.kind !== 'King' && monarch.kind !== 'Queen')) return;
         draft.queenRallyTargets[cmd.queenId] = { mode: 'follow', monarchId: monarch.id };
       } else {
@@ -2239,21 +2290,21 @@ export const useGameStore = create<Store>((set, get) => ({
   // secondary-button patrol-draw hold. Validated to the local player so a held
   // id can only ever pin one of their own units. The tick honors this by holding
   // the unit's position and skipping its AI/order/patrol movement that tick.
-  setMovementHold: (unitId) => set((prev) => {
+  setMovementHold: (unitId) => routeCommand({ type: 'setMovementHold', payload: { unitId } }) ? undefined : set((prev) => {
     if (unitId === null) return { movementHeldUnitId: null };
     const unit = prev.units.find(u => u.id === unitId);
-    if (!unit || unit.ownerId !== prev.localPlayerId) return {};
+    if (!unit || unit.ownerId !== actingOwnerId(prev)) return {};
     return { movementHeldUnitId: unitId };
   }),
 
-  attackTarget: (cmd) => set((prev) =>
+  attackTarget: (cmd) => routeCommand({ type: 'attackTarget', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       const target = draft.units.find(u => u.id === cmd.targetId);
       if (!target) return;
 
       for (const id of cmd.unitIds) {
         const unit = draft.units.find(u => u.id === id);
-        if (!unit || unit.ownerId !== draft.localPlayerId) continue;
+        if (!unit || unit.ownerId !== actingOwnerId(draft)) continue;
 
         // A mouse attack order takes manual control back from a piloted King/Queen (see
         // moveCommand): stop piloting it so the order isn't dropped by the pilot tick block.
@@ -2338,6 +2389,9 @@ export const useGameStore = create<Store>((set, get) => ({
   // camera (which follows the selection) eases onto it. Re-pressing the slot of
   // the unit already being piloted stops piloting.
   pilotMonarchBySlot: (slotIndex) => set((prev) => {
+    // Monarch piloting is continuous, local, manual control that is not routed
+    // through lockstep, so it is disabled in multiplayer v1 to avoid desync.
+    if (commandRouter) return {};
     if (!prev.localPlayerId) return {};
     const animal = prev.selectedAnimalPool[slotIndex];
     if (!animal) return {};
@@ -2368,6 +2422,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // Returns to no-pilot is handled by re-pressing nothing — there is always a
   // monarch to land on as long as one animal still has one alive.
   pilotCycleMonarch: () => set((prev) => {
+    if (commandRouter) return {}; // piloting disabled in multiplayer v1 (see pilotMonarchBySlot)
     if (!prev.localPlayerId) return {};
     const pool = prev.selectedAnimalPool;
     if (pool.length === 0) return {};
@@ -2400,6 +2455,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // Swap the piloted unit between the King and Queen of the same animal (G).
   // No-op when not piloting or when the sibling monarch is dead.
   togglePilotMonarchKind: () => set((prev) => {
+    if (commandRouter) return {}; // piloting disabled in multiplayer v1 (see pilotMonarchBySlot)
     if (!prev.localPlayerId || !prev.pilotedUnitId) return {};
     const current = prev.units.find((u) => u.id === prev.pilotedUnitId);
     if (!current || (current.kind !== 'King' && current.kind !== 'Queen')) return {};
@@ -2424,6 +2480,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // move order breaks the unit off the monarch (see moveCommand).
   rallyToMonarch: () => set((prev) =>
     produce(prev, (draft) => {
+      if (commandRouter) return; // piloting disabled in multiplayer v1 (see pilotMonarchBySlot)
       if (!draft.localPlayerId || !draft.pilotedUnitId) return;
       const monarch = draft.units.find((u) => u.id === draft.pilotedUnitId);
       if (!monarch) return;
@@ -2465,6 +2522,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // quick tap (0) occurred on release.
   incrementUnitPlacement: () => {
     const prev = get();
+    if (commandRouter) return prev.unitPlacementCount; // piloting disabled in multiplayer v1
     if (!prev.localPlayerId || !prev.pilotedUnitId) return prev.unitPlacementCount;
 
     const monarch = prev.units.find((u) => u.id === prev.pilotedUnitId);
@@ -2492,6 +2550,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // blocking and the stale A* path cache) so the placed units actually travel.
   placeRalliedUnits: (count) => set((prev) =>
     produce(prev, (draft) => {
+      if (commandRouter) return; // piloting disabled in multiplayer v1 (see pilotMonarchBySlot)
       draft.unitPlacementCount = 0; // the gesture is consumed regardless of outcome
       if (count <= 0 || !draft.localPlayerId || !draft.pilotedUnitId) return;
 
@@ -2553,11 +2612,11 @@ export const useGameStore = create<Store>((set, get) => ({
   // Toggle the "shell" lock on the local player's Turtle units in the given
   // selection. Shelling pins the unit in place (see checkCollision) and the
   // renderer swaps it to the F0 shell pose; toggling again releases it.
-  toggleTurtleShell: (unitIds) => set((prev) =>
+  toggleTurtleShell: (unitIds) => routeCommand({ type: 'toggleTurtleShell', payload: { unitIds } }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       for (const id of unitIds) {
         const unit = draft.units.find((candidate) => candidate.id === id);
-        if (!unit || unit.animal !== 'Turtle' || unit.ownerId !== draft.localPlayerId) continue;
+        if (!unit || unit.animal !== 'Turtle' || unit.ownerId !== actingOwnerId(draft)) continue;
         unit.isShelled = !unit.isShelled;
         if (unit.isShelled) {
           // Shelling means "hold here": drop any pending move order and go idle
@@ -2572,12 +2631,12 @@ export const useGameStore = create<Store>((set, get) => ({
   // Chicken egg-throw ability. Each selected friendly Chicken that is off its
   // egg cooldown turns to face the targeted point, shows the throw pose for a
   // short window, and launches one egg projectile toward it (resolved in tick).
-  throwEggs: (cmd) => set((prev) =>
+  throwEggs: (cmd) => routeCommand({ type: 'throwEggs', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       const now = simClockMs;
       for (const id of cmd.unitIds) {
         const unit = draft.units.find((candidate) => candidate.id === id);
-        if (!unit || unit.animal !== 'Chicken' || unit.ownerId !== draft.localPlayerId) continue;
+        if (!unit || unit.animal !== 'Chicken' || unit.ownerId !== actingOwnerId(draft)) continue;
         if (unit.hp <= 0) continue;
         if (unit.lastEggAtMs !== undefined && now - unit.lastEggAtMs < EGG_COOLDOWN_MS) continue;
 
@@ -2608,7 +2667,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // then animates entirely in the tick (see updateFrogTongues). Targeting respects
   // two rules: a frog grabs exactly one enemy, and no two frogs may claim the same
   // enemy at once (so a cluster of frogs spreads its grabs across the enemy front).
-  fireTongues: (cmd) => set((prev) =>
+  fireTongues: (cmd) => routeCommand({ type: 'fireTongues', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       const now = simClockMs;
 
@@ -2621,7 +2680,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
       for (const id of cmd.unitIds) {
         const unit = draft.units.find((candidate) => candidate.id === id);
-        if (!unit || unit.animal !== 'Frog' || unit.ownerId !== draft.localPlayerId) continue;
+        if (!unit || unit.animal !== 'Frog' || unit.ownerId !== actingOwnerId(draft)) continue;
         if (unit.hp <= 0) continue;
         if (unit.tongue) continue; // already mid-grab
         if (unit.lastTongueAtMs !== undefined && now - unit.lastTongueAtMs < TONGUE_COOLDOWN_MS) continue;
@@ -2689,12 +2748,12 @@ export const useGameStore = create<Store>((set, get) => ({
   // a constant-velocity slide the tick integrates over HISS_KNOCKBACK_MS (see the
   // knockback intercept in tick), so a cat surrounded on all sides pushes the entire
   // encircling ring outward at once. Bases are immovable structures and are skipped.
-  hiss: (cmd) => set((prev) =>
+  hiss: (cmd) => routeCommand({ type: 'hiss', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       const now = simClockMs;
       for (const id of cmd.unitIds) {
         const cat = draft.units.find((candidate) => candidate.id === id);
-        if (!cat || cat.animal !== 'Cat' || cat.ownerId !== draft.localPlayerId) continue;
+        if (!cat || cat.animal !== 'Cat' || cat.ownerId !== actingOwnerId(draft)) continue;
         if (cat.hp <= 0) continue;
         if (cat.lastHissAtMs !== undefined && now - cat.lastHissAtMs < HISS_COOLDOWN_MS) continue;
 
@@ -2739,7 +2798,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // updateBeeSwarms). Targeting respects two rules: a bee dives at exactly one enemy,
   // and no two bees may claim the same enemy at once, so a cloud of bees spreads its
   // stings across distinct targets rather than piling onto one.
-  swarm: (cmd) => set((prev) =>
+  swarm: (cmd) => routeCommand({ type: 'swarm', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       // Enemies already claimed by another bee mid-Swarm — excluded so no two bees
       // dive at the same target.
@@ -2750,7 +2809,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
       for (const id of cmd.unitIds) {
         const bee = draft.units.find((candidate) => candidate.id === id);
-        if (!bee || bee.animal !== 'Bee' || bee.ownerId !== draft.localPlayerId) continue;
+        if (!bee || bee.animal !== 'Bee' || bee.ownerId !== actingOwnerId(draft)) continue;
         if (bee.kind !== 'Unit') continue; // sacrificial dive — never risk a Bee King/Queen
         if (bee.hp <= 0) continue;
         if (bee.swarmTargetId !== undefined) continue; // already diving
@@ -2785,7 +2844,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // play out in the tick — see updateOwlPickups). Targeting respects two rules mirroring the
   // Bee Swarm: an Owl grabs exactly one unit, and no two Owls may claim the same unit, so a
   // flight of Owls spreads its catches across distinct targets rather than piling onto one.
-  pickup: (cmd) => set((prev) =>
+  pickup: (cmd) => routeCommand({ type: 'pickup', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       // Units already claimed by an Owl mid-Pickup (its swoop target) or already in another
       // Owl's talons — excluded so no two Owls grab the same unit.
@@ -2797,7 +2856,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
       for (const id of cmd.unitIds) {
         const owl = draft.units.find((candidate) => candidate.id === id);
-        if (!owl || owl.animal !== 'Owl' || owl.ownerId !== draft.localPlayerId) continue;
+        if (!owl || owl.animal !== 'Owl' || owl.ownerId !== actingOwnerId(draft)) continue;
         if (owl.kind !== 'Unit') continue; // protect a royal Owl from swooping into danger
         if (owl.hp <= 0) continue;
         if (owl.owlPickup !== undefined) continue; // already swooping
@@ -2840,7 +2899,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // cargo down directly beneath itself — so Owls arriving from different directions spread their
   // cargo around the drop-off (see the 'delivering' phase in updateOwlPickups). Owls mid-swoop,
   // carrying an enemy, or already delivering are ignored, so only cargo awaiting orders responds.
-  deliverCargo: (cmd) => set((prev) =>
+  deliverCargo: (cmd) => routeCommand({ type: 'deliverCargo', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       for (const id of cmd.unitIds) {
         const owl = draft.units.find((candidate) => candidate.id === id);
@@ -2865,6 +2924,64 @@ export const useGameStore = create<Store>((set, get) => ({
     })
   ),
 }));
+
+// ---------------------------------------------------------------------------
+// Lockstep glue (multiplayer). These functions are the simulation surface the
+// lockstep engine drives — see LockstepSimAdapter. They are thin wrappers over
+// the store so the engine module never imports the store directly.
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute one scheduled command on behalf of `playerId`. Replays through the
+ * very same store action a local input would, but with the routing seam disarmed
+ * (so it mutates instead of re-routing) and the acting owner overridden to the
+ * issuing player (so a remote player's command moves the remote player's units).
+ */
+export function applyNetCommand(playerId: string, command: NetCommand): void {
+  const store = useGameStore.getState();
+  applyingNetCommand = true;
+  actingPlayerIdOverride = playerId;
+  try {
+    switch (command.type) {
+      case 'moveUnits': store.moveCommand(command.payload); break;
+      case 'attackTarget': store.attackTarget(command.payload); break;
+      case 'setPatrol': store.setPatrol(command.payload); break;
+      case 'setQueenRally': store.setQueenRally(command.payload); break;
+      case 'setMovementHold': store.setMovementHold(command.payload.unitId); break;
+      case 'toggleTurtleShell': store.toggleTurtleShell(command.payload.unitIds); break;
+      case 'throwEggs': store.throwEggs(command.payload); break;
+      case 'fireTongues': store.fireTongues(command.payload); break;
+      case 'hiss': store.hiss(command.payload); break;
+      case 'swarm': store.swarm(command.payload); break;
+      case 'pickup': store.pickup(command.payload); break;
+      case 'deliverCargo': store.deliverCargo(command.payload); break;
+    }
+  } finally {
+    applyingNetCommand = false;
+    actingPlayerIdOverride = null;
+  }
+}
+
+/**
+ * A deterministic fingerprint of the current simulation, used by lockstep to
+ * detect desync. Includes every unit's identity/health/position, the RNG state,
+ * and the tick counter, sorted by id so iteration order can never affect it. Two
+ * peers in sync produce the same string; any divergence changes it.
+ */
+export function computeStateChecksum(): string {
+  const state = useGameStore.getState();
+  const units = [...state.units].sort((a, b) =>
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  );
+  const unitPart = units
+    .map(
+      (u) =>
+        `${u.id}|${u.ownerId}|${u.kind}|${u.hp.toFixed(3)}|` +
+        `${u.position.x.toFixed(3)}|${u.position.z.toFixed(3)}`
+    )
+    .join(';');
+  return `t${state.tickCounter}#rng${state.rng.getState()}#${unitPart}`;
+}
 
 // Dev-only debug handle for performance testing (stripped from production
 // builds, where import.meta.env.DEV is false). Lets tooling inspect/inject
