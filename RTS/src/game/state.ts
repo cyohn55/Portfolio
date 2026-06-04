@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import { nanoid } from 'nanoid';
 import { produce, setAutoFreeze } from 'immer';
 import { SpatialGrid } from '../utils/SpatialGrid';
+import { SeededRng } from '../components/Working/net/prng';
 
 // The per-frame `tick` mutates unit objects in place for performance (see the
 // comment on `tick`). The other store actions still use Immer's produce(), whose
@@ -180,11 +180,78 @@ const OWL_WING_FLAP_PER_SEC = 4;       // wing-flap cycles/sec kept advancing so
 // sync automatically when animals are added or removed.
 const ALL_ANIMALS = Object.keys(ANIMALS) as AnimalId[];
 
+// ---------------------------------------------------------------------------
+// Deterministic simulation primitives (lockstep multiplayer foundation).
+//
+// The per-frame `tick` and the command handlers it drives must be reproducible:
+// given the same starting state, the same seed, and the same ordered command
+// stream, both peers must reach byte-identical state every tick. Three sources
+// of non-determinism are funneled through the module-level values below so that
+// every site reads from the same deterministic source instead of wall-clock
+// time, Math.random, or nanoid:
+//
+//   * simClockMs  — the simulation clock in milliseconds, derived purely from
+//                   the tick counter (tick * fixed dt). Replaces performance.now
+//                   / Date.now everywhere inside the simulation and the command
+//                   handlers, so timers (cooldowns, poses, knockback windows)
+//                   advance identically regardless of real wall-clock drift.
+//   * simRng      — the active match's seeded PRNG. Repointed to the live store's
+//                   `rng` at the top of every tick so module-level helpers (which
+//                   have no access to the store draft) share the one instance
+//                   that gets seeded at match start and checksummed for desync
+//                   detection.
+//   * entitySeq   — a monotonic counter for entity ids. Because spawn order is
+//                   itself deterministic, ids like "Unit-42" line up across peers
+//                   far more cheaply than random nanoids ever could.
+//
+// In single-player these values still apply (the sim simply runs with a random
+// seed and applies commands immediately), so the same code path serves both
+// modes and there is no determinism-only branch to drift out of sync.
+// ---------------------------------------------------------------------------
+
+/** Simulation clock in milliseconds; set at the top of each tick from the tick counter. */
+let simClockMs = 0;
+
+/** Active match RNG; repointed to the live store's `rng` each tick. Seeded at match start. */
+let simRng: SeededRng = new SeededRng(1);
+
+/** Monotonic entity-id counter; reset to 0 at the start of every match. */
+let entitySeq = 0;
+
+/**
+ * Mint the next deterministic entity id. The single-letter prefix keeps ids
+ * readable in logs ("U-3", "Q-1") while the shared counter guarantees global
+ * uniqueness within a match. Spawn order is deterministic, so both peers mint
+ * the same id for the same unit.
+ */
+function nextEntityId(prefix: string): string {
+  return `${prefix}-${entitySeq++}`;
+}
+
+/**
+ * Re-seed the deterministic primitives for a fresh match. Returns the new RNG so
+ * the caller can store it on the game state (where it is advanced in place and
+ * read by the desync checksum). Called by both single-player and multiplayer
+ * match starts; multiplayer passes the seed agreed in the start handshake.
+ */
+function resetDeterministicState(seed: number): SeededRng {
+  simClockMs = 0;
+  entitySeq = 0;
+  simRng = new SeededRng(seed);
+  return simRng;
+}
+
 /**
  * Returns `count` distinct animals chosen uniformly at random from the full
  * roster. Used to give the AI opponent a varied lineup each match instead of a
  * fixed set. Uses a partial Fisher-Yates shuffle so every animal has an equal
  * chance of being picked without repeats.
+ *
+ * Intentionally uses Math.random rather than the deterministic simRng: this runs
+ * at single-player setup time (the AI lineup), before any match seed exists, and
+ * is never part of the per-tick simulation. Multiplayer takes both lineups from
+ * the shared lobby instead of calling this, so leaving it non-deterministic does
+ * not affect lockstep sync.
  */
 function pickRandomAnimals(count: number): AnimalId[] {
   const roster = [...ALL_ANIMALS];
@@ -235,7 +302,7 @@ type Store = GameState & {
 
   initializeGame: () => void;
   chooseAnimalsForLocal: (animals: AnimalId[]) => void;
-  startMatch: (withAI?: boolean) => void;
+  startMatch: (withAI?: boolean, seed?: number) => void;
   tick: (dtSec: number, nowMs: number) => void;
   moveCommand: (cmd: CommandMoveUnits) => void;
   setPatrol: (cmd: CommandSetPatrol) => void;
@@ -278,6 +345,19 @@ type Store = GameState & {
   lastRegenCheckMs: number;
   tickCounter: number;
   debugTickCount?: number;
+  // Deterministic match RNG (lockstep multiplayer). Seeded at match start, then
+  // advanced in place by the simulation; both peers seed it identically so every
+  // "random" outcome resolves the same way without crossing the network. Its
+  // state also feeds the per-K-tick desync checksum. See resetDeterministicState.
+  rng: SeededRng;
+  // The numeric seed the current match's RNG was created from. In multiplayer
+  // the host generates this and broadcasts it in the start handshake so both
+  // peers reseed identically; in single-player it is a throwaway random value.
+  matchSeed: number;
+  // Networking mode for the current session. 'single' runs the legacy local
+  // game (commands apply immediately); 'host'/'guest' route commands through the
+  // lockstep engine instead. Drives the command-router seam in the store actions.
+  netMode: 'single' | 'host' | 'guest';
   // AI thinking throttling
   aiThinkingOffset: Record<string, number>;
   // Movement caching
@@ -449,6 +529,9 @@ export const useGameStore = create<Store>((set, get) => ({
   spatialGrid: null,
   lastRegenCheckMs: 0,
   tickCounter: 0,
+  rng: simRng,
+  matchSeed: 0,
+  netMode: 'single',
   aiThinkingOffset: {},
   movementDirectionCache: {},
   targetCache: {},
@@ -553,9 +636,14 @@ export const useGameStore = create<Store>((set, get) => ({
   },
 
   initializeGame: () => {
-    // Prepare a local player and an AI opponent with placeholder base hexes
-    const localId = nanoid();
-    const aiId = nanoid();
+    // Prepare a local player and an AI opponent with placeholder base hexes.
+    // Player ids are fixed roles ('p0' = local, 'p1' = opponent) rather than
+    // random nanoids so that ownership ids are deterministic and identical to
+    // the multiplayer convention (host = p0, guest = p1). Each client keys its
+    // own `localPlayerId` to its role; the shared id space lets both peers agree
+    // on which units belong to whom without exchanging an id map.
+    const localId = 'p0';
+    const aiId = 'p1';
     const players: Player[] = [
       {
         id: localId,
@@ -579,9 +667,17 @@ export const useGameStore = create<Store>((set, get) => ({
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
 
-  startMatch: (withAI = true) => {
+  startMatch: (withAI = true, seed?: number) => {
     const state = get();
     const units: Unit[] = [];
+
+    // Seed the deterministic simulation primitives BEFORE creating any units:
+    // createBase/createQueen/createKing mint ids from the entity counter, which
+    // resetDeterministicState() zeroes. In multiplayer the caller passes the
+    // seed agreed in the start handshake so both peers build an identical match;
+    // in single-player we mint a throwaway seed so each match still varies.
+    const matchSeed = seed ?? (Math.floor(Math.random() * 0xffffffff) >>> 0);
+    const rng = resetDeterministicState(matchSeed);
 
     console.log('🎮 Starting match with players:', state.players);
 
@@ -618,6 +714,10 @@ export const useGameStore = create<Store>((set, get) => ({
     set({
       units,
       matchStarted: true,
+      // Deterministic RNG + seed for this match (lockstep). Stored so the desync
+      // checksum can read the RNG state and so the seed is inspectable/replayable.
+      rng,
+      matchSeed,
       // Bump so views that persist across matches reset their per-match state.
       matchStartNonce: state.matchStartNonce + 1,
       isPaused: true,
@@ -685,6 +785,19 @@ export const useGameStore = create<Store>((set, get) => ({
       draft.debugTickCount++;
 
       draft.tickCounter++;
+
+      // Deterministic simulation clock + RNG (lockstep multiplayer foundation).
+      // Derive the sim time purely from the tick counter so it is identical on
+      // both peers regardless of wall-clock drift, then OVERRIDE the incoming
+      // wall-clock `nowMs` with it. Every downstream timer in this tick reads
+      // `nowMs`, so this single reassignment makes the entire simulation's notion
+      // of time deterministic without touching its ~50 call sites. The module
+      // globals `simClockMs`/`simRng` expose the same clock + this match's RNG to
+      // the standalone helper functions (checkCollision, separateOverlappingUnits,
+      // …) and the command handlers, which have no access to the store draft.
+      nowMs = draft.tickCounter * (dtSec * 1000);
+      simClockMs = nowMs;
+      simRng = draft.rng;
 
       // Reset the pathfinder's per-tick A* compute budget so bursts of new cross-map
       // orders are spread over a few ticks instead of hitching a single frame.
@@ -1041,7 +1154,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
         // Initialize AI thinking offset for new units
         if (!draft.aiThinkingOffset[unit.id]) {
-          draft.aiThinkingOffset[unit.id] = Math.floor(Math.random() * 2); // Match new thinking interval
+          draft.aiThinkingOffset[unit.id] = simRng.nextInt(2); // Match new thinking interval
         }
 
         // Monarch rally: a follower keeps its move order pinned to the piloted
@@ -2461,7 +2574,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // short window, and launches one egg projectile toward it (resolved in tick).
   throwEggs: (cmd) => set((prev) =>
     produce(prev, (draft) => {
-      const now = performance.now();
+      const now = simClockMs;
       for (const id of cmd.unitIds) {
         const unit = draft.units.find((candidate) => candidate.id === id);
         if (!unit || unit.animal !== 'Chicken' || unit.ownerId !== draft.localPlayerId) continue;
@@ -2477,7 +2590,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
         const distanceToTarget = Math.sqrt(distanceSquared3D(unit.position, cmd.target));
         draft.projectiles.push({
-          id: `egg-${id}-${now.toFixed(0)}-${nanoid(5)}`,
+          id: nextEntityId(`egg-${id}`),
           ownerId: unit.ownerId,
           position: { x: unit.position.x, y: unit.position.y + EGG_SPAWN_HEIGHT, z: unit.position.z },
           velocity: { x: direction.x * EGG_SPEED, y: 0, z: direction.z * EGG_SPEED },
@@ -2497,7 +2610,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // enemy at once (so a cluster of frogs spreads its grabs across the enemy front).
   fireTongues: (cmd) => set((prev) =>
     produce(prev, (draft) => {
-      const now = performance.now();
+      const now = simClockMs;
 
       // Enemies already claimed by another friendly frog's active tongue this
       // instant — excluded so two frogs never grab the same target.
@@ -2578,7 +2691,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // encircling ring outward at once. Bases are immovable structures and are skipped.
   hiss: (cmd) => set((prev) =>
     produce(prev, (draft) => {
-      const now = performance.now();
+      const now = simClockMs;
       for (const id of cmd.unitIds) {
         const cat = draft.units.find((candidate) => candidate.id === id);
         if (!cat || cat.animal !== 'Cat' || cat.ownerId !== draft.localPlayerId) continue;
@@ -2603,7 +2716,7 @@ export const useGameStore = create<Store>((set, get) => ({
           let pushDirectionX: number;
           let pushDirectionZ: number;
           if (distanceSquared < 0.0001) {
-            const randomAngle = Math.random() * Math.PI * 2;
+            const randomAngle = simRng.nextAngle();
             pushDirectionX = Math.cos(randomAngle);
             pushDirectionZ = Math.sin(randomAngle);
           } else {
@@ -2777,7 +2890,7 @@ function baseStats(animal: AnimalId) {
 function createBase(ownerId: string, animal: AnimalId, position: Position3D, rotation: number = 0): Unit {
   const stats = baseStats(animal);
   return {
-    id: nanoid(),
+    id: nextEntityId('B'),
     ownerId,
     animal,
     kind: 'Base',
@@ -2796,7 +2909,7 @@ function createBase(ownerId: string, animal: AnimalId, position: Position3D, rot
 function createQueen(ownerId: string, animal: AnimalId, position: Position3D, rotation: number = 0): Unit {
   const stats = baseStats(animal);
   return {
-    id: nanoid(),
+    id: nextEntityId('Q'),
     ownerId,
     animal,
     kind: 'Queen',
@@ -2815,7 +2928,7 @@ function createQueen(ownerId: string, animal: AnimalId, position: Position3D, ro
 function createKing(ownerId: string, animal: AnimalId, position: Position3D, rotation: number = 0): Unit {
   const stats = baseStats(animal);
   return {
-    id: nanoid(),
+    id: nextEntityId('K'),
     ownerId,
     animal,
     kind: 'King',
@@ -2834,7 +2947,7 @@ function createKing(ownerId: string, animal: AnimalId, position: Position3D, rot
 function createUnit(ownerId: string, animal: AnimalId, position: Position3D, rotation: number = 0): Unit {
   const stats = baseStats(animal);
   return {
-    id: nanoid(),
+    id: nextEntityId('U'),
     ownerId,
     animal,
     kind: 'Unit',
@@ -2910,7 +3023,7 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
   // its Kitty_F2 hiss pose plays. The hiss window is stamped with performance.now()
   // (same clock used to set hissUntilMs), and the && short-circuits so the clock read
   // only happens for cats that have actually hissed.
-  const hissLocked = currentUnit.hissUntilMs !== undefined && performance.now() < currentUnit.hissUntilMs;
+  const hissLocked = currentUnit.hissUntilMs !== undefined && simClockMs < currentUnit.hissUntilMs;
   if (currentUnit.isShelled || currentUnit.tongue || hissLocked) {
     return { x: currentUnit.position.x, y: currentUnit.position.y, z: currentUnit.position.z };
   }
@@ -3027,7 +3140,7 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
 
       if (distance < 0.001) {
         // Units at same position - use cached random direction
-        const randomAngle = Math.random() * Math.PI * 2;
+        const randomAngle = simRng.nextAngle();
         pushDirectionX = Math.cos(randomAngle);
         pushDirectionZ = Math.sin(randomAngle);
       } else {
@@ -3079,7 +3192,7 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
     const pauseDuration = isPlayerWithOrder ? 100 : 200; // 0.1s for ordered units, 0.2s for others
 
     if (currentUnit.collisionAttempts >= pauseThreshold) {
-      currentUnit.movementPausedUntilMs = Date.now() + pauseDuration;
+      currentUnit.movementPausedUntilMs = simClockMs + pauseDuration;
       currentUnit.collisionAttempts = 0; // Reset counter
     }
   } else {
@@ -3174,7 +3287,7 @@ function clearPathForSelectedRoyals(draft: Store): void {
       let distance: number;
       if (distanceSquared < 0.000001) {
         // Coincident with the royal: pick a random escape heading.
-        const angle = Math.random() * Math.PI * 2;
+        const angle = simRng.nextAngle();
         pushX = Math.cos(angle);
         pushZ = Math.sin(angle);
         distance = 0;
@@ -3255,7 +3368,7 @@ function enforceMonarchFollowGap(draft: Store, unitById: Map<string, Unit>): voi
 
 function separateOverlappingUnits(draft: Store): void {
   const grid = draft.spatialGrid;
-  const nowMs = performance.now();
+  const nowMs = simClockMs;
   // O(1) membership for the asymmetric friendly rule below; selectedUnitIds can be large
   // (e.g. select-all), so a Set avoids a per-neighbor linear scan in this hot pass.
   const selectedIds = new Set(draft.selectedUnitIds);
@@ -3313,7 +3426,7 @@ function separateOverlappingUnits(draft: Store): void {
       if (distanceSquared < 0.000001) {
         // Exactly coincident (e.g. two units set down on one spot): pick a random escape heading
         // and back off half the full spacing along it.
-        const randomAngle = Math.random() * Math.PI * 2;
+        const randomAngle = simRng.nextAngle();
         const overlap = minimumDistance * SEPARATION_RELAX_FACTOR;
         pushX += Math.cos(randomAngle) * overlap;
         pushZ += Math.sin(randomAngle) * overlap;
@@ -3556,7 +3669,7 @@ function updateBeeSwarms(draft: Store, dtSec: number, nowMs: number): void {
     if (distSq <= SWARM_STING_RANGE_SQ) {
       // Contact: sting once. A coin flip kills both the bee and its target, or neither.
       bee.lastAttackAtMs = nowMs; // count the sting as a swing for pose/combat timing
-      if (Math.random() < SWARM_STING_KILL_CHANCE) {
+      if (simRng.next() < SWARM_STING_KILL_CHANCE) {
         target.hp = 0;
         draft.deadUnitsToRemove.push(target.id);
         creditKill(draft, bee.ownerId, target);      // the bee's owner killed the target
