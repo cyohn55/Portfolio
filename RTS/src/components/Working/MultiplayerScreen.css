@@ -1,0 +1,313 @@
+/*
+ * Multiplayer screen styles.
+ *
+ * IMPORTANT: every class here is prefixed `mp-`. Vite concatenates all component
+ * CSS into one global sheet, so generic names (e.g. .button, .title) leak across
+ * components and silently restyle unrelated screens. The prefix namespaces these
+ * rules to the multiplayer screen alone. (See the rts-css-class-collision-trap
+ * note: a generic .stat-row once truncated post-game labels.)
+ */
+
+.mp-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1a1f35 0%, #2a1f45 100%);
+  color: #fff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  z-index: 5;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.mp-panel,
+.mp-lobby {
+  width: 100%;
+  max-width: 460px;
+  background: rgba(20, 24, 40, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+  text-align: center;
+}
+
+.mp-lobby {
+  max-width: 620px;
+}
+
+.mp-title {
+  margin: 0 0 6px;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, #8aa6ff 0%, #c79bff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.mp-subtitle {
+  margin: 0 0 24px;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 14px;
+}
+
+.mp-error {
+  background: rgba(220, 60, 60, 0.18);
+  border: 1px solid rgba(255, 120, 120, 0.5);
+  color: #ffd2d2;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 18px;
+  font-size: 13px;
+}
+
+.mp-button {
+  display: block;
+  width: 100%;
+  padding: 14px 18px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(60, 68, 90, 0.85);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease, opacity 0.2s ease;
+}
+
+.mp-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.mp-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mp-button.primary {
+  background: linear-gradient(135deg, rgba(88, 120, 255, 0.95) 0%, rgba(118, 75, 162, 0.95) 100%);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 6px 18px rgba(88, 120, 255, 0.35);
+}
+
+.mp-button.primary.ready {
+  background: linear-gradient(135deg, rgba(60, 200, 120, 0.95) 0%, rgba(40, 160, 110, 0.95) 100%);
+  box-shadow: 0 6px 18px rgba(60, 200, 120, 0.35);
+}
+
+.mp-divider {
+  position: relative;
+  margin: 18px 0;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.mp-divider::before,
+.mp-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 40%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.mp-divider::before { left: 0; }
+.mp-divider::after { right: 0; }
+
+.mp-join-row {
+  display: flex;
+  gap: 10px;
+}
+
+.mp-join-row .mp-button {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 14px 22px;
+}
+
+.mp-code-input {
+  flex: 1;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(10, 12, 22, 0.7);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.mp-code-input::placeholder {
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.mp-room-code {
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: 10px;
+  margin: 16px 0;
+  color: #fff;
+  text-shadow: 0 2px 12px rgba(138, 166, 255, 0.5);
+}
+
+.mp-waiting {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  margin: 8px 0 20px;
+}
+
+.mp-spinner {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 24px;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-top-color: #8aa6ff;
+  border-radius: 50%;
+  animation: mp-spin 0.9s linear infinite;
+}
+
+@keyframes mp-spin {
+  to { transform: rotate(360deg); }
+}
+
+.mp-back {
+  margin-top: 20px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.mp-back:hover { color: #fff; }
+
+/* --- lobby --- */
+
+.mp-players {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.mp-vs {
+  align-self: center;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 18px;
+}
+
+.mp-player-card {
+  flex: 1;
+  background: rgba(10, 12, 22, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 16px;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mp-player-card.me {
+  border-color: rgba(138, 166, 255, 0.55);
+}
+
+.mp-player-card.is-ready {
+  border-color: rgba(60, 200, 120, 0.6);
+  box-shadow: 0 0 16px rgba(60, 200, 120, 0.2) inset;
+}
+
+.mp-player-label {
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.mp-player-animals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  flex: 1;
+  align-content: center;
+}
+
+.mp-player-chip {
+  background: rgba(88, 120, 255, 0.25);
+  border: 1px solid rgba(138, 166, 255, 0.4);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mp-player-placeholder {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.mp-player-status {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.mp-player-status.ready {
+  color: #5fe0a0;
+}
+
+.mp-roster {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.mp-animal {
+  padding: 10px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(40, 46, 66, 0.7);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.mp-animal:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(138, 166, 255, 0.5);
+}
+
+.mp-animal.selected {
+  background: linear-gradient(135deg, rgba(88, 120, 255, 0.9) 0%, rgba(118, 75, 162, 0.9) 100%);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.mp-animal:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mp-lobby-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}

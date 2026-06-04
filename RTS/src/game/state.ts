@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { produce, setAutoFreeze } from 'immer';
 import { SpatialGrid } from '../utils/SpatialGrid';
 import { SeededRng } from '../components/Working/net/prng';
-import type { NetCommand } from '../components/Working/net/netMessages';
+import type { NetCommand, PlayerRole } from '../components/Working/net/netMessages';
 
 // The per-frame `tick` mutates unit objects in place for performance (see the
 // comment on `tick`). The other store actions still use Immer's produce(), whose
@@ -309,6 +309,22 @@ function pickRandomAnimals(count: number): AnimalId[] {
   return roster.slice(0, count);
 }
 
+// Fixed starting base positions per role. p0 holds the +z (south) edge, p1 the
+// -z (north) edge. Shared by single-player setup (initializeGame) and the
+// multiplayer match builder so both modes — and both peers — place bases at the
+// exact same coordinates. Hoisted to module scope so the two call sites cannot
+// drift apart.
+const P0_BASE_POSITIONS: Position3D[] = [
+  { x: 73.5, y: 0.25, z: 252 },
+  { x: -2, y: 0.25, z: 252 },
+  { x: -77, y: 0.25, z: 252 },
+];
+const P1_BASE_POSITIONS: Position3D[] = [
+  { x: 76.5, y: 0.25, z: -248 },
+  { x: 1, y: 0.25, z: -248 },
+  { x: -74, y: 0.25, z: -248 },
+];
+
 const defaultConfig: GameConfig = {
   mapSize: 50,
   spawnIntervalMs: 5_000,
@@ -340,7 +356,7 @@ function createEmptyMatchStats(): MatchStats {
   };
 }
 
-type GameScreen = 'menu' | 'lobby' | 'playing' | 'postgame' | 'leaderboard';
+type GameScreen = 'menu' | 'lobby' | 'multiplayer' | 'playing' | 'postgame' | 'leaderboard';
 
 type Store = GameState & {
   // Screen management
@@ -350,6 +366,10 @@ type Store = GameState & {
   initializeGame: () => void;
   chooseAnimalsForLocal: (animals: AnimalId[]) => void;
   startMatch: (withAI?: boolean, seed?: number) => void;
+  // Configure + start a 1v1 human-vs-human match from the agreed start handshake
+  // (shared seed + both lineups), keyed to this peer's role. Sets up two non-AI
+  // players, the local player id, netMode, and runs startMatch with the seed.
+  startMultiplayerMatch: (params: { localRole: PlayerRole; seed: number; lineups: Record<PlayerRole, AnimalId[]> }) => void;
   tick: (dtSec: number, nowMs: number) => void;
   moveCommand: (cmd: CommandMoveUnits) => void;
   setPatrol: (cmd: CommandSetPatrol) => void;
@@ -689,6 +709,12 @@ export const useGameStore = create<Store>((set, get) => ({
     // the multiplayer convention (host = p0, guest = p1). Each client keys its
     // own `localPlayerId` to its role; the shared id space lets both peers agree
     // on which units belong to whom without exchanging an id map.
+    // Defensive reset to single-player: initializeGame is the "fresh game" entry
+    // point (app boot and Post-Game "Play Again"), so disarm any lingering
+    // multiplayer command routing here. The active engine, if any, is also torn
+    // down when the player returns to the menu (see App's teardown effect).
+    setCommandRouter(null);
+
     const localId = 'p0';
     const aiId = 'p1';
     const players: Player[] = [
@@ -697,7 +723,7 @@ export const useGameStore = create<Store>((set, get) => ({
         name: 'You',
         isAI: false,
         animals: ['Bee', 'Bear', 'Fox'],
-        basePositions: [{ x: 73.5, y: 0.25, z: 252 }, { x: -2, y: 0.25, z: 252 }, { x: -77, y: 0.25, z: 252 }],
+        basePositions: P0_BASE_POSITIONS,
       },
       {
         id: aiId,
@@ -705,11 +731,11 @@ export const useGameStore = create<Store>((set, get) => ({
         isAI: true,
         // Randomized each match so the player faces a varied opponent lineup.
         animals: pickRandomAnimals(3),
-        basePositions: [{ x: 76.5, y: 0.25, z: -248 }, { x: 1, y: 0.25, z: -248 }, { x: -74, y: 0.25, z: -248 }],
+        basePositions: P1_BASE_POSITIONS,
       },
     ];
 
-    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, movementHeldUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, movementHeldUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
@@ -729,9 +755,16 @@ export const useGameStore = create<Store>((set, get) => ({
     console.log('🎮 Starting match with players:', state.players);
 
     for (const player of state.players) {
-      const chosenAnimals = player.isAI ? player.animals : state.selectedAnimalPool;
-      const isPlayerUnit = player.id === state.localPlayerId;
-      const initialRotation = isPlayerUnit ? Math.PI : 0; // Player units face 180 degrees (toward AI)
+      // The local human's lineup is the lobby selection (selectedAnimalPool);
+      // every other player (the AI, or a remote human in multiplayer) carries its
+      // own lineup in player.animals. Keying off localPlayerId rather than isAI
+      // lets a second human player use its own lineup instead of the local pool.
+      const chosenAnimals = player.id === state.localPlayerId ? state.selectedAnimalPool : player.animals;
+      // Initial facing is role/side-based, NOT "is this the local player" — in
+      // multiplayer each peer is the local player on its own machine, so an
+      // is-local rotation would face p0/p1 opposite ways on the two peers and
+      // desync. p0 holds the +z edge (faces -z = π); p1 faces +z = 0.
+      const initialRotation = player.id === 'p0' ? Math.PI : 0;
 
       console.log(`👤 Player ${player.name} (${player.isAI ? 'AI' : 'Human'}) animals:`, chosenAnimals);
 
@@ -805,6 +838,44 @@ export const useGameStore = create<Store>((set, get) => ({
         },
       }
     });
+  },
+
+  startMultiplayerMatch: ({ localRole, seed, lineups }) => {
+    // Two human players at the fixed role base positions. Both peers build the
+    // identical players array (same ids, lineups, positions); only localPlayerId
+    // and netMode differ per peer. selectedAnimalPool is set to the local lineup
+    // so startMatch's local-player branch picks the right animals.
+    const players: Player[] = [
+      {
+        id: 'p0',
+        name: localRole === 'p0' ? 'You' : 'Opponent',
+        isAI: false,
+        animals: lineups.p0,
+        basePositions: P0_BASE_POSITIONS,
+      },
+      {
+        id: 'p1',
+        name: localRole === 'p1' ? 'You' : 'Opponent',
+        isAI: false,
+        animals: lineups.p1,
+        basePositions: P1_BASE_POSITIONS,
+      },
+    ];
+    set({
+      players,
+      localPlayerId: localRole,
+      selectedAnimalPool: lineups[localRole],
+      netMode: localRole === 'p0' ? 'host' : 'guest',
+    });
+    // Build units + seed the deterministic sim identically on both peers.
+    get().startMatch(true, seed);
+    // startMatch leaves the match paused (single-player waits on the instructions
+    // popup). In multiplayer the lockstep engine, not a popup, gates the start —
+    // and the engine must never advance its tick while store.tick is a no-op from
+    // being paused, or the engine tick and store tick desync. So unpause now; the
+    // engine's input-delay buffer + stall mechanism still synchronizes the actual
+    // first executed tick across the two peers.
+    set({ isPaused: false });
   },
 
   // Per-frame simulation runs OUTSIDE Immer. At hundreds of units, produce()

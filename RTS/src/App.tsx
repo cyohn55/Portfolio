@@ -16,6 +16,8 @@ import { SceneLighting } from './components/SceneLighting';
 import { useGameStore } from './game/state';
 import { MainMenu } from './components/screens/MainMenu';
 import { AnimalSelectionLobby } from './components/screens/AnimalSelectionLobby';
+import { MultiplayerScreen } from './components/Working/MultiplayerScreen';
+import { useMultiplayerSession } from './components/Working/net/multiplayerSession';
 import { PostGameScreen } from './components/screens/PostGameScreen';
 import { LeaderboardScreen } from './components/Working/LeaderboardScreen';
 import { useParentScrollBridge } from './components/Working/parentScrollBridge';
@@ -82,6 +84,16 @@ export default function App() {
     }
   }, [currentScreen]);
 
+  // Tear down any multiplayer session when returning to the main menu (e.g. from
+  // Post-Game "Back to Menu" or after a desync/disconnect). leave() stops the
+  // lockstep engine, closes the peer connection, and restores single-player mode
+  // so a subsequent solo match runs cleanly. No-op when no session is active.
+  useEffect(() => {
+    if (currentScreen === 'menu') {
+      useMultiplayerSession.getState().leave();
+    }
+  }, [currentScreen]);
+
   const handleCloseInstructions = () => {
     setShowInstructions(false);
     unpauseGame();
@@ -106,6 +118,15 @@ export default function App() {
       <>
         <BackgroundMusic />
         <AnimalSelectionLobby />
+      </>
+    );
+  }
+
+  if (currentScreen === 'multiplayer') {
+    return (
+      <>
+        <BackgroundMusic />
+        <MultiplayerScreen />
       </>
     );
   }

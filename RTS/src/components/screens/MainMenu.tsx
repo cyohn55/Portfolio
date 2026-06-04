@@ -29,6 +29,10 @@ export function MainMenu() {
     transitionToScreen('lobby');
   };
 
+  const handleMultiplayer = () => {
+    transitionToScreen('multiplayer');
+  };
+
   const handleLeaderboard = () => {
     transitionToScreen('leaderboard');
   };
@@ -45,6 +49,13 @@ export function MainMenu() {
             onClick={handleQuickPlay}
           >
             QUICK PLAY
+          </button>
+
+          <button
+            className="menu-button"
+            onClick={handleMultiplayer}
+          >
+            MULTIPLAYER
           </button>
 
           <button

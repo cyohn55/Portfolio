@@ -22,7 +22,7 @@
 import { useEffect } from 'react';
 import { useGameStore } from '../../game/state';
 
-type RtsScreen = 'menu' | 'lobby' | 'playing' | 'postgame' | 'leaderboard';
+type RtsScreen = 'menu' | 'lobby' | 'multiplayer' | 'playing' | 'postgame' | 'leaderboard';
 
 const SCREEN_MESSAGE_TYPE = 'rts:screen';
 
