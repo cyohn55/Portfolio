@@ -298,6 +298,93 @@ export function chickenFrameVariantKey(frameIndex: number): string {
 // Variant key for the standalone flying egg projectile (not a per-unit pose).
 export const EGG_PROJECTILE_VARIANT_KEY = 'Chicken-egg-projectile';
 
+// ---------------------------------------------------------------------------
+// Royal head accessories (crowns / tiaras)
+//
+// Several animal models ship four extra head props baked in at the same spot:
+// a Crown and a Tiara in each team color. The renderer shows exactly one on a
+// royal unit — the local player's Kings wear Blue_Crown and Queens Blue_Tiara,
+// while enemy Kings wear Red_Crown and Queens Red_Tiara. Regular units, bases,
+// and any model lacking these nodes (e.g. Frog, Chicken) show nothing.
+//
+// Each accessory is baked into its own instanced variant, normalized in the
+// SAME frame as the body it rides on (see getBakedRoyalAccessoryParts), so the
+// renderer can place it with the unit's own body transform and it lands on the
+// head. The accessory nodes are excluded from every body bake so they never
+// appear stacked on ordinary units.
+// ---------------------------------------------------------------------------
+export const ROYAL_ACCESSORY_NODE_NAMES = [
+  'Blue_Crown',
+  'Blue_Tiara',
+  'Red_Crown',
+  'Red_Tiara',
+] as const;
+export type RoyalAccessoryNode = (typeof ROYAL_ACCESSORY_NODE_NAMES)[number];
+
+const ROYAL_ACCESSORY_NODE_SET: ReadonlySet<string> = new Set(ROYAL_ACCESSORY_NODE_NAMES);
+
+// Resolve which accessory a royal unit should wear from its allegiance and rank:
+// the local player ("own") is Blue, the enemy is Red; a King wears a Crown and a
+// Queen a Tiara.
+export function royalAccessoryNodeFor(isOwnUnit: boolean, kind: 'King' | 'Queen'): RoyalAccessoryNode {
+  const color = isOwnUnit ? 'Blue' : 'Red';
+  const piece = kind === 'King' ? 'Crown' : 'Tiara';
+  return `${color}_${piece}` as RoyalAccessoryNode;
+}
+
+// Variant key for a grounded animal's accessory (uses the feet-to-ground body
+// normalization shared by base and pose-frame variants).
+export function royalAccessoryVariantKey(animal: AnimalId, node: RoyalAccessoryNode): string {
+  return `royal:${animal}:${node}`;
+}
+
+// Variant key for an accessory baked from a specific owl wing frame, so a flying
+// owl's crown tracks the wing model's distinct normalization and 180° flip.
+export function owlWingRoyalAccessoryVariantKey(wingFrameIndex: number, node: RoyalAccessoryNode): string {
+  return `royal:Owl-wing${wingFrameIndex % OWL_WING_MODELS.length}:${node}`;
+}
+
+// Whether a loaded model carries any royal accessory node (Frog/Chicken do not).
+export function hasRoyalAccessories(gltf: any): boolean {
+  if (!gltf?.scene) return false;
+  return ROYAL_ACCESSORY_NODE_NAMES.some((name) => gltf.scene.getObjectByName(name));
+}
+
+// True if `object` is a royal accessory node or a descendant of one, so body
+// bakes can skip the accessory meshes (they are drawn as their own variants).
+function isRoyalAccessoryDescendant(object: THREE.Object3D): boolean {
+  let current: THREE.Object3D | null = object;
+  while (current) {
+    if (ROYAL_ACCESSORY_NODE_SET.has(current.name)) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+// Bounding box of a model's BODY only — every mesh except the royal accessory
+// nodes. Both body and accessory bakes normalize against this same box so the
+// accessory lands in the body's frame, and the body keeps the exact size/footing
+// it had before the accessory nodes were added to the model.
+function computeBodyBoundingBox(root: THREE.Object3D): THREE.Box3 {
+  root.updateWorldMatrix(true, true);
+  const box = new THREE.Box3();
+  const meshBox = new THREE.Box3();
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.geometry) return;
+    if (isRoyalAccessoryDescendant(mesh)) return;
+    mesh.geometry.computeBoundingBox();
+    if (!mesh.geometry.boundingBox) return;
+    meshBox.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
+    box.union(meshBox);
+  });
+  return box;
+}
+
+// Capacity for each accessory instanced mesh. Only Kings and Queens wear one, so
+// a few dozen at most are ever on the field — sized with generous headroom.
+export const ROYAL_ACCESSORY_CAPACITY = 256;
+
 // World-space size (longest edge) a unit should occupy, by kind and animal.
 // Mirrors the targets previously used in createPreparedScene.
 export function getKindTargetScale(animal: AnimalId, kind: 'Unit' | 'Queen' | 'King' | 'Base'): number {
@@ -324,52 +411,84 @@ export function getKindTargetScale(animal: AnimalId, kind: 'Unit' | 'Queen' | 'K
 
 const bakedVariantCache = new Map<string, BakedPart[]>();
 
-// Bake one variant's primitives into normalized, world-space geometry whose
-// longest edge is ~1 unit and whose feet rest on y=0. Per-instance matrices
-// then scale by getKindTargetScale and translate to the unit's position.
-function bakeVariant(gltf: any, animal: AnimalId, isWing: boolean): BakedPart[] {
+// How to normalize and which subtrees to bake out of a model. Every bake shares
+// one normalization frame (computeBodyBoundingBox) so bodies, pose frames, and
+// royal accessories all line up when drawn with the same per-instance transform.
+type BakeOptions = {
+  // Wing frames use a fixed size denominator and center on the origin (no
+  // feet-to-ground drop) so successive frames neither resize nor bob.
+  isWing?: boolean;
+  // Yaw correction for models authored facing backwards (Bunny, Yeti, owl wings).
+  yRotation?: number;
+  // Node names to bake; when omitted the whole model is baked.
+  includeNodeNames?: string[] | null;
+  // Skip royal accessory meshes so they are not drawn as part of the body.
+  excludeRoyalAccessories?: boolean;
+};
+
+// Core bake: clone the model, normalize it (longest body edge -> ~1 unit, feet on
+// y=0 unless a wing frame), apply any facing correction, then bake the selected
+// meshes into world-space geometry. Per-instance matrices later scale by
+// getKindTargetScale and translate to the unit's position.
+function bakeNormalizedParts(gltf: any, options: BakeOptions): BakedPart[] {
   if (!gltf?.scene) return [];
 
   const root = gltf.scene.clone(true);
 
-  // Normalize size: longest edge -> 1 unit (fixed denominator for wing frames
-  // so successive frames stay the same size).
-  const box = new THREE.Box3().setFromObject(root);
+  // Normalize against the BODY bounds (accessories excluded) so adding crowns to
+  // a model never rescales or shifts the body it sits on.
+  const box = computeBodyBoundingBox(root);
   const size = new THREE.Vector3();
   box.getSize(size);
   const maxDimension = Math.max(size.x, size.y, size.z) || 1;
-  const normalizeScale = isWing ? 1 / OWL_WING_FIXED_SCALE_DENOMINATOR : 1 / maxDimension;
+  const normalizeScale = options.isWing ? 1 / OWL_WING_FIXED_SCALE_DENOMINATOR : 1 / maxDimension;
   root.scale.setScalar(normalizeScale);
 
   const center = new THREE.Vector3();
   box.getCenter(center);
-  if (isWing) {
-    // Wing frames center on the model origin (no feet-to-ground correction) to
-    // avoid vertical bouncing between frames.
+  if (options.isWing) {
     root.position.set(-center.x * normalizeScale, 0, -center.z * normalizeScale);
   } else {
-    // Recenter horizontally and drop feet to the ground plane.
     root.position.set(-center.x * normalizeScale, -box.min.y * normalizeScale, -center.z * normalizeScale);
   }
 
-  // Match the original facing corrections.
-  if (animal === 'Bunny' || animal === 'Yetti' || isWing) {
-    root.rotation.y = Math.PI;
-  }
-
+  root.rotation.y = options.yRotation ?? 0;
   root.updateWorldMatrix(true, true);
 
+  const sourceRoots: THREE.Object3D[] = options.includeNodeNames
+    ? options.includeNodeNames.map((name) => root.getObjectByName(name)).filter(Boolean) as THREE.Object3D[]
+    : [root];
+
   const parts: BakedPart[] = [];
-  root.traverse((object) => {
-    const mesh = object as THREE.Mesh;
-    if (!mesh.isMesh || !mesh.geometry) return;
-    const geometry = mesh.geometry.clone();
-    geometry.applyMatrix4(mesh.matrixWorld); // bake normalization into vertices
-    const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
-    parts.push({ geometry, material });
-  });
+  for (const sourceRoot of sourceRoots) {
+    sourceRoot.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.geometry) return;
+      if (options.excludeRoyalAccessories && isRoyalAccessoryDescendant(mesh)) return;
+      const geometry = mesh.geometry.clone();
+      geometry.applyMatrix4(mesh.matrixWorld); // bake normalization into vertices
+      const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+      parts.push({ geometry, material });
+    });
+  }
 
   return parts;
+}
+
+// Yaw correction for a base animal authored facing backwards. Wing frames flip
+// regardless (handled by their callers).
+function baseAnimalYRotation(animal: AnimalId): number {
+  return animal === 'Bunny' || animal === 'Yetti' ? Math.PI : 0;
+}
+
+// Bake a whole base-animal (or owl wing) variant, dropping the royal accessory
+// meshes so plain units never wear a crown.
+function bakeVariant(gltf: any, animal: AnimalId, isWing: boolean): BakedPart[] {
+  return bakeNormalizedParts(gltf, {
+    isWing,
+    yRotation: isWing ? Math.PI : baseAnimalYRotation(animal),
+    excludeRoyalAccessories: true,
+  });
 }
 
 // Return cached baked parts for a base animal variant.
@@ -391,44 +510,8 @@ export function getBakedAnimalParts(gltf: any, animal: AnimalId): BakedPart[] {
 // Passing several node names bakes them together as one variant, e.g. the
 // Chicken's throw pose (Chicken_F3 + the held Egg).
 function bakePoseFrame(gltf: any, poseNodeNames: string | string[], yRotation = 0): BakedPart[] {
-  if (!gltf?.scene) return [];
-
-  const root = gltf.scene.clone(true);
-
-  // Shared normalization: longest edge of the combined model -> 1 unit, feet to
-  // the ground plane.
-  const box = new THREE.Box3().setFromObject(root);
-  const size = new THREE.Vector3();
-  box.getSize(size);
-  const maxDimension = Math.max(size.x, size.y, size.z) || 1;
-  const normalizeScale = 1 / maxDimension;
-  root.scale.setScalar(normalizeScale);
-
-  const center = new THREE.Vector3();
-  box.getCenter(center);
-  root.position.set(-center.x * normalizeScale, -box.min.y * normalizeScale, -center.z * normalizeScale);
-
-  // Facing correction for models authored backwards (matches bakeVariant).
-  root.rotation.y = yRotation;
-
-  root.updateWorldMatrix(true, true);
-
   const names = Array.isArray(poseNodeNames) ? poseNodeNames : [poseNodeNames];
-  const parts: BakedPart[] = [];
-  for (const name of names) {
-    const frameRoot = root.getObjectByName(name);
-    if (!frameRoot) continue;
-    frameRoot.traverse((object) => {
-      const mesh = object as THREE.Mesh;
-      if (!mesh.isMesh || !mesh.geometry) return;
-      const geometry = mesh.geometry.clone();
-      geometry.applyMatrix4(mesh.matrixWorld); // bake normalization into vertices
-      const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
-      parts.push({ geometry, material });
-    });
-  }
-
-  return parts;
+  return bakeNormalizedParts(gltf, { yRotation, includeNodeNames: names });
 }
 
 // Return cached baked parts for one Turtle pose-frame variant.
@@ -660,6 +743,39 @@ export function getBakedOwlWingParts(gltf: any, wingFrameIndex: number): BakedPa
   const cached = bakedVariantCache.get(key);
   if (cached) return cached;
   const parts = bakeVariant(gltf, 'Owl', true);
+  bakedVariantCache.set(key, parts);
+  return parts;
+}
+
+// Return cached baked parts for one royal accessory on a grounded animal. The
+// accessory is normalized in the same body frame as the animal's base/pose
+// variants (feet-to-ground, same facing correction), so drawing it with a royal
+// unit's own body transform lands it on the head. Returns [] for models lacking
+// the node (e.g. Frog, Chicken) or for an unknown node name.
+export function getBakedRoyalAccessoryParts(gltf: any, animal: AnimalId, node: RoyalAccessoryNode): BakedPart[] {
+  const key = royalAccessoryVariantKey(animal, node);
+  const cached = bakedVariantCache.get(key);
+  if (cached) return cached;
+  const parts = bakeNormalizedParts(gltf, {
+    yRotation: baseAnimalYRotation(animal),
+    includeNodeNames: [node],
+  });
+  bakedVariantCache.set(key, parts);
+  return parts;
+}
+
+// Return cached baked parts for one royal accessory on an owl wing frame. Baked
+// in the wing's own normalization (fixed size, origin-centered, 180° flip) so a
+// flying owl's crown tracks the wing model rather than the grounded body.
+export function getBakedOwlWingRoyalAccessoryParts(gltf: any, wingFrameIndex: number, node: RoyalAccessoryNode): BakedPart[] {
+  const key = owlWingRoyalAccessoryVariantKey(wingFrameIndex, node);
+  const cached = bakedVariantCache.get(key);
+  if (cached) return cached;
+  const parts = bakeNormalizedParts(gltf, {
+    isWing: true,
+    yRotation: Math.PI,
+    includeNodeNames: [node],
+  });
   bakedVariantCache.set(key, parts);
   return parts;
 }

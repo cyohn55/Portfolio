@@ -42,6 +42,14 @@ import {
   getFrogTongueAnchors,
   getBakedChickenFrameParts,
   getBakedEggProjectileParts,
+  getBakedRoyalAccessoryParts,
+  getBakedOwlWingRoyalAccessoryParts,
+  hasRoyalAccessories,
+  royalAccessoryNodeFor,
+  royalAccessoryVariantKey,
+  owlWingRoyalAccessoryVariantKey,
+  ROYAL_ACCESSORY_NODE_NAMES,
+  ROYAL_ACCESSORY_CAPACITY,
   type BakedPart,
   type FrogTongueAnchors,
 } from '../utils/ModelPreloader';
@@ -233,7 +241,25 @@ function royalRingScale(unit: Unit): number {
 type VariantSpec = {
   key: string;
   parts: BakedPart[];
+  // Max instances for this variant's meshes. Defaults to MAX_INSTANCES_PER_VARIANT;
+  // royal accessories use the much smaller ROYAL_ACCESSORY_CAPACITY (only Kings and
+  // Queens ever wear one).
+  capacity?: number;
 };
+
+// Resolve the accessory (crown/tiara) variant a royal unit should wear this frame.
+// Mirrors variantKeyForUnit's owl-flying branch so a flying owl's crown is baked
+// from — and tracks — the same wing frame as its body. Returns null for non-royal
+// units, which never wear an accessory.
+function accessoryVariantKeyForUnit(unit: Unit, isOwnUnit: boolean): string | null {
+  if (unit.kind !== 'King' && unit.kind !== 'Queen') return null;
+  const node = royalAccessoryNodeFor(isOwnUnit, unit.kind);
+  if (unit.animal === 'Owl' && unit.isFlying) {
+    const wingFrameIndex = Math.floor((unit.wingPhase || 0) * 4) % OWL_WING_MODELS.length;
+    return owlWingRoyalAccessoryVariantKey(wingFrameIndex, node);
+  }
+  return royalAccessoryVariantKey(unit.animal, node);
+}
 
 function BaseMarker({ x, y, z }: { x: number; y: number; z: number }) {
   const tileSize = 2; // Fixed size for bases
@@ -612,8 +638,51 @@ function InstancedUnits() {
         specs.push({ key: owlWingVariantKey(frame), parts: getBakedOwlWingParts(wingGltfs[frame], frame) });
       }
     }
+
+    // Royal head accessories: one instanced variant per (animal, accessory node)
+    // the model actually carries, so Kings/Queens can wear a team-colored
+    // crown/tiara. Models without these nodes (Frog, Chicken) contribute none.
+    for (const animal of inPlayAnimals) {
+      const gltf = gltfByAnimal.get(animal);
+      if (!gltf || !hasRoyalAccessories(gltf)) continue;
+      for (const node of ROYAL_ACCESSORY_NODE_NAMES) {
+        specs.push({
+          key: royalAccessoryVariantKey(animal, node),
+          parts: getBakedRoyalAccessoryParts(gltf, animal, node),
+          capacity: ROYAL_ACCESSORY_CAPACITY,
+        });
+      }
+    }
+
+    // Owl royal accessories baked per wing frame so a flying owl's crown tracks
+    // the same wing pose its body uses.
+    if (inPlayAnimals.includes('Owl')) {
+      for (let frame = 0; frame < OWL_WING_MODELS.length; frame++) {
+        const wingGltf = wingGltfs[frame];
+        if (!hasRoyalAccessories(wingGltf)) continue;
+        for (const node of ROYAL_ACCESSORY_NODE_NAMES) {
+          specs.push({
+            key: owlWingRoyalAccessoryVariantKey(frame, node),
+            parts: getBakedOwlWingRoyalAccessoryParts(wingGltf, frame, node),
+            capacity: ROYAL_ACCESSORY_CAPACITY,
+          });
+        }
+      }
+    }
+
     return specs;
   }, [gltfs, inPlayAnimals]);
+
+  // Dev-only handles mirroring the app's other __rts* hooks: expose the royal
+  // accessory selection rule and the set of accessory variants actually baked and
+  // mounted this match, so feature tests can assert the crown/tiara behavior
+  // against the real store's units and the real baked variants (no mocked I/O).
+  useEffect(() => {
+    const mounted = variants.map((v) => v.key).filter((k) => k.startsWith('royal:'));
+    (window as any).__rtsMountedAccessoryVariants = mounted;
+    (window as any).__rtsRoyalAccessoryKeyForUnit = (unit: Unit, isOwnUnit: boolean) =>
+      accessoryVariantKeyForUnit(unit, isOwnUnit);
+  }, [variants]);
 
   // Imperative handles, populated by ref callbacks. Not React state — updated
   // directly each frame to avoid re-rendering the component tree.
@@ -787,12 +856,36 @@ function InstancedUnits() {
       variantUnitIds.current.get(key)![variantCount] = unit.id;
       counts.set(key, variantCount + 1);
 
+      // Allegiance + rank drive both the royal head accessory and the owner/
+      // selection ring styling below.
+      const isOwnUnit = unit.ownerId === localPlayerId;
+      const isRoyal = unit.kind === 'King' || unit.kind === 'Queen';
+
+      // Royal head accessory (crown/tiara). The accessory is baked in the same
+      // normalized frame as the body, so reusing the body's just-composed matrix
+      // (position + yaw/tilt + kind scale) drops it onto the unit's head. Blue for
+      // the local player, red for the enemy; Crown for Kings, Tiara for Queens.
+      // Models without these nodes (Frog, Chicken) resolve no accessory mesh and
+      // are skipped. `matrix` still holds the body transform here — the ring
+      // blocks below recompose it afterward.
+      if (isRoyal) {
+        const accessoryKey = accessoryVariantKeyForUnit(unit, isOwnUnit);
+        const accessoryMeshes = accessoryKey ? meshRefs.current.get(accessoryKey) : undefined;
+        if (accessoryKey && accessoryMeshes && accessoryMeshes.length > 0) {
+          const accessoryCount = counts.get(accessoryKey) ?? 0;
+          if (accessoryCount < ROYAL_ACCESSORY_CAPACITY) {
+            for (let p = 0; p < accessoryMeshes.length; p++) {
+              if (accessoryMeshes[p]) accessoryMeshes[p].setMatrixAt(accessoryCount, matrix);
+            }
+            counts.set(accessoryKey, accessoryCount + 1);
+          }
+        }
+      }
+
       // Owner ring sits on the ground beneath the unit (ignores flight lift). The local
       // player's kings/queens get a larger GOLD ring instead of the standard blue one so
       // royalty reads at a glance; enemy royals keep the red owner ring for friend/foe
       // clarity.
-      const isOwnUnit = unit.ownerId === localPlayerId;
-      const isRoyal = unit.kind === 'King' || unit.kind === 'Queen';
       if (isRoyal && isOwnUnit) {
         if (royalOwnerRingRef.current && royalOwnerRingCount < RING_CAPACITY) {
           const s = royalRingScale(unit);
@@ -1077,7 +1170,7 @@ function InstancedUnits() {
           <instancedMesh
             key={`${variant.key}-${partIndex}`}
             ref={registerPartRef(variant.key, partIndex)}
-            args={[part.geometry, part.material, MAX_INSTANCES_PER_VARIANT]}
+            args={[part.geometry, part.material, variant.capacity ?? MAX_INSTANCES_PER_VARIANT]}
             onPointerDown={(e) => handlePointerDown(variant.key, e)}
           />
         ))
