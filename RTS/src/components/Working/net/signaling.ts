@@ -26,8 +26,14 @@ import {
   addDoc,
   onSnapshot,
   serverTimestamp,
+  query,
+  where,
+  limit,
+  runTransaction,
+  Timestamp,
   type Firestore,
   type DocumentData,
+  type DocumentReference,
 } from 'firebase/firestore';
 import { getDb } from '../firebaseClient';
 import {
@@ -35,9 +41,16 @@ import {
   type WebRtcTransportCallbacks,
   type SerializedIceCandidate,
 } from './webrtcTransport';
+import type { PlayerRole } from './netMessages';
 
 // Top-level collection holding one document per open/active room.
 const ROOMS_COLLECTION = 'rooms';
+// Collection of Quick Match tickets. Each open ticket is a room awaiting a
+// claimer; claiming flips it to 'matched' so no one else takes it.
+const MATCHMAKING_COLLECTION = 'matchmaking';
+// Quick Match tickets older than this are treated as abandoned (host left
+// before anyone joined) and skipped/cleaned rather than claimed.
+const TICKET_FRESHNESS_MS = 60_000;
 // Per-room subcollections carrying each side's trickled ICE candidates.
 const HOST_CANDIDATES = 'hostCandidates';
 const GUEST_CANDIDATES = 'guestCandidates';
@@ -59,6 +72,8 @@ const CONNECTION_TIMEOUT_MS = 30_000;
 export interface RoomSession {
   /** The room code players share to join this match. */
   code: string;
+  /** This peer's assigned role: the offerer is p0 (host), the answerer p1 (guest). */
+  role: PlayerRole;
   /** The peer-to-peer transport, connected once `connected` resolves. */
   transport: WebRtcTransport;
   /** Resolves when the channel opens; rejects on failure or timeout. */
@@ -85,8 +100,56 @@ export async function createRoom(
 ): Promise<RoomSession> {
   const db = requireDb();
   const code = await reserveUniqueCode(db);
-  const roomRef = doc(db, ROOMS_COLLECTION, code);
+  return hostOn(doc(db, ROOMS_COLLECTION, code), code, callbacks);
+}
 
+/**
+ * JOIN an existing room by code. Reads the host's offer, answers it, and listens
+ * for the host's ICE candidates. Rejects if the room is missing or already full.
+ */
+export async function joinRoom(
+  rawCode: string,
+  callbacks: WebRtcTransportCallbacks = {}
+): Promise<RoomSession> {
+  const db = requireDb();
+  const code = normalizeCode(rawCode);
+  return joinOn(doc(db, ROOMS_COLLECTION, code), code, callbacks);
+}
+
+/**
+ * QUICK MATCH. Auto-pair with any waiting player: claim an open matchmaking
+ * ticket if one exists (becoming the guest), otherwise post a ticket and wait
+ * for someone to claim it (becoming the host). Either way the ticket doubles as
+ * the signaling room, so the same offer/answer/ICE mechanics apply.
+ */
+export async function quickMatch(
+  callbacks: WebRtcTransportCallbacks = {}
+): Promise<RoomSession> {
+  const db = requireDb();
+
+  const claimedId = await claimOpenTicket(db);
+  if (claimedId) {
+    // We claimed someone's ticket → we are the guest answering their offer.
+    return joinOn(doc(db, MATCHMAKING_COLLECTION, claimedId), claimedId, callbacks);
+  }
+
+  // No one waiting → post our own ticket (with our offer) and wait to be claimed.
+  const ticketRef = doc(collection(db, MATCHMAKING_COLLECTION));
+  return hostOn(ticketRef, ticketRef.id, callbacks);
+}
+
+// --- internals -------------------------------------------------------------
+
+/**
+ * HOST side of signaling on an arbitrary room/ticket doc: publish an offer, then
+ * listen for the peer's answer and ICE candidates. Used by both the room-code
+ * path and the Quick Match "waiting" path.
+ */
+async function hostOn(
+  roomRef: DocumentReference,
+  code: string,
+  callbacks: WebRtcTransportCallbacks
+): Promise<RoomSession> {
   // Signaling owns ICE delivery; the caller's lifecycle/message callbacks are
   // preserved and merged with our candidate writer.
   const transport = new WebRtcTransport({
@@ -104,7 +167,6 @@ export async function createRoom(
   });
 
   const unsubscribers: Array<() => void> = [];
-
   // Apply the guest's answer as soon as it appears.
   unsubscribers.push(
     onSnapshot(roomRef, (snapshot) => {
@@ -114,31 +176,27 @@ export async function createRoom(
       }
     })
   );
-
   // Stream in the guest's ICE candidates as they are added.
   unsubscribers.push(subscribeToCandidates(roomRef, GUEST_CANDIDATES, transport));
 
-  return buildSession(code, transport, unsubscribers, roomRef);
+  return buildSession(code, 'p0', transport, unsubscribers, roomRef);
 }
 
 /**
- * JOIN an existing room by code. Reads the host's offer, answers it, and listens
- * for the host's ICE candidates. Rejects if the room is missing or already full.
+ * GUEST side of signaling on an arbitrary room/ticket doc: read the offer, answer
+ * it, and listen for the host's ICE candidates.
  */
-export async function joinRoom(
-  rawCode: string,
-  callbacks: WebRtcTransportCallbacks = {}
+async function joinOn(
+  roomRef: DocumentReference,
+  code: string,
+  callbacks: WebRtcTransportCallbacks
 ): Promise<RoomSession> {
-  const db = requireDb();
-  const code = normalizeCode(rawCode);
-  const roomRef = doc(db, ROOMS_COLLECTION, code);
-
   const snapshot = await getDoc(roomRef);
   if (!snapshot.exists()) {
     throw new SignalingError(`Room "${code}" was not found.`);
   }
   const data = snapshot.data();
-  if (data.status !== 'open' || !data.offer) {
+  if (!data.offer) {
     throw new SignalingError(`Room "${code}" is no longer accepting players.`);
   }
 
@@ -155,13 +213,57 @@ export async function joinRoom(
     status: 'joined',
   });
 
-  // Stream in the host's ICE candidates as they are added.
   const unsubscribers = [subscribeToCandidates(roomRef, HOST_CANDIDATES, transport)];
-
-  return buildSession(code, transport, unsubscribers, roomRef);
+  return buildSession(code, 'p1', transport, unsubscribers, roomRef);
 }
 
-// --- internals -------------------------------------------------------------
+/**
+ * Atomically claim the oldest still-open, recent matchmaking ticket, returning
+ * its id, or null if none is available. The transaction re-checks `status` so
+ * two simultaneous quick-matchers can never claim the same ticket — the loser
+ * simply moves on (and ultimately posts its own ticket). Stale tickets (older
+ * than the freshness window, from a host that vanished) are skipped so a guest
+ * doesn't claim a dead room and stall.
+ */
+async function claimOpenTicket(db: Firestore): Promise<string | null> {
+  const cutoff = Timestamp.fromMillis(Date.now() - TICKET_FRESHNESS_MS);
+  // Equality + limit only — deliberately NO orderBy, so this needs just Firestore's
+  // automatic single-field index (an orderBy would force a custom composite index
+  // and extra deployment). Picking any open ticket rather than the oldest is fine
+  // for pairing.
+  const openTickets = query(
+    collection(db, MATCHMAKING_COLLECTION),
+    where('status', '==', 'open'),
+    limit(5)
+  );
+
+  let snapshot;
+  try {
+    snapshot = await getDocs(openTickets);
+  } catch {
+    // A rules issue or transient failure should not break Quick Match — fall
+    // back to posting our own ticket.
+    return null;
+  }
+
+  for (const ticket of snapshot.docs) {
+    const createdAt = ticket.data().createdAt as Timestamp | null;
+    // Skip tickets older than the freshness window (likely abandoned).
+    if (createdAt && createdAt < cutoff) {
+      void deleteRoom(ticket.ref);
+      continue;
+    }
+    const claimed = await runTransaction(db, async (transaction) => {
+      const fresh = await transaction.get(ticket.ref);
+      const freshData = fresh.data() as { status?: string } | undefined;
+      if (!fresh.exists() || freshData?.status !== 'open') return false;
+      transaction.update(ticket.ref, { status: 'matched' });
+      return true;
+    }).catch(() => false);
+    if (claimed) return ticket.id;
+  }
+  return null;
+}
 
 /** Get the Firestore handle or fail loudly — signaling cannot degrade offline. */
 function requireDb(): Firestore {
@@ -226,6 +328,7 @@ function subscribeToCandidates(
  */
 function buildSession(
   code: string,
+  role: PlayerRole,
   transport: WebRtcTransport,
   unsubscribers: Array<() => void>,
   roomRef: ReturnType<typeof doc>
@@ -264,7 +367,7 @@ function buildSession(
     await deleteRoom(roomRef);
   };
 
-  return { code, transport, connected, cancel };
+  return { code, role, transport, connected, cancel };
 }
 
 /** Best-effort removal of a room document and its candidate subcollections. */

@@ -27,14 +27,15 @@ export function MultiplayerScreen() {
   const transitionToScreen = useGameStore((s) => s.transitionToScreen);
   const phase = useMultiplayerSession((s) => s.phase);
   const roomCode = useMultiplayerSession((s) => s.roomCode);
-  const role = useMultiplayerSession((s) => s.role);
   const error = useMultiplayerSession((s) => s.error);
   const localAnimals = useMultiplayerSession((s) => s.localAnimals);
   const localReady = useMultiplayerSession((s) => s.localReady);
   const remoteAnimals = useMultiplayerSession((s) => s.remoteAnimals);
   const remoteReady = useMultiplayerSession((s) => s.remoteReady);
+  const isQuickMatch = useMultiplayerSession((s) => s.isQuickMatch);
   const hostRoom = useMultiplayerSession((s) => s.hostRoom);
   const joinByCode = useMultiplayerSession((s) => s.joinByCode);
+  const startQuickMatch = useMultiplayerSession((s) => s.startQuickMatch);
   const setLocalAnimals = useMultiplayerSession((s) => s.setLocalAnimals);
   const setReady = useMultiplayerSession((s) => s.setReady);
   const leave = useMultiplayerSession((s) => s.leave);
@@ -66,7 +67,13 @@ export function MultiplayerScreen() {
 
           {error && <div className="mp-error">{error}</div>}
 
-          <button className="mp-button primary" onClick={hostRoom}>
+          <button className="mp-button primary" onClick={startQuickMatch}>
+            QUICK MATCH
+          </button>
+
+          <div className="mp-divider"><span>or play a friend</span></div>
+
+          <button className="mp-button" onClick={hostRoom}>
             CREATE ROOM
           </button>
 
@@ -107,8 +114,12 @@ export function MultiplayerScreen() {
     return (
       <div className="mp-screen">
         <div className="mp-panel">
-          <h1 className="mp-title">{role === 'p0' ? 'Room Created' : 'Joining…'}</h1>
-          {role === 'p0' && roomCode ? (
+          <h1 className="mp-title">
+            {isQuickMatch ? 'Quick Match' : roomCode ? 'Room Created' : 'Joining…'}
+          </h1>
+          {isQuickMatch ? (
+            <p className="mp-waiting">Searching for an opponent…</p>
+          ) : roomCode ? (
             <>
               <p className="mp-subtitle">Share this code with your opponent:</p>
               <div className="mp-room-code">{roomCode}</div>

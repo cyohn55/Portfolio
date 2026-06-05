@@ -20,6 +20,7 @@ import { useGameStore } from '../../../game/state';
 import {
   createRoom,
   joinRoom,
+  quickMatch,
   SignalingError,
   type RoomSession,
 } from './signaling';
@@ -39,6 +40,8 @@ interface MultiplayerSessionState {
   phase: MultiplayerPhase;
   role: PlayerRole | null;
   roomCode: string | null;
+  /** True while connecting via the public Quick Match queue (vs a shared code). */
+  isQuickMatch: boolean;
   error: string | null;
   localAnimals: AnimalId[];
   localReady: boolean;
@@ -49,6 +52,8 @@ interface MultiplayerSessionState {
   hostRoom: () => Promise<void>;
   /** Join an existing room by its code. */
   joinByCode: (code: string) => Promise<void>;
+  /** Auto-pair with any waiting player via the public matchmaking queue. */
+  startQuickMatch: () => Promise<void>;
   /** Update the local player's animal picks (synced to the peer in the lobby). */
   setLocalAnimals: (animals: AnimalId[]) => void;
   /** Set the local player's ready state (synced; may trigger the match start). */
@@ -179,6 +184,7 @@ export const useMultiplayerSession = create<MultiplayerSessionState>((set, get) 
       phase: 'idle',
       role: null,
       roomCode: null,
+      isQuickMatch: false,
       error: null,
       localAnimals: [],
       localReady: false,
@@ -186,42 +192,44 @@ export const useMultiplayerSession = create<MultiplayerSessionState>((set, get) 
       remoteReady: false,
     } as MultiplayerSessionState);
 
+  /**
+   * Shared connect flow for all three matchmaking entry points. `connect`
+   * performs the signaling handshake and resolves with a RoomSession (carrying
+   * our assigned role); we then wait for the peer's channel to open and enter the
+   * lobby. The room code is surfaced only for the room-code host (Quick Match's
+   * ticket id is internal and not shareable).
+   */
+  const beginMatchmaking = async (
+    mode: 'room' | 'quick',
+    connect: () => Promise<RoomSession>,
+    failureMessage: string
+  ): Promise<void> => {
+    set({ phase: 'connecting', error: null, isQuickMatch: mode === 'quick' });
+    try {
+      const room = await connect();
+      attachTransport(room);
+      set({ role: room.role, roomCode: mode === 'room' ? room.code : null });
+      await room.connected;
+      set({ phase: 'lobby' });
+      broadcastLobby();
+    } catch (error) {
+      set({
+        phase: 'error',
+        error: error instanceof SignalingError ? error.message : failureMessage,
+      });
+    }
+  };
+
   return {
     ...reset(),
 
-    hostRoom: async () => {
-      set({ phase: 'connecting', role: 'p0', error: null });
-      try {
-        const room = await createRoom();
-        attachTransport(room);
-        set({ roomCode: room.code });
-        await room.connected;
-        set({ phase: 'lobby' });
-        broadcastLobby();
-      } catch (error) {
-        set({
-          phase: 'error',
-          error: error instanceof SignalingError ? error.message : 'Could not create a room.',
-        });
-      }
-    },
+    hostRoom: () => beginMatchmaking('room', () => createRoom(), 'Could not create a room.'),
 
-    joinByCode: async (code: string) => {
-      set({ phase: 'connecting', role: 'p1', error: null });
-      try {
-        const room = await joinRoom(code);
-        attachTransport(room);
-        set({ roomCode: room.code });
-        await room.connected;
-        set({ phase: 'lobby' });
-        broadcastLobby();
-      } catch (error) {
-        set({
-          phase: 'error',
-          error: error instanceof SignalingError ? error.message : 'Could not join that room.',
-        });
-      }
-    },
+    joinByCode: (code: string) =>
+      beginMatchmaking('room', () => joinRoom(code), 'Could not join that room.'),
+
+    startQuickMatch: () =>
+      beginMatchmaking('quick', () => quickMatch(), 'Quick Match is unavailable right now.'),
 
     setLocalAnimals: (animals: AnimalId[]) => {
       set({ localAnimals: animals.slice(0, 3) });
