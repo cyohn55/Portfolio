@@ -943,6 +943,31 @@ export const useGameStore = create<Store>((set, get) => ({
         isAiByOwnerId[player.id] = player.isAI;
       }
 
+      // Deterministic movement-priority inputs for the collision/separation passes.
+      // These replace the per-peer `selectedUnitIds` + `localPlayerId` the passes used
+      // to read directly — both of which differ between the two machines in a lockstep
+      // match (each peer selects only its own units, selection is never networked, and
+      // localPlayerId is p0 on the host but p1 on the guest). Feeding that local state
+      // into the shared simulation made the two peers resolve collisions differently,
+      // so unit positions drifted apart and the desync checksum stopped the match —
+      // which surfaced to players as a frozen sim where units ignore move orders.
+      //
+      // Single-player keeps reading the live selection (one machine, no peer to match).
+      // Lockstep derives priority from synced order state instead: a unit with an active
+      // move order gets the same "push through idle teammates / royal make-way" treatment
+      // selection grants solo, and `unitOrders` is identical on both peers because it is
+      // mutated only by networked commands and deterministic tick logic. playerControlled
+      // owners (the non-AI players) replace localPlayerId in the same passes: that set is
+      // exactly { localPlayerId } solo and { p0, p1 } online, so the rules are unchanged
+      // in single-player and symmetric across both humans in multiplayer.
+      const isLockstepMatch = commandRouter !== null;
+      const movementPriorityIds: ReadonlySet<string> = new Set(
+        isLockstepMatch ? Object.keys(draft.unitOrders) : draft.selectedUnitIds
+      );
+      const playerControlledOwnerIds: ReadonlySet<string> = new Set(
+        draft.players.filter((player) => !player.isAI).map((player) => player.id)
+      );
+
       // Reuse spatial grid instead of rebuilding every tick (major optimization).
       // A small cell size keeps neighbor queries cheap even when hundreds of
       // units pile into the same area during dense melee — a large cell would
@@ -1090,12 +1115,15 @@ export const useGameStore = create<Store>((set, get) => ({
 
             // Create a temporary unit to check collision
             const ownerPlayer = draft.players.find(p => p.id === q.ownerId);
-            const isPlayerUnit = q.ownerId === draft.localPlayerId;
-            const initialRotation = isPlayerUnit ? Math.PI : 0;
+            // Facing is side-based (p0 holds the +z edge → faces -z = π; p1 faces 0),
+            // NOT "is this the local player" — in lockstep each peer is local on its own
+            // machine, so an is-local rotation would face a spawned unit opposite ways on
+            // the two peers. Mirrors startMatch's initial-rotation rule for the same reason.
+            const initialRotation = q.ownerId === 'p0' ? Math.PI : 0;
             const tempUnit = createUnit(q.ownerId, q.animal, tentativeSpawnPos, initialRotation);
 
             // Find a collision-free spawn position
-            const finalSpawnPos = checkCollision(tentativeSpawnPos, tempUnit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
+            const finalSpawnPos = checkCollision(tentativeSpawnPos, tempUnit, draft.units, 2.5, movementPriorityIds, playerControlledOwnerIds, draft.unitOrders, draft.spatialGrid);
             tempUnit.position = finalSpawnPos;
 
             // Spawn rally target: if the player set one on this Queen, send the
@@ -1171,7 +1199,7 @@ export const useGameStore = create<Store>((set, get) => ({
               y: unit.position.y,
               z: unit.position.z + (unit.knockbackVelocityZ ?? 0) * dtSec,
             };
-            unit.position = checkCollision(knockbackStep, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
+            unit.position = checkCollision(knockbackStep, unit, draft.units, 2.5, movementPriorityIds, playerControlledOwnerIds, draft.unitOrders, draft.spatialGrid);
             continue;
           }
         }
@@ -1241,7 +1269,7 @@ export const useGameStore = create<Store>((set, get) => ({
                 y: unit.position.y,
                 z: unit.position.z + dirZ * moveDistance,
               };
-              unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
+              unit.position = checkCollision(newPosition, unit, draft.units, 2.5, movementPriorityIds, playerControlledOwnerIds, draft.unitOrders, draft.spatialGrid);
             } else {
               // No input this frame: hold position and drop the moving animations.
               if (unit.animal === 'Frog' || unit.animal === 'Bunny') unit.isHopping = false;
@@ -1451,7 +1479,7 @@ export const useGameStore = create<Store>((set, get) => ({
               };
 
               // Always apply collision detection for player-ordered movement (highest priority)
-              unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
+              unit.position = checkCollision(newPosition, unit, draft.units, 2.5, movementPriorityIds, playerControlledOwnerIds, draft.unitOrders, draft.spatialGrid);
 
               // Debug: Log movement for player units
               if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
@@ -1533,7 +1561,7 @@ export const useGameStore = create<Store>((set, get) => ({
               };
 
               // Apply collision detection
-              unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
+              unit.position = checkCollision(newPosition, unit, draft.units, 2.5, movementPriorityIds, playerControlledOwnerIds, draft.unitOrders, draft.spatialGrid);
             } else {
               // Reached this patrol point, turn around toward the other end
               draft.queenPatrols[unit.id].currentTarget = patrol.currentTarget === 'end' ? 'start' : 'end';
@@ -1701,7 +1729,7 @@ export const useGameStore = create<Store>((set, get) => ({
               z: unit.position.z + direction.z * moveDistance
             };
 
-            unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
+            unit.position = checkCollision(newPosition, unit, draft.units, 2.5, movementPriorityIds, playerControlledOwnerIds, draft.unitOrders, draft.spatialGrid);
           } else if (unit.animal === 'Owl') {
             // Owl landed when destination reached
             unit.isFlying = false;
@@ -1932,7 +1960,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
             // Apply collision detection with more lenient collision for combat units.
             // Ground animals are also kept out of water here (see checkCollision).
-            unit.position = checkCollision(newPosition, unit, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
+            unit.position = checkCollision(newPosition, unit, draft.units, 2.5, movementPriorityIds, playerControlledOwnerIds, draft.unitOrders, draft.spatialGrid);
 
             // Frog and Bunny hopping animation (AI units)
             if (unit.animal === 'Frog' || unit.animal === 'Bunny') {
@@ -2001,7 +2029,7 @@ export const useGameStore = create<Store>((set, get) => ({
           };
 
           // Apply collision detection to the knockback position
-          target.position = checkCollision(newPosition, target, draft.units, 2.5, draft.selectedUnitIds, draft.localPlayerId, draft.unitOrders, draft.spatialGrid);
+          target.position = checkCollision(newPosition, target, draft.units, 2.5, movementPriorityIds, playerControlledOwnerIds, draft.unitOrders, draft.spatialGrid);
         }
       }
 
@@ -2032,7 +2060,7 @@ export const useGameStore = create<Store>((set, get) => ({
       // Clear a lane for any selected King/Queen by shoving its blocking friendlies aside,
       // BEFORE the relaxation pass so separation can tidy the freshly opened formation and
       // (per its own rule) won't pull the shoved units back toward the selected royal.
-      clearPathForSelectedRoyals(draft);
+      clearPathForSelectedRoyals(draft, movementPriorityIds, playerControlledOwnerIds);
 
       // Hold rallying followers off their piloted monarch (>= MONARCH_FOLLOW_GAP), BEFORE the
       // relaxation pass so it tidies the formation and won't pull followers back onto the
@@ -2042,7 +2070,7 @@ export const useGameStore = create<Store>((set, get) => ({
       // Relax any unit pile-ups now that all movement, combat, and Owl drops have settled this
       // tick. Idle/arrived/just-delivered units don't go through the moving-unit collision, so
       // without this pass their models would stack and clip on a single point.
-      separateOverlappingUnits(draft);
+      separateOverlappingUnits(draft, movementPriorityIds);
 
       // Immediate dead unit removal to prevent regeneration of dead units
       if (draft.deadUnitsToRemove.length > 0) {
@@ -3202,7 +3230,17 @@ function minimumSpacingBetween(currentUnit: Unit, other: Unit): number {
   return UNIT_MINIMUM_SPACING + yetiBonus;
 }
 
-function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Unit[], collisionRadius: number = 2.5, selectedUnitIds: string[] = [], localPlayerId: string | null = null, unitOrders: Record<string, any> = {}, spatialGrid: SpatialGrid | null = null): Position3D {
+// Shared empty set so the collision/separation passes can default their priority
+// inputs without allocating, and so a missing argument can never reintroduce the
+// per-peer local state these parameters were created to keep OUT of the sim.
+const EMPTY_ID_SET: ReadonlySet<string> = new Set<string>();
+
+// `priorityUnitIds` and `playerOwnedIds` are the deterministic, identical-on-both-
+// peers substitutes for the old `selectedUnitIds` + `localPlayerId` arguments (see
+// where they are computed at the top of tick). priorityUnitIds is the set of units
+// that get movement priority (the local selection solo, the actively-ordered units
+// in lockstep); playerOwnedIds is the set of player-controlled (non-AI) owners.
+function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Unit[], collisionRadius: number = 2.5, priorityUnitIds: ReadonlySet<string> = EMPTY_ID_SET, playerOwnedIds: ReadonlySet<string> = EMPTY_ID_SET, unitOrders: Record<string, any> = {}, spatialGrid: SpatialGrid | null = null): Position3D {
   // A shelled turtle, a frog mid tongue-grab, or a cat mid-Hiss is locked in place:
   // every movement branch funnels its proposed position through here, so refusing the
   // move keeps the unit pinned while still letting combat (which never touches
@@ -3223,9 +3261,11 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
   const collisionRadiusSquared = collisionRadius * collisionRadius;
 
   // Pre-calculate unit classification to avoid repeated lookups
-  const isCurrentUnitSelected = selectedUnitIds.includes(currentUnit.id);
-  // SIMPLIFIED: Use localPlayerId to identify human player units
-  const isCurrentUnitPlayer = currentUnit.ownerId === localPlayerId;
+  const isCurrentUnitSelected = priorityUnitIds.has(currentUnit.id);
+  // Player-controlled (non-AI) owners. Identical to "ownerId === localPlayerId" in
+  // single-player (the lone human) but symmetric across both humans in multiplayer,
+  // so the push-through/make-way rules resolve the same on both peers.
+  const isCurrentUnitPlayer = playerOwnedIds.has(currentUnit.ownerId);
   // A selected local King/Queen plows straight through its own army rather than detouring
   // around it: its "make way" shove (clearPathForSelectedRoyals) knocks blocking friendlies
   // aside each tick, so the royal itself ignores friendly collision below. Enemy collision
@@ -3268,8 +3308,8 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
 
   for (const other of nearbyUnits) {
     // PLAYER MOVEMENT FIX: Allow selected units to gently push through unselected friendly units
-    const isOtherUnitPlayer = other.ownerId === localPlayerId;
-    const isOtherUnitSelected = selectedUnitIds.includes(other.id);
+    const isOtherUnitPlayer = playerOwnedIds.has(other.ownerId);
+    const isOtherUnitSelected = priorityUnitIds.has(other.id);
 
     // Special handling for selected player units moving through unselected friendly units
     const shouldReduceCollision = isCurrentUnitSelected && isCurrentUnitPlayer &&
@@ -3442,15 +3482,15 @@ const ROYAL_CLEARANCE_BONUS = 2.0;
 // blocking unit is moved (the royal holds its course), and the shove settles once the lane
 // is clear, so it reads as a brief knockback rather than a constant force. Ground units are
 // kept off forbidden water and inside the arena, mirroring separateOverlappingUnits.
-function clearPathForSelectedRoyals(draft: Store): void {
-  if (!draft.localPlayerId || draft.selectedUnitIds.length === 0) return;
-  const selectedIds = new Set(draft.selectedUnitIds);
+function clearPathForSelectedRoyals(draft: Store, priorityUnitIds: ReadonlySet<string>, playerOwnedIds: ReadonlySet<string>): void {
+  if (priorityUnitIds.size === 0) return;
+  const selectedIds = priorityUnitIds;
   const grid = draft.spatialGrid;
   const queryRadius = SEPARATION_QUERY_RADIUS + ROYAL_CLEARANCE_BONUS;
 
   for (const royal of draft.units) {
     if (royal.kind !== 'King' && royal.kind !== 'Queen') continue;
-    if (royal.ownerId !== draft.localPlayerId) continue;
+    if (!playerOwnedIds.has(royal.ownerId)) continue;
     if (!selectedIds.has(royal.id)) continue;
 
     const neighbors = grid ? grid.getNearbyUnits(royal.position, queryRadius) : draft.units;
@@ -3554,12 +3594,12 @@ function enforceMonarchFollowGap(draft: Store, unitById: Map<string, Unit>): voi
   }
 }
 
-function separateOverlappingUnits(draft: Store): void {
+function separateOverlappingUnits(draft: Store, priorityUnitIds: ReadonlySet<string>): void {
   const grid = draft.spatialGrid;
   const nowMs = simClockMs;
-  // O(1) membership for the asymmetric friendly rule below; selectedUnitIds can be large
-  // (e.g. select-all), so a Set avoids a per-neighbor linear scan in this hot pass.
-  const selectedIds = new Set(draft.selectedUnitIds);
+  // The deterministic movement-priority set (local selection solo, ordered units in
+  // lockstep); already a Set for O(1) membership in the asymmetric friendly rule below.
+  const selectedIds = priorityUnitIds;
 
   for (const unit of draft.units) {
     // Bases are immovable. Units being carried, in flight, or locked in place (shelled turtle,
