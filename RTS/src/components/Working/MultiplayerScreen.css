@@ -208,8 +208,10 @@
 }
 
 .mp-share-select option {
-  /* Dropdown list paints with the OS palette; keep it readable on all themes. */
-  color: #111;
+  /* Dropdown list paints with the OS palette; pair white text with a dark
+     background so the options stay legible when the list opens. */
+  color: #fff;
+  background: #0a0c16;
 }
 
 .mp-share-input::placeholder {
