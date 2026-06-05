@@ -19,7 +19,7 @@
  */
 
 /** Subject line used for the email invite and the native share-sheet title. */
-export const INVITE_SUBJECT = 'Join my Animal RTS battle';
+export const INVITE_SUBJECT = 'Join my Tails We Herd battle';
 
 /**
  * Query-string key carrying the room code in a join link. When the game boots
@@ -126,18 +126,16 @@ export function getShareChannel(channelId: ShareChannelId): ShareChannel {
 
 /**
  * The human-readable invite. Leads with the one-tap join link so the recipient
- * jumps straight into the room with the code pre-filled, and still spells out
- * the manual fallback (open the game, Enter Code, type it) for clients that
- * strip links. The code is normalized to the same upper-case form the join
- * input enforces so a manual copy/paste matches regardless of how it was stored.
+ * jumps straight into the room with the code pre-filled. The code is normalized
+ * to the canonical upper-case form the join flow uses so the embedded link
+ * matches regardless of how the code was stored.
  */
 export function buildInviteText(roomCode: string, gameUrl: string): string {
   const normalizedCode = roomCode.trim().toUpperCase();
   const joinUrl = buildJoinUrl(normalizedCode, gameUrl);
   return (
-    `Join my 1v1 Animal RTS battle! Tap to jump right in — the room code ` +
-    `fills in automatically: ${joinUrl}  ` +
-    `(No link? Open ${gameUrl}, pick Multiplayer, choose "Enter Code", and type ${normalizedCode}.)`
+    `Join my 1v1 RTS battle in Tails We Herd!\n` +
+    `Tap to jump right in: ${joinUrl}`
   );
 }
 
