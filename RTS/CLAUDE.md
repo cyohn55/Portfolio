@@ -63,6 +63,32 @@ The game uses a **client-side game loop** with the main logic in `src/game/state
 - **Distance Calculations**: Uses 3D Euclidean distance for all proximity checks (combat range, regeneration, etc.)
 - **Terrain Interaction**: Ray casting against ground plane for mouse-to-world coordinate conversion
 
+### Multiplayer (deterministic lockstep)
+
+1v1 human-vs-human multiplayer runs as **deterministic lockstep over WebRTC P2P**
+(peers exchange only inputs; Firebase Firestore brokers signaling + matchmaking).
+Code lives in `src/components/Working/net/` (transport, signaling, lockstep
+engine, wire protocol, session). Host = `p0`, guest = `p1`.
+
+**Determinism contract — REQUIRED for any edit to the `tick` path in `state.ts`,
+or multiplayer silently desyncs:**
+- Use the seeded `simRng` (never `Math.random()`) for any randomness in the sim.
+- Use `simClockMs` (never `performance.now()`/`Date.now()`) for sim timing. The
+  top of `tick` overrides the `nowMs` param with the tick-derived clock, so most
+  timers are deterministic automatically.
+- Use `nextEntityId()` (never `nanoid()`) for entity ids; player ids are fixed
+  `p0`/`p1`.
+- Branch shared sim outcomes on role/owner, not "is local player" (each peer is
+  local on its own machine — e.g. initial rotation keys off `player.id === 'p0'`).
+
+Verify a sim change with the determinism harness pattern: bundle the store for
+Node (esbuild, `--define:import.meta.env.DEV=false`) and assert two seeded runs
+with identical scripted commands produce identical per-tick checksums. Specs:
+`Unit Tests/{lockstep-determinism,prng,lockstep-engine,netMessages}.spec.ts`.
+
+Firestore rules for `rooms/**` + `matchmaking/**` (in `firestore.rules`) must be
+published to the `rts-leader-board` project for MP to connect.
+
 ### Development Notes
 
 - Server serves 3D models from `/models` endpoint via Express static middleware

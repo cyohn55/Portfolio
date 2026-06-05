@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import { nanoid } from 'nanoid';
 import { produce, setAutoFreeze } from 'immer';
 import { SpatialGrid } from '../utils/SpatialGrid';
+import { SeededRng } from '../components/Working/net/prng';
+import type { NetCommand, PlayerRole } from '../components/Working/net/netMessages';
 
 // The per-frame `tick` mutates unit objects in place for performance (see the
 // comment on `tick`). The other store actions still use Immer's produce(), whose
@@ -180,11 +181,124 @@ const OWL_WING_FLAP_PER_SEC = 4;       // wing-flap cycles/sec kept advancing so
 // sync automatically when animals are added or removed.
 const ALL_ANIMALS = Object.keys(ANIMALS) as AnimalId[];
 
+// ---------------------------------------------------------------------------
+// Deterministic simulation primitives (lockstep multiplayer foundation).
+//
+// The per-frame `tick` and the command handlers it drives must be reproducible:
+// given the same starting state, the same seed, and the same ordered command
+// stream, both peers must reach byte-identical state every tick. Three sources
+// of non-determinism are funneled through the module-level values below so that
+// every site reads from the same deterministic source instead of wall-clock
+// time, Math.random, or nanoid:
+//
+//   * simClockMs  — the simulation clock in milliseconds, derived purely from
+//                   the tick counter (tick * fixed dt). Replaces performance.now
+//                   / Date.now everywhere inside the simulation and the command
+//                   handlers, so timers (cooldowns, poses, knockback windows)
+//                   advance identically regardless of real wall-clock drift.
+//   * simRng      — the active match's seeded PRNG. Repointed to the live store's
+//                   `rng` at the top of every tick so module-level helpers (which
+//                   have no access to the store draft) share the one instance
+//                   that gets seeded at match start and checksummed for desync
+//                   detection.
+//   * entitySeq   — a monotonic counter for entity ids. Because spawn order is
+//                   itself deterministic, ids like "Unit-42" line up across peers
+//                   far more cheaply than random nanoids ever could.
+//
+// In single-player these values still apply (the sim simply runs with a random
+// seed and applies commands immediately), so the same code path serves both
+// modes and there is no determinism-only branch to drift out of sync.
+// ---------------------------------------------------------------------------
+
+/** Simulation clock in milliseconds; set at the top of each tick from the tick counter. */
+let simClockMs = 0;
+
+/** Active match RNG; repointed to the live store's `rng` each tick. Seeded at match start. */
+let simRng: SeededRng = new SeededRng(1);
+
+/** Monotonic entity-id counter; reset to 0 at the start of every match. */
+let entitySeq = 0;
+
+/**
+ * Mint the next deterministic entity id. The single-letter prefix keeps ids
+ * readable in logs ("U-3", "Q-1") while the shared counter guarantees global
+ * uniqueness within a match. Spawn order is deterministic, so both peers mint
+ * the same id for the same unit.
+ */
+function nextEntityId(prefix: string): string {
+  return `${prefix}-${entitySeq++}`;
+}
+
+/**
+ * Re-seed the deterministic primitives for a fresh match. Returns the new RNG so
+ * the caller can store it on the game state (where it is advanced in place and
+ * read by the desync checksum). Called by both single-player and multiplayer
+ * match starts; multiplayer passes the seed agreed in the start handshake.
+ */
+function resetDeterministicState(seed: number): SeededRng {
+  simClockMs = 0;
+  entitySeq = 0;
+  simRng = new SeededRng(seed);
+  return simRng;
+}
+
+// ---------------------------------------------------------------------------
+// Command routing seam (lockstep multiplayer).
+//
+// In single-player the public command actions (moveCommand, attackTarget, the
+// abilities, …) mutate the store immediately. In multiplayer they must instead
+// be scheduled by the lockstep engine and executed on an agreed future tick on
+// BOTH peers, so the simulations stay identical. Rather than fork every action,
+// one router seam intercepts them:
+//
+//   * setCommandRouter(fn) installs a sink (the engine's enqueue). While set,
+//     each action hands its serialized command to the sink and returns without
+//     mutating (routeCommand → true).
+//   * The engine later replays every command — local AND remote — at its tick by
+//     calling applyNetCommand, which sets `applyingNetCommand` so routeCommand
+//     returns false and the SAME action falls through to its real mutation.
+//   * actingPlayerIdOverride lets a replayed command act on its issuer's units
+//     rather than the local player's, so a remote order moves remote units. It
+//     defaults to the local player (single-player and local input), so the gate
+//     logic is unchanged outside of replay.
+// ---------------------------------------------------------------------------
+
+let commandRouter: ((command: NetCommand) => void) | null = null;
+let applyingNetCommand = false;
+let actingPlayerIdOverride: string | null = null;
+
+/** Install (or clear with null) the lockstep command sink. Set on match start/end. */
+export function setCommandRouter(router: ((command: NetCommand) => void) | null): void {
+  commandRouter = router;
+  applyingNetCommand = false;
+  actingPlayerIdOverride = null;
+}
+
+/** Hand a command to the router if one is installed and we are not mid-replay. */
+function routeCommand(command: NetCommand): boolean {
+  if (commandRouter && !applyingNetCommand) {
+    commandRouter(command);
+    return true;
+  }
+  return false;
+}
+
+/** The owner a command currently acts on: the replay override, else the local player. */
+function actingOwnerId(state: { localPlayerId: string | null }): string | null {
+  return actingPlayerIdOverride ?? state.localPlayerId;
+}
+
 /**
  * Returns `count` distinct animals chosen uniformly at random from the full
  * roster. Used to give the AI opponent a varied lineup each match instead of a
  * fixed set. Uses a partial Fisher-Yates shuffle so every animal has an equal
  * chance of being picked without repeats.
+ *
+ * Intentionally uses Math.random rather than the deterministic simRng: this runs
+ * at single-player setup time (the AI lineup), before any match seed exists, and
+ * is never part of the per-tick simulation. Multiplayer takes both lineups from
+ * the shared lobby instead of calling this, so leaving it non-deterministic does
+ * not affect lockstep sync.
  */
 function pickRandomAnimals(count: number): AnimalId[] {
   const roster = [...ALL_ANIMALS];
@@ -194,6 +308,22 @@ function pickRandomAnimals(count: number): AnimalId[] {
   }
   return roster.slice(0, count);
 }
+
+// Fixed starting base positions per role. p0 holds the +z (south) edge, p1 the
+// -z (north) edge. Shared by single-player setup (initializeGame) and the
+// multiplayer match builder so both modes — and both peers — place bases at the
+// exact same coordinates. Hoisted to module scope so the two call sites cannot
+// drift apart.
+const P0_BASE_POSITIONS: Position3D[] = [
+  { x: 73.5, y: 0.25, z: 252 },
+  { x: -2, y: 0.25, z: 252 },
+  { x: -77, y: 0.25, z: 252 },
+];
+const P1_BASE_POSITIONS: Position3D[] = [
+  { x: 76.5, y: 0.25, z: -248 },
+  { x: 1, y: 0.25, z: -248 },
+  { x: -74, y: 0.25, z: -248 },
+];
 
 const defaultConfig: GameConfig = {
   mapSize: 50,
@@ -226,7 +356,7 @@ function createEmptyMatchStats(): MatchStats {
   };
 }
 
-type GameScreen = 'menu' | 'lobby' | 'playing' | 'postgame' | 'leaderboard';
+type GameScreen = 'menu' | 'lobby' | 'multiplayer' | 'playing' | 'postgame' | 'leaderboard';
 
 type Store = GameState & {
   // Screen management
@@ -235,7 +365,11 @@ type Store = GameState & {
 
   initializeGame: () => void;
   chooseAnimalsForLocal: (animals: AnimalId[]) => void;
-  startMatch: (withAI?: boolean) => void;
+  startMatch: (withAI?: boolean, seed?: number) => void;
+  // Configure + start a 1v1 human-vs-human match from the agreed start handshake
+  // (shared seed + both lineups), keyed to this peer's role. Sets up two non-AI
+  // players, the local player id, netMode, and runs startMatch with the seed.
+  startMultiplayerMatch: (params: { localRole: PlayerRole; seed: number; lineups: Record<PlayerRole, AnimalId[]> }) => void;
   tick: (dtSec: number, nowMs: number) => void;
   moveCommand: (cmd: CommandMoveUnits) => void;
   setPatrol: (cmd: CommandSetPatrol) => void;
@@ -278,6 +412,19 @@ type Store = GameState & {
   lastRegenCheckMs: number;
   tickCounter: number;
   debugTickCount?: number;
+  // Deterministic match RNG (lockstep multiplayer). Seeded at match start, then
+  // advanced in place by the simulation; both peers seed it identically so every
+  // "random" outcome resolves the same way without crossing the network. Its
+  // state also feeds the per-K-tick desync checksum. See resetDeterministicState.
+  rng: SeededRng;
+  // The numeric seed the current match's RNG was created from. In multiplayer
+  // the host generates this and broadcasts it in the start handshake so both
+  // peers reseed identically; in single-player it is a throwaway random value.
+  matchSeed: number;
+  // Networking mode for the current session. 'single' runs the legacy local
+  // game (commands apply immediately); 'host'/'guest' route commands through the
+  // lockstep engine instead. Drives the command-router seam in the store actions.
+  netMode: 'single' | 'host' | 'guest';
   // AI thinking throttling
   aiThinkingOffset: Record<string, number>;
   // Movement caching
@@ -449,6 +596,9 @@ export const useGameStore = create<Store>((set, get) => ({
   spatialGrid: null,
   lastRegenCheckMs: 0,
   tickCounter: 0,
+  rng: simRng,
+  matchSeed: 0,
+  netMode: 'single',
   aiThinkingOffset: {},
   movementDirectionCache: {},
   targetCache: {},
@@ -553,16 +703,27 @@ export const useGameStore = create<Store>((set, get) => ({
   },
 
   initializeGame: () => {
-    // Prepare a local player and an AI opponent with placeholder base hexes
-    const localId = nanoid();
-    const aiId = nanoid();
+    // Prepare a local player and an AI opponent with placeholder base hexes.
+    // Player ids are fixed roles ('p0' = local, 'p1' = opponent) rather than
+    // random nanoids so that ownership ids are deterministic and identical to
+    // the multiplayer convention (host = p0, guest = p1). Each client keys its
+    // own `localPlayerId` to its role; the shared id space lets both peers agree
+    // on which units belong to whom without exchanging an id map.
+    // Defensive reset to single-player: initializeGame is the "fresh game" entry
+    // point (app boot and Post-Game "Play Again"), so disarm any lingering
+    // multiplayer command routing here. The active engine, if any, is also torn
+    // down when the player returns to the menu (see App's teardown effect).
+    setCommandRouter(null);
+
+    const localId = 'p0';
+    const aiId = 'p1';
     const players: Player[] = [
       {
         id: localId,
         name: 'You',
         isAI: false,
         animals: ['Bee', 'Bear', 'Fox'],
-        basePositions: [{ x: 73.5, y: 0.25, z: 252 }, { x: -2, y: 0.25, z: 252 }, { x: -77, y: 0.25, z: 252 }],
+        basePositions: P0_BASE_POSITIONS,
       },
       {
         id: aiId,
@@ -570,25 +731,40 @@ export const useGameStore = create<Store>((set, get) => ({
         isAI: true,
         // Randomized each match so the player faces a varied opponent lineup.
         animals: pickRandomAnimals(3),
-        basePositions: [{ x: 76.5, y: 0.25, z: -248 }, { x: 1, y: 0.25, z: -248 }, { x: -74, y: 0.25, z: -248 }],
+        basePositions: P1_BASE_POSITIONS,
       },
     ];
 
-    set({ players, localPlayerId: localId, units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, movementHeldUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, movementHeldUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
 
-  startMatch: (withAI = true) => {
+  startMatch: (withAI = true, seed?: number) => {
     const state = get();
     const units: Unit[] = [];
+
+    // Seed the deterministic simulation primitives BEFORE creating any units:
+    // createBase/createQueen/createKing mint ids from the entity counter, which
+    // resetDeterministicState() zeroes. In multiplayer the caller passes the
+    // seed agreed in the start handshake so both peers build an identical match;
+    // in single-player we mint a throwaway seed so each match still varies.
+    const matchSeed = seed ?? (Math.floor(Math.random() * 0xffffffff) >>> 0);
+    const rng = resetDeterministicState(matchSeed);
 
     console.log('🎮 Starting match with players:', state.players);
 
     for (const player of state.players) {
-      const chosenAnimals = player.isAI ? player.animals : state.selectedAnimalPool;
-      const isPlayerUnit = player.id === state.localPlayerId;
-      const initialRotation = isPlayerUnit ? Math.PI : 0; // Player units face 180 degrees (toward AI)
+      // The local human's lineup is the lobby selection (selectedAnimalPool);
+      // every other player (the AI, or a remote human in multiplayer) carries its
+      // own lineup in player.animals. Keying off localPlayerId rather than isAI
+      // lets a second human player use its own lineup instead of the local pool.
+      const chosenAnimals = player.id === state.localPlayerId ? state.selectedAnimalPool : player.animals;
+      // Initial facing is role/side-based, NOT "is this the local player" — in
+      // multiplayer each peer is the local player on its own machine, so an
+      // is-local rotation would face p0/p1 opposite ways on the two peers and
+      // desync. p0 holds the +z edge (faces -z = π); p1 faces +z = 0.
+      const initialRotation = player.id === 'p0' ? Math.PI : 0;
 
       console.log(`👤 Player ${player.name} (${player.isAI ? 'AI' : 'Human'}) animals:`, chosenAnimals);
 
@@ -618,6 +794,10 @@ export const useGameStore = create<Store>((set, get) => ({
     set({
       units,
       matchStarted: true,
+      // Deterministic RNG + seed for this match (lockstep). Stored so the desync
+      // checksum can read the RNG state and so the seed is inspectable/replayable.
+      rng,
+      matchSeed,
       // Bump so views that persist across matches reset their per-match state.
       matchStartNonce: state.matchStartNonce + 1,
       isPaused: true,
@@ -660,6 +840,44 @@ export const useGameStore = create<Store>((set, get) => ({
     });
   },
 
+  startMultiplayerMatch: ({ localRole, seed, lineups }) => {
+    // Two human players at the fixed role base positions. Both peers build the
+    // identical players array (same ids, lineups, positions); only localPlayerId
+    // and netMode differ per peer. selectedAnimalPool is set to the local lineup
+    // so startMatch's local-player branch picks the right animals.
+    const players: Player[] = [
+      {
+        id: 'p0',
+        name: localRole === 'p0' ? 'You' : 'Opponent',
+        isAI: false,
+        animals: lineups.p0,
+        basePositions: P0_BASE_POSITIONS,
+      },
+      {
+        id: 'p1',
+        name: localRole === 'p1' ? 'You' : 'Opponent',
+        isAI: false,
+        animals: lineups.p1,
+        basePositions: P1_BASE_POSITIONS,
+      },
+    ];
+    set({
+      players,
+      localPlayerId: localRole,
+      selectedAnimalPool: lineups[localRole],
+      netMode: localRole === 'p0' ? 'host' : 'guest',
+    });
+    // Build units + seed the deterministic sim identically on both peers.
+    get().startMatch(true, seed);
+    // startMatch leaves the match paused (single-player waits on the instructions
+    // popup). In multiplayer the lockstep engine, not a popup, gates the start —
+    // and the engine must never advance its tick while store.tick is a no-op from
+    // being paused, or the engine tick and store tick desync. So unpause now; the
+    // engine's input-delay buffer + stall mechanism still synchronizes the actual
+    // first executed tick across the two peers.
+    set({ isPaused: false });
+  },
+
   // Per-frame simulation runs OUTSIDE Immer. At hundreds of units, produce()
   // clones the units array plus every mutated unit each tick, and that garbage
   // causes periodic GC pauses (frame-time spikes). Here we read the live state
@@ -685,6 +903,19 @@ export const useGameStore = create<Store>((set, get) => ({
       draft.debugTickCount++;
 
       draft.tickCounter++;
+
+      // Deterministic simulation clock + RNG (lockstep multiplayer foundation).
+      // Derive the sim time purely from the tick counter so it is identical on
+      // both peers regardless of wall-clock drift, then OVERRIDE the incoming
+      // wall-clock `nowMs` with it. Every downstream timer in this tick reads
+      // `nowMs`, so this single reassignment makes the entire simulation's notion
+      // of time deterministic without touching its ~50 call sites. The module
+      // globals `simClockMs`/`simRng` expose the same clock + this match's RNG to
+      // the standalone helper functions (checkCollision, separateOverlappingUnits,
+      // …) and the command handlers, which have no access to the store draft.
+      nowMs = draft.tickCounter * (dtSec * 1000);
+      simClockMs = nowMs;
+      simRng = draft.rng;
 
       // Reset the pathfinder's per-tick A* compute budget so bursts of new cross-map
       // orders are spread over a few ticks instead of hitching a single frame.
@@ -1041,7 +1272,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
         // Initialize AI thinking offset for new units
         if (!draft.aiThinkingOffset[unit.id]) {
-          draft.aiThinkingOffset[unit.id] = Math.floor(Math.random() * 2); // Match new thinking interval
+          draft.aiThinkingOffset[unit.id] = simRng.nextInt(2); // Match new thinking interval
         }
 
         // Monarch rally: a follower keeps its move order pinned to the piloted
@@ -1939,11 +2170,15 @@ export const useGameStore = create<Store>((set, get) => ({
       set({ units: draft.units.slice() });
   },
 
-  moveCommand: (cmd) => set((prev) =>
+  // In multiplayer, routeCommand hands this to the lockstep engine (returning
+  // undefined here) instead of mutating now; the engine replays it on its
+  // scheduled tick via applyNetCommand. In single-player routeCommand is a no-op
+  // and the set() runs immediately. Same pattern on every routed action below.
+  moveCommand: (cmd) => routeCommand({ type: 'moveUnits', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       for (const id of cmd.unitIds) {
         const u = draft.units.find((x) => x.id === id);
-        if (!u || u.ownerId !== draft.localPlayerId) continue; // Only allow moving own units
+        if (!u || u.ownerId !== actingOwnerId(draft)) continue; // Only allow moving the acting player's units
 
         // A mouse move order takes manual control back from a piloted King/Queen: stop
         // piloting it so the order actually takes effect. The pilot tick block drives the
@@ -2031,10 +2266,10 @@ export const useGameStore = create<Store>((set, get) => ({
     })
   ),
 
-  setPatrol: (cmd) => set((prev) =>
+  setPatrol: (cmd) => routeCommand({ type: 'setPatrol', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       const queen = draft.units.find(u => u.id === cmd.queenId);
-      if (!queen || queen.ownerId !== draft.localPlayerId || queen.kind !== 'Queen') return;
+      if (!queen || queen.ownerId !== actingOwnerId(draft) || queen.kind !== 'Queen') return;
 
       // Set patrol route for the queen
       draft.queenPatrols[cmd.queenId] = {
@@ -2099,17 +2334,17 @@ export const useGameStore = create<Store>((set, get) => ({
   // a 'point' marches them to a fixed staging spot; a 'follow' makes them fall in
   // behind a friendly monarch. A 'follow' target is itself validated to a living
   // friendly monarch so the rally never points at a dead or enemy unit.
-  setQueenRally: (cmd) => set((prev) =>
+  setQueenRally: (cmd) => routeCommand({ type: 'setQueenRally', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       const queen = draft.units.find(u => u.id === cmd.queenId);
-      if (!queen || queen.ownerId !== draft.localPlayerId || queen.kind !== 'Queen') return;
+      if (!queen || queen.ownerId !== actingOwnerId(draft) || queen.kind !== 'Queen') return;
 
       const target = cmd.target; // capture so the narrowing survives the find() closure
       if (target.mode === 'follow') {
         // Validate the follow target is a living friendly monarch (King/Queen) so the
         // rally never points at a dead or enemy unit.
         const monarch = draft.units.find(u => u.id === target.monarchId);
-        if (!monarch || monarch.ownerId !== draft.localPlayerId || monarch.hp <= 0 ||
+        if (!monarch || monarch.ownerId !== actingOwnerId(draft) || monarch.hp <= 0 ||
             (monarch.kind !== 'King' && monarch.kind !== 'Queen')) return;
         draft.queenRallyTargets[cmd.queenId] = { mode: 'follow', monarchId: monarch.id };
       } else {
@@ -2126,21 +2361,21 @@ export const useGameStore = create<Store>((set, get) => ({
   // secondary-button patrol-draw hold. Validated to the local player so a held
   // id can only ever pin one of their own units. The tick honors this by holding
   // the unit's position and skipping its AI/order/patrol movement that tick.
-  setMovementHold: (unitId) => set((prev) => {
+  setMovementHold: (unitId) => routeCommand({ type: 'setMovementHold', payload: { unitId } }) ? undefined : set((prev) => {
     if (unitId === null) return { movementHeldUnitId: null };
     const unit = prev.units.find(u => u.id === unitId);
-    if (!unit || unit.ownerId !== prev.localPlayerId) return {};
+    if (!unit || unit.ownerId !== actingOwnerId(prev)) return {};
     return { movementHeldUnitId: unitId };
   }),
 
-  attackTarget: (cmd) => set((prev) =>
+  attackTarget: (cmd) => routeCommand({ type: 'attackTarget', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       const target = draft.units.find(u => u.id === cmd.targetId);
       if (!target) return;
 
       for (const id of cmd.unitIds) {
         const unit = draft.units.find(u => u.id === id);
-        if (!unit || unit.ownerId !== draft.localPlayerId) continue;
+        if (!unit || unit.ownerId !== actingOwnerId(draft)) continue;
 
         // A mouse attack order takes manual control back from a piloted King/Queen (see
         // moveCommand): stop piloting it so the order isn't dropped by the pilot tick block.
@@ -2225,6 +2460,9 @@ export const useGameStore = create<Store>((set, get) => ({
   // camera (which follows the selection) eases onto it. Re-pressing the slot of
   // the unit already being piloted stops piloting.
   pilotMonarchBySlot: (slotIndex) => set((prev) => {
+    // Monarch piloting is continuous, local, manual control that is not routed
+    // through lockstep, so it is disabled in multiplayer v1 to avoid desync.
+    if (commandRouter) return {};
     if (!prev.localPlayerId) return {};
     const animal = prev.selectedAnimalPool[slotIndex];
     if (!animal) return {};
@@ -2255,6 +2493,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // Returns to no-pilot is handled by re-pressing nothing — there is always a
   // monarch to land on as long as one animal still has one alive.
   pilotCycleMonarch: () => set((prev) => {
+    if (commandRouter) return {}; // piloting disabled in multiplayer v1 (see pilotMonarchBySlot)
     if (!prev.localPlayerId) return {};
     const pool = prev.selectedAnimalPool;
     if (pool.length === 0) return {};
@@ -2287,6 +2526,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // Swap the piloted unit between the King and Queen of the same animal (G).
   // No-op when not piloting or when the sibling monarch is dead.
   togglePilotMonarchKind: () => set((prev) => {
+    if (commandRouter) return {}; // piloting disabled in multiplayer v1 (see pilotMonarchBySlot)
     if (!prev.localPlayerId || !prev.pilotedUnitId) return {};
     const current = prev.units.find((u) => u.id === prev.pilotedUnitId);
     if (!current || (current.kind !== 'King' && current.kind !== 'Queen')) return {};
@@ -2311,6 +2551,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // move order breaks the unit off the monarch (see moveCommand).
   rallyToMonarch: () => set((prev) =>
     produce(prev, (draft) => {
+      if (commandRouter) return; // piloting disabled in multiplayer v1 (see pilotMonarchBySlot)
       if (!draft.localPlayerId || !draft.pilotedUnitId) return;
       const monarch = draft.units.find((u) => u.id === draft.pilotedUnitId);
       if (!monarch) return;
@@ -2352,6 +2593,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // quick tap (0) occurred on release.
   incrementUnitPlacement: () => {
     const prev = get();
+    if (commandRouter) return prev.unitPlacementCount; // piloting disabled in multiplayer v1
     if (!prev.localPlayerId || !prev.pilotedUnitId) return prev.unitPlacementCount;
 
     const monarch = prev.units.find((u) => u.id === prev.pilotedUnitId);
@@ -2379,6 +2621,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // blocking and the stale A* path cache) so the placed units actually travel.
   placeRalliedUnits: (count) => set((prev) =>
     produce(prev, (draft) => {
+      if (commandRouter) return; // piloting disabled in multiplayer v1 (see pilotMonarchBySlot)
       draft.unitPlacementCount = 0; // the gesture is consumed regardless of outcome
       if (count <= 0 || !draft.localPlayerId || !draft.pilotedUnitId) return;
 
@@ -2440,11 +2683,11 @@ export const useGameStore = create<Store>((set, get) => ({
   // Toggle the "shell" lock on the local player's Turtle units in the given
   // selection. Shelling pins the unit in place (see checkCollision) and the
   // renderer swaps it to the F0 shell pose; toggling again releases it.
-  toggleTurtleShell: (unitIds) => set((prev) =>
+  toggleTurtleShell: (unitIds) => routeCommand({ type: 'toggleTurtleShell', payload: { unitIds } }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       for (const id of unitIds) {
         const unit = draft.units.find((candidate) => candidate.id === id);
-        if (!unit || unit.animal !== 'Turtle' || unit.ownerId !== draft.localPlayerId) continue;
+        if (!unit || unit.animal !== 'Turtle' || unit.ownerId !== actingOwnerId(draft)) continue;
         unit.isShelled = !unit.isShelled;
         if (unit.isShelled) {
           // Shelling means "hold here": drop any pending move order and go idle
@@ -2459,12 +2702,12 @@ export const useGameStore = create<Store>((set, get) => ({
   // Chicken egg-throw ability. Each selected friendly Chicken that is off its
   // egg cooldown turns to face the targeted point, shows the throw pose for a
   // short window, and launches one egg projectile toward it (resolved in tick).
-  throwEggs: (cmd) => set((prev) =>
+  throwEggs: (cmd) => routeCommand({ type: 'throwEggs', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
-      const now = performance.now();
+      const now = simClockMs;
       for (const id of cmd.unitIds) {
         const unit = draft.units.find((candidate) => candidate.id === id);
-        if (!unit || unit.animal !== 'Chicken' || unit.ownerId !== draft.localPlayerId) continue;
+        if (!unit || unit.animal !== 'Chicken' || unit.ownerId !== actingOwnerId(draft)) continue;
         if (unit.hp <= 0) continue;
         if (unit.lastEggAtMs !== undefined && now - unit.lastEggAtMs < EGG_COOLDOWN_MS) continue;
 
@@ -2477,7 +2720,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
         const distanceToTarget = Math.sqrt(distanceSquared3D(unit.position, cmd.target));
         draft.projectiles.push({
-          id: `egg-${id}-${now.toFixed(0)}-${nanoid(5)}`,
+          id: nextEntityId(`egg-${id}`),
           ownerId: unit.ownerId,
           position: { x: unit.position.x, y: unit.position.y + EGG_SPAWN_HEIGHT, z: unit.position.z },
           velocity: { x: direction.x * EGG_SPEED, y: 0, z: direction.z * EGG_SPEED },
@@ -2495,9 +2738,9 @@ export const useGameStore = create<Store>((set, get) => ({
   // then animates entirely in the tick (see updateFrogTongues). Targeting respects
   // two rules: a frog grabs exactly one enemy, and no two frogs may claim the same
   // enemy at once (so a cluster of frogs spreads its grabs across the enemy front).
-  fireTongues: (cmd) => set((prev) =>
+  fireTongues: (cmd) => routeCommand({ type: 'fireTongues', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
-      const now = performance.now();
+      const now = simClockMs;
 
       // Enemies already claimed by another friendly frog's active tongue this
       // instant — excluded so two frogs never grab the same target.
@@ -2508,7 +2751,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
       for (const id of cmd.unitIds) {
         const unit = draft.units.find((candidate) => candidate.id === id);
-        if (!unit || unit.animal !== 'Frog' || unit.ownerId !== draft.localPlayerId) continue;
+        if (!unit || unit.animal !== 'Frog' || unit.ownerId !== actingOwnerId(draft)) continue;
         if (unit.hp <= 0) continue;
         if (unit.tongue) continue; // already mid-grab
         if (unit.lastTongueAtMs !== undefined && now - unit.lastTongueAtMs < TONGUE_COOLDOWN_MS) continue;
@@ -2576,12 +2819,12 @@ export const useGameStore = create<Store>((set, get) => ({
   // a constant-velocity slide the tick integrates over HISS_KNOCKBACK_MS (see the
   // knockback intercept in tick), so a cat surrounded on all sides pushes the entire
   // encircling ring outward at once. Bases are immovable structures and are skipped.
-  hiss: (cmd) => set((prev) =>
+  hiss: (cmd) => routeCommand({ type: 'hiss', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
-      const now = performance.now();
+      const now = simClockMs;
       for (const id of cmd.unitIds) {
         const cat = draft.units.find((candidate) => candidate.id === id);
-        if (!cat || cat.animal !== 'Cat' || cat.ownerId !== draft.localPlayerId) continue;
+        if (!cat || cat.animal !== 'Cat' || cat.ownerId !== actingOwnerId(draft)) continue;
         if (cat.hp <= 0) continue;
         if (cat.lastHissAtMs !== undefined && now - cat.lastHissAtMs < HISS_COOLDOWN_MS) continue;
 
@@ -2603,7 +2846,7 @@ export const useGameStore = create<Store>((set, get) => ({
           let pushDirectionX: number;
           let pushDirectionZ: number;
           if (distanceSquared < 0.0001) {
-            const randomAngle = Math.random() * Math.PI * 2;
+            const randomAngle = simRng.nextAngle();
             pushDirectionX = Math.cos(randomAngle);
             pushDirectionZ = Math.sin(randomAngle);
           } else {
@@ -2626,7 +2869,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // updateBeeSwarms). Targeting respects two rules: a bee dives at exactly one enemy,
   // and no two bees may claim the same enemy at once, so a cloud of bees spreads its
   // stings across distinct targets rather than piling onto one.
-  swarm: (cmd) => set((prev) =>
+  swarm: (cmd) => routeCommand({ type: 'swarm', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       // Enemies already claimed by another bee mid-Swarm — excluded so no two bees
       // dive at the same target.
@@ -2637,7 +2880,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
       for (const id of cmd.unitIds) {
         const bee = draft.units.find((candidate) => candidate.id === id);
-        if (!bee || bee.animal !== 'Bee' || bee.ownerId !== draft.localPlayerId) continue;
+        if (!bee || bee.animal !== 'Bee' || bee.ownerId !== actingOwnerId(draft)) continue;
         if (bee.kind !== 'Unit') continue; // sacrificial dive — never risk a Bee King/Queen
         if (bee.hp <= 0) continue;
         if (bee.swarmTargetId !== undefined) continue; // already diving
@@ -2672,7 +2915,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // play out in the tick — see updateOwlPickups). Targeting respects two rules mirroring the
   // Bee Swarm: an Owl grabs exactly one unit, and no two Owls may claim the same unit, so a
   // flight of Owls spreads its catches across distinct targets rather than piling onto one.
-  pickup: (cmd) => set((prev) =>
+  pickup: (cmd) => routeCommand({ type: 'pickup', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       // Units already claimed by an Owl mid-Pickup (its swoop target) or already in another
       // Owl's talons — excluded so no two Owls grab the same unit.
@@ -2684,7 +2927,7 @@ export const useGameStore = create<Store>((set, get) => ({
 
       for (const id of cmd.unitIds) {
         const owl = draft.units.find((candidate) => candidate.id === id);
-        if (!owl || owl.animal !== 'Owl' || owl.ownerId !== draft.localPlayerId) continue;
+        if (!owl || owl.animal !== 'Owl' || owl.ownerId !== actingOwnerId(draft)) continue;
         if (owl.kind !== 'Unit') continue; // protect a royal Owl from swooping into danger
         if (owl.hp <= 0) continue;
         if (owl.owlPickup !== undefined) continue; // already swooping
@@ -2727,7 +2970,7 @@ export const useGameStore = create<Store>((set, get) => ({
   // cargo down directly beneath itself — so Owls arriving from different directions spread their
   // cargo around the drop-off (see the 'delivering' phase in updateOwlPickups). Owls mid-swoop,
   // carrying an enemy, or already delivering are ignored, so only cargo awaiting orders responds.
-  deliverCargo: (cmd) => set((prev) =>
+  deliverCargo: (cmd) => routeCommand({ type: 'deliverCargo', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       for (const id of cmd.unitIds) {
         const owl = draft.units.find((candidate) => candidate.id === id);
@@ -2753,6 +2996,64 @@ export const useGameStore = create<Store>((set, get) => ({
   ),
 }));
 
+// ---------------------------------------------------------------------------
+// Lockstep glue (multiplayer). These functions are the simulation surface the
+// lockstep engine drives — see LockstepSimAdapter. They are thin wrappers over
+// the store so the engine module never imports the store directly.
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute one scheduled command on behalf of `playerId`. Replays through the
+ * very same store action a local input would, but with the routing seam disarmed
+ * (so it mutates instead of re-routing) and the acting owner overridden to the
+ * issuing player (so a remote player's command moves the remote player's units).
+ */
+export function applyNetCommand(playerId: string, command: NetCommand): void {
+  const store = useGameStore.getState();
+  applyingNetCommand = true;
+  actingPlayerIdOverride = playerId;
+  try {
+    switch (command.type) {
+      case 'moveUnits': store.moveCommand(command.payload); break;
+      case 'attackTarget': store.attackTarget(command.payload); break;
+      case 'setPatrol': store.setPatrol(command.payload); break;
+      case 'setQueenRally': store.setQueenRally(command.payload); break;
+      case 'setMovementHold': store.setMovementHold(command.payload.unitId); break;
+      case 'toggleTurtleShell': store.toggleTurtleShell(command.payload.unitIds); break;
+      case 'throwEggs': store.throwEggs(command.payload); break;
+      case 'fireTongues': store.fireTongues(command.payload); break;
+      case 'hiss': store.hiss(command.payload); break;
+      case 'swarm': store.swarm(command.payload); break;
+      case 'pickup': store.pickup(command.payload); break;
+      case 'deliverCargo': store.deliverCargo(command.payload); break;
+    }
+  } finally {
+    applyingNetCommand = false;
+    actingPlayerIdOverride = null;
+  }
+}
+
+/**
+ * A deterministic fingerprint of the current simulation, used by lockstep to
+ * detect desync. Includes every unit's identity/health/position, the RNG state,
+ * and the tick counter, sorted by id so iteration order can never affect it. Two
+ * peers in sync produce the same string; any divergence changes it.
+ */
+export function computeStateChecksum(): string {
+  const state = useGameStore.getState();
+  const units = [...state.units].sort((a, b) =>
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  );
+  const unitPart = units
+    .map(
+      (u) =>
+        `${u.id}|${u.ownerId}|${u.kind}|${u.hp.toFixed(3)}|` +
+        `${u.position.x.toFixed(3)}|${u.position.z.toFixed(3)}`
+    )
+    .join(';');
+  return `t${state.tickCounter}#rng${state.rng.getState()}#${unitPart}`;
+}
+
 // Dev-only debug handle for performance testing (stripped from production
 // builds, where import.meta.env.DEV is false). Lets tooling inspect/inject
 // game state to exercise high unit counts. Also exposes the raw stats table and
@@ -2777,7 +3078,7 @@ function baseStats(animal: AnimalId) {
 function createBase(ownerId: string, animal: AnimalId, position: Position3D, rotation: number = 0): Unit {
   const stats = baseStats(animal);
   return {
-    id: nanoid(),
+    id: nextEntityId('B'),
     ownerId,
     animal,
     kind: 'Base',
@@ -2796,7 +3097,7 @@ function createBase(ownerId: string, animal: AnimalId, position: Position3D, rot
 function createQueen(ownerId: string, animal: AnimalId, position: Position3D, rotation: number = 0): Unit {
   const stats = baseStats(animal);
   return {
-    id: nanoid(),
+    id: nextEntityId('Q'),
     ownerId,
     animal,
     kind: 'Queen',
@@ -2815,7 +3116,7 @@ function createQueen(ownerId: string, animal: AnimalId, position: Position3D, ro
 function createKing(ownerId: string, animal: AnimalId, position: Position3D, rotation: number = 0): Unit {
   const stats = baseStats(animal);
   return {
-    id: nanoid(),
+    id: nextEntityId('K'),
     ownerId,
     animal,
     kind: 'King',
@@ -2834,7 +3135,7 @@ function createKing(ownerId: string, animal: AnimalId, position: Position3D, rot
 function createUnit(ownerId: string, animal: AnimalId, position: Position3D, rotation: number = 0): Unit {
   const stats = baseStats(animal);
   return {
-    id: nanoid(),
+    id: nextEntityId('U'),
     ownerId,
     animal,
     kind: 'Unit',
@@ -2910,7 +3211,7 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
   // its Kitty_F2 hiss pose plays. The hiss window is stamped with performance.now()
   // (same clock used to set hissUntilMs), and the && short-circuits so the clock read
   // only happens for cats that have actually hissed.
-  const hissLocked = currentUnit.hissUntilMs !== undefined && performance.now() < currentUnit.hissUntilMs;
+  const hissLocked = currentUnit.hissUntilMs !== undefined && simClockMs < currentUnit.hissUntilMs;
   if (currentUnit.isShelled || currentUnit.tongue || hissLocked) {
     return { x: currentUnit.position.x, y: currentUnit.position.y, z: currentUnit.position.z };
   }
@@ -3027,7 +3328,7 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
 
       if (distance < 0.001) {
         // Units at same position - use cached random direction
-        const randomAngle = Math.random() * Math.PI * 2;
+        const randomAngle = simRng.nextAngle();
         pushDirectionX = Math.cos(randomAngle);
         pushDirectionZ = Math.sin(randomAngle);
       } else {
@@ -3079,7 +3380,7 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
     const pauseDuration = isPlayerWithOrder ? 100 : 200; // 0.1s for ordered units, 0.2s for others
 
     if (currentUnit.collisionAttempts >= pauseThreshold) {
-      currentUnit.movementPausedUntilMs = Date.now() + pauseDuration;
+      currentUnit.movementPausedUntilMs = simClockMs + pauseDuration;
       currentUnit.collisionAttempts = 0; // Reset counter
     }
   } else {
@@ -3174,7 +3475,7 @@ function clearPathForSelectedRoyals(draft: Store): void {
       let distance: number;
       if (distanceSquared < 0.000001) {
         // Coincident with the royal: pick a random escape heading.
-        const angle = Math.random() * Math.PI * 2;
+        const angle = simRng.nextAngle();
         pushX = Math.cos(angle);
         pushZ = Math.sin(angle);
         distance = 0;
@@ -3255,7 +3556,7 @@ function enforceMonarchFollowGap(draft: Store, unitById: Map<string, Unit>): voi
 
 function separateOverlappingUnits(draft: Store): void {
   const grid = draft.spatialGrid;
-  const nowMs = performance.now();
+  const nowMs = simClockMs;
   // O(1) membership for the asymmetric friendly rule below; selectedUnitIds can be large
   // (e.g. select-all), so a Set avoids a per-neighbor linear scan in this hot pass.
   const selectedIds = new Set(draft.selectedUnitIds);
@@ -3313,7 +3614,7 @@ function separateOverlappingUnits(draft: Store): void {
       if (distanceSquared < 0.000001) {
         // Exactly coincident (e.g. two units set down on one spot): pick a random escape heading
         // and back off half the full spacing along it.
-        const randomAngle = Math.random() * Math.PI * 2;
+        const randomAngle = simRng.nextAngle();
         const overlap = minimumDistance * SEPARATION_RELAX_FACTOR;
         pushX += Math.cos(randomAngle) * overlap;
         pushZ += Math.sin(randomAngle) * overlap;
@@ -3556,7 +3857,7 @@ function updateBeeSwarms(draft: Store, dtSec: number, nowMs: number): void {
     if (distSq <= SWARM_STING_RANGE_SQ) {
       // Contact: sting once. A coin flip kills both the bee and its target, or neither.
       bee.lastAttackAtMs = nowMs; // count the sting as a swing for pose/combat timing
-      if (Math.random() < SWARM_STING_KILL_CHANCE) {
+      if (simRng.next() < SWARM_STING_KILL_CHANCE) {
         target.hp = 0;
         draft.deadUnitsToRemove.push(target.id);
         creditKill(draft, bee.ownerId, target);      // the bee's owner killed the target
