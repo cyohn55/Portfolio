@@ -29,8 +29,24 @@ let instanceCounter = 0;
 // the starting zoom distance. Hoisted to module scope so the ref initializers
 // and the per-match reset (see the matchStartNonce effect) share one source of
 // truth instead of duplicating the literals.
-const INITIAL_FOCUS = new THREE.Vector3(0, 0, 225);
+//
+// Multiplayer is deterministic lockstep: both peers run the SAME world (p0's
+// base sits at +z, p1's at -z), so the only thing that may differ per peer is
+// the view. Each player must open behind their OWN base looking into the
+// battlefield, otherwise the guest (p1) would stare across the map at the
+// host's army (its enemies) while its own troops sit off-screen behind the
+// camera. `viewSignFor` returns +1 for the host/single-player (p0 orientation:
+// camera on the +z side looking toward -z) and -1 for the guest (mirrored).
+const INITIAL_FOCUS_DEPTH = 225;
 const INITIAL_DISTANCE = 200;
+
+function viewSignFor(localPlayerId: string | null): number {
+  return localPlayerId === 'p1' ? -1 : 1;
+}
+
+function initialFocusFor(localPlayerId: string | null): THREE.Vector3 {
+  return new THREE.Vector3(0, 0, INITIAL_FOCUS_DEPTH * viewSignFor(localPlayerId));
+}
 
 interface CameraControllerProps {
   moveSpeed?: number;
@@ -64,7 +80,12 @@ export function CameraController({
 
   const { camera, gl } = useThree();
   const keysPressed = useRef(new Set<string>());
-  const target = useRef(INITIAL_FOCUS.clone());
+
+  // Which peer's view this is. Drives the camera orientation so the host (p0)
+  // and guest (p1) each look into the battlefield from behind their own base.
+  // Null in single-player, where it falls back to the p0 orientation.
+  const localPlayerId = useGameStore((s) => s.localPlayerId);
+  const target = useRef(initialFocusFor(localPlayerId));
   const currentDistance = useRef(INITIAL_DISTANCE);
   const forward = useRef(new THREE.Vector3());
   const right = useRef(new THREE.Vector3());
@@ -96,12 +117,14 @@ export function CameraController({
   // rather than matchStarted because the latter never changes value across a
   // replay (see types.ts). The initial mount also runs this — harmless, since
   // the refs already hold these defaults.
+  // Also keyed on localPlayerId so the guest snaps to its own (mirrored) opening
+  // shot once its role resolves, even if that lands after the initial mount.
   const matchStartNonce = useGameStore((s) => s.matchStartNonce);
   useEffect(() => {
-    target.current.copy(INITIAL_FOCUS);
+    target.current.copy(initialFocusFor(localPlayerId));
     currentDistance.current = INITIAL_DISTANCE;
     followEnabled.current = false;
-  }, [matchStartNonce]);
+  }, [matchStartNonce, localPlayerId]);
 
   // Touch handling refs
   const lastTouchPos = useRef<{ x: number; y: number } | null>(null);
@@ -358,11 +381,16 @@ export function CameraController({
       camera.updateProjectionMatrix();
     }
 
+    // Camera orientation for this peer: +z behind the host's base, -z behind the
+    // guest's. Mirrors the focus point and the eye offset so each player looks
+    // into the battlefield rather than out the back of the map.
+    const viewSign = viewSignFor(localPlayerId);
+
     // Initialize camera position if needed
     if (camera.position.length() === 0) {
       const height = currentDistance.current * Math.sin(CAMERA_ANGLE);
       const horizontalDistance = currentDistance.current * Math.cos(CAMERA_ANGLE);
-      camera.position.set(0, height, horizontalDistance);
+      camera.position.set(target.current.x, height, target.current.z + horizontalDistance * viewSign);
       camera.lookAt(target.current);
     }
 
@@ -520,7 +548,7 @@ export function CameraController({
     const newCameraPos = new THREE.Vector3(
       target.current.x,
       target.current.y + height,
-      target.current.z + horizontalDistance
+      target.current.z + horizontalDistance * viewSign
     );
 
     // Set camera position directly - no lerp to avoid rocking

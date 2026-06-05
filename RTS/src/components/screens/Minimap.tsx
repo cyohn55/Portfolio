@@ -14,14 +14,24 @@ export function Minimap() {
 
   const MINIMAP_SIZE = 180;
 
+  // The guest (p1) sees the battlefield rotated 180° about the vertical axis
+  // (its camera sits behind the -z base looking toward +z — see CameraController).
+  // Mirror both minimap axes for the guest so its own base/units appear at the
+  // bottom, matching what the player sees on screen. The host/single-player (p0,
+  // or null) keeps the unmirrored orientation.
+  const mirrorView = localPlayerId === 'p1';
+
   // Convert world coordinates to minimap coordinates
   const worldToMinimap = (x: number, z: number) => {
     const normalizedX = (x - MAP_MIN_X) / (MAP_MAX_X - MAP_MIN_X);
     const normalizedZ = (z - MAP_MIN_Z) / (MAP_MAX_Z - MAP_MIN_Z);
 
+    const viewX = mirrorView ? 1 - normalizedX : normalizedX;
+    const viewZ = mirrorView ? 1 - normalizedZ : normalizedZ;
+
     return {
-      x: normalizedX * MINIMAP_SIZE,
-      y: normalizedZ * MINIMAP_SIZE
+      x: viewX * MINIMAP_SIZE,
+      y: viewZ * MINIMAP_SIZE
     };
   };
 
