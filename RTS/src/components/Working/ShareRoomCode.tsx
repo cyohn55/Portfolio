@@ -3,6 +3,7 @@ import {
   INVITE_SUBJECT,
   SHARE_CHANNELS,
   buildInviteText,
+  buildJoinUrl,
   getShareChannel,
   resolveShareAction,
   type ShareChannelId,
@@ -84,7 +85,7 @@ export function ShareRoomCode(props: { roomCode: string }) {
       await navigator.share({
         title: INVITE_SUBJECT,
         text: buildInviteText(roomCode, gameUrl),
-        url: gameUrl,
+        url: buildJoinUrl(roomCode, gameUrl),
       });
       setStatus('Invite shared.');
     } catch {

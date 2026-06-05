@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AnimalId } from '../../game/types';
 import { useGameStore } from '../../game/state';
-import { useMultiplayerSession } from './net/multiplayerSession';
+import { useMultiplayerSession, consumePendingJoinCode } from './net/multiplayerSession';
 import { ShareRoomCode } from './ShareRoomCode';
 import './MultiplayerScreen.css';
 
@@ -42,6 +42,19 @@ export function MultiplayerScreen() {
   const leave = useMultiplayerSession((s) => s.leave);
 
   const [joinCode, setJoinCode] = useState('');
+
+  // A join link routed us here with a captured room code. Pre-fill the field
+  // and auto-join so arriving via a friend's link is one tap with no typing.
+  // If the join fails (e.g. the room closed), the error view shows with the
+  // code still populated so the player can retry. Runs once on mount.
+  useEffect(() => {
+    const linkedCode = consumePendingJoinCode();
+    if (linkedCode) {
+      setJoinCode(linkedCode);
+      joinByCode(linkedCode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const backToMenu = () => {
     leave();

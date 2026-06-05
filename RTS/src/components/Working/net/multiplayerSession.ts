@@ -88,6 +88,24 @@ function detachAll(): void {
   detachers.splice(0).forEach((detach) => detach());
 }
 
+// A room code captured from a join link at boot, handed to the multiplayer
+// screen so it can auto-join. Held outside the Zustand store because leave()
+// resets the store on the way to the menu — which the app calls during boot —
+// and that must not discard a freshly captured deep-link code.
+let pendingJoinCode: string | null = null;
+
+/** Stash a room code (from a join link) for the multiplayer screen to consume. */
+export function setPendingJoinCode(code: string | null): void {
+  pendingJoinCode = code;
+}
+
+/** Read and clear the pending join code; null when there is none. */
+export function consumePendingJoinCode(): string | null {
+  const code = pendingJoinCode;
+  pendingJoinCode = null;
+  return code;
+}
+
 // --- store -----------------------------------------------------------------
 
 export const useMultiplayerSession = create<MultiplayerSessionState>((set, get) => {

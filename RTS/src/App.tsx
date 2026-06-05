@@ -17,7 +17,8 @@ import { useGameStore } from './game/state';
 import { MainMenu } from './components/screens/MainMenu';
 import { AnimalSelectionLobby } from './components/screens/AnimalSelectionLobby';
 import { MultiplayerScreen } from './components/Working/MultiplayerScreen';
-import { useMultiplayerSession } from './components/Working/net/multiplayerSession';
+import { useMultiplayerSession, setPendingJoinCode } from './components/Working/net/multiplayerSession';
+import { readRoomCodeFromUrl } from './components/Working/roomInvite';
 import { PostGameScreen } from './components/screens/PostGameScreen';
 import { LeaderboardScreen } from './components/Working/LeaderboardScreen';
 import { useParentScrollBridge } from './components/Working/parentScrollBridge';
@@ -34,6 +35,19 @@ export default function App() {
 
   useEffect(() => {
     initialize();
+
+    // A join link (…?room=CODE) drops the recipient straight into multiplayer
+    // with the code pre-filled — no typing. Capture it for the multiplayer
+    // screen, strip the param so a refresh or Back doesn't re-trigger a join,
+    // then route there. The param is read once at boot.
+    const joinCode = readRoomCodeFromUrl(window.location.search);
+    if (joinCode) {
+      setPendingJoinCode(joinCode);
+      window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+      transitionToScreen('multiplayer');
+    }
+    // initialize/transitionToScreen are stable store actions; run this once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialize]);
 
   // When embedded in the portfolio page, broadcast screen transitions to the

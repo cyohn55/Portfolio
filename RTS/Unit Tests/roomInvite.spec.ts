@@ -1,9 +1,12 @@
 import { test, expect } from '@playwright/test';
 import {
   INVITE_SUBJECT,
+  ROOM_CODE_PARAM,
   SHARE_CHANNELS,
   buildInviteText,
+  buildJoinUrl,
   getShareChannel,
+  readRoomCodeFromUrl,
   resolveShareAction,
 } from '../src/components/Working/roomInvite';
 
@@ -34,6 +37,10 @@ test.describe('buildInviteText', () => {
     expect(text).toContain(CODE);
   });
 
+  test('leads with the one-tap join link carrying the code', () => {
+    expect(buildInviteText(CODE, GAME_URL)).toContain(buildJoinUrl(CODE, GAME_URL));
+  });
+
   test('normalizes the room code to trimmed upper case', () => {
     expect(buildInviteText('  ab12cd  ', GAME_URL)).toContain(CODE);
   });
@@ -41,6 +48,38 @@ test.describe('buildInviteText', () => {
   test('reflects the room code it is given, not a hard-coded one', () => {
     expect(buildInviteText('ZZ99', GAME_URL)).toContain('ZZ99');
     expect(buildInviteText('ZZ99', GAME_URL)).not.toContain(CODE);
+  });
+});
+
+test.describe('join link round-trip (buildJoinUrl / readRoomCodeFromUrl)', () => {
+  test('a built join link parses back to the same code', () => {
+    const url = buildJoinUrl(CODE, GAME_URL);
+    expect(url).toContain(`${ROOM_CODE_PARAM}=${CODE}`);
+    const query = url.slice(url.indexOf('?'));
+    expect(readRoomCodeFromUrl(query)).toBe(CODE);
+  });
+
+  test('normalizes the code to upper case in the link', () => {
+    expect(buildJoinUrl('  ab12cd  ', GAME_URL)).toContain(`${ROOM_CODE_PARAM}=${CODE}`);
+  });
+
+  test('appends with & when the game URL already has a query string', () => {
+    expect(buildJoinUrl(CODE, 'https://example.com/RTS/?embed=1')).toBe(
+      `https://example.com/RTS/?embed=1&${ROOM_CODE_PARAM}=${CODE}`,
+    );
+  });
+
+  test('reads the code with or without a leading question mark', () => {
+    expect(readRoomCodeFromUrl(`?${ROOM_CODE_PARAM}=wxyz`)).toBe('WXYZ');
+    expect(readRoomCodeFromUrl(`${ROOM_CODE_PARAM}=wxyz`)).toBe('WXYZ');
+  });
+
+  test('returns null when the parameter is absent or malformed', () => {
+    expect(readRoomCodeFromUrl('')).toBeNull();
+    expect(readRoomCodeFromUrl('?other=1')).toBeNull();
+    expect(readRoomCodeFromUrl(`?${ROOM_CODE_PARAM}=`)).toBeNull();
+    expect(readRoomCodeFromUrl(`?${ROOM_CODE_PARAM}=has%20space`)).toBeNull();
+    expect(readRoomCodeFromUrl(`?${ROOM_CODE_PARAM}=waytoolongcode`)).toBeNull();
   });
 });
 
@@ -83,10 +122,10 @@ test.describe('prefilled deep-link channels carry the invite', () => {
     expect(decodeParam(url, 'text')).toBe(buildInviteText(CODE, GAME_URL));
   });
 
-  test('telegram shares the game url and the invite text', () => {
+  test('telegram shares the one-tap join link and the invite text', () => {
     const url = action('telegram').url;
     expect(url.startsWith('https://t.me/share/url?')).toBe(true);
-    expect(decodeParam(url, 'url')).toBe(GAME_URL);
+    expect(decodeParam(url, 'url')).toBe(buildJoinUrl(CODE, GAME_URL));
     expect(decodeParam(url, 'text')).toBe(buildInviteText(CODE, GAME_URL));
   });
 

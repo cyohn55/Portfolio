@@ -21,6 +21,37 @@
 /** Subject line used for the email invite and the native share-sheet title. */
 export const INVITE_SUBJECT = 'Join my Animal RTS battle';
 
+/**
+ * Query-string key carrying the room code in a join link. When the game boots
+ * with this parameter present, it routes straight to multiplayer and joins —
+ * the recipient never types the code (see App boot + MultiplayerScreen).
+ */
+export const ROOM_CODE_PARAM = 'room';
+
+/**
+ * Build the one-tap join link: the live game URL with the room code attached as
+ * a query parameter. Appends with the correct separator so an existing query
+ * string is preserved, and normalizes the code to its canonical upper case.
+ */
+export function buildJoinUrl(roomCode: string, gameUrl: string): string {
+  const normalizedCode = roomCode.trim().toUpperCase();
+  const separator = gameUrl.includes('?') ? '&' : '?';
+  return `${gameUrl}${separator}${ROOM_CODE_PARAM}=${encodeURIComponent(normalizedCode)}`;
+}
+
+/**
+ * Extract a room code from a URL query string (e.g. `window.location.search`),
+ * or null when absent/malformed. Room codes are short alphanumerics, so this
+ * rejects anything outside that shape rather than feeding junk into the join
+ * flow. The leading `?` is optional — URLSearchParams handles either form.
+ */
+export function readRoomCodeFromUrl(search: string): string | null {
+  const rawCode = new URLSearchParams(search).get(ROOM_CODE_PARAM);
+  if (!rawCode) return null;
+  const normalizedCode = rawCode.trim().toUpperCase();
+  return /^[A-Z0-9]{3,8}$/.test(normalizedCode) ? normalizedCode : null;
+}
+
 /** Whether a channel needs the player to type a recipient, and of what kind. */
 export type RecipientKind = 'none' | 'email' | 'phone';
 
@@ -94,16 +125,19 @@ export function getShareChannel(channelId: ShareChannelId): ShareChannel {
 }
 
 /**
- * The human-readable invite. Names the room code prominently and tells the
- * recipient exactly where to type it, since joining is code-entry (not a deep
- * link). The code is normalized to the same upper-case form the join input
- * enforces so a copy/paste matches regardless of how it was stored.
+ * The human-readable invite. Leads with the one-tap join link so the recipient
+ * jumps straight into the room with the code pre-filled, and still spells out
+ * the manual fallback (open the game, Enter Code, type it) for clients that
+ * strip links. The code is normalized to the same upper-case form the join
+ * input enforces so a manual copy/paste matches regardless of how it was stored.
  */
 export function buildInviteText(roomCode: string, gameUrl: string): string {
   const normalizedCode = roomCode.trim().toUpperCase();
+  const joinUrl = buildJoinUrl(normalizedCode, gameUrl);
   return (
-    `Join my 1v1 Animal RTS battle! Open ${gameUrl} ` +
-    `then pick Multiplayer, choose "Enter Code", and type ${normalizedCode}`
+    `Join my 1v1 Animal RTS battle! Tap to jump right in — the room code ` +
+    `fills in automatically: ${joinUrl}  ` +
+    `(No link? Open ${gameUrl}, pick Multiplayer, choose "Enter Code", and type ${normalizedCode}.)`
   );
 }
 
@@ -145,7 +179,7 @@ export function resolveShareAction(
 
     case 'telegram':
       return {
-        url: `https://t.me/share/url?url=${encodeURIComponent(gameUrl)}&text=${encodedInvite}`,
+        url: `https://t.me/share/url?url=${encodeURIComponent(buildJoinUrl(roomCode, gameUrl))}&text=${encodedInvite}`,
         copyInvite: false,
         requiresPaste: false,
       };
