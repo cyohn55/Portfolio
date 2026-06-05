@@ -38,9 +38,12 @@ export type PlayerRole = 'p0' | 'p1';
  * issuing player is carried by the enclosing input frame (every command in a
  * frame belongs to that frame's player), so it is intentionally absent here.
  *
- * Monarch piloting is deliberately NOT represented: it is continuous, per-tick
- * manual control and is disabled in multiplayer v1 (see the routing seam in
- * state.ts). Adding it later means adding a per-tick pilot-input variant here.
+ * Monarch piloting IS represented (v2): selecting which monarch to pilot
+ * (`setPilot`), the per-tick drive vector (`pilotMove`, appended to every frame
+ * by the lockstep engine so both peers drive each monarch identically), the
+ * rally toggle (`rallyMonarch`), the hold-to-place order (`placeRallied`), and a
+ * full control release on deselect (`releaseControl`). The issuing owner comes
+ * from the enclosing frame, exactly like every other command.
  */
 export type NetCommand =
   | { type: 'moveUnits'; payload: CommandMoveUnits }
@@ -54,7 +57,14 @@ export type NetCommand =
   | { type: 'swarm'; payload: CommandSwarm }
   | { type: 'pickup'; payload: CommandOwlPickup }
   | { type: 'deliverCargo'; payload: CommandOwlDeliver }
-  | { type: 'toggleTurtleShell'; payload: { unitIds: string[] } };
+  | { type: 'toggleTurtleShell'; payload: { unitIds: string[] } }
+  // Monarch piloting (v2). `pilotMove` rides every frame; the rest are discrete
+  // gestures scheduled like any other command.
+  | { type: 'setPilot'; payload: { unitId: string | null } }
+  | { type: 'pilotMove'; payload: { x: number; z: number } }
+  | { type: 'rallyMonarch'; payload: { monarchId: string } }
+  | { type: 'placeRallied'; payload: { monarchId: string; count: number } }
+  | { type: 'releaseControl'; payload: Record<string, never> };
 
 /** Discriminator values for NetCommand — used by the store's routing seam. */
 export type NetCommandType = NetCommand['type'];
@@ -130,6 +140,11 @@ const VALID_COMMAND_TYPES: ReadonlySet<string> = new Set<NetCommandType>([
   'pickup',
   'deliverCargo',
   'toggleTurtleShell',
+  'setPilot',
+  'pilotMove',
+  'rallyMonarch',
+  'placeRallied',
+  'releaseControl',
 ]);
 
 const VALID_ROLES: ReadonlySet<string> = new Set<PlayerRole>(['p0', 'p1']);

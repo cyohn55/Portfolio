@@ -21,6 +21,7 @@ import {
 } from './lockstep';
 import type { WebRtcTransport } from './webrtcTransport';
 import type { PlayerRole, NetCommand } from './netMessages';
+import { pilotInput } from '../monarchPilot';
 
 // The currently-running match engine, or null in single-player / menus. A module
 // singleton because there is only ever one local match in flight, and both the
@@ -50,6 +51,10 @@ export function startNetMatch(options: {
       applyNetCommand(playerId, command),
     runTick: () => useGameStore.getState().tick(FIXED_DT_SEC, performance.now()),
     checksum: () => computeStateChecksum(),
+    // The local player's live monarch-drive vector. The input layer (camera/
+    // keyboard/controller) writes pilotInput only while the local player is
+    // piloting and zeroes it otherwise, so this is a no-op vector when idle.
+    sampleLocalPilot: () => pilotInput.getMove(),
   };
 
   const engine = new LockstepEngine({

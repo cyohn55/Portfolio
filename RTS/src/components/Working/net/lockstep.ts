@@ -55,6 +55,15 @@ export interface LockstepSimAdapter {
   runTick(): void;
   /** Return a deterministic fingerprint of the current simulation state. */
   checksum(): string;
+  /**
+   * The local player's current monarch-pilot drive vector (world XZ), sampled
+   * once per outgoing frame. Monarch piloting is continuous per-frame input, so
+   * unlike the discrete gesture commands it cannot be enqueued on demand — the
+   * engine pulls it here and ships it on every frame so both peers drive each
+   * piloted monarch from an identical, tick-aligned vector. Optional so engines
+   * without piloting (and the unit tests) need not provide it.
+   */
+  sampleLocalPilot?(): { x: number; z: number };
 }
 
 export interface LockstepCallbacks {
@@ -202,6 +211,18 @@ export class LockstepEngine {
   private sendFrameFor(tick: number): void {
     const commands = this.localCommandBuffer;
     this.localCommandBuffer = [];
+
+    // Append this frame's monarch-pilot drive vector last, so it applies AFTER
+    // any discrete gesture in the same frame (e.g. a setPilot that starts piloting
+    // takes effect before the vector that should drive the newly piloted monarch).
+    // It rides every frame — including idle ones — so the receiver's pilot vector
+    // for each owner is always fresh and a released drive key stops the monarch on
+    // the very next tick rather than coasting on a stale vector.
+    if (this.adapter.sampleLocalPilot) {
+      const move = this.adapter.sampleLocalPilot();
+      commands.push({ type: 'pilotMove', payload: { x: move.x, z: move.z } });
+    }
+
     this.recordFrame(tick, this.localPlayerId, commands);
     this.transport.send({
       kind: 'input',

@@ -299,8 +299,21 @@ export interface GameState {
   // cycles through the animals' monarchs, G toggles King<->Queen), or null when
   // not piloting. While set, the tick drives this unit purely from `pilotInput`
   // (the ESDF/stick movement vector) and ignores its AI, orders, and combat.
-  // See monarchPilot.ts.
+  // See monarchPilot.ts. This is the LOCAL player's pilot, used only by the UI
+  // (gold ring, camera follow, HUD, placement teardrop) and as the local-input
+  // gate; the deterministic simulation drives monarchs from pilotedUnitIdByOwner
+  // instead, so both peers agree on what every owner is piloting.
   pilotedUnitId: string | null;
+  // Per-owner piloted monarch id (or null), keyed by player id ('p0'/'p1'). The
+  // tick drives each owner's piloted King/Queen from this map — never from the
+  // local-only pilotedUnitId — so a multiplayer peer simulates BOTH players'
+  // piloting identically. In single-player only the local owner is ever set.
+  pilotedUnitIdByOwner: Record<string, string | null>;
+  // Per-owner monarch drive vector (world XZ), keyed by player id. In a lockstep
+  // match this is fed by the per-frame `pilotMove` command from each peer; in
+  // single-player the tick copies the local pilotInput into the local slot. The
+  // pilot tick block reads the slot for the unit's owner.
+  pilotMoveByOwner: Record<string, { x: number; z: number }>;
   // Id of a Queen whose movement is frozen for the duration of the secondary
   // (command) button hold while drawing a patrol route, or null. Holding the
   // button pins the Queen in place so the patrol line's origin (her gold ring)

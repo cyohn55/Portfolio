@@ -289,6 +289,188 @@ function actingOwnerId(state: { localPlayerId: string | null }): string | null {
 }
 
 /**
+ * The slice of store state the monarch-pilot helpers read and write. It
+ * intentionally omits the class-typed fields (e.g. spatialGrid) so BOTH the live
+ * store object the tick mutates directly (`const draft = get()`, typed Store) and
+ * an Immer `WritableDraft<Store>` from a routed action's produce() satisfy it —
+ * the same helper can run on either without a cast.
+ */
+type PilotMutableState = Pick<
+  Store,
+  | 'units'
+  | 'unitOrders'
+  | 'localPlayerId'
+  | 'pilotedUnitId'
+  | 'pilotedUnitIdByOwner'
+  | 'pilotMoveByOwner'
+  | 'unitPlacementCount'
+>;
+
+/**
+ * Stop the given owner from piloting: clear its per-owner pilot slot and drive
+ * vector. When the owner is the LOCAL player, also clear the UI mirror
+ * (pilotedUnitId), cancel any in-progress placement hold, and reset the local
+ * pilotInput singleton — those are local-only concerns and must never be touched
+ * for a remote owner (whose pilotInput lives on the other machine). Safe to call
+ * whether or not the owner was actually piloting.
+ */
+function stopOwnerPilot(draft: PilotMutableState, ownerId: string): void {
+  draft.pilotedUnitIdByOwner[ownerId] = null;
+  draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
+  if (ownerId === draft.localPlayerId) {
+    draft.pilotedUnitId = null;
+    draft.unitPlacementCount = 0;
+    pilotInput.reset();
+  }
+}
+
+/**
+ * Fully release an owner's control of its army: stop piloting (see
+ * stopOwnerPilot) and break any monarch rally so its followers drop their
+ * synthetic follow orders and halt. The rally-break is the deselect behaviour
+ * that used to live inline in clearSelection; it mutates simulation state
+ * (followMonarchId / unitOrders) and so is filtered to the acting owner and only
+ * applied through the deterministic command path in multiplayer.
+ */
+function releaseOwnerControl(draft: PilotMutableState, ownerId: string): void {
+  stopOwnerPilot(draft, ownerId);
+  for (const unit of draft.units) {
+    if (unit.ownerId === ownerId && unit.followMonarchId !== undefined) {
+      delete unit.followMonarchId;
+      delete draft.unitOrders[unit.id];
+    }
+  }
+}
+
+/**
+ * Set (or clear, when unitId is null) which monarch an owner is piloting in the
+ * deterministic per-owner state, resetting that owner's drive vector so a freshly
+ * grabbed monarch starts stationary. Mirrors the choice into the local UI fields
+ * when the owner is the local player. Shared by the single-player gesture path
+ * and the lockstep apply path so both produce identical simulation state.
+ */
+function applyPilotSelectionToDraft(draft: PilotMutableState, ownerId: string, unitId: string | null): void {
+  draft.pilotedUnitIdByOwner[ownerId] = unitId;
+  draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
+  if (ownerId === draft.localPlayerId) {
+    draft.pilotedUnitId = unitId;
+    if (unitId === null) draft.unitPlacementCount = 0;
+  }
+}
+
+/**
+ * Toggle a monarch rally for one owner: if that owner's same-animal army is
+ * already trailing this monarch, drop the follow; otherwise make every living
+ * same-animal Unit follow it. Pure simulation state (followMonarchId) — selection
+ * is handled optimistically by the caller, so this never touches it and is safe
+ * to replay identically on both peers. A monarch of the wrong owner is ignored.
+ */
+function applyRallyToggleToDraft(draft: PilotMutableState, ownerId: string, monarchId: string): void {
+  const monarch = draft.units.find((u) => u.id === monarchId);
+  if (!monarch || monarch.ownerId !== ownerId) return;
+
+  const isFollower = (u: Unit) =>
+    u.ownerId === ownerId && u.kind === 'Unit' && u.animal === monarch.animal;
+
+  const alreadyRallying = draft.units.some(
+    (u) => isFollower(u) && u.followMonarchId === monarch.id
+  );
+
+  for (const unit of draft.units) {
+    if (!isFollower(unit)) continue;
+    if (alreadyRallying) {
+      delete unit.followMonarchId;
+    } else {
+      unit.followMonarchId = monarch.id;
+    }
+  }
+}
+
+/**
+ * Execute a hold-to-place order for one owner: peel the `count` followers nearest
+ * the monarch off the rally and pin them to the monarch's current position,
+ * clearing the per-unit combat/blocking/path-cache carry-over (exactly as
+ * moveCommand does) so they actually travel. Shared by the single-player path and
+ * the lockstep apply path; the follower choice is position-deterministic so both
+ * peers peel the same units.
+ */
+function applyPlaceRalliedToDraft(draft: PilotMutableState, ownerId: string, monarchId: string, count: number): void {
+  if (count <= 0) return;
+  const monarch = draft.units.find((u) => u.id === monarchId);
+  if (!monarch || monarch.ownerId !== ownerId) return;
+
+  const followers = draft.units.filter(
+    (unit) =>
+      unit.ownerId === ownerId &&
+      unit.kind === 'Unit' &&
+      unit.animal === monarch.animal &&
+      unit.followMonarchId === monarch.id
+  );
+
+  const destination = { x: monarch.position.x, y: 0, z: monarch.position.z };
+  const chosen = selectFollowersForPlacement(followers, monarch.position, count);
+
+  for (const unit of chosen) {
+    // Break off the rally and pin an explicit destination at the monarch.
+    delete unit.followMonarchId;
+    draft.unitOrders[unit.id] = destination;
+    unit.unitState = 'moving_to_order';
+    delete unit.arrivedAtDestinationMs;
+
+    // Clear combat, blocking and landing carry-over so the new order wins.
+    delete unit.lastCombatTargetId;
+    delete unit.lastCombatEngagementMs;
+    delete unit.priorityAttacker;
+    unit.collisionAttempts = 0;
+    delete unit.movementPausedUntilMs;
+    delete unit.firstBlockedAtMs;
+    delete unit.nearDestinationSinceMs;
+
+    // Drop the cached A* path so the unit re-routes to the placement point
+    // instead of steering toward its previous goal (see moveCommand).
+    delete unit.pathWaypoints;
+    delete unit.pathIndex;
+    delete unit.pathDestX;
+    delete unit.pathDestZ;
+    delete unit.pathVersion;
+    delete unit.pathStall;
+    delete unit.pathProgressDist;
+  }
+}
+
+/**
+ * Begin (or stop, when monarchId is null) piloting a monarch the LOCAL player
+ * just selected via a gesture (slot / cycle / toggle). Updates the local UI
+ * (gold ring + selection) immediately for responsive feedback, then makes the
+ * sim-authoritative pilot change: routed through lockstep in multiplayer (so both
+ * peers switch on the same tick) or applied at once in single-player. Defined at
+ * module scope so the three gesture actions share one code path.
+ */
+function beginLocalPilot(monarchId: string | null): void {
+  const prev = useGameStore.getState();
+  const localPlayerId = prev.localPlayerId;
+  if (!localPlayerId) return;
+
+  // The newly grabbed monarch starts from rest; drop any stale drive intent.
+  pilotInput.reset();
+
+  // Optimistic local UI: the ring and selection track the choice this frame,
+  // before the (possibly delayed) simulation switch lands.
+  useGameStore.setState({
+    pilotedUnitId: monarchId,
+    unitPlacementCount: monarchId === null ? 0 : prev.unitPlacementCount,
+    selectedUnitIds: monarchId
+      ? selectionForMonarch(prev.units, monarchId)
+      : prev.selectedUnitIds,
+  });
+
+  if (routeCommand({ type: 'setPilot', payload: { unitId: monarchId } })) return;
+  useGameStore.setState((s) =>
+    produce(s, (draft) => applyPilotSelectionToDraft(draft, localPlayerId, monarchId))
+  );
+}
+
+/**
  * Returns `count` distinct animals chosen uniformly at random from the full
  * roster. Used to give the AI opponent a varied lineup each match instead of a
  * fixed set. Uses a partial Fisher-Yates shuffle so every animal has an equal
@@ -394,6 +576,15 @@ type Store = GameState & {
   placeRalliedUnits: (count: number) => void;
   resetUnitPlacement: () => void;
   clearPilot: () => void;
+  // Deterministic apply-side handlers for the piloting net commands. Invoked by
+  // applyNetCommand with the issuing owner so a lockstep peer mutates the right
+  // owner's per-owner pilot state. In single-player the gesture actions below
+  // call into the same per-owner mutations directly (no routing).
+  applyPilotSelection: (ownerId: string, unitId: string | null) => void;
+  applyPilotMove: (ownerId: string, move: { x: number; z: number }) => void;
+  applyRallyMonarch: (ownerId: string, monarchId: string) => void;
+  applyPlaceRallied: (ownerId: string, monarchId: string, count: number) => void;
+  applyReleaseControl: (ownerId: string) => void;
   toggleTurtleShell: (unitIds: string[]) => void;
   throwEggs: (cmd: CommandThrowEggs) => void;
   fireTongues: (cmd: CommandFireTongues) => void;
@@ -587,6 +778,8 @@ export const useGameStore = create<Store>((set, get) => ({
   winner: null,
   selectedUnitIds: [],
   pilotedUnitId: null,
+  pilotedUnitIdByOwner: { p0: null, p1: null },
+  pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } },
   movementHeldUnitId: null,
   unitPlacementCount: 0,
   unitOrders: {},
@@ -735,7 +928,7 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, movementHeldUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, pilotedUnitIdByOwner: { p0: null, p1: null }, pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } }, movementHeldUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
@@ -805,6 +998,8 @@ export const useGameStore = create<Store>((set, get) => ({
       winner: null,
       selectedUnitIds: [],
       pilotedUnitId: null,
+      pilotedUnitIdByOwner: { p0: null, p1: null },
+      pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } },
       movementHeldUnitId: null,
       unitPlacementCount: 0,
       unitOrders: {},
@@ -967,6 +1162,17 @@ export const useGameStore = create<Store>((set, get) => ({
       const playerControlledOwnerIds: ReadonlySet<string> = new Set(
         draft.players.filter((player) => !player.isAI).map((player) => player.id)
       );
+
+      // Feed the local player's live monarch-drive vector into the per-owner map
+      // ONLY in single-player. In a lockstep match the map is filled instead by
+      // each peer's per-frame `pilotMove` command (applied before this tick runs),
+      // so reading the local pilotInput here would inject un-synced, peer-specific
+      // input into the shared simulation and desync it. The pilot tick block below
+      // reads pilotMoveByOwner uniformly in both modes.
+      if (!isLockstepMatch && draft.localPlayerId) {
+        const localMove = pilotInput.getMove();
+        draft.pilotMoveByOwner[draft.localPlayerId] = { x: localMove.x, z: localMove.z };
+      }
 
       // Reuse spatial grid instead of rebuilding every tick (major optimization).
       // A small cell size keeps neighbor queries cheap even when hundreds of
@@ -1223,8 +1429,8 @@ export const useGameStore = create<Store>((set, get) => ({
         // the AI or order system — and it never auto-attacks (fully manual). Any stale move
         // order is dropped so mouse orders and WASD don't fight, and we skip the rest of the
         // per-unit AI/combat for it this tick.
-        if (draft.pilotedUnitId !== null && unit.id === draft.pilotedUnitId) {
-          const move = pilotInput.getMove();
+        if (draft.pilotedUnitIdByOwner[unit.ownerId] === unit.id) {
+          const move = draft.pilotMoveByOwner[unit.ownerId] ?? { x: 0, z: 0 };
           const inputMagnitude = Math.hypot(move.x, move.z);
 
           // A Queen the player toggles/cycles piloting onto (G/A) keeps walking an
@@ -2099,12 +2305,15 @@ export const useGameStore = create<Store>((set, get) => ({
           }
         }
 
-        // Stop piloting if the piloted King/Queen just died (and cancel any
-        // in-progress placement hold so the teardrop doesn't linger over a ghost).
-        if (draft.pilotedUnitId && deadSet.has(draft.pilotedUnitId)) {
-          draft.pilotedUnitId = null;
-          draft.unitPlacementCount = 0;
-          pilotInput.reset();
+        // Stop piloting for any owner whose piloted King/Queen just died (and, for
+        // the local player, cancel the placement hold so the teardrop doesn't linger
+        // over a ghost). Checked per owner so a dead monarch ends only its own
+        // owner's pilot — identically on both peers since deaths are deterministic.
+        for (const ownerId in draft.pilotedUnitIdByOwner) {
+          const pilotedId = draft.pilotedUnitIdByOwner[ownerId];
+          if (pilotedId && deadSet.has(pilotedId)) {
+            stopOwnerPilot(draft, ownerId);
+          }
         }
 
         // Clear dead units from the target cache in one pass.
@@ -2210,11 +2419,11 @@ export const useGameStore = create<Store>((set, get) => ({
 
         // A mouse move order takes manual control back from a piloted King/Queen: stop
         // piloting it so the order actually takes effect. The pilot tick block drives the
-        // unit purely from ESDF/pilotInput and deletes any move order each frame, so a
-        // selected-but-piloted monarch would otherwise ignore the right-click.
-        if (draft.pilotedUnitId === id) {
-          draft.pilotedUnitId = null;
-          pilotInput.reset();
+        // unit purely from the owner's drive vector and deletes any move order each frame,
+        // so a selected-but-piloted monarch would otherwise ignore the right-click. Keyed
+        // on the unit's owner so a remote player's routed move releases its own pilot.
+        if (draft.pilotedUnitIdByOwner[u.ownerId] === id) {
+          stopOwnerPilot(draft, u.ownerId);
         }
 
         // Validate the destination tile only — whether the unit can actually
@@ -2317,9 +2526,8 @@ export const useGameStore = create<Store>((set, get) => ({
       // still-piloted Queen would hold the route but never walk it until a separate
       // move order released piloting. This is the A→G (select King, toggle to Queen)
       // case, where the Queen is left as the piloted unit when the patrol is drawn.
-      if (draft.pilotedUnitId === cmd.queenId) {
-        draft.pilotedUnitId = null;
-        pilotInput.reset();
+      if (draft.pilotedUnitIdByOwner[queen.ownerId] === cmd.queenId) {
+        stopOwnerPilot(draft, queen.ownerId);
       }
 
       // Committing a patrol means the patrol-draw hold is over, so lift the
@@ -2407,9 +2615,8 @@ export const useGameStore = create<Store>((set, get) => ({
 
         // A mouse attack order takes manual control back from a piloted King/Queen (see
         // moveCommand): stop piloting it so the order isn't dropped by the pilot tick block.
-        if (draft.pilotedUnitId === id) {
-          draft.pilotedUnitId = null;
-          pilotInput.reset();
+        if (draft.pilotedUnitIdByOwner[unit.ownerId] === id) {
+          stopOwnerPilot(draft, unit.ownerId);
         }
 
         // Set movement target to enemy position
@@ -2464,20 +2671,19 @@ export const useGameStore = create<Store>((set, get) => ({
   // only emptied selectedUnitIds while pilotedUnitId and followMonarchId persisted, leaving
   // the King/Queen and its army still under the player's control after they had let go.
   clearSelection: () => {
+    const prev = get();
+    // Local UI release is immediate in both modes: empty the selection, drop the
+    // gold ring, and cancel any placement hold so the controls feel responsive.
     pilotInput.reset();
-    set((prev) =>
-      produce(prev, (draft) => {
-        draft.selectedUnitIds = [];
-        draft.pilotedUnitId = null;
-        draft.unitPlacementCount = 0; // cancel any in-progress placement hold
-        for (const unit of draft.units) {
-          if (unit.followMonarchId !== undefined) {
-            delete unit.followMonarchId;
-            delete draft.unitOrders[unit.id]; // drop the synthetic follow order so it halts
-          }
-        }
-      })
-    );
+    set({ selectedUnitIds: [], pilotedUnitId: null, unitPlacementCount: 0 });
+
+    // The simulation-affecting part (stop piloting + break this owner's rally,
+    // which mutates followMonarchId / unitOrders) must go through the
+    // deterministic command path, or a local deselect would desync multiplayer.
+    if (routeCommand({ type: 'releaseControl', payload: {} })) return;
+    const localPlayerId = prev.localPlayerId;
+    if (!localPlayerId) return;
+    set((s) => produce(s, (draft) => releaseOwnerControl(draft, localPlayerId)));
   },
 
   // --- Direct monarch piloting -------------------------------------------------
@@ -2487,32 +2693,29 @@ export const useGameStore = create<Store>((set, get) => ({
   // selection so the existing ring/HUD highlight the piloted unit, and the
   // camera (which follows the selection) eases onto it. Re-pressing the slot of
   // the unit already being piloted stops piloting.
-  pilotMonarchBySlot: (slotIndex) => set((prev) => {
-    // Monarch piloting is continuous, local, manual control that is not routed
-    // through lockstep, so it is disabled in multiplayer v1 to avoid desync.
-    if (commandRouter) return {};
-    if (!prev.localPlayerId) return {};
+  pilotMonarchBySlot: (slotIndex) => {
+    const prev = get();
+    if (!prev.localPlayerId) return;
     const animal = prev.selectedAnimalPool[slotIndex];
-    if (!animal) return {};
+    if (!animal) return;
 
     // If already piloting this animal's monarch, the same key unpilots it.
     const current = prev.pilotedUnitId
       ? prev.units.find((u) => u.id === prev.pilotedUnitId)
       : null;
     if (current && current.animal === animal) {
-      pilotInput.reset();
-      return { pilotedUnitId: null };
+      beginLocalPilot(null);
+      return;
     }
 
     // Prefer the King; fall back to the Queen if the King is already dead.
     const monarch =
       findMonarch(prev.units, prev.localPlayerId, animal, 'King') ??
       findMonarch(prev.units, prev.localPlayerId, animal, 'Queen');
-    if (!monarch) return {};
+    if (!monarch) return;
 
-    pilotInput.reset();
-    return { pilotedUnitId: monarch.id, selectedUnitIds: selectionForMonarch(prev.units, monarch.id) };
-  }),
+    beginLocalPilot(monarch.id);
+  },
 
   // Cycle the piloted monarch through the local player's animal pool (the "A"
   // key). When not piloting, this starts on the first animal's monarch; while
@@ -2520,11 +2723,11 @@ export const useGameStore = create<Store>((set, get) => ({
   // (wrapping around). Each step prefers the King, falling back to the Queen.
   // Returns to no-pilot is handled by re-pressing nothing — there is always a
   // monarch to land on as long as one animal still has one alive.
-  pilotCycleMonarch: () => set((prev) => {
-    if (commandRouter) return {}; // piloting disabled in multiplayer v1 (see pilotMonarchBySlot)
-    if (!prev.localPlayerId) return {};
+  pilotCycleMonarch: () => {
+    const prev = get();
+    if (!prev.localPlayerId) return;
     const pool = prev.selectedAnimalPool;
-    if (pool.length === 0) return {};
+    if (pool.length === 0) return;
 
     // Resolve the pool slot of the animal we are currently piloting, so the
     // next press advances from there; default just before slot 0 otherwise.
@@ -2543,21 +2746,19 @@ export const useGameStore = create<Store>((set, get) => ({
         findMonarch(prev.units, prev.localPlayerId, animal, 'King') ??
         findMonarch(prev.units, prev.localPlayerId, animal, 'Queen');
       if (monarch) {
-        pilotInput.reset();
-        return { pilotedUnitId: monarch.id, selectedUnitIds: selectionForMonarch(prev.units, monarch.id) };
+        beginLocalPilot(monarch.id);
+        return;
       }
     }
-
-    return {};
-  }),
+  },
 
   // Swap the piloted unit between the King and Queen of the same animal (G).
   // No-op when not piloting or when the sibling monarch is dead.
-  togglePilotMonarchKind: () => set((prev) => {
-    if (commandRouter) return {}; // piloting disabled in multiplayer v1 (see pilotMonarchBySlot)
-    if (!prev.localPlayerId || !prev.pilotedUnitId) return {};
+  togglePilotMonarchKind: () => {
+    const prev = get();
+    if (!prev.localPlayerId || !prev.pilotedUnitId) return;
     const current = prev.units.find((u) => u.id === prev.pilotedUnitId);
-    if (!current || (current.kind !== 'King' && current.kind !== 'Queen')) return {};
+    if (!current || (current.kind !== 'King' && current.kind !== 'Queen')) return;
 
     const sibling = findMonarch(
       prev.units,
@@ -2565,11 +2766,10 @@ export const useGameStore = create<Store>((set, get) => ({
       current.animal,
       otherMonarchKind(current.kind as MonarchKind)
     );
-    if (!sibling) return {};
+    if (!sibling) return;
 
-    pilotInput.reset();
-    return { pilotedUnitId: sibling.id, selectedUnitIds: selectionForMonarch(prev.units, sibling.id) };
-  }),
+    beginLocalPilot(sibling.id);
+  },
 
   // Toggle "rally" on the piloted monarch (Space) and select that animal's army.
   // When rally is on, every living army Unit of the same animal and owner trails
@@ -2577,41 +2777,30 @@ export const useGameStore = create<Store>((set, get) => ({
   // pressing again clears the rally. Either way the army is left selected so the
   // player can immediately redirect it with a right-click — and issuing that
   // move order breaks the unit off the monarch (see moveCommand).
-  rallyToMonarch: () => set((prev) =>
-    produce(prev, (draft) => {
-      if (commandRouter) return; // piloting disabled in multiplayer v1 (see pilotMonarchBySlot)
-      if (!draft.localPlayerId || !draft.pilotedUnitId) return;
-      const monarch = draft.units.find((u) => u.id === draft.pilotedUnitId);
-      if (!monarch) return;
+  rallyToMonarch: () => {
+    const prev = get();
+    const localPlayerId = prev.localPlayerId;
+    if (!localPlayerId || !prev.pilotedUnitId) return;
+    const monarch = prev.units.find((u) => u.id === prev.pilotedUnitId);
+    if (!monarch) return;
 
-      const isFollower = (u: Unit) =>
-        u.ownerId === draft.localPlayerId &&
-        u.kind === 'Unit' &&
-        u.animal === monarch.animal;
+    // Select the piloted monarch alongside its army immediately (local-only, so it
+    // is fine outside the deterministic path) so a right-click can redirect the
+    // army this frame while the gold ring stays on the monarch. The monarch leads
+    // the id list; its same-animal followers trail it.
+    const followerIds = prev.units
+      .filter(
+        (u) => u.ownerId === localPlayerId && u.kind === 'Unit' && u.animal === monarch.animal
+      )
+      .map((u) => u.id);
+    set({ selectedUnitIds: [monarch.id, ...followerIds] });
 
-      // Toggle off when this animal's units are already rallying to this monarch.
-      const alreadyRallying = draft.units.some(
-        (u) => isFollower(u) && u.followMonarchId === monarch.id
-      );
-
-      const followerIds: string[] = [];
-      for (const unit of draft.units) {
-        if (!isFollower(unit)) continue;
-        if (alreadyRallying) {
-          delete unit.followMonarchId;
-        } else {
-          unit.followMonarchId = monarch.id;
-        }
-        followerIds.push(unit.id);
-      }
-
-      // Select the piloted monarch alongside its army so a right-click redirects
-      // the army while the monarch's gold piloting ring stays visible — a piloted
-      // King/Queen is always selected (see pilotMonarchBySlot), and rally must not
-      // drop it. The monarch leads the id list; followers (if any) trail it.
-      draft.selectedUnitIds = [monarch.id, ...followerIds];
-    })
-  ),
+    // The follow toggle itself is simulation state: routed in multiplayer,
+    // immediate in single-player. Both peers resolve the on/off the same way at
+    // apply time from the synced followMonarchId state.
+    if (routeCommand({ type: 'rallyMonarch', payload: { monarchId: monarch.id } })) return;
+    set((s) => produce(s, (draft) => applyRallyToggleToDraft(draft, localPlayerId, monarch.id)));
+  },
 
   // Designate one more follower for a placement order while the rally key is held
   // (called once per UNIT_PLACEMENT_INTERVAL_MS by the input layer). The count is
@@ -2621,7 +2810,8 @@ export const useGameStore = create<Store>((set, get) => ({
   // quick tap (0) occurred on release.
   incrementUnitPlacement: () => {
     const prev = get();
-    if (commandRouter) return prev.unitPlacementCount; // piloting disabled in multiplayer v1
+    // Purely a local UI counter for the teardrop indicator (the actual order is
+    // issued by placeRalliedUnits on release), so it stays local in multiplayer.
     if (!prev.localPlayerId || !prev.pilotedUnitId) return prev.unitPlacementCount;
 
     const monarch = prev.units.find((u) => u.id === prev.pilotedUnitId);
@@ -2647,54 +2837,20 @@ export const useGameStore = create<Store>((set, get) => ({
   // monarch off the rally and send them to its current position, leaving the rest
   // trailing it. Mirrors moveCommand's per-unit order reset (clears combat,
   // blocking and the stale A* path cache) so the placed units actually travel.
-  placeRalliedUnits: (count) => set((prev) =>
-    produce(prev, (draft) => {
-      if (commandRouter) return; // piloting disabled in multiplayer v1 (see pilotMonarchBySlot)
-      draft.unitPlacementCount = 0; // the gesture is consumed regardless of outcome
-      if (count <= 0 || !draft.localPlayerId || !draft.pilotedUnitId) return;
+  placeRalliedUnits: (count) => {
+    const prev = get();
+    const localPlayerId = prev.localPlayerId;
+    // The gesture is consumed regardless of outcome: clear the local teardrop now.
+    if (prev.unitPlacementCount !== 0) set({ unitPlacementCount: 0 });
+    if (count <= 0 || !localPlayerId || !prev.pilotedUnitId) return;
+    const monarchId = prev.pilotedUnitId;
 
-      const monarch = draft.units.find((u) => u.id === draft.pilotedUnitId);
-      if (!monarch) return;
-
-      const followers = draft.units.filter(
-        (unit) =>
-          unit.ownerId === draft.localPlayerId &&
-          unit.kind === 'Unit' &&
-          unit.animal === monarch.animal &&
-          unit.followMonarchId === monarch.id
-      );
-
-      const destination = { x: monarch.position.x, y: 0, z: monarch.position.z };
-      const chosen = selectFollowersForPlacement(followers, monarch.position, count);
-
-      for (const unit of chosen) {
-        // Break off the rally and pin an explicit destination at the monarch.
-        delete unit.followMonarchId;
-        draft.unitOrders[unit.id] = destination;
-        unit.unitState = 'moving_to_order';
-        delete unit.arrivedAtDestinationMs;
-
-        // Clear combat, blocking and landing carry-over so the new order wins.
-        delete unit.lastCombatTargetId;
-        delete unit.lastCombatEngagementMs;
-        delete unit.priorityAttacker;
-        unit.collisionAttempts = 0;
-        delete unit.movementPausedUntilMs;
-        delete unit.firstBlockedAtMs;
-        delete unit.nearDestinationSinceMs;
-
-        // Drop the cached A* path so the unit re-routes to the placement point
-        // instead of steering toward its previous goal (see moveCommand).
-        delete unit.pathWaypoints;
-        delete unit.pathIndex;
-        delete unit.pathDestX;
-        delete unit.pathDestZ;
-        delete unit.pathVersion;
-        delete unit.pathStall;
-        delete unit.pathProgressDist;
-      }
-    })
-  ),
+    // The placement issues real move orders (simulation state), so route it in
+    // multiplayer; apply at once in single-player. The follower choice is
+    // position-deterministic, so both peers peel the same units off the rally.
+    if (routeCommand({ type: 'placeRallied', payload: { monarchId, count } })) return;
+    set((s) => produce(s, (draft) => applyPlaceRalliedToDraft(draft, localPlayerId, monarchId, count)));
+  },
 
   // Cancel a placement hold without issuing an order (a quick tap, a deselect, or
   // the monarch dying) so the teardrop indicator disappears.
@@ -2702,11 +2858,42 @@ export const useGameStore = create<Store>((set, get) => ({
     if (get().unitPlacementCount !== 0) set({ unitPlacementCount: 0 });
   },
 
-  // Stop piloting entirely (used on death / match end / explicit cancel).
+  // Stop piloting entirely (used on death / match end / explicit cancel). Clears
+  // the local UI immediately and routes the per-owner simulation release so a
+  // multiplayer peer's pilot state is cleared in lockstep.
   clearPilot: () => {
+    const prev = get();
     pilotInput.reset();
     set({ pilotedUnitId: null, unitPlacementCount: 0 });
+    const localPlayerId = prev.localPlayerId;
+    if (!localPlayerId) return;
+    if (routeCommand({ type: 'setPilot', payload: { unitId: null } })) return;
+    set((s) => produce(s, (draft) => applyPilotSelectionToDraft(draft, localPlayerId, null)));
   },
+
+  // --- Lockstep apply handlers for the piloting commands -----------------------
+  // Invoked only by applyNetCommand, with the issuing owner, so each peer mutates
+  // the correct owner's per-owner pilot state deterministically. They never route
+  // (applyNetCommand runs them with the router suppressed) and never touch local-
+  // only UI for a remote owner.
+  applyPilotSelection: (ownerId, unitId) =>
+    set((prev) => produce(prev, (draft) => applyPilotSelectionToDraft(draft, ownerId, unitId))),
+
+  applyPilotMove: (ownerId, move) => {
+    const prev = get();
+    // Replace just this owner's drive slot. Runs up to ~120x/sec (both peers,
+    // every tick), so it avoids immer and only swaps the small record.
+    set({ pilotMoveByOwner: { ...prev.pilotMoveByOwner, [ownerId]: { x: move.x, z: move.z } } });
+  },
+
+  applyRallyMonarch: (ownerId, monarchId) =>
+    set((prev) => produce(prev, (draft) => applyRallyToggleToDraft(draft, ownerId, monarchId))),
+
+  applyPlaceRallied: (ownerId, monarchId, count) =>
+    set((prev) => produce(prev, (draft) => applyPlaceRalliedToDraft(draft, ownerId, monarchId, count))),
+
+  applyReleaseControl: (ownerId) =>
+    set((prev) => produce(prev, (draft) => releaseOwnerControl(draft, ownerId))),
 
   // Toggle the "shell" lock on the local player's Turtle units in the given
   // selection. Shelling pins the unit in place (see checkCollision) and the
@@ -3054,6 +3241,11 @@ export function applyNetCommand(playerId: string, command: NetCommand): void {
       case 'swarm': store.swarm(command.payload); break;
       case 'pickup': store.pickup(command.payload); break;
       case 'deliverCargo': store.deliverCargo(command.payload); break;
+      case 'setPilot': store.applyPilotSelection(playerId, command.payload.unitId); break;
+      case 'pilotMove': store.applyPilotMove(playerId, command.payload); break;
+      case 'rallyMonarch': store.applyRallyMonarch(playerId, command.payload.monarchId); break;
+      case 'placeRallied': store.applyPlaceRallied(playerId, command.payload.monarchId, command.payload.count); break;
+      case 'releaseControl': store.applyReleaseControl(playerId); break;
     }
   } finally {
     applyingNetCommand = false;
@@ -3613,8 +3805,11 @@ function separateOverlappingUnits(draft: Store, priorityUnitIds: ReadonlySet<str
     // The piloted monarch's position is owned by the player's pilot input — like carried or
     // flying units above, it is not ours to nudge. Skipping it here is what stops rallying
     // followers (now selected alongside it) from shoving the King/Queen as they crowd in;
-    // the followers' own spacing and the follow-gap pass keep them off it instead.
-    if (unit.id === draft.pilotedUnitId) continue;
+    // the followers' own spacing and the follow-gap pass keep them off it instead. Keyed on
+    // the per-owner pilot map (not the local-only pilotedUnitId mirror) so a multiplayer peer
+    // skips BOTH players' piloted monarchs identically — reading the mirror here would skip
+    // only the local peer's monarch and desync the two simulations.
+    if (draft.pilotedUnitIdByOwner[unit.ownerId] === unit.id) continue;
 
     const neighbors = grid
       ? grid.getNearbyUnits(unit.position, SEPARATION_QUERY_RADIUS)
