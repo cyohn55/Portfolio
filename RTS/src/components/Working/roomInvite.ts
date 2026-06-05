@@ -134,7 +134,7 @@ export function buildInviteText(roomCode: string, gameUrl: string): string {
   const normalizedCode = roomCode.trim().toUpperCase();
   const joinUrl = buildJoinUrl(normalizedCode, gameUrl);
   return (
-    `Join my 1v1 RTS battle in Tails We Herd!\n` +
+    `Join the battle in Tails We Herd!\n` +
     `Tap to jump right in: ${joinUrl}`
   );
 }
