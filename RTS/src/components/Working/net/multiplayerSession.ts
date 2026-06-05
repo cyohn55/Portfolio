@@ -27,6 +27,23 @@ import {
 import { startNetMatch, stopNetMatch } from './netMatch';
 import { parseNetMessage, type PlayerRole } from './netMessages';
 
+/**
+ * Render a short, safe parenthetical describing an unexpected matchmaking error,
+ * for appending to the user-facing failure message. Firebase errors expose a
+ * stable `code` (e.g. 'permission-denied') that pinpoints the cause far better
+ * than the generic copy; everything else falls back to its message. Kept terse
+ * so the on-screen error stays readable. Returns '' when nothing is available.
+ */
+function describeError(error: unknown): string {
+  if (typeof error === 'object' && error !== null) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === 'string' && code.length > 0) return `(${code})`;
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.length > 0) return `(${message})`;
+  }
+  return '';
+}
+
 /** Where the player is in the multiplayer flow. */
 export type MultiplayerPhase =
   | 'idle' // on the multiplayer screen, not yet hosting/joining
@@ -213,22 +230,17 @@ export const useMultiplayerSession = create<MultiplayerSessionState>((set, get) 
       set({ phase: 'lobby' });
       broadcastLobby();
     } catch (error) {
-      // Surface the real cause for diagnosis: a SignalingError already carries a
-      // user-facing message, but anything else (a Firestore permission denial, a
-      // WebRTC failure, an unexpected throw) would otherwise be reduced to the
-      // generic failureMessage with no trace of what actually went wrong.
-      const firebaseCode =
-        typeof error === 'object' && error !== null && 'code' in error
-          ? (error as { code?: string }).code
-          : undefined;
-      console.error(
-        `[multiplayer] ${mode} matchmaking failed`,
-        firebaseCode ? `(code: ${firebaseCode})` : '',
-        error
-      );
+      // A SignalingError already carries a user-facing message. For anything else
+      // (a Firestore permission denial, a WebRTC failure, an unexpected throw) the
+      // generic failureMessage alone hides what actually went wrong — and because
+      // production builds strip console.* (vite.config drop), a swallowed cause is
+      // invisible. So append a short, safe detail to the on-screen message.
       set({
         phase: 'error',
-        error: error instanceof SignalingError ? error.message : failureMessage,
+        error:
+          error instanceof SignalingError
+            ? error.message
+            : `${failureMessage} ${describeError(error)}`.trim(),
       });
     }
   };
