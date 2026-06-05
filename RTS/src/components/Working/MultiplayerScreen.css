@@ -167,6 +167,48 @@
   margin: 8px 0 20px;
 }
 
+/* --- share-invite controls (under the room code) --- */
+
+.mp-share {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 18px;
+}
+
+.mp-share-row {
+  display: flex;
+  gap: 10px;
+}
+
+.mp-share-button {
+  flex: 1;
+  display: block;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(60, 68, 90, 0.85);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.2s ease;
+}
+
+.mp-share-button:hover {
+  transform: translateY(-1px);
+}
+
+.mp-share-button.primary {
+  background: linear-gradient(135deg, rgba(88, 120, 255, 0.95) 0%, rgba(118, 75, 162, 0.95) 100%);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 6px 18px rgba(88, 120, 255, 0.35);
+}
+
 .mp-spinner {
   width: 36px;
   height: 36px;

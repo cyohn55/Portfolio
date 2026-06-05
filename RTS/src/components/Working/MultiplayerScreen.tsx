@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { AnimalId } from '../../game/types';
 import { useGameStore } from '../../game/state';
 import { useMultiplayerSession } from './net/multiplayerSession';
+import { ShareRoomCode } from './ShareRoomCode';
 import './MultiplayerScreen.css';
 
 // The selectable roster, mirroring AnimalSelectionLobby's list so both screens
@@ -123,6 +124,7 @@ export function MultiplayerScreen() {
             <>
               <p className="mp-subtitle">Share this code with your opponent:</p>
               <div className="mp-room-code">{roomCode}</div>
+              <ShareRoomCode roomCode={roomCode} />
               <p className="mp-waiting">Waiting for an opponent to join…</p>
             </>
           ) : (
