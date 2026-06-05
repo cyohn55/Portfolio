@@ -19,14 +19,13 @@ high-impact still is used instead.
 
 ## Regenerating the image
 
-The still is produced by an offline Three.js render of the GLB (no running game
-needed). The throwaway harness lives under `RTS/.render-tmp/` when present:
+The still was produced by a small, throwaway offline render (not committed):
+bundle a Three.js scene with esbuild (inlining the GLB via the `dataurl`
+loader), load `Bear.glb`, light it with `RoomEnvironment` plus key/fill/rim
+directional lights, set a radial-gradient teal background, and screenshot the
+1280×720 canvas with headless Chromium loading the page from `file://` (no
+server needed).
 
-1. `cp public/models/Bear.glb .render-tmp/Bear.glb`
-2. `npx esbuild .render-tmp/render-still.ts --bundle --format=iife --loader:.glb=dataurl --outfile=.render-tmp/render-still.js`
-3. `node .render-tmp/capture.mjs public/share/share-preview.jpg`
-   (headless Chromium; the renderer page loads from `file://`, no server)
-
-To feature a different animal, point the import in `render-still.ts` at another
-model in `public/models/` and pick a contrasting background color (rough
-complement of the animal's dominant hue) so it stays legible.
+To feature a different animal, render another model from `public/models/` on a
+contrasting background color (the rough complement of the animal's dominant hue)
+so the subject stays legible, and overwrite `share-preview.jpg`.
