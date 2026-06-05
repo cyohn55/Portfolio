@@ -1,8 +1,14 @@
-// Firestore security rules for the RTS global leaderboard.
+// Firestore security rules for the RTS global leaderboard AND the multiplayer
+// peer-to-peer signaling/matchmaking collections.
 //
 // HOW TO APPLY:
 //   Firebase console -> Firestore Database -> Rules tab -> paste -> Publish.
 //   (Project: rts-leader-board.)
+//
+//   RECOMMENDED (auto-cleanup): enable a Firestore TTL policy on the `createdAt`
+//   field for the `rooms` and `matchmaking` collections (Firestore -> TTL) so
+//   abandoned signaling docs expire automatically. The client also best-effort
+//   deletes its own rooms on leave, but a TTL guarantees nothing lingers.
 //
 // SECURITY MODEL:
 //   The Firebase web apiKey ships in the client bundle, so the database is
@@ -28,6 +34,43 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isValidScore(request.resource.data);
       allow update, delete: if false;
+    }
+
+    // --- Multiplayer signaling + matchmaking ---
+    //
+    // These collections broker WebRTC connections between two browsers: a room/
+    // ticket document holds the SDP offer/answer, and its candidate subcollections
+    // hold trickled ICE candidates. The payloads are ephemeral and non-sensitive
+    // (no credentials, no game state — just connection-setup data), and there is
+    // no auth on a static site, so full CRUD is permitted. The size guard blocks
+    // obviously-abusive oversized writes; the createdAt TTL (see header) reclaims
+    // abandoned docs. UPDATE is required so a guest can write its answer / claim a
+    // ticket; DELETE so a host can clean up its own room on leave.
+
+    match /rooms/{roomId} {
+      allow read, create, update, delete: if isSaneSignalingDoc();
+      // Per-side ICE candidate streams (hostCandidates / guestCandidates).
+      match /{candidateSet}/{candidateId} {
+        allow read, create, delete: if true;
+      }
+    }
+
+    match /matchmaking/{ticketId} {
+      allow read, create, update, delete: if isSaneSignalingDoc();
+      match /{candidateSet}/{candidateId} {
+        allow read, create, delete: if true;
+      }
+    }
+
+    // Light shape guard on signaling writes. Reads/deletes carry no resource
+    // body (request.resource is null) and are allowed through; writes are capped
+    // at a small top-level field count (a room/ticket has ~4 fields: offer,
+    // answer, status, createdAt) to reject obviously-malformed bulk writes.
+    // Field VALUE sizes are intentionally not restricted — an SDP blob is one
+    // large legitimate string.
+    function isSaneSignalingDoc() {
+      return request.resource == null
+        || request.resource.data.size() <= 16;
     }
 
     // Mirrors the client-side contract in leaderboard.ts (isWellFormedEntry +
