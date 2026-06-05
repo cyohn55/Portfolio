@@ -4,6 +4,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Animal RTS</title>
+
+    <!--
+      Link-preview card shown when a join link (…/index.html?room=CODE) is
+      pasted into a chat. Crawlers don't run JS, so the card is driven by these
+      Open Graph / Twitter tags pointing at a preview image (the crowned Bear on
+      a vibrant background, rendered offline from Bear.glb). A looping video was
+      ruled out because the source clip is ~44 MB — far past what link crawlers
+      like Discord will fetch/embed. URLs must be absolute for crawlers — they
+      resolve against the live GitHub Pages path, not the app's relative base.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Tails We Herd" />
+    <meta property="og:title" content="Join the battle in Tails We Herd!" />
+    <meta property="og:description" content="Tap to jump right into a 1v1 RTS battle." />
+    <meta property="og:url" content="https://cyohn55.github.io/Portfolio/RTS/dist/" />
+    <meta property="og:image" content="https://cyohn55.github.io/Portfolio/RTS/dist/share/share-preview.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="720" />
+    <meta property="og:image:alt" content="The crowned Bear from Tails We Herd on a vibrant background" />
+
+    <!-- Twitter/X reads its own tags; show the same large preview image. -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Join the battle in Tails We Herd!" />
+    <meta name="twitter:description" content="Tap to jump right into a 1v1 RTS battle." />
+    <meta name="twitter:image" content="https://cyohn55.github.io/Portfolio/RTS/dist/share/share-preview.jpg" />
+
     <style>
       html, body, #root { height: 100%; margin: 0; background: #0b0f1a; color: #e6ebff; }
       .hud { position: fixed; top: 0; left: 0; right: 0; padding: 8px 12px; display: flex; gap: 12px; align-items: center; z-index: 1000; pointer-events: auto; }
