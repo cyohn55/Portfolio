@@ -62,7 +62,9 @@ const CODE_LENGTH = 4;
 
 // If a connection has not opened within this window, give up so the UI can show
 // a clear failure instead of spinning forever (e.g. wrong code, peer left).
-const CONNECTION_TIMEOUT_MS = 30_000;
+// Kept generous so the host can share the code and wait for a human to actually
+// join before the attempt is abandoned.
+const CONNECTION_TIMEOUT_MS = 120_000;
 
 /**
  * A live signaling session. `connected` resolves when the data channel opens (or
