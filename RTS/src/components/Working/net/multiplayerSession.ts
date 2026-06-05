@@ -213,6 +213,19 @@ export const useMultiplayerSession = create<MultiplayerSessionState>((set, get) 
       set({ phase: 'lobby' });
       broadcastLobby();
     } catch (error) {
+      // Surface the real cause for diagnosis: a SignalingError already carries a
+      // user-facing message, but anything else (a Firestore permission denial, a
+      // WebRTC failure, an unexpected throw) would otherwise be reduced to the
+      // generic failureMessage with no trace of what actually went wrong.
+      const firebaseCode =
+        typeof error === 'object' && error !== null && 'code' in error
+          ? (error as { code?: string }).code
+          : undefined;
+      console.error(
+        `[multiplayer] ${mode} matchmaking failed`,
+        firebaseCode ? `(code: ${firebaseCode})` : '',
+        error
+      );
       set({
         phase: 'error',
         error: error instanceof SignalingError ? error.message : failureMessage,
