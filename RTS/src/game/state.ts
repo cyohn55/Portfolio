@@ -305,6 +305,7 @@ type PilotMutableState = Pick<
   | 'pilotMoveByOwner'
   | 'unitPlacementCount'
   | 'unitPlacementCursor'
+  | 'selectedUnitIds'
 >;
 
 /**
@@ -450,6 +451,15 @@ function applyPlaceRalliedToDraft(
     delete unit.pathVersion;
     delete unit.pathStall;
     delete unit.pathProgressDist;
+  }
+
+  // Deployed units leave the monarch's command group: drop them from the local
+  // selection so they aren't swept up by the next order. Selection is local-only
+  // UI, so only touch it for the local player's own placement (never a remote
+  // peer's), and it never feeds the determinism checksum.
+  if (ownerId === draft.localPlayerId && chosen.length > 0) {
+    const placedIds = new Set(chosen.map((unit) => unit.id));
+    draft.selectedUnitIds = draft.selectedUnitIds.filter((id) => !placedIds.has(id));
   }
 }
 

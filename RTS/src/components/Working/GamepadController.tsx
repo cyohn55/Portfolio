@@ -22,11 +22,11 @@ import {
 import {
   PATROL_ARROW_COLOR,
   RALLY_ARROW_COLOR,
-  CURSOR_LINK_LINE_COLOR,
   createDottedArrow,
-  createDottedLine,
+  createSegmentedLine,
   hideDottedArrow,
   positionDottedArrow,
+  positionSegmentedLine,
 } from './dottedArrow';
 import type { Unit } from '../../game/types';
 
@@ -77,15 +77,25 @@ const CURSOR_SPIN_SPEED = 2.2;    // radians/second
 const PILOT_CURSOR_MAX_DISTANCE = 50;
 const PILOT_CURSOR_SPEED = 45;    // world units/second at full deflection
 
-// Command-press color feedback: the cursor flashes neon green for a ground move
-// and red for an attack, then settles back to navy after CURSOR_FLASH_MS.
+// Command-trigger color feedback: while the command trigger is held the cursor
+// (and its leash line) turn neon green over open ground or red while aimed at an
+// enemy, then settle back to navy on release.
 const CURSOR_GREEN = '#39ff14';
 const CURSOR_RED = '#ff1f3d';
-const CURSOR_FLASH_MS = 350;
-// Precreated Color objects so the per-frame tint copies rather than parsing hex.
-const CURSOR_COLOR_DEFAULT = new THREE.Color(CURSOR_BLUE);
-const CURSOR_COLOR_GROUND = new THREE.Color(CURSOR_GREEN);
-const CURSOR_COLOR_ENEMY = new THREE.Color(CURSOR_RED);
+type CursorTint = 'default' | 'ground' | 'enemy';
+const CURSOR_TINT_HEX: Record<CursorTint, string> = {
+  default: CURSOR_BLUE,
+  ground: CURSOR_GREEN,
+  enemy: CURSOR_RED,
+};
+// Precreated Color objects so the per-frame material tint copies rather than parsing hex.
+const CURSOR_TINT_COLOR: Record<CursorTint, THREE.Color> = {
+  default: new THREE.Color(CURSOR_BLUE),
+  ground: new THREE.Color(CURSOR_GREEN),
+  enemy: new THREE.Color(CURSOR_RED),
+};
+// The monarch→cursor leash is drawn as this many equal dash segments.
+const CURSOR_LINK_SEGMENTS = 10;
 
 // Right-trigger "click" feedback: while the command trigger is held the ring
 // shrinks to half size and the pyramid dips toward it, as if pressed into the
@@ -153,9 +163,9 @@ export function GamepadController() {
   // red on a command flash).
   const ringMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const pyramidMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
-  // Command-flash state: which color, and when the flash expires.
-  const flashColorRef = useRef<'enemy' | 'ground'>('ground');
-  const flashUntilRef = useRef(0);
+  // The cursor's current tint, recomputed each frame from the command-trigger
+  // state (held over ground = green, over an enemy = red, else navy).
+  const cursorTintRef = useRef<CursorTint>('default');
   // Scratch vectors reused every frame to keep the cursor math allocation-free.
   // `offset` is the persistent world-space leash offset from the piloted monarch.
   const cursorScratch = useRef({
@@ -339,8 +349,9 @@ export function GamepadController() {
     document.body.appendChild(patrolArrow);
     patrolArrowElRef.current = patrolArrow;
 
-    // The segmented blue leash from the piloted monarch's ring to the cursor.
-    const cursorLinkLine = createDottedLine(CURSOR_LINK_LINE_COLOR);
+    // The segmented leash from the piloted monarch's ring to the cursor; its color
+    // (matching the cursor) and segment tiling are set each frame as it is drawn.
+    const cursorLinkLine = createSegmentedLine();
     document.body.appendChild(cursorLinkLine);
     cursorLinkLineRef.current = cursorLinkLine;
 
@@ -396,13 +407,6 @@ export function GamepadController() {
     return unit;
   };
 
-  // Briefly tint the cursor to signal what a command press just did — red for an
-  // attack on an enemy, neon green for a move to open ground. The frame loop reads
-  // this back and restores navy once the flash expires.
-  const flashCursor = (kind: 'enemy' | 'ground') => {
-    flashColorRef.current = kind;
-    flashUntilRef.current = performance.now() + CURSOR_FLASH_MS;
-  };
 
   // The local player's King nearest the reticle within UNIT_PICK_RADIUS_PX, else
   // null. Dropping a rally on your own King makes the Queen's spawns follow him
@@ -626,9 +630,6 @@ export function GamepadController() {
           break;
         }
         const enemyId = nearestUnitId((ownerId, localId) => ownerId !== localId);
-        // Color feedback on every command press, independent of selection: red at
-        // an enemy, neon green at open ground.
-        flashCursor(enemyId ? 'enemy' : 'ground');
         // The cursor commands the player's units — never the monarch they are
         // actively piloting (that one is driven by the left stick). Excluding the
         // piloted monarch stops it from marching to the cursor on a command.
@@ -742,11 +743,9 @@ export function GamepadController() {
     // instant it appears — independent of pad/match state (hidden when not shown).
     if (pyramidSpinRef.current) pyramidSpinRef.current.rotation.y += CURSOR_SPIN_SPEED * delta;
 
-    // Tint both materials: the command-flash color while a flash is live, else the
-    // resting navy. Copied (not re-parsed) every frame so the flash fades cleanly.
-    const tint = performance.now() < flashUntilRef.current
-      ? (flashColorRef.current === 'enemy' ? CURSOR_COLOR_ENEMY : CURSOR_COLOR_GROUND)
-      : CURSOR_COLOR_DEFAULT;
+    // Tint both materials from the current cursor tint (held over ground = green,
+    // over an enemy = red, else navy). Copied, not re-parsed, every frame.
+    const tint = CURSOR_TINT_COLOR[cursorTintRef.current];
     if (ringMatRef.current) {
       ringMatRef.current.color.copy(tint);
       ringMatRef.current.emissive.copy(tint);
@@ -769,6 +768,7 @@ export function GamepadController() {
       rallyPrevRef.current = false;
       patrolPrevRef.current = false;
       pressAmountRef.current = 0;
+      cursorTintRef.current = 'default';
       if (ringMeshRef.current) ringMeshRef.current.scale.setScalar(1);
       if (pyramidSpinRef.current) pyramidSpinRef.current.position.y = CURSOR_PYRAMID_CENTER_Y;
       if (cursorGroup) cursorGroup.visible = false;
@@ -849,13 +849,6 @@ export function GamepadController() {
           cursorGroup.position.copy(world);
           cursorGroup.visible = cursorVisible;
         }
-        // Segmented blue leash from the monarch's ring to the cursor, while shown.
-        if (cursorVisible) {
-          const monarchScreen = projectToScreen(monarch.position.x, monarch.position.y, monarch.position.z);
-          positionDottedArrow(cursorLinkLineRef.current, monarchScreen, screen);
-        } else {
-          hideDottedArrow(cursorLinkLineRef.current);
-        }
       } else {
         // Free-roam: move the screen anchor in pixels, then raycast it to the ground.
         if (stickActive) {
@@ -879,7 +872,6 @@ export function GamepadController() {
           cursorVisible = ground !== null;
           cursorGroup.visible = cursorVisible;
         }
-        hideDottedArrow(cursorLinkLineRef.current); // no monarch → no leash line
       }
 
       // --- Right-trigger press feedback + cursor-deploy gesture ---
@@ -894,6 +886,28 @@ export function GamepadController() {
         commitCursorDeploy(); // falling edge with a deploy in progress
       }
       secondaryPrevRef.current = triggerHeld;
+
+      // Tint the cursor for the whole time the trigger is held: red when it would
+      // attack (an enemy under it), neon green for a ground command, else navy.
+      cursorTintRef.current = triggerHeld
+        ? (nearestUnitId((ownerId, localId) => ownerId !== localId) ? 'enemy' : 'ground')
+        : 'default';
+
+      // Segmented leash from the monarch's ring to the cursor, in the cursor's
+      // current color, while a piloted cursor is shown.
+      if (monarch && cursorVisible) {
+        const monarchScreen = projectToScreen(monarch.position.x, monarch.position.y, monarch.position.z);
+        const cursorScreen = projectToScreen(cursorWorldRef.current.x, cursorWorldRef.current.y, cursorWorldRef.current.z);
+        positionSegmentedLine(
+          cursorLinkLineRef.current,
+          monarchScreen,
+          cursorScreen,
+          CURSOR_LINK_SEGMENTS,
+          CURSOR_TINT_HEX[cursorTintRef.current],
+        );
+      } else {
+        hideDottedArrow(cursorLinkLineRef.current);
+      }
 
       if (
         triggerHeld && monarch && cursorVisible && !cursorDeployActiveRef.current &&
@@ -925,6 +939,7 @@ export function GamepadController() {
       // A pause / match end mid-gesture must not strand the teardrop, timer, or press.
       cancelCursorDeploy();
       pressAmountRef.current = 0;
+      cursorTintRef.current = 'default';
       if (ringMeshRef.current) ringMeshRef.current.scale.setScalar(1);
       if (pyramidSpinRef.current) pyramidSpinRef.current.position.y = CURSOR_PYRAMID_CENTER_Y;
     }

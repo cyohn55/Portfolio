@@ -14,9 +14,6 @@
 // her gold ring); her spawn-rally line is blue so the two gestures read as distinct.
 export const PATROL_ARROW_COLOR = '#ffd700';
 export const RALLY_ARROW_COLOR = '#1e90ff';
-// The controller's monarch→cursor leash line: a bright blue so it stays legible
-// over the battlefield while echoing the blue targeting cursor.
-export const CURSOR_LINK_LINE_COLOR = '#4aa3ff';
 
 /** A point in screen pixels (client coordinates). */
 export interface ScreenPoint {
@@ -50,20 +47,50 @@ export function createDottedArrow(strokeColor: string): HTMLDivElement {
 }
 
 /**
- * Build a hidden segmented (dotted) line with no arrowhead — a plain connector
- * such as the controller's monarch→cursor leash. Positioned/hidden with the same
- * positionDottedArrow / hideDottedArrow helpers as the arrows.
+ * Build a hidden, arrowhead-free connector drawn as a fixed number of equal
+ * SEGMENTS (dashes) — the controller's monarch→cursor leash. Unlike a dotted
+ * border (whose dot count grows with length), positionSegmentedLine tiles one
+ * dash+gap exactly `segments` times across the span, so it always reads as the
+ * same number of segments regardless of distance. Hidden with hideDottedArrow.
  */
-export function createDottedLine(strokeColor: string): HTMLDivElement {
+export function createSegmentedLine(): HTMLDivElement {
   const line = document.createElement('div');
   line.style.position = 'absolute';
-  line.style.height = '0px';
-  line.style.borderTop = `3px dotted ${strokeColor}`;
+  line.style.height = '3px';
   line.style.transformOrigin = 'left center';
   line.style.pointerEvents = 'none';
   line.style.display = 'none';
   line.style.zIndex = '1001';
+  line.style.backgroundRepeat = 'repeat-x';
   return line;
+}
+
+/**
+ * Stretch/rotate a segmented line from `start` to `end` (screen px), tiled into
+ * exactly `segments` dashes in `color`. Each tile is ~60% dash, 40% gap.
+ */
+export function positionSegmentedLine(
+  line: HTMLDivElement | null,
+  start: ScreenPoint,
+  end: ScreenPoint,
+  segments: number,
+  color: string,
+): void {
+  if (!line) return;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  const angle = Math.atan2(dy, dx);
+  const period = segments > 0 ? length / segments : length;
+
+  line.style.left = `${start.x}px`;
+  line.style.top = `${start.y}px`;
+  line.style.width = `${length}px`;
+  line.style.transform = `rotate(${angle}rad)`;
+  line.style.backgroundImage =
+    `linear-gradient(to right, ${color} 0, ${color} 60%, transparent 60%, transparent 100%)`;
+  line.style.backgroundSize = `${period}px 100%`;
+  line.style.display = 'block';
 }
 
 /** Stretch and rotate an arrow so it spans from `start` to `end` (both in screen px). */
