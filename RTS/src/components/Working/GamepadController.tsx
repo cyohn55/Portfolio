@@ -32,7 +32,8 @@ import type { Unit } from '../../game/types';
  * R3F <Canvas> so it can raycast the cursor reticle against the ground for
  * move/attack orders. Responsibilities:
  *   - publish analog camera pan/zoom intent (read by CameraController),
- *   - drive an on-screen reticle with the right stick,
+ *   - drive a 3D targeting cursor (blue ring + spinning pyramid) with the right
+ *     stick — anchored to the piloted monarch (a 50-unit leash) or free-roaming,
  *   - fire selection/command/pause actions on the rising edge of bound buttons,
  *   - run the multi-edge gestures (Select All hold-to-deploy, Queen spawn-rally
  *     aim, Queen patrol hold) with their on-screen indicator lines.
@@ -42,13 +43,33 @@ import type { Unit } from '../../game/types';
  * React re-render of this (render-nothing) component.
  */
 
-// Single left-stick→camera and right-stick→reticle tuning. Reticle speed is in
-// pixels/second; pan speed is unitless intent (CameraController scales it).
+// Single left-stick→camera and right-stick→cursor tuning. Free-roam cursor speed
+// is in pixels/second; pan speed is unitless intent (CameraController scales it).
 const RETICLE_SPEED_PX_PER_SEC = 900;
-const RETICLE_SIZE_PX = 28;
 // A button press counts as a "tap" only on the frame it transitions to active,
 // so holding a button doesn't repeat the order every frame.
 const UNIT_PICK_RADIUS_PX = 40;
+
+// --- 3D targeting cursor (blue ring + spinning upside-down pyramid) ---
+// Sizes are world units; a standard King is ~6 units across, so a ~3-unit ring
+// reads as a clear reticle without swallowing the monarch.
+const CURSOR_BLUE = '#2f86ff';
+const CURSOR_RING_RADIUS = 3.0;   // torus centerline radius
+const CURSOR_RING_TUBE = 0.32;    // torus tube thickness
+const CURSOR_RING_Y = 0.12;       // lifted off the ground to avoid z-fighting
+const CURSOR_PYRAMID_RADIUS = 1.8;
+const CURSOR_PYRAMID_HEIGHT = 3.2;
+const CURSOR_PYRAMID_APEX_Y = 0.5; // apex hovers just above the ring center
+// Cone center sits half a height above the apex (cone is centered on its axis).
+const CURSOR_PYRAMID_CENTER_Y = CURSOR_PYRAMID_APEX_Y + CURSOR_PYRAMID_HEIGHT / 2;
+const CURSOR_SPIN_SPEED = 2.2;    // radians/second
+// When piloting a monarch the cursor extends out from it on a leash of this many
+// world units, mapped from full right-stick deflection at this speed.
+const PILOT_CURSOR_MAX_DISTANCE = 50;
+const PILOT_CURSOR_SPEED = 45;    // world units/second at full deflection
+
+// Reused for camera-relative ground movement; never mutated in place.
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
 // How long the patrol button must be held (with a lone Queen selected) before the
 // gold route line arms and a release commits the patrol. Mirrors PATROL_HOLD_MS in
@@ -86,7 +107,19 @@ export function GamepadController() {
   const { camera, raycaster } = useThree();
 
   const reticlePos = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-  const reticleElRef = useRef<HTMLDivElement | null>(null);
+  // The 3D targeting cursor: a group placed on the ground at the target point, and
+  // the inner pivot whose Y rotation spins the pyramid. Driven imperatively each
+  // frame so the 60 Hz poll never forces a React re-render.
+  const cursorGroupRef = useRef<THREE.Group | null>(null);
+  const pyramidSpinRef = useRef<THREE.Group | null>(null);
+  // Scratch vectors reused every frame to keep the cursor math allocation-free.
+  // `offset` is the persistent world-space leash offset from the piloted monarch.
+  const cursorScratch = useRef({
+    offset: new THREE.Vector3(),
+    camForward: new THREE.Vector3(),
+    camRight: new THREE.Vector3(),
+    world: new THREE.Vector3(),
+  });
   // Latest controller layout, subscribed so the dispatch rebuilds on a rebind.
   const controllerBindings = useGameStore((s) => s.controllerBindings);
   const controllerBindingModes = useGameStore((s) => s.controllerBindingModes);
@@ -188,23 +221,9 @@ export function GamepadController() {
     if (count >= 1) useGameStore.getState().placeRalliedUnits(count);
   };
 
-  // Create / tear down the reticle DOM element. Hidden until a stick is moved.
+  // Create / tear down the Queen-gesture DOM overlays. The targeting cursor itself
+  // is a 3D scene object (returned below), not a DOM element.
   useEffect(() => {
-    const reticle = document.createElement('div');
-    reticle.style.position = 'fixed';
-    reticle.style.width = `${RETICLE_SIZE_PX}px`;
-    reticle.style.height = `${RETICLE_SIZE_PX}px`;
-    reticle.style.marginLeft = `${-RETICLE_SIZE_PX / 2}px`;
-    reticle.style.marginTop = `${-RETICLE_SIZE_PX / 2}px`;
-    reticle.style.border = '2px solid #ffd34d';
-    reticle.style.borderRadius = '50%';
-    reticle.style.boxShadow = '0 0 8px rgba(255,211,77,0.8)';
-    reticle.style.pointerEvents = 'none';
-    reticle.style.zIndex = '1002';
-    reticle.style.display = 'none';
-    document.body.appendChild(reticle);
-    reticleElRef.current = reticle;
-
     // The blue spawn-rally line and the gold patrol line the Queen gestures draw,
     // hidden until their gesture arms. Same dotted-arrow shape as the mouse path.
     const rallyArrow = createDottedArrow(RALLY_ARROW_COLOR);
@@ -221,10 +240,8 @@ export function GamepadController() {
       dispatchRef.current.resolvers.forEach((resolver) => resolver.reset());
       cancelRallyAim();
       cancelPatrolAim();
-      if (reticleElRef.current) document.body.removeChild(reticleElRef.current);
       if (rallyArrowElRef.current) document.body.removeChild(rallyArrowElRef.current);
       if (patrolArrowElRef.current) document.body.removeChild(patrolArrowElRef.current);
-      reticleElRef.current = null;
       rallyArrowElRef.current = null;
       patrolArrowElRef.current = null;
     };
@@ -252,6 +269,18 @@ export function GamepadController() {
     const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const point = new THREE.Vector3();
     return raycaster.ray.intersectPlane(ground, point) ? point : null;
+  };
+
+  // The local player's currently piloted King/Queen, or null. This is the cursor's
+  // origin while piloting: the cursor hides under it at rest and extends out from
+  // it on the PILOT_CURSOR_MAX_DISTANCE leash.
+  const pilotedMonarch = (): Unit | null => {
+    const state = useGameStore.getState();
+    if (!state.pilotedUnitId) return null;
+    const unit = state.units.find((candidate) => candidate.id === state.pilotedUnitId);
+    if (!unit || unit.ownerId !== state.localPlayerId) return null;
+    if (unit.kind !== 'King' && unit.kind !== 'Queen') return null;
+    return unit;
   };
 
   // The local player's King nearest the reticle within UNIT_PICK_RADIUS_PX, else
@@ -579,7 +608,11 @@ export function GamepadController() {
 
   useFrame((_, delta) => {
     const gamepad = getActiveGamepad();
-    const reticle = reticleElRef.current;
+    const cursorGroup = cursorGroupRef.current;
+
+    // The pyramid spins continuously so the cursor always reads as "live" the
+    // instant it appears — independent of pad/match state (hidden when not shown).
+    if (pyramidSpinRef.current) pyramidSpinRef.current.rotation.y += CURSOR_SPIN_SPEED * delta;
 
     if (!gamepad) {
       gamepadInput.reset();
@@ -592,7 +625,7 @@ export function GamepadController() {
       cancelPatrolAim();
       rallyPrevRef.current = false;
       patrolPrevRef.current = false;
-      if (reticle) reticle.style.display = 'none';
+      if (cursorGroup) cursorGroup.visible = false;
       return;
     }
 
@@ -611,24 +644,64 @@ export function GamepadController() {
       gamepadInput.reset();
     }
 
-    // --- Reticle (right stick). Hidden while paused / before match start. ---
+    // --- Targeting cursor (right stick). The blue ring + spinning pyramid only
+    // shows while the stick is in use. When piloting a monarch it hides under that
+    // unit at rest and extends out from it on a PILOT_CURSOR_MAX_DISTANCE leash;
+    // otherwise it free-roams the screen (raycast to the ground each frame).
+    // Hidden entirely while paused / before match start. ---
     if (matchStarted && !isPaused) {
       const rx = gamepad.axes[2] ?? 0;
       const ry = gamepad.axes[3] ?? 0;
       const dx = Math.abs(rx) > CONTROLLER_DEADZONE ? rx : 0;
       const dy = Math.abs(ry) > CONTROLLER_DEADZONE ? ry : 0;
-      if (dx !== 0 || dy !== 0) {
-        const step = RETICLE_SPEED_PX_PER_SEC * delta;
-        reticlePos.current.x = clamp(reticlePos.current.x + dx * step, 0, window.innerWidth);
-        reticlePos.current.y = clamp(reticlePos.current.y + dy * step, 0, window.innerHeight);
+      const stickActive = dx !== 0 || dy !== 0;
+
+      const monarch = pilotedMonarch();
+      const { offset, camForward, camRight, world } = cursorScratch.current;
+
+      if (monarch) {
+        if (stickActive) {
+          // Map the stick to camera-relative ground directions so "right" on the
+          // stick pushes the cursor right on screen regardless of camera yaw.
+          camera.getWorldDirection(camForward);
+          camForward.y = 0;
+          if (camForward.lengthSq() > 0) camForward.normalize();
+          camRight.crossVectors(camForward, WORLD_UP).normalize();
+          const step = PILOT_CURSOR_SPEED * delta;
+          offset.addScaledVector(camRight, dx * step);
+          offset.addScaledVector(camForward, -dy * step); // stick up (dy<0) pushes away
+          offset.y = 0;
+          if (offset.length() > PILOT_CURSOR_MAX_DISTANCE) offset.setLength(PILOT_CURSOR_MAX_DISTANCE);
+          world.set(monarch.position.x + offset.x, 0, monarch.position.z + offset.z);
+        } else {
+          // At rest the cursor tucks back under the monarch and hides.
+          offset.set(0, 0, 0);
+          world.set(monarch.position.x, 0, monarch.position.z);
+        }
+        // Keep the screen-space anchor in sync so the existing pick/command logic
+        // (which works in screen pixels) targets the same point the ring marks.
+        const screen = projectToScreen(world.x, 0, world.z);
+        reticlePos.current.x = screen.x;
+        reticlePos.current.y = screen.y;
+        if (cursorGroup) {
+          cursorGroup.position.set(world.x, 0, world.z);
+          cursorGroup.visible = stickActive;
+        }
+      } else {
+        // Free-roam: move the screen anchor in pixels, then raycast it to the ground.
+        if (stickActive) {
+          const step = RETICLE_SPEED_PX_PER_SEC * delta;
+          reticlePos.current.x = clamp(reticlePos.current.x + dx * step, 0, window.innerWidth);
+          reticlePos.current.y = clamp(reticlePos.current.y + dy * step, 0, window.innerHeight);
+        }
+        const ground = reticleWorldPosition();
+        if (cursorGroup) {
+          if (ground) cursorGroup.position.set(ground.x, 0, ground.z);
+          cursorGroup.visible = stickActive && ground !== null;
+        }
       }
-      if (reticle) {
-        reticle.style.left = `${reticlePos.current.x}px`;
-        reticle.style.top = `${reticlePos.current.y}px`;
-        reticle.style.display = 'block';
-      }
-    } else if (reticle) {
-      reticle.style.display = 'none';
+    } else if (cursorGroup) {
+      cursorGroup.visible = false;
     }
 
     // --- Activation-mode dispatch: feed each bound token's press/release edges to
@@ -664,7 +737,38 @@ export function GamepadController() {
     }
   });
 
-  return null;
+  // The 3D targeting cursor lives in the scene (this component is inside the
+  // <Canvas>). Hidden by default; the frame loop positions it and toggles
+  // visibility. The ring lies flat on the ground; the 4-sided pyramid hovers
+  // above with its point aimed down at the ring's center and spins about Y.
+  return (
+    <group ref={cursorGroupRef} visible={false}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, CURSOR_RING_Y, 0]}>
+        <torusGeometry args={[CURSOR_RING_RADIUS, CURSOR_RING_TUBE, 16, 48]} />
+        <meshStandardMaterial
+          color={CURSOR_BLUE}
+          emissive={CURSOR_BLUE}
+          emissiveIntensity={0.9}
+          roughness={0.35}
+          metalness={0}
+          toneMapped={false}
+        />
+      </mesh>
+      <group ref={pyramidSpinRef} position={[0, CURSOR_PYRAMID_CENTER_Y, 0]}>
+        <mesh rotation={[Math.PI, 0, 0]}>
+          <coneGeometry args={[CURSOR_PYRAMID_RADIUS, CURSOR_PYRAMID_HEIGHT, 4]} />
+          <meshStandardMaterial
+            color={CURSOR_BLUE}
+            emissive={CURSOR_BLUE}
+            emissiveIntensity={0.9}
+            roughness={0.35}
+            metalness={0}
+            toneMapped={false}
+          />
+        </mesh>
+      </group>
+    </group>
+  );
 }
 
 function clamp(value: number, min: number, max: number): number {
