@@ -22,7 +22,9 @@ import {
 import {
   PATROL_ARROW_COLOR,
   RALLY_ARROW_COLOR,
+  CURSOR_LINK_LINE_COLOR,
   createDottedArrow,
+  createDottedLine,
   hideDottedArrow,
   positionDottedArrow,
 } from './dottedArrow';
@@ -85,6 +87,18 @@ const CURSOR_COLOR_DEFAULT = new THREE.Color(CURSOR_BLUE);
 const CURSOR_COLOR_GROUND = new THREE.Color(CURSOR_GREEN);
 const CURSOR_COLOR_ENEMY = new THREE.Color(CURSOR_RED);
 
+// Right-trigger "click" feedback: while the command trigger is held the ring
+// shrinks to half size and the pyramid dips toward it, as if pressed into the
+// battlefield. Eased toward these targets each frame for a soft press.
+const CURSOR_PRESS_RING_SCALE = 0.5;
+const CURSOR_PRESS_PYRAMID_DROP = 0.7; // world units the pyramid lowers when held
+const CURSOR_PRESS_EASE = 0.35;        // per-frame lerp factor toward the target
+
+// Hold the command trigger this long (ms) — past the snappy move/attack tap — to
+// begin the cursor deploy: designate followers (teardrop above the pyramid) and
+// place them at the cursor on release. Mirrors the left-trigger deploy timing.
+const CURSOR_DEPLOY_HOLD_MS = 300;
+
 // Reused for camera-relative ground movement; never mutated in place.
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
@@ -129,6 +143,12 @@ export function GamepadController() {
   // frame so the 60 Hz poll never forces a React re-render.
   const cursorGroupRef = useRef<THREE.Group | null>(null);
   const pyramidSpinRef = useRef<THREE.Group | null>(null);
+  // The ring mesh (scaled on a trigger press) and the live cursor world point
+  // (read by the deploy gesture and the monarch→cursor line).
+  const ringMeshRef = useRef<THREE.Mesh | null>(null);
+  const cursorWorldRef = useRef(new THREE.Vector3());
+  // The segmented blue leash line from the piloted monarch's ring to the cursor.
+  const cursorLinkLineRef = useRef<HTMLDivElement | null>(null);
   // The cursor's two materials, tinted together each frame (navy at rest, green/
   // red on a command flash).
   const ringMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
@@ -162,6 +182,17 @@ export function GamepadController() {
   // triggers a re-render.
   const placementRepeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Right-trigger cursor-deploy gesture state. The command trigger issues a
+  // move/attack on press (the snappy tap); held past CURSOR_DEPLOY_HOLD_MS while
+  // piloting it instead grows a placement at the cursor (teardrop above the
+  // pyramid) and deploys those units there on release. Tracked off the React path.
+  const secondaryPrevRef = useRef(false);
+  const secondaryPressAtRef = useRef(0);
+  const cursorDeployActiveRef = useRef(false);
+  const cursorDeployIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Eased press-feedback amount (0 = rest, 1 = fully pressed) for the ring/pyramid.
+  const pressAmountRef = useRef(0);
+
   // Queen spawn-rally gesture state (default R3): the rally button arms a blue aim
   // line that follows the reticle, and the next Move / Attack (B) drops the point —
   // mirroring the mouse's arm-then-right-click. queenId is captured at arm time so
@@ -190,6 +221,56 @@ export function GamepadController() {
       clearInterval(placementRepeatIntervalRef.current);
       placementRepeatIntervalRef.current = null;
     }
+  };
+
+  const stopCursorDeployInterval = () => {
+    if (cursorDeployIntervalRef.current !== null) {
+      clearInterval(cursorDeployIntervalRef.current);
+      cursorDeployIntervalRef.current = null;
+    }
+  };
+
+  // Begin a cursor deploy: designate the first follower and float the teardrop over
+  // the cursor, then one more follower each interval (mirrors startDeployDesignate).
+  const startCursorDeploy = () => {
+    const state = useGameStore.getState();
+    if (state.isPaused || state.gameOver || !state.matchStarted || !state.pilotedUnitId) return;
+    cursorDeployActiveRef.current = true;
+    stopCursorDeployInterval();
+    state.setUnitPlacementCursor({
+      x: cursorWorldRef.current.x,
+      y: cursorWorldRef.current.y,
+      z: cursorWorldRef.current.z,
+    });
+    state.incrementUnitPlacement();
+    cursorDeployIntervalRef.current = setInterval(() => {
+      useGameStore.getState().incrementUnitPlacement();
+    }, UNIT_PLACEMENT_REPEAT_INTERVAL_MS);
+  };
+
+  // Commit an in-progress cursor deploy: place the designated units at the cursor.
+  const commitCursorDeploy = () => {
+    stopCursorDeployInterval();
+    cursorDeployActiveRef.current = false;
+    const count = useGameStore.getState().unitPlacementCount;
+    if (count >= 1) {
+      useGameStore.getState().placeRalliedUnits(count, {
+        x: cursorWorldRef.current.x,
+        z: cursorWorldRef.current.z,
+      });
+    } else {
+      useGameStore.getState().setUnitPlacementCursor(null);
+    }
+  };
+
+  // Abandon a cursor deploy without placing (pad disconnect, pause, unmount).
+  const cancelCursorDeploy = () => {
+    stopCursorDeployInterval();
+    if (cursorDeployActiveRef.current) {
+      cursorDeployActiveRef.current = false;
+      useGameStore.getState().resetUnitPlacement();
+    }
+    secondaryPrevRef.current = false;
   };
 
   // The lone owned Queen, if exactly one Queen of the local player is selected,
@@ -258,16 +339,24 @@ export function GamepadController() {
     document.body.appendChild(patrolArrow);
     patrolArrowElRef.current = patrolArrow;
 
+    // The segmented blue leash from the piloted monarch's ring to the cursor.
+    const cursorLinkLine = createDottedLine(CURSOR_LINK_LINE_COLOR);
+    document.body.appendChild(cursorLinkLine);
+    cursorLinkLineRef.current = cursorLinkLine;
+
     return () => {
       gamepadInput.reset();
       stopPlacementHold();
+      cancelCursorDeploy();
       dispatchRef.current.resolvers.forEach((resolver) => resolver.reset());
       cancelRallyAim();
       cancelPatrolAim();
       if (rallyArrowElRef.current) document.body.removeChild(rallyArrowElRef.current);
       if (patrolArrowElRef.current) document.body.removeChild(patrolArrowElRef.current);
+      if (cursorLinkLineRef.current) document.body.removeChild(cursorLinkLineRef.current);
       rallyArrowElRef.current = null;
       patrolArrowElRef.current = null;
+      cursorLinkLineRef.current = null;
     };
     // The helpers cleared here only touch refs (stable), so this one-time
     // setup/teardown effect intentionally runs once; re-subscribing is unnecessary.
@@ -673,12 +762,17 @@ export function GamepadController() {
       // Abandon any in-progress timing/aim so a disconnect mid-gesture can't strand a
       // timer, a movement pin, or a lingering line with no falling edge ever arriving.
       stopPlacementHold();
+      cancelCursorDeploy();
       dispatchRef.current.resolvers.forEach((resolver) => resolver.reset());
       cancelRallyAim();
       cancelPatrolAim();
       rallyPrevRef.current = false;
       patrolPrevRef.current = false;
+      pressAmountRef.current = 0;
+      if (ringMeshRef.current) ringMeshRef.current.scale.setScalar(1);
+      if (pyramidSpinRef.current) pyramidSpinRef.current.position.y = CURSOR_PYRAMID_CENTER_Y;
       if (cursorGroup) cursorGroup.visible = false;
+      hideDottedArrow(cursorLinkLineRef.current);
       return;
     }
 
@@ -697,11 +791,11 @@ export function GamepadController() {
       gamepadInput.reset();
     }
 
-    // --- Targeting cursor (right stick). The blue ring + spinning pyramid only
-    // shows while the stick is in use. When piloting a monarch it hides under that
-    // unit at rest and extends out from it on a PILOT_CURSOR_MAX_DISTANCE leash;
-    // otherwise it free-roams the screen (raycast to the ground each frame).
-    // Hidden entirely while paused / before match start. ---
+    // --- Targeting cursor (right stick). The blue ring + spinning pyramid shows
+    // while the stick is in use (always, when not piloting). When piloting a monarch
+    // it hides under that unit at rest and extends out from it on a
+    // PILOT_CURSOR_MAX_DISTANCE leash; otherwise it free-roams the screen (raycast to
+    // the ground each frame). Hidden entirely while paused / before match start. ---
     if (matchStarted && !isPaused) {
       const rx = gamepad.axes[2] ?? 0;
       const ry = gamepad.axes[3] ?? 0;
@@ -710,7 +804,9 @@ export function GamepadController() {
       const stickActive = dx !== 0 || dy !== 0;
 
       const monarch = pilotedMonarch();
+      const deployActive = cursorDeployActiveRef.current;
       const { offset, camForward, camRight, world } = cursorScratch.current;
+      let cursorVisible = false;
 
       if (monarch) {
         if (stickActive) {
@@ -733,11 +829,17 @@ export function GamepadController() {
           // a clipped offset unwinds).
           clampToArena(world);
           offset.set(world.x - monarch.position.x, 0, world.z - monarch.position.z);
+        } else if (deployActive) {
+          // Mid-deploy the cursor stays put where it was aimed (it does not snap home
+          // when the stick is released), so the player can free the stick to commit.
+          world.set(monarch.position.x + offset.x, monarch.position.y, monarch.position.z + offset.z);
         } else {
           // At rest the cursor tucks back under the monarch and hides.
           offset.set(0, 0, 0);
           world.set(monarch.position.x, monarch.position.y, monarch.position.z);
         }
+        cursorVisible = stickActive || deployActive;
+        cursorWorldRef.current.copy(world);
         // Keep the screen-space anchor in sync so the existing pick/command logic
         // (which works in screen pixels) targets the same point the ring marks.
         const screen = projectToScreen(world.x, world.y, world.z);
@@ -745,7 +847,14 @@ export function GamepadController() {
         reticlePos.current.y = screen.y;
         if (cursorGroup) {
           cursorGroup.position.copy(world);
-          cursorGroup.visible = stickActive;
+          cursorGroup.visible = cursorVisible;
+        }
+        // Segmented blue leash from the monarch's ring to the cursor, while shown.
+        if (cursorVisible) {
+          const monarchScreen = projectToScreen(monarch.position.x, monarch.position.y, monarch.position.z);
+          positionDottedArrow(cursorLinkLineRef.current, monarchScreen, screen);
+        } else {
+          hideDottedArrow(cursorLinkLineRef.current);
         }
       } else {
         // Free-roam: move the screen anchor in pixels, then raycast it to the ground.
@@ -760,17 +869,64 @@ export function GamepadController() {
             // Confine the cursor to the playable map, then pin the screen anchor to
             // the clamped point so the ring and any command target stay in-bounds.
             clampToArena(ground);
+            cursorWorldRef.current.copy(ground);
             cursorGroup.position.copy(ground);
             const screen = projectToScreen(ground.x, ground.y, ground.z);
             reticlePos.current.x = screen.x;
             reticlePos.current.y = screen.y;
           }
           // Not piloting: keep the cursor visible (per spec), not gated on stick use.
-          cursorGroup.visible = ground !== null;
+          cursorVisible = ground !== null;
+          cursorGroup.visible = cursorVisible;
         }
+        hideDottedArrow(cursorLinkLineRef.current); // no monarch → no leash line
       }
-    } else if (cursorGroup) {
-      cursorGroup.visible = false;
+
+      // --- Right-trigger press feedback + cursor-deploy gesture ---
+      // The command trigger issues a move/attack on press (the dispatch's snappy
+      // tap). Held past CURSOR_DEPLOY_HOLD_MS while piloting with a visible cursor,
+      // it additionally grows a placement at the cursor and deploys on release.
+      const triggerHeld = isControllerTokenActive(gamepad, controllerBindings.secondaryAction);
+      const now = performance.now();
+      if (triggerHeld && !secondaryPrevRef.current) {
+        secondaryPressAtRef.current = now; // rising edge
+      } else if (!triggerHeld && secondaryPrevRef.current && cursorDeployActiveRef.current) {
+        commitCursorDeploy(); // falling edge with a deploy in progress
+      }
+      secondaryPrevRef.current = triggerHeld;
+
+      if (
+        triggerHeld && monarch && cursorVisible && !cursorDeployActiveRef.current &&
+        now - secondaryPressAtRef.current >= CURSOR_DEPLOY_HOLD_MS
+      ) {
+        startCursorDeploy();
+      }
+      // While deploying, keep the teardrop floating over the live cursor point.
+      if (cursorDeployActiveRef.current) {
+        useGameStore.getState().setUnitPlacementCursor({
+          x: cursorWorldRef.current.x,
+          y: cursorWorldRef.current.y,
+          z: cursorWorldRef.current.z,
+        });
+      }
+
+      // Ease the ring/pyramid toward "pressed" (ring half-size, pyramid dipped) so
+      // a command press reads as a click onto the battlefield.
+      const press = (pressAmountRef.current += ((triggerHeld ? 1 : 0) - pressAmountRef.current) * CURSOR_PRESS_EASE);
+      if (ringMeshRef.current) {
+        ringMeshRef.current.scale.setScalar(1 - (1 - CURSOR_PRESS_RING_SCALE) * press);
+      }
+      if (pyramidSpinRef.current) {
+        pyramidSpinRef.current.position.y = CURSOR_PYRAMID_CENTER_Y - CURSOR_PRESS_PYRAMID_DROP * press;
+      }
+    } else {
+      if (cursorGroup) cursorGroup.visible = false;
+      hideDottedArrow(cursorLinkLineRef.current);
+      // A pause / match end mid-gesture must not strand the teardrop, timer, or press.
+      cancelCursorDeploy();
+      pressAmountRef.current = 0;
+      if (ringMeshRef.current) ringMeshRef.current.scale.setScalar(1);
+      if (pyramidSpinRef.current) pyramidSpinRef.current.position.y = CURSOR_PYRAMID_CENTER_Y;
     }
 
     // --- Activation-mode dispatch: feed each bound token's press/release edges to
@@ -812,7 +968,7 @@ export function GamepadController() {
   // above with its point aimed down at the ring's center and spins about Y.
   return (
     <group ref={cursorGroupRef} visible={false}>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, CURSOR_RING_Y, 0]}>
+      <mesh ref={ringMeshRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, CURSOR_RING_Y, 0]}>
         <torusGeometry args={[CURSOR_RING_RADIUS, CURSOR_RING_TUBE, 16, 48]} />
         <meshStandardMaterial
           ref={ringMatRef}

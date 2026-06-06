@@ -304,6 +304,7 @@ type PilotMutableState = Pick<
   | 'pilotedUnitIdByOwner'
   | 'pilotMoveByOwner'
   | 'unitPlacementCount'
+  | 'unitPlacementCursor'
 >;
 
 /**
@@ -320,6 +321,7 @@ function stopOwnerPilot(draft: PilotMutableState, ownerId: string): void {
   if (ownerId === draft.localPlayerId) {
     draft.pilotedUnitId = null;
     draft.unitPlacementCount = 0;
+    draft.unitPlacementCursor = null;
     pilotInput.reset();
   }
 }
@@ -354,7 +356,10 @@ function applyPilotSelectionToDraft(draft: PilotMutableState, ownerId: string, u
   draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
   if (ownerId === draft.localPlayerId) {
     draft.pilotedUnitId = unitId;
-    if (unitId === null) draft.unitPlacementCount = 0;
+    if (unitId === null) {
+      draft.unitPlacementCount = 0;
+      draft.unitPlacementCursor = null;
+    }
   }
 }
 
@@ -394,7 +399,13 @@ function applyRallyToggleToDraft(draft: PilotMutableState, ownerId: string, mona
  * the lockstep apply path; the follower choice is position-deterministic so both
  * peers peel the same units.
  */
-function applyPlaceRalliedToDraft(draft: PilotMutableState, ownerId: string, monarchId: string, count: number): void {
+function applyPlaceRalliedToDraft(
+  draft: PilotMutableState,
+  ownerId: string,
+  monarchId: string,
+  count: number,
+  target?: { x: number; z: number }
+): void {
   if (count <= 0) return;
   const monarch = draft.units.find((u) => u.id === monarchId);
   if (!monarch || monarch.ownerId !== ownerId) return;
@@ -407,7 +418,11 @@ function applyPlaceRalliedToDraft(draft: PilotMutableState, ownerId: string, mon
       unit.followMonarchId === monarch.id
   );
 
-  const destination = { x: monarch.position.x, y: 0, z: monarch.position.z };
+  // Default deploy drops the units on the monarch; a supplied target (the
+  // controller's cursor-deploy) drops them at that chosen ground point instead.
+  const destination = target
+    ? { x: target.x, y: 0, z: target.z }
+    : { x: monarch.position.x, y: 0, z: monarch.position.z };
   const chosen = selectFollowersForPlacement(followers, monarch.position, count);
 
   for (const unit of chosen) {
@@ -459,6 +474,7 @@ function beginLocalPilot(monarchId: string | null): void {
   useGameStore.setState({
     pilotedUnitId: monarchId,
     unitPlacementCount: monarchId === null ? 0 : prev.unitPlacementCount,
+    unitPlacementCursor: monarchId === null ? null : prev.unitPlacementCursor,
     selectedUnitIds: monarchId
       ? selectionForMonarch(prev.units, monarchId)
       : prev.selectedUnitIds,
@@ -573,8 +589,14 @@ type Store = GameState & {
   // followers off to the monarch's position; resetUnitPlacement clears a gesture
   // that ended without placing (a quick tap, a cancel, or the monarch dying).
   incrementUnitPlacement: () => number;
-  placeRalliedUnits: (count: number) => void;
+  // Place `count` followers. With no target they land on the monarch (the rally
+  // key gesture); with a target ground point they land there (the controller's
+  // hold-right-trigger cursor deploy).
+  placeRalliedUnits: (count: number, target?: { x: number; z: number }) => void;
   resetUnitPlacement: () => void;
+  // Set the ground point the teardrop indicator floats above (the cursor deploy),
+  // or null to fall back to floating above the piloted monarch. Local UI only.
+  setUnitPlacementCursor: (point: Position3D | null) => void;
   clearPilot: () => void;
   // Deterministic apply-side handlers for the piloting net commands. Invoked by
   // applyNetCommand with the issuing owner so a lockstep peer mutates the right
@@ -583,7 +605,7 @@ type Store = GameState & {
   applyPilotSelection: (ownerId: string, unitId: string | null) => void;
   applyPilotMove: (ownerId: string, move: { x: number; z: number }) => void;
   applyRallyMonarch: (ownerId: string, monarchId: string) => void;
-  applyPlaceRallied: (ownerId: string, monarchId: string, count: number) => void;
+  applyPlaceRallied: (ownerId: string, monarchId: string, count: number, target?: { x: number; z: number }) => void;
   applyReleaseControl: (ownerId: string) => void;
   toggleTurtleShell: (unitIds: string[]) => void;
   throwEggs: (cmd: CommandThrowEggs) => void;
@@ -782,6 +804,7 @@ export const useGameStore = create<Store>((set, get) => ({
   pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } },
   movementHeldUnitId: null,
   unitPlacementCount: 0,
+  unitPlacementCursor: null,
   unitOrders: {},
   queenPatrols: {},
   queenRallyTargets: {},
@@ -928,7 +951,7 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, pilotedUnitIdByOwner: { p0: null, p1: null }, pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } }, movementHeldUnitId: null, unitPlacementCount: 0, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, pilotedUnitIdByOwner: { p0: null, p1: null }, pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } }, movementHeldUnitId: null, unitPlacementCount: 0, unitPlacementCursor: null, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
@@ -1002,6 +1025,7 @@ export const useGameStore = create<Store>((set, get) => ({
       pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } },
       movementHeldUnitId: null,
       unitPlacementCount: 0,
+      unitPlacementCursor: null,
       unitOrders: {},
       queenRallyTargets: {},
       lastSpawnAtMsByQueenId: {},
@@ -2675,7 +2699,7 @@ export const useGameStore = create<Store>((set, get) => ({
     // Local UI release is immediate in both modes: empty the selection, drop the
     // gold ring, and cancel any placement hold so the controls feel responsive.
     pilotInput.reset();
-    set({ selectedUnitIds: [], pilotedUnitId: null, unitPlacementCount: 0 });
+    set({ selectedUnitIds: [], pilotedUnitId: null, unitPlacementCount: 0, unitPlacementCursor: null });
 
     // The simulation-affecting part (stop piloting + break this owner's rally,
     // which mutates followMonarchId / unitOrders) must go through the
@@ -2837,25 +2861,33 @@ export const useGameStore = create<Store>((set, get) => ({
   // monarch off the rally and send them to its current position, leaving the rest
   // trailing it. Mirrors moveCommand's per-unit order reset (clears combat,
   // blocking and the stale A* path cache) so the placed units actually travel.
-  placeRalliedUnits: (count) => {
+  placeRalliedUnits: (count, target) => {
     const prev = get();
     const localPlayerId = prev.localPlayerId;
     // The gesture is consumed regardless of outcome: clear the local teardrop now.
     if (prev.unitPlacementCount !== 0) set({ unitPlacementCount: 0 });
+    if (prev.unitPlacementCursor !== null) set({ unitPlacementCursor: null });
     if (count <= 0 || !localPlayerId || !prev.pilotedUnitId) return;
     const monarchId = prev.pilotedUnitId;
 
     // The placement issues real move orders (simulation state), so route it in
     // multiplayer; apply at once in single-player. The follower choice is
     // position-deterministic, so both peers peel the same units off the rally.
-    if (routeCommand({ type: 'placeRallied', payload: { monarchId, count } })) return;
-    set((s) => produce(s, (draft) => applyPlaceRalliedToDraft(draft, localPlayerId, monarchId, count)));
+    if (routeCommand({ type: 'placeRallied', payload: { monarchId, count, target } })) return;
+    set((s) => produce(s, (draft) => applyPlaceRalliedToDraft(draft, localPlayerId, monarchId, count, target)));
   },
 
   // Cancel a placement hold without issuing an order (a quick tap, a deselect, or
   // the monarch dying) so the teardrop indicator disappears.
   resetUnitPlacement: () => {
     if (get().unitPlacementCount !== 0) set({ unitPlacementCount: 0 });
+    if (get().unitPlacementCursor !== null) set({ unitPlacementCursor: null });
+  },
+
+  // Point the teardrop at a chosen ground spot (cursor deploy) or back at the
+  // monarch (null). Purely local UI; never routed.
+  setUnitPlacementCursor: (point) => {
+    set({ unitPlacementCursor: point });
   },
 
   // Stop piloting entirely (used on death / match end / explicit cancel). Clears
@@ -2864,7 +2896,7 @@ export const useGameStore = create<Store>((set, get) => ({
   clearPilot: () => {
     const prev = get();
     pilotInput.reset();
-    set({ pilotedUnitId: null, unitPlacementCount: 0 });
+    set({ pilotedUnitId: null, unitPlacementCount: 0, unitPlacementCursor: null });
     const localPlayerId = prev.localPlayerId;
     if (!localPlayerId) return;
     if (routeCommand({ type: 'setPilot', payload: { unitId: null } })) return;
@@ -2889,8 +2921,8 @@ export const useGameStore = create<Store>((set, get) => ({
   applyRallyMonarch: (ownerId, monarchId) =>
     set((prev) => produce(prev, (draft) => applyRallyToggleToDraft(draft, ownerId, monarchId))),
 
-  applyPlaceRallied: (ownerId, monarchId, count) =>
-    set((prev) => produce(prev, (draft) => applyPlaceRalliedToDraft(draft, ownerId, monarchId, count))),
+  applyPlaceRallied: (ownerId, monarchId, count, target) =>
+    set((prev) => produce(prev, (draft) => applyPlaceRalliedToDraft(draft, ownerId, monarchId, count, target))),
 
   applyReleaseControl: (ownerId) =>
     set((prev) => produce(prev, (draft) => releaseOwnerControl(draft, ownerId))),
@@ -3244,7 +3276,7 @@ export function applyNetCommand(playerId: string, command: NetCommand): void {
       case 'setPilot': store.applyPilotSelection(playerId, command.payload.unitId); break;
       case 'pilotMove': store.applyPilotMove(playerId, command.payload); break;
       case 'rallyMonarch': store.applyRallyMonarch(playerId, command.payload.monarchId); break;
-      case 'placeRallied': store.applyPlaceRallied(playerId, command.payload.monarchId, command.payload.count); break;
+      case 'placeRallied': store.applyPlaceRallied(playerId, command.payload.monarchId, command.payload.count, command.payload.target); break;
       case 'releaseControl': store.applyReleaseControl(playerId); break;
     }
   } finally {

@@ -63,7 +63,10 @@ export type NetCommand =
   | { type: 'setPilot'; payload: { unitId: string | null } }
   | { type: 'pilotMove'; payload: { x: number; z: number } }
   | { type: 'rallyMonarch'; payload: { monarchId: string } }
-  | { type: 'placeRallied'; payload: { monarchId: string; count: number } }
+  // `target` (optional) places the peeled units at a chosen ground point — the
+  // controller's cursor-deploy — instead of the monarch's own position. It is a
+  // plain input the host and guest apply identically, so it stays deterministic.
+  | { type: 'placeRallied'; payload: { monarchId: string; count: number; target?: { x: number; z: number } } }
   | { type: 'releaseControl'; payload: Record<string, never> };
 
 /** Discriminator values for NetCommand — used by the store's routing seam. */

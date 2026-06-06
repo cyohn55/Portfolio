@@ -14,6 +14,9 @@
 // her gold ring); her spawn-rally line is blue so the two gestures read as distinct.
 export const PATROL_ARROW_COLOR = '#ffd700';
 export const RALLY_ARROW_COLOR = '#1e90ff';
+// The controller's monarch→cursor leash line: a bright blue so it stays legible
+// over the battlefield while echoing the blue targeting cursor.
+export const CURSOR_LINK_LINE_COLOR = '#4aa3ff';
 
 /** A point in screen pixels (client coordinates). */
 export interface ScreenPoint {
@@ -44,6 +47,23 @@ export function createDottedArrow(strokeColor: string): HTMLDivElement {
   arrow.appendChild(arrowHead);
 
   return arrow;
+}
+
+/**
+ * Build a hidden segmented (dotted) line with no arrowhead — a plain connector
+ * such as the controller's monarch→cursor leash. Positioned/hidden with the same
+ * positionDottedArrow / hideDottedArrow helpers as the arrows.
+ */
+export function createDottedLine(strokeColor: string): HTMLDivElement {
+  const line = document.createElement('div');
+  line.style.position = 'absolute';
+  line.style.height = '0px';
+  line.style.borderTop = `3px dotted ${strokeColor}`;
+  line.style.transformOrigin = 'left center';
+  line.style.pointerEvents = 'none';
+  line.style.display = 'none';
+  line.style.zIndex = '1001';
+  return line;
 }
 
 /** Stretch and rotate an arrow so it spans from `start` to `end` (both in screen px). */

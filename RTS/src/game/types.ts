@@ -326,6 +326,12 @@ export interface GameState {
   // UNIT_PLACEMENT_INTERVAL_MS while the rally key is held, and it is cleared
   // when the order executes or the gesture is cancelled. See monarchPilot.ts.
   unitPlacementCount: number;
+  // When a placement gesture targets a chosen ground point (the controller's
+  // hold-right-trigger cursor deploy) rather than the monarch's own position,
+  // this holds that point so the teardrop indicator floats above the cursor
+  // instead of the monarch. Null for the default deploy-at-monarch gesture and
+  // whenever no placement hold is in progress. Local UI only.
+  unitPlacementCursor: Position3D | null;
 }
 
 export interface CommandMoveUnits {

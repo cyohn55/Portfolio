@@ -22,16 +22,28 @@ import type { MonarchKind } from './monarchPilot';
 // Extra lift above the monarch's model so the teardrop clears its head; the
 // model's target scale approximates its height, so larger royals get more room.
 const HEADROOM_PADDING = 2;
+// Fixed lift above the targeting cursor (clears the spinning pyramid) when the
+// gesture deploys at a cursor point rather than on the monarch.
+const CURSOR_HEADROOM = 4.5;
 
 export function UnitPlacementIndicator() {
   const groupRef = useRef<THREE.Group>(null);
   const pilotedUnitId = useGameStore((s) => s.pilotedUnitId);
   const placementCount = useGameStore((s) => s.unitPlacementCount);
+  // When set, the teardrop floats above this ground point (the controller's
+  // cursor deploy) instead of above the piloted monarch.
+  const placementCursor = useGameStore((s) => s.unitPlacementCursor);
 
-  // Keep the teardrop pinned over the piloted monarch as it is driven around.
+  // Keep the teardrop pinned over its anchor — the cursor point when deploying at
+  // the cursor, otherwise the piloted monarch as it is driven around.
   useFrame(() => {
     const group = groupRef.current;
-    if (!group || !pilotedUnitId) return;
+    if (!group) return;
+    if (placementCursor) {
+      group.position.set(placementCursor.x, placementCursor.y + CURSOR_HEADROOM, placementCursor.z);
+      return;
+    }
+    if (!pilotedUnitId) return;
     const monarch = useGameStore.getState().units.find((unit) => unit.id === pilotedUnitId);
     if (!monarch) return;
     const headroom = getKindTargetScale(monarch.animal, monarch.kind as MonarchKind) + HEADROOM_PADDING;
@@ -41,16 +53,18 @@ export function UnitPlacementIndicator() {
   // Only visible mid-gesture: a piloted monarch with at least one designated unit.
   if (!pilotedUnitId || placementCount < 1) return null;
 
-  // Seed the group at the monarch's current spot so it never flashes at the
-  // origin for the first frame before useFrame takes over tracking.
+  // Seed the group at the anchor's current spot so it never flashes at the origin
+  // for the first frame before useFrame takes over tracking.
   const monarch = useGameStore.getState().units.find((unit) => unit.id === pilotedUnitId);
-  const initialPosition: [number, number, number] = monarch
-    ? [
-        monarch.position.x,
-        monarch.position.y + getKindTargetScale(monarch.animal, monarch.kind as MonarchKind) + HEADROOM_PADDING,
-        monarch.position.z,
-      ]
-    : [0, 0, 0];
+  const initialPosition: [number, number, number] = placementCursor
+    ? [placementCursor.x, placementCursor.y + CURSOR_HEADROOM, placementCursor.z]
+    : monarch
+      ? [
+          monarch.position.x,
+          monarch.position.y + getKindTargetScale(monarch.animal, monarch.kind as MonarchKind) + HEADROOM_PADDING,
+          monarch.position.z,
+        ]
+      : [0, 0, 0];
 
   return (
     <group ref={groupRef} position={initialPosition}>
