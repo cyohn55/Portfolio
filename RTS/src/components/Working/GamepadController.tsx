@@ -53,10 +53,16 @@ const UNIT_PICK_RADIUS_PX = 40;
 // --- 3D targeting cursor (blue ring + spinning upside-down pyramid) ---
 // Sizes are world units; a standard King is ~6 units across, so a ~3-unit ring
 // reads as a clear reticle without swallowing the monarch.
-const CURSOR_BLUE = '#2f86ff';
+// Navy to match the selection ring beneath selected units (UnitsLayer
+// SELECTION_*_MAT, #000080), with a strong emissive so the dark blue still glows
+// rather than reading as black.
+const CURSOR_BLUE = '#000080';
+const CURSOR_EMISSIVE_INTENSITY = 2.5;
 const CURSOR_RING_RADIUS = 3.0;   // torus centerline radius
 const CURSOR_RING_TUBE = 0.32;    // torus tube thickness
-const CURSOR_RING_Y = 0.12;       // lifted off the ground to avoid z-fighting
+// Lifted clearly above the battlefield surface (ground units sit at ~y=0.25) so
+// the ring visibly hovers on the scene instead of sinking beneath the terrain.
+const CURSOR_RING_Y = 0.6;
 const CURSOR_PYRAMID_RADIUS = 1.8;
 const CURSOR_PYRAMID_HEIGHT = 3.2;
 const CURSOR_PYRAMID_APEX_Y = 0.5; // apex hovers just above the ring center
@@ -672,19 +678,21 @@ export function GamepadController() {
           offset.addScaledVector(camForward, -dy * step); // stick up (dy<0) pushes away
           offset.y = 0;
           if (offset.length() > PILOT_CURSOR_MAX_DISTANCE) offset.setLength(PILOT_CURSOR_MAX_DISTANCE);
-          world.set(monarch.position.x + offset.x, 0, monarch.position.z + offset.z);
+          // Sit at the monarch's own elevation so the cursor hugs the scene even
+          // when she stands on a raised deck rather than flat ground.
+          world.set(monarch.position.x + offset.x, monarch.position.y, monarch.position.z + offset.z);
         } else {
           // At rest the cursor tucks back under the monarch and hides.
           offset.set(0, 0, 0);
-          world.set(monarch.position.x, 0, monarch.position.z);
+          world.set(monarch.position.x, monarch.position.y, monarch.position.z);
         }
         // Keep the screen-space anchor in sync so the existing pick/command logic
         // (which works in screen pixels) targets the same point the ring marks.
-        const screen = projectToScreen(world.x, 0, world.z);
+        const screen = projectToScreen(world.x, world.y, world.z);
         reticlePos.current.x = screen.x;
         reticlePos.current.y = screen.y;
         if (cursorGroup) {
-          cursorGroup.position.set(world.x, 0, world.z);
+          cursorGroup.position.copy(world);
           cursorGroup.visible = stickActive;
         }
       } else {
@@ -696,7 +704,7 @@ export function GamepadController() {
         }
         const ground = reticleWorldPosition();
         if (cursorGroup) {
-          if (ground) cursorGroup.position.set(ground.x, 0, ground.z);
+          if (ground) cursorGroup.position.copy(ground);
           cursorGroup.visible = stickActive && ground !== null;
         }
       }
@@ -748,7 +756,7 @@ export function GamepadController() {
         <meshStandardMaterial
           color={CURSOR_BLUE}
           emissive={CURSOR_BLUE}
-          emissiveIntensity={0.9}
+          emissiveIntensity={CURSOR_EMISSIVE_INTENSITY}
           roughness={0.35}
           metalness={0}
           toneMapped={false}
