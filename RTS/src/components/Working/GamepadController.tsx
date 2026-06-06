@@ -11,6 +11,7 @@ import {
 } from './controlBindings';
 import { type AbilityComboCursor, tryFireAbilityCombo } from './abilityCombo';
 import { gamepadInput } from './gamepadInput';
+import { clampToArena } from './arenaBoundary';
 import { UNIT_PLACEMENT_REPEAT_INTERVAL_MS } from './monarchPilot';
 import {
   type ActivationMode,
@@ -74,6 +75,16 @@ const CURSOR_SPIN_SPEED = 2.2;    // radians/second
 const PILOT_CURSOR_MAX_DISTANCE = 50;
 const PILOT_CURSOR_SPEED = 45;    // world units/second at full deflection
 
+// Command-press color feedback: the cursor flashes neon green for a ground move
+// and red for an attack, then settles back to navy after CURSOR_FLASH_MS.
+const CURSOR_GREEN = '#39ff14';
+const CURSOR_RED = '#ff1f3d';
+const CURSOR_FLASH_MS = 350;
+// Precreated Color objects so the per-frame tint copies rather than parsing hex.
+const CURSOR_COLOR_DEFAULT = new THREE.Color(CURSOR_BLUE);
+const CURSOR_COLOR_GROUND = new THREE.Color(CURSOR_GREEN);
+const CURSOR_COLOR_ENEMY = new THREE.Color(CURSOR_RED);
+
 // Reused for camera-relative ground movement; never mutated in place.
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
@@ -118,6 +129,13 @@ export function GamepadController() {
   // frame so the 60 Hz poll never forces a React re-render.
   const cursorGroupRef = useRef<THREE.Group | null>(null);
   const pyramidSpinRef = useRef<THREE.Group | null>(null);
+  // The cursor's two materials, tinted together each frame (navy at rest, green/
+  // red on a command flash).
+  const ringMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  const pyramidMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  // Command-flash state: which color, and when the flash expires.
+  const flashColorRef = useRef<'enemy' | 'ground'>('ground');
+  const flashUntilRef = useRef(0);
   // Scratch vectors reused every frame to keep the cursor math allocation-free.
   // `offset` is the persistent world-space leash offset from the piloted monarch.
   const cursorScratch = useRef({
@@ -287,6 +305,14 @@ export function GamepadController() {
     if (!unit || unit.ownerId !== state.localPlayerId) return null;
     if (unit.kind !== 'King' && unit.kind !== 'Queen') return null;
     return unit;
+  };
+
+  // Briefly tint the cursor to signal what a command press just did — red for an
+  // attack on an enemy, neon green for a move to open ground. The frame loop reads
+  // this back and restores navy once the flash expires.
+  const flashCursor = (kind: 'enemy' | 'ground') => {
+    flashColorRef.current = kind;
+    flashUntilRef.current = performance.now() + CURSOR_FLASH_MS;
   };
 
   // The local player's King nearest the reticle within UNIT_PICK_RADIUS_PX, else
@@ -510,15 +536,22 @@ export function GamepadController() {
           commitRallyAim();
           break;
         }
-        if (state.selectedUnitIds.length === 0) break;
         const enemyId = nearestUnitId((ownerId, localId) => ownerId !== localId);
+        // Color feedback on every command press, independent of selection: red at
+        // an enemy, neon green at open ground.
+        flashCursor(enemyId ? 'enemy' : 'ground');
+        // The cursor commands the player's units — never the monarch they are
+        // actively piloting (that one is driven by the left stick). Excluding the
+        // piloted monarch stops it from marching to the cursor on a command.
+        const commandIds = state.selectedUnitIds.filter((id) => id !== state.pilotedUnitId);
+        if (commandIds.length === 0) break;
         if (enemyId) {
-          state.attackTarget({ unitIds: state.selectedUnitIds, targetId: enemyId });
+          state.attackTarget({ unitIds: commandIds, targetId: enemyId });
         } else {
           const world = reticleWorldPosition();
           if (world) {
             state.moveCommand({
-              unitIds: state.selectedUnitIds,
+              unitIds: commandIds,
               target: { x: world.x, y: 0, z: world.z },
             });
           }
@@ -620,6 +653,20 @@ export function GamepadController() {
     // instant it appears — independent of pad/match state (hidden when not shown).
     if (pyramidSpinRef.current) pyramidSpinRef.current.rotation.y += CURSOR_SPIN_SPEED * delta;
 
+    // Tint both materials: the command-flash color while a flash is live, else the
+    // resting navy. Copied (not re-parsed) every frame so the flash fades cleanly.
+    const tint = performance.now() < flashUntilRef.current
+      ? (flashColorRef.current === 'enemy' ? CURSOR_COLOR_ENEMY : CURSOR_COLOR_GROUND)
+      : CURSOR_COLOR_DEFAULT;
+    if (ringMatRef.current) {
+      ringMatRef.current.color.copy(tint);
+      ringMatRef.current.emissive.copy(tint);
+    }
+    if (pyramidMatRef.current) {
+      pyramidMatRef.current.color.copy(tint);
+      pyramidMatRef.current.emissive.copy(tint);
+    }
+
     if (!gamepad) {
       gamepadInput.reset();
       prevActive.current = {};
@@ -681,6 +728,11 @@ export function GamepadController() {
           // Sit at the monarch's own elevation so the cursor hugs the scene even
           // when she stands on a raised deck rather than flat ground.
           world.set(monarch.position.x + offset.x, monarch.position.y, monarch.position.z + offset.z);
+          // Keep the cursor inside the playable map, then re-sync the offset to the
+          // clamped point so reversing direction responds immediately (no lag while
+          // a clipped offset unwinds).
+          clampToArena(world);
+          offset.set(world.x - monarch.position.x, 0, world.z - monarch.position.z);
         } else {
           // At rest the cursor tucks back under the monarch and hides.
           offset.set(0, 0, 0);
@@ -704,8 +756,17 @@ export function GamepadController() {
         }
         const ground = reticleWorldPosition();
         if (cursorGroup) {
-          if (ground) cursorGroup.position.copy(ground);
-          cursorGroup.visible = stickActive && ground !== null;
+          if (ground) {
+            // Confine the cursor to the playable map, then pin the screen anchor to
+            // the clamped point so the ring and any command target stay in-bounds.
+            clampToArena(ground);
+            cursorGroup.position.copy(ground);
+            const screen = projectToScreen(ground.x, ground.y, ground.z);
+            reticlePos.current.x = screen.x;
+            reticlePos.current.y = screen.y;
+          }
+          // Not piloting: keep the cursor visible (per spec), not gated on stick use.
+          cursorGroup.visible = ground !== null;
         }
       }
     } else if (cursorGroup) {
@@ -754,6 +815,7 @@ export function GamepadController() {
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, CURSOR_RING_Y, 0]}>
         <torusGeometry args={[CURSOR_RING_RADIUS, CURSOR_RING_TUBE, 16, 48]} />
         <meshStandardMaterial
+          ref={ringMatRef}
           color={CURSOR_BLUE}
           emissive={CURSOR_BLUE}
           emissiveIntensity={CURSOR_EMISSIVE_INTENSITY}
@@ -766,9 +828,10 @@ export function GamepadController() {
         <mesh rotation={[Math.PI, 0, 0]}>
           <coneGeometry args={[CURSOR_PYRAMID_RADIUS, CURSOR_PYRAMID_HEIGHT, 4]} />
           <meshStandardMaterial
+            ref={pyramidMatRef}
             color={CURSOR_BLUE}
             emissive={CURSOR_BLUE}
-            emissiveIntensity={0.9}
+            emissiveIntensity={CURSOR_EMISSIVE_INTENSITY}
             roughness={0.35}
             metalness={0}
             toneMapped={false}
