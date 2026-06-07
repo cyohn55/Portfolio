@@ -49,6 +49,11 @@ const INITIAL_DISTANCE = 200;
 // fixed camera angle) so the on-screen placement stays put as the player zooms.
 const FOLLOW_SCREEN_BIAS = 0.5;
 
+// A piloted King/Queen rides a touch higher on screen than a plain selection: a
+// smaller forward bias pulls its look-at point back toward the unit, lifting the
+// monarch nearer to center while still keeping it in the lower half.
+const MONARCH_SCREEN_BIAS = 0.38;
+
 function viewSignFor(localPlayerId: string | null): number {
   return localPlayerId === 'p1' ? -1 : 1;
 }
@@ -462,8 +467,9 @@ export function CameraController({
       for (const unit of store.units) {
         if (unit.id === pilotedId) {
           // Bias the look-at point ahead of the monarch so it rides in the
-          // lower third of the screen, closer to the camera.
-          const followBias = currentDistance.current * FOLLOW_SCREEN_BIAS;
+          // lower portion of the screen, closer to the camera — but a touch
+          // higher than a plain selection.
+          const followBias = currentDistance.current * MONARCH_SCREEN_BIAS;
           const desiredX = unit.position.x + forward.current.x * followBias;
           const desiredZ = unit.position.z + forward.current.z * followBias;
           const easing = 1 - Math.exp(-followSpeed * delta);

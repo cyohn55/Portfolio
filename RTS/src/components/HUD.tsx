@@ -29,7 +29,6 @@ function formatMatchTime(matchTimeMs: number): string {
 
 export function HUD() {
   const matchStarted = useGameStore((s) => s.matchStarted);
-  const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
   // `units` gets a fresh array reference at the end of every tick (state.ts
   // `set({ units: draft.units.slice() })`), so subscribing to it drives the
   // re-render that picks up the freshly mutated matchStats below. See
@@ -66,8 +65,6 @@ export function HUD() {
     }, 1000);
     return () => clearInterval(interval);
   }, []);
-
-  const selectedUnits = units.filter(u => selectedUnitIds.includes(u.id));
 
   // The King/Queen the player is directly piloting, if any. The followers it has
   // rallied are this animal's army Units that carry its id in followMonarchId.
@@ -308,27 +305,6 @@ export function HUD() {
 
     {/* Animal Selection Buttons */}
     <AnimalSelectionButtons />
-
-    {/* Compact Instructions Panel - only show when units are selected */}
-    {matchStarted && selectedUnits.length > 0 && (
-      <div style={{
-        position: 'fixed',
-        bottom: '160px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        background: 'rgba(17,23,38,0.8)',
-        border: '1px solid rgba(88,120,255,0.3)',
-        borderRadius: '6px',
-        padding: '8px 16px',
-        fontSize: '12px',
-        color: 'rgba(255,255,255,0.8)',
-        textAlign: 'center',
-        pointerEvents: 'none',
-        zIndex: 999
-      }}>
-        Selected: {selectedUnits.length} units - <strong>Click+drag: box select</strong> | <strong>Right click: move</strong>
-      </div>
-    )}
     </>
   );
 }
