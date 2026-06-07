@@ -156,7 +156,11 @@ test.describe('applyBinding, applyBindingMode and findConflict', () => {
     const modes = getDefaultModes('keyboard');
     // rally(tap) and selectAllUnits(double-tap) already share Space by default.
     expect(base.rally).toBe(base.selectAllUnits);
-    expect(findConflict(base, modes, base.rally, modes.rally, 'selectAllUnits')).toBeNull();
+    // Assigning selectAllUnits its shared Space token under selectAllUnits's OWN
+    // mode (double-tap) must not conflict with rally, which holds Space under a
+    // different mode (tap). The query mode is therefore the action-under-edit's
+    // mode, not rally's.
+    expect(findConflict(base, modes, base.selectAllUnits, modes.selectAllUnits, 'selectAllUnits')).toBeNull();
     // Re-asserting rally's own token under its own mode leaves the sibling bound.
     const next = applyBinding(base, modes, 'rally', base.rally);
     expect(next.selectAllUnits).toBe(base.selectAllUnits);

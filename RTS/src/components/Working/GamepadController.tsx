@@ -28,7 +28,8 @@ import {
   positionDottedArrow,
   positionSegmentedLine,
 } from './dottedArrow';
-import type { Unit } from '../../game/types';
+import type { AnimalId, Unit } from '../../game/types';
+import { getKindTargetScale } from '../../utils/ModelPreloader';
 
 /**
  * GamepadController — the single per-frame gamepad poller. It lives inside the
@@ -112,6 +113,20 @@ const CURSOR_DEPLOY_HOLD_MS = 300;
 // Reused for camera-relative ground movement; never mutated in place.
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
+// World-space outer radius of a royal's selection ring (the ring beneath a
+// piloted King/Queen), mirroring UnitsLayer: the selection ring geometry's outer
+// radius (1.5) times royalRingScale (ROYAL_RING_BASE_SCALE 1.6, scaled by the
+// royal's size relative to a plain Unit). The leash line anchors to this edge.
+const ROYAL_SELECTION_RING_OUTER = 1.5;
+const ROYAL_RING_BASE_SCALE = 1.6;
+function royalRingWorldRadius(animal: AnimalId, kind: 'King' | 'Queen'): number {
+  const unitScale = getKindTargetScale(animal, 'Unit');
+  const scale = unitScale > 0
+    ? ROYAL_RING_BASE_SCALE * (getKindTargetScale(animal, kind) / unitScale)
+    : ROYAL_RING_BASE_SCALE;
+  return ROYAL_SELECTION_RING_OUTER * scale;
+}
+
 // How long the patrol button must be held (with a lone Queen selected) before the
 // gold route line arms and a release commits the patrol. Mirrors PATROL_HOLD_MS in
 // HexInteraction so the controller hold-gesture feels identical to the mouse one.
@@ -129,9 +144,9 @@ const CAMERA_ACTIONS: ReadonlySet<ControlActionId> = new Set([
 // Excluded: analog camera pan/zoom (driven by stick magnitude) and the Queen
 // rally/patrol aim gestures (their own reticle-aimed handlers below).
 const GAMEPAD_GESTURE_ACTIONS: readonly ControlActionId[] = [
-  'primaryAction', 'secondaryAction', 'useAbility',
-  'selectGroup1', 'selectGroup2', 'selectGroup3', 'deselect',
-  'rally', 'selectAllUnits', 'deployUnits',
+  'primaryAction', 'secondaryAction', 'useAbility', 'monarchMeleeAttack',
+  'selectMonarchAnimal', 'selectGroup1', 'selectGroup2', 'selectGroup3', 'deselect',
+  'rally', 'selectAllUnits', 'deployUnits', 'toggleBehaviorRadial',
   'pilotCycleMonarch', 'pilotMonarch1', 'pilotMonarch2', 'pilotMonarch3', 'pilotToggleMonarch', 'pause',
 ];
 
@@ -224,6 +239,13 @@ export function GamepadController() {
   // Previous-frame active state of the rally / patrol buttons, for edge detection.
   const rallyPrevRef = useRef(false);
   const patrolPrevRef = useRef(false);
+
+  // True while the combat-posture radial is open (mirrored from BehaviorRadial via
+  // window events). While open the right stick aims a wedge instead of driving the
+  // cursor; radialAimedRef tracks whether the stick has been pushed out so a return
+  // to center reads as "release to confirm".
+  const radialOpenRef = useRef(false);
+  const radialAimedRef = useRef(false);
 
   // Stop the deploy designation interval (on release, pad disconnect, or unmount).
   const stopPlacementHold = () => {
@@ -335,6 +357,20 @@ export function GamepadController() {
     const count = useGameStore.getState().unitPlacementCount;
     if (count >= 1) useGameStore.getState().placeRalliedUnits(count);
   };
+
+  // Track the posture radial's open state so the poll loop can hand the right stick
+  // to wedge selection while it is up. BehaviorRadial owns the state and broadcasts
+  // it; resetting radialAimedRef on close prevents a stale "release" confirm.
+  useEffect(() => {
+    const onOpen = () => { radialOpenRef.current = true; };
+    const onClose = () => { radialOpenRef.current = false; radialAimedRef.current = false; };
+    window.addEventListener('rts:stance-radial-open', onOpen);
+    window.addEventListener('rts:stance-radial-close', onClose);
+    return () => {
+      window.removeEventListener('rts:stance-radial-open', onOpen);
+      window.removeEventListener('rts:stance-radial-close', onClose);
+    };
+  }, []);
 
   // Create / tear down the Queen-gesture DOM overlays. The targeting cursor itself
   // is a 3D scene object (returned below), not a DOM element.
@@ -683,6 +719,26 @@ export function GamepadController() {
         if (ids.length > 0) state.selectUnits(ids);
         break;
       }
+      case 'selectMonarchAnimal': {
+        // Select every own unit sharing the piloted monarch's animal (e.g. piloting
+        // the Bee King/Queen selects all Bees). A no-op when not piloting.
+        const piloted = state.units.find((u) => u.id === state.pilotedUnitId);
+        if (!piloted) break;
+        const ids = state.units
+          .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base' && u.animal === piloted.animal)
+          .map((u) => u.id);
+        if (ids.length > 0) state.selectUnits(ids);
+        break;
+      }
+      case 'monarchMeleeAttack':
+        // Reserved: the King/Queen melee attack is not implemented yet.
+        break;
+      case 'toggleBehaviorRadial':
+        // Open/close the combat-posture radial; the right stick then aims a wedge
+        // (handled in the poll loop) and a release confirms it. Same event the
+        // keyboard binding fires, so BehaviorRadial has one entry point.
+        window.dispatchEvent(new CustomEvent('rts:toggle-stance-radial'));
+        break;
       case 'deployUnits':
         // The one-shot path (tap / double-tap / chord): deploy a single unit. The
         // proportionate batch is the Hold lifecycle (startDeployDesignate/commitDeploy).
@@ -777,6 +833,24 @@ export function GamepadController() {
     }
 
     const { controllerBindings, isPaused, matchStarted } = useGameStore.getState();
+    const radialOpen = radialOpenRef.current;
+
+    // --- Posture radial wedge selection (right stick). While the radial is open the
+    // right stick chooses a stance wedge instead of driving the cursor: push toward a
+    // wedge to highlight it, then release the stick to center to confirm. The cursor
+    // block below is suppressed (it hides via its else branch) so the two never fight
+    // over the stick. ---
+    if (matchStarted && !isPaused && radialOpen) {
+      const rx = gamepad.axes[2] ?? 0;
+      const ry = gamepad.axes[3] ?? 0;
+      if (Math.hypot(rx, ry) > CONTROLLER_DEADZONE) {
+        window.dispatchEvent(new CustomEvent('rts:stance-radial-aim', { detail: { x: rx, y: ry } }));
+        radialAimedRef.current = true;
+      } else if (radialAimedRef.current) {
+        radialAimedRef.current = false;
+        window.dispatchEvent(new CustomEvent('rts:stance-radial-commit'));
+      }
+    }
 
     // --- Camera intent (analog, held). Suppressed while paused. ---
     if (matchStarted && !isPaused) {
@@ -795,8 +869,9 @@ export function GamepadController() {
     // while the stick is in use (always, when not piloting). When piloting a monarch
     // it hides under that unit at rest and extends out from it on a
     // PILOT_CURSOR_MAX_DISTANCE leash; otherwise it free-roams the screen (raycast to
-    // the ground each frame). Hidden entirely while paused / before match start. ---
-    if (matchStarted && !isPaused) {
+    // the ground each frame). Hidden entirely while paused / before match start, and
+    // while the posture radial owns the right stick (above). ---
+    if (matchStarted && !isPaused && !radialOpen) {
       const rx = gamepad.axes[2] ?? 0;
       const ry = gamepad.axes[3] ?? 0;
       const dx = Math.abs(rx) > CONTROLLER_DEADZONE ? rx : 0;
@@ -887,24 +962,53 @@ export function GamepadController() {
       }
       secondaryPrevRef.current = triggerHeld;
 
+      // Ease the ring/pyramid toward "pressed" (ring half-size, pyramid dipped) so
+      // a command press reads as a click onto the battlefield. Computed first so the
+      // ring's current size is known when anchoring the leash to its edge below.
+      const press = (pressAmountRef.current += ((triggerHeld ? 1 : 0) - pressAmountRef.current) * CURSOR_PRESS_EASE);
+      const cursorRingRadius = CURSOR_RING_RADIUS * (1 - (1 - CURSOR_PRESS_RING_SCALE) * press);
+      if (ringMeshRef.current) {
+        ringMeshRef.current.scale.setScalar(1 - (1 - CURSOR_PRESS_RING_SCALE) * press);
+      }
+      if (pyramidSpinRef.current) {
+        pyramidSpinRef.current.position.y = CURSOR_PYRAMID_CENTER_Y - CURSOR_PRESS_PYRAMID_DROP * press;
+      }
+
       // Tint the cursor for the whole time the trigger is held: red when it would
       // attack (an enemy under it), neon green for a ground command, else navy.
       cursorTintRef.current = triggerHeld
         ? (nearestUnitId((ownerId, localId) => ownerId !== localId) ? 'enemy' : 'ground')
         : 'default';
 
-      // Segmented leash from the monarch's ring to the cursor, in the cursor's
-      // current color, while a piloted cursor is shown.
+      // Segmented leash, in the cursor's color, while a piloted cursor is shown. It
+      // attaches to the EDGE of each ring on the side facing the other end, so each
+      // anchor slides around its ring to stay pointed at the far ring as the cursor
+      // orbits the monarch.
       if (monarch && cursorVisible) {
-        const monarchScreen = projectToScreen(monarch.position.x, monarch.position.y, monarch.position.z);
-        const cursorScreen = projectToScreen(cursorWorldRef.current.x, cursorWorldRef.current.y, cursorWorldRef.current.z);
-        positionSegmentedLine(
-          cursorLinkLineRef.current,
-          monarchScreen,
-          cursorScreen,
-          CURSOR_LINK_SEGMENTS,
-          CURSOR_TINT_HEX[cursorTintRef.current],
-        );
+        const monRingRadius = royalRingWorldRadius(monarch.animal, monarch.kind as 'King' | 'Queen');
+        const cw = cursorWorldRef.current;
+        const dxw = cw.x - monarch.position.x;
+        const dzw = cw.z - monarch.position.z;
+        const lenw = Math.hypot(dxw, dzw);
+        if (lenw > monRingRadius + cursorRingRadius) {
+          const ux = dxw / lenw;
+          const uz = dzw / lenw;
+          const monarchAnchor = projectToScreen(
+            monarch.position.x + ux * monRingRadius,
+            monarch.position.y,
+            monarch.position.z + uz * monRingRadius,
+          );
+          const cursorAnchor = projectToScreen(cw.x - ux * cursorRingRadius, cw.y + CURSOR_RING_Y, cw.z - uz * cursorRingRadius);
+          positionSegmentedLine(
+            cursorLinkLineRef.current,
+            monarchAnchor,
+            cursorAnchor,
+            CURSOR_LINK_SEGMENTS,
+            CURSOR_TINT_HEX[cursorTintRef.current],
+          );
+        } else {
+          hideDottedArrow(cursorLinkLineRef.current); // rings overlap — no gap to span
+        }
       } else {
         hideDottedArrow(cursorLinkLineRef.current);
       }
@@ -922,16 +1026,6 @@ export function GamepadController() {
           y: cursorWorldRef.current.y,
           z: cursorWorldRef.current.z,
         });
-      }
-
-      // Ease the ring/pyramid toward "pressed" (ring half-size, pyramid dipped) so
-      // a command press reads as a click onto the battlefield.
-      const press = (pressAmountRef.current += ((triggerHeld ? 1 : 0) - pressAmountRef.current) * CURSOR_PRESS_EASE);
-      if (ringMeshRef.current) {
-        ringMeshRef.current.scale.setScalar(1 - (1 - CURSOR_PRESS_RING_SCALE) * press);
-      }
-      if (pyramidSpinRef.current) {
-        pyramidSpinRef.current.position.y = CURSOR_PYRAMID_CENTER_Y - CURSOR_PRESS_PYRAMID_DROP * press;
       }
     } else {
       if (cursorGroup) cursorGroup.visible = false;

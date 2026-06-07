@@ -39,6 +39,7 @@ export type ControlActionId =
   | 'cameraZoomIn'
   | 'cameraZoomOut'
   | 'rally'
+  | 'selectMonarchAnimal'
   | 'selectAllUnits'
   | 'deployUnits'
   | 'selectGroup1'
@@ -47,6 +48,7 @@ export type ControlActionId =
   | 'deselect'
   | 'primaryAction'
   | 'secondaryAction'
+  | 'monarchMeleeAttack'
   | 'useAbility'
   | 'setQueenRally'
   | 'setPatrol'
@@ -108,15 +110,17 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
   { id: 'cameraRight', label: 'Move Right', category: 'Camera', description: 'Drives a piloted King/Queen right. On a controller, the left stick also pans the camera.' },
   { id: 'cameraZoomIn', label: 'Zoom In', category: 'Camera', description: 'Bring the camera closer to the map.' },
   { id: 'cameraZoomOut', label: 'Zoom Out', category: 'Camera', description: 'Pull the camera back from the map.' },
-  { id: 'rally', label: 'Rally to Monarch', category: 'Selection', description: 'While piloting a King/Queen, rally that animal’s units to fall in and follow the monarch. (Shares the Space / X input with Select All Units and Deploy Units by default, told apart by the activation mode.)' },
-  { id: 'selectAllUnits', label: 'Select All Units', category: 'Selection', description: 'Select every one of your units. Defaults to a double-tap so it can share an input with Rally and Deploy Units.' },
+  { id: 'rally', label: 'Rally to Monarch', category: 'Selection', description: 'While piloting a King/Queen, rally that animal’s units to fall in and follow the monarch.' },
+  { id: 'selectMonarchAnimal', label: 'Select Monarch’s Animal', category: 'Selection', description: 'Select every one of your units that share the animal of the King/Queen you are currently piloting (e.g. while piloting the Bee monarch, selects all your Bees). On the controller this is LT — a double-tap of LT selects all units instead.' },
+  { id: 'selectAllUnits', label: 'Select All Units', category: 'Selection', description: 'Select every one of your units. Defaults to a double-tap (Space on keyboard, LT on controller) so it can share an input with single-tap selects.' },
   { id: 'deployUnits', label: 'Deploy Units', category: 'Selection', description: 'While piloting a King/Queen, deploy units at the monarch. Hold to designate a proportionate batch (the longer the hold, the more units peel off — the teardrop count); a Tap or Double-Tap deploys a single unit.', gestureHint: 'Hold = a batch · Tap = one unit' },
   { id: 'selectGroup1', label: 'Select Animal Type 1', category: 'Selection', description: 'Select all units of your first animal.' },
   { id: 'selectGroup2', label: 'Select Animal Type 2', category: 'Selection', description: 'Select all units of your second animal.' },
   { id: 'selectGroup3', label: 'Select Animal Type 3', category: 'Selection', description: 'Select all units of your third animal.' },
   { id: 'deselect', label: 'Deselect All', category: 'Selection', description: 'Clear the current selection.' },
   { id: 'primaryAction', label: 'Select / Confirm', category: 'Commands', description: 'Select the unit under the cursor / reticle.' },
-  { id: 'secondaryAction', label: 'Move / Attack', category: 'Commands', description: 'Order selected units to the cursor / reticle.' },
+  { id: 'secondaryAction', label: 'Move / Attack', category: 'Commands', description: 'Order selected units to the cursor / reticle (press). On the controller this is RT: a press issues the move/attack at the cursor, and holding RT deploys units at the cursor.', gestureHint: 'Press = move/attack · Hold = deploy at cursor' },
+  { id: 'monarchMeleeAttack', label: 'Monarch Melee Attack', category: 'Commands', description: 'Make the King/Queen you are piloting perform a melee attack. (Not implemented yet — the binding is reserved.)' },
   { id: 'useAbility', label: 'Use Ability', category: 'Commands', description: "Trigger the selected animal's special ability (Turtle shell, Chicken eggs, Frog tongue, Cat hiss, Bee swarm, Owl pickup/deliver), aimed at the cursor/reticle. Keyboard & mouse can also fire this with a simultaneous left + right click." },
   { id: 'setQueenRally', label: 'Set Spawn Rally Point', category: 'Commands', description: 'With a single Queen selected, press to start aiming the blue rally line, then issue Move / Attack (right-click on mouse) to drop the rally point. Units she spawns afterward march straight to it — or follow a friendly King dropped on.', gestureHint: 'Aim, then Move/Attack to drop' },
   { id: 'setPatrol', label: 'Set Patrol Route', category: 'Commands', description: 'With a single Queen selected, hold to aim a back-and-forth patrol route along the gold line, then release to commit it. Keyboard & mouse use a held right-click on the Queen instead, so this stays unbound there by default.', gestureHint: 'Hold to aim · release to set the route' },
@@ -145,6 +149,9 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   // activation modes (tap / double-tap / hold — see DEFAULT_BINDING_MODES) keep them
   // apart, reproducing the classic one-key Space gesture while staying remappable.
   rally: 'space',
+  // Select-the-piloted-monarch's-animal and the King/Queen melee are controller-
+  // first gestures (LT / RB); they stay unbound on keyboard by default.
+  selectMonarchAnimal: '',
   selectAllUnits: 'space',
   deployUnits: 'space',
   selectGroup1: 'shift+a',
@@ -153,6 +160,8 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   deselect: 'escape',
   primaryAction: 'mouse:left',
   secondaryAction: 'mouse:right',
+  // Monarch melee is a controller gesture (RB) and not implemented yet; unbound here.
+  monarchMeleeAttack: '',
   // Abilities fire from a simultaneous left+right click (a fixed mouse gesture in
   // HexInteraction), so the rebindable key stays unbound by default; binding a key
   // here also triggers it (HexInteraction reads the live cursor for aiming).
@@ -175,36 +184,56 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   pause: 'p',
 };
 
+// Controller layout (Standard Gamepad). Left stick pilots the monarch; right
+// stick drives the targeting cursor (and, while the posture radial is open,
+// selects a wedge). The face/shoulder buttons follow the player-defined scheme:
+//   LT  — Select Monarch's Animal (tap) / Select All Units (double-tap)
+//   RT  — Move/Attack (press) / Deploy at cursor (hold)  [via secondaryAction]
+//   LB  — Switch Monarch (cycle)        RB — Monarch Melee (reserved)
+//   R3  — open the posture radial       L3 — Set Patrol aim
+//   A   — Select / Confirm              B  — Deselect
+//   X   — Use Ability                   Y  — Switch King/Queen
+//   D-Pad — Zoom In/Out (Up/Down), Rally (Left), Set Spawn Rally (Right)
+//   Start — Pause / Settings menu
+const DPAD_UP = 'button:12';
+const DPAD_DOWN = 'button:13';
+const DPAD_LEFT = 'button:14';
+const DPAD_RIGHT = 'button:15';
 export const DEFAULT_CONTROLLER_BINDINGS: ControlBindings = {
-  cameraForward: 'axis:1-',
+  cameraForward: 'axis:1-',   // Left stick (pilot the monarch)
   cameraBackward: 'axis:1+',
   cameraLeft: 'axis:0-',
   cameraRight: 'axis:0+',
-  cameraZoomIn: 'button:7', // RT
-  cameraZoomOut: 'button:6', // LT
-  // X carries Rally / Select All Units / Deploy Units, told apart by activation mode.
-  rally: 'button:2', // X
-  selectAllUnits: 'button:2', // X
-  deployUnits: 'button:2', // X
-  selectGroup1: 'button:4+button:0', // LB + A
-  selectGroup2: 'button:4+button:1', // LB + B
-  selectGroup3: 'button:4+button:3', // LB + Y
-  deselect: 'button:3', // Y
-  primaryAction: 'button:0', // A
-  secondaryAction: 'button:1', // B
-  useAbility: 'button:5', // RB — fires the selected animal's ability at the reticle
-  setQueenRally: 'button:11', // R3 (right-stick click) arms the rally aim; B drops it
-  setPatrol: 'button:10', // L3 (left-stick click) held arms the patrol aim; release commits
-  // Keyboard-only for now: the radial is pointer-driven, so the controller opens it
-  // via the on-screen button rather than a bound input (kept unbound to avoid a
-  // remappable input that wouldn't fire until the gamepad layer drives the radial).
-  toggleBehaviorRadial: '',
-  pilotCycleMonarch: '', // keyboard-only; the controller uses the per-slot D-Pad pilots below
-  pilotMonarch1: 'button:12', // D-Pad Up
-  pilotMonarch2: 'button:14', // D-Pad Left
-  pilotMonarch3: 'button:15', // D-Pad Right
-  pilotToggleMonarch: 'button:13', // D-Pad Down
-  pause: 'button:9', // Start
+  cameraZoomIn: DPAD_UP,
+  cameraZoomOut: DPAD_DOWN,
+  rally: DPAD_LEFT,
+  // LT: tap selects the piloted monarch's animal; double-tap selects all units.
+  selectMonarchAnimal: 'button:6', // LT (tap)
+  selectAllUnits: 'button:6',      // LT (double-tap)
+  // Deploy-at-cursor rides the RT (secondaryAction) hold in GamepadController, so
+  // the standalone deploy-at-monarch action is unbound on the controller.
+  deployUnits: '',
+  // Per-animal group selects move to the keyboard; LB is now Switch Monarch, so the
+  // old LB+face chords are unbound here.
+  selectGroup1: '',
+  selectGroup2: '',
+  selectGroup3: '',
+  deselect: 'button:1', // B
+  primaryAction: 'button:0', // A — Select / Confirm
+  secondaryAction: 'button:7', // RT — Move/Attack (press) + Deploy (hold)
+  monarchMeleeAttack: 'button:5', // RB — reserved (not implemented)
+  useAbility: 'button:2', // X — fires the selected animal's ability at the reticle
+  setQueenRally: DPAD_RIGHT, // arm the spawn-rally aim; Move/Attack drops it
+  setPatrol: 'button:10', // L3 held arms the patrol aim; release commits
+  toggleBehaviorRadial: 'button:11', // R3 opens the posture radial (aim with RS, release to confirm)
+  pilotCycleMonarch: 'button:4', // LB — Switch Monarch
+  // The left stick pilots and LB cycles monarchs, so the old per-slot D-Pad pilots
+  // are unbound to free the D-Pad for zoom / rally.
+  pilotMonarch1: '',
+  pilotMonarch2: '',
+  pilotMonarch3: '',
+  pilotToggleMonarch: 'button:3', // Y — Switch King / Queen
+  pause: 'button:9', // Start — Pause / Settings
 };
 
 export function getDefaultBindings(device: InputDevice): ControlBindings {
@@ -230,6 +259,9 @@ export const DEFAULT_BINDING_MODES: ControlBindingModes = {
   cameraZoomIn: 'tap',
   cameraZoomOut: 'tap',
   rally: 'tap',
+  // LT shares one input: a tap selects the monarch's animal, a double-tap selects
+  // all units (same token, distinct modes — like Space on keyboard).
+  selectMonarchAnimal: 'tap',
   selectAllUnits: 'double-tap',
   deployUnits: 'hold',
   selectGroup1: 'tap',
@@ -238,6 +270,7 @@ export const DEFAULT_BINDING_MODES: ControlBindingModes = {
   deselect: 'tap',
   primaryAction: 'tap',
   secondaryAction: 'tap',
+  monarchMeleeAttack: 'tap',
   useAbility: 'tap',
   setQueenRally: 'tap',
   setPatrol: 'hold',

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGameStore } from '../../game/state';
 import type { FireMode, TargetPriority, Unit, UnitStance } from '../../game/types';
 import { behaviorOf } from './unitBehavior';
@@ -63,6 +63,26 @@ function uniform<T>(values: T[]): T | null {
   return values.every((v) => v === first) ? first : null;
 }
 
+// Which stance wedge a controller's right-stick vector points at. Wedges sit at
+// angle_i = -90 + i*(360/n) degrees in screen space (x right, y down), and the
+// stick vector uses the same convention (x right, y down — stick up is negative),
+// so the aim angle maps straight onto the wedge angles. Returns the index whose
+// angle is closest, wrapping correctly across the ±180° seam.
+function wedgeFromVector(x: number, y: number): number {
+  const aimDeg = Math.atan2(y, x) * (180 / Math.PI);
+  let best = 0;
+  let bestDiff = Infinity;
+  for (let i = 0; i < STANCE_OPTIONS.length; i++) {
+    const wedgeDeg = -90 + i * (360 / STANCE_OPTIONS.length);
+    const diff = Math.abs(((aimDeg - wedgeDeg + 540) % 360) - 180);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = i;
+    }
+  }
+  return best;
+}
+
 export function BehaviorRadial() {
   const matchStarted = useGameStore((s) => s.matchStarted);
   const units = useGameStore((s) => s.units);
@@ -79,6 +99,12 @@ export function BehaviorRadial() {
   }, [keyboardBindings]);
 
   const [isOpen, setIsOpen] = useState(false);
+
+  // The stance wedge the controller's right stick is currently pointing at (null =
+  // none). Mirrored into a ref so the commit listener reads the latest aim without
+  // re-subscribing every aim frame.
+  const [gamepadHoverIndex, setGamepadHoverIndex] = useState<number | null>(null);
+  const hoverIndexRef = useRef<number | null>(null);
 
   // The subset of the selection this player can actually command postures for:
   // their own movable units (Bases have no behavior). Recomputed from the live
@@ -113,6 +139,46 @@ export function BehaviorRadial() {
     window.addEventListener('rts:toggle-stance-radial', onToggle);
     return () => window.removeEventListener('rts:toggle-stance-radial', onToggle);
   }, [commandableIds.length]);
+
+  // Broadcast the open/closed state so GamepadController knows when to hand the
+  // right stick to wedge selection. Clears any stale gamepad hover on close.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(isOpen ? 'rts:stance-radial-open' : 'rts:stance-radial-close'));
+    if (!isOpen) {
+      hoverIndexRef.current = null;
+      setGamepadHoverIndex(null);
+    }
+  }, [isOpen]);
+
+  // Controller wedge selection while open: the right stick streams an aim vector
+  // (highlight the nearest wedge); releasing it to center commits the highlighted
+  // stance and closes the radial. GamepadController owns the stick reading and the
+  // release edge; this side owns the geometry and the command.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onAim = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { x?: number; y?: number } | undefined;
+      if (!detail || typeof detail.x !== 'number' || typeof detail.y !== 'number') return;
+      const index = wedgeFromVector(detail.x, detail.y);
+      hoverIndexRef.current = index;
+      setGamepadHoverIndex(index);
+    };
+    const onCommit = () => {
+      const index = hoverIndexRef.current;
+      if (index !== null && commandableIds.length > 0) {
+        setBehavior({ unitIds: commandableIds, behavior: { stance: STANCE_OPTIONS[index].stance } });
+      }
+      hoverIndexRef.current = null;
+      setGamepadHoverIndex(null);
+      setIsOpen(false);
+    };
+    window.addEventListener('rts:stance-radial-aim', onAim);
+    window.addEventListener('rts:stance-radial-commit', onCommit);
+    return () => {
+      window.removeEventListener('rts:stance-radial-aim', onAim);
+      window.removeEventListener('rts:stance-radial-commit', onCommit);
+    };
+  }, [isOpen, commandableIds, setBehavior]);
 
   if (!matchStarted) return null;
 
@@ -159,10 +225,11 @@ export function BehaviorRadial() {
                 const x = Math.cos(angle) * RING_RADIUS;
                 const y = Math.sin(angle) * RING_RADIUS;
                 const active = currentStance === option.stance;
+                const gamepadHovered = gamepadHoverIndex === index;
                 return (
                   <button
                     key={option.stance}
-                    className={`rts-stance-wedge${active ? ' rts-stance-wedge-active' : ''}`}
+                    className={`rts-stance-wedge${active ? ' rts-stance-wedge-active' : ''}${gamepadHovered ? ' rts-stance-wedge-hover' : ''}`}
                     style={{ transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
                     onClick={() => applyStance(option.stance)}
                     title={option.hint}
@@ -201,6 +268,7 @@ export function BehaviorRadial() {
             </div>
 
             <div className="rts-stance-footer">
+              Click a wedge or aim with the right stick (release to confirm) ·
               Click outside{triggerKeyLabel ? ` or press ${triggerKeyLabel}` : ''} to close
             </div>
           </div>
@@ -252,6 +320,11 @@ const STYLE = `
 .rts-stance-wedge-active {
   background: rgba(37,99,235,0.9); border-color: #93c5fd; color: #fff;
   box-shadow: 0 0 0 2px rgba(147,197,253,0.4);
+}
+/* Controller right-stick aim highlight (distinct from the selected-state fill). */
+.rts-stance-wedge-hover {
+  border-color: #fde047; color: #fff;
+  box-shadow: 0 0 0 3px rgba(253,224,71,0.55);
 }
 .rts-stance-wedge-icon { font-size: 22px; line-height: 1; }
 .rts-stance-wedge-label { font-size: 11px; font-weight: bold; }
