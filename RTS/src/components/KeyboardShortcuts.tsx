@@ -26,6 +26,7 @@ const KEYBOARD_GESTURE_ACTIONS: readonly string[] = [
   'rally',
   'selectAllUnits',
   'deployUnits',
+  'toggleBehaviorRadial',
 ];
 
 export function KeyboardShortcuts() {
@@ -97,6 +98,11 @@ export function KeyboardShortcuts() {
           // Tap / double-tap deploy a single unit; the proportionate batch is the
           // Hold lifecycle below.
           if (state.pilotedUnitId) state.placeRalliedUnits(1);
+          break;
+        case 'toggleBehaviorRadial':
+          // The radial lives in BehaviorRadial.tsx; toggle it via an event so this
+          // layer stays free of the overlay's React state (same pattern as pause).
+          window.dispatchEvent(new CustomEvent('rts:toggle-stance-radial'));
           break;
         default: break;
       }

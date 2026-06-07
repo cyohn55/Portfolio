@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useGameStore } from '../../game/state';
 import type { FireMode, TargetPriority, Unit, UnitStance } from '../../game/types';
 import { behaviorOf } from './unitBehavior';
+import { formatKeyboardToken } from './controlBindings';
 
 /**
  * The selection radial for the combat-posture system. It drives the deterministic
@@ -68,6 +69,14 @@ export function BehaviorRadial() {
   const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
   const localPlayerId = useGameStore((s) => s.localPlayerId);
   const setBehavior = useGameStore((s) => s.setBehavior);
+  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
+
+  // The player's current key for the radial action, shown on the trigger so the
+  // hint stays accurate after a rebind. Blank when the action is left unbound.
+  const triggerKeyLabel = useMemo(() => {
+    const token = keyboardBindings?.toggleBehaviorRadial ?? '';
+    return token ? formatKeyboardToken(token) : '';
+  }, [keyboardBindings]);
 
   const [isOpen, setIsOpen] = useState(false);
 
@@ -91,20 +100,18 @@ export function BehaviorRadial() {
     if (commandable.length === 0 && isOpen) setIsOpen(false);
   }, [commandable.length, isOpen]);
 
-  // `b` toggles the radial. Ignored while typing in a field and when no own units
-  // are selected, so it never fights text entry or fires on an empty selection.
+  // The Combat Posture Radial action (remappable via Settings → Controls; 'b' by
+  // default) toggles the radial. KeyboardShortcuts owns the binding and fires this
+  // event, so the trigger respects the player's chosen key/mode and never fights
+  // text entry. Ignored when nothing is selected so it can't open on an empty
+  // selection.
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== 'b' || event.ctrlKey || event.metaKey || event.altKey) return;
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+    const onToggle = () => {
       if (commandableIds.length === 0) return;
-      event.preventDefault();
       setIsOpen((prev) => !prev);
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener('rts:toggle-stance-radial', onToggle);
+    return () => window.removeEventListener('rts:toggle-stance-radial', onToggle);
   }, [commandableIds.length]);
 
   if (!matchStarted) return null;
@@ -125,14 +132,14 @@ export function BehaviorRadial() {
         <button
           className="rts-stance-trigger"
           onClick={() => setIsOpen(true)}
-          title="Set combat posture for the selection (B)"
+          title={`Set combat posture for the selection${triggerKeyLabel ? ` (${triggerKeyLabel})` : ''}`}
         >
           <span className="rts-stance-trigger-icon">
             {STANCE_OPTIONS.find((o) => o.stance === currentStance)?.icon ?? '⚔️'}
           </span>
           <span>
             Stance: {currentStance ? labelFor(currentStance) : 'Mixed'}
-            <span className="rts-stance-trigger-key"> · B</span>
+            {triggerKeyLabel && <span className="rts-stance-trigger-key"> · {triggerKeyLabel}</span>}
           </span>
         </button>
       )}
@@ -193,7 +200,9 @@ export function BehaviorRadial() {
               ))}
             </div>
 
-            <div className="rts-stance-footer">Click outside or press B to close</div>
+            <div className="rts-stance-footer">
+              Click outside{triggerKeyLabel ? ` or press ${triggerKeyLabel}` : ''} to close
+            </div>
           </div>
         </div>
       )}
