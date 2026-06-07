@@ -52,7 +52,7 @@ const FOLLOW_SCREEN_BIAS = 0.5;
 // A piloted King/Queen rides a touch higher on screen than a plain selection: a
 // smaller forward bias pulls its look-at point back toward the unit, lifting the
 // monarch nearer to center while still keeping it in the lower half.
-const MONARCH_SCREEN_BIAS = 0.38;
+const MONARCH_SCREEN_BIAS = 0.28;
 
 function viewSignFor(localPlayerId: string | null): number {
   return localPlayerId === 'p1' ? -1 : 1;
