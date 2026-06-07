@@ -40,6 +40,15 @@ let instanceCounter = 0;
 const INITIAL_FOCUS_DEPTH = 225;
 const INITIAL_DISTANCE = 200;
 
+// When the camera is following selected troops (or a piloted monarch), aim the
+// look-at point *ahead* of the unit — deeper into the battlefield — by this
+// fraction of the current zoom distance. The camera always frames its look-at
+// point at screen center, so biasing the focus forward leaves the followed unit
+// behind it: closer to the camera and sitting in the lower third of the screen
+// rather than dead center. The bias scales with zoom distance (and the shallow
+// fixed camera angle) so the on-screen placement stays put as the player zooms.
+const FOLLOW_SCREEN_BIAS = 0.5;
+
 function viewSignFor(localPlayerId: string | null): number {
   return localPlayerId === 'p1' ? -1 : 1;
 }
@@ -452,9 +461,14 @@ export function CameraController({
       followEnabled.current = false;
       for (const unit of store.units) {
         if (unit.id === pilotedId) {
+          // Bias the look-at point ahead of the monarch so it rides in the
+          // lower third of the screen, closer to the camera.
+          const followBias = currentDistance.current * FOLLOW_SCREEN_BIAS;
+          const desiredX = unit.position.x + forward.current.x * followBias;
+          const desiredZ = unit.position.z + forward.current.z * followBias;
           const easing = 1 - Math.exp(-followSpeed * delta);
-          target.current.x += (unit.position.x - target.current.x) * easing;
-          target.current.z += (unit.position.z - target.current.z) * easing;
+          target.current.x += (desiredX - target.current.x) * easing;
+          target.current.z += (desiredZ - target.current.z) * easing;
           break;
         }
       }
@@ -508,11 +522,16 @@ export function CameraController({
           }
 
           if (count > 0) {
-            // Frame-rate-independent easing toward the troop centroid. Only the
-            // horizontal focus moves; height/zoom stay under the player's control.
+            // Frame-rate-independent easing toward the troop centroid, biased
+            // forward so the selection sits in the lower third of the screen
+            // (closer to the camera) instead of dead center. Only the horizontal
+            // focus moves; height/zoom stay under the player's control.
+            const followBias = currentDistance.current * FOLLOW_SCREEN_BIAS;
+            const desiredX = sumX / count + forward.current.x * followBias;
+            const desiredZ = sumZ / count + forward.current.z * followBias;
             const easing = 1 - Math.exp(-followSpeed * delta);
-            target.current.x += (sumX / count - target.current.x) * easing;
-            target.current.z += (sumZ / count - target.current.z) * easing;
+            target.current.x += (desiredX - target.current.x) * easing;
+            target.current.z += (desiredZ - target.current.z) * easing;
           }
         }
       }
