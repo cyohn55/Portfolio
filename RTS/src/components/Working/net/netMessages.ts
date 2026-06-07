@@ -22,6 +22,7 @@ import type {
   CommandSetPatrol,
   CommandSetQueenRally,
   CommandAttackTarget,
+  CommandSetBehavior,
   CommandThrowEggs,
   CommandFireTongues,
   CommandHiss,
@@ -48,6 +49,7 @@ export type PlayerRole = 'p0' | 'p1';
 export type NetCommand =
   | { type: 'moveUnits'; payload: CommandMoveUnits }
   | { type: 'attackTarget'; payload: CommandAttackTarget }
+  | { type: 'setBehavior'; payload: CommandSetBehavior }
   | { type: 'setPatrol'; payload: CommandSetPatrol }
   | { type: 'setQueenRally'; payload: CommandSetQueenRally }
   | { type: 'setMovementHold'; payload: { unitId: string | null } }
@@ -133,6 +135,7 @@ export type NetMessage =
 const VALID_COMMAND_TYPES: ReadonlySet<string> = new Set<NetCommandType>([
   'moveUnits',
   'attackTarget',
+  'setBehavior',
   'setPatrol',
   'setQueenRally',
   'setMovementHold',

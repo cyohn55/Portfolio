@@ -27,7 +27,19 @@ import {
   selectionForMonarch,
   shouldChaseMonarch,
 } from '../components/Working/monarchPilot';
-import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandSetQueenRally, CommandAttackTarget, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, CommandOwlDeliver, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
+import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandSetQueenRally, CommandAttackTarget, CommandSetBehavior, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, CommandOwlDeliver, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
+import {
+  behaviorOf,
+  defaultBehaviorFor,
+  distanceXZ,
+  mergeBehavior,
+  pickTargetByPriority,
+  resolveFireMode,
+  retreatDestination,
+  RETURN_DEADBAND,
+  shouldFleeLowHp,
+  stanceParams,
+} from '../components/Working/unitBehavior';
 import { ANIMAL_MOVEMENT_TYPES } from './types';
 import * as leaderboardModule from '../components/Working/leaderboard';
 import * as leaderboardRemoteModule from '../components/Working/leaderboardRemote';
@@ -584,6 +596,7 @@ type Store = GameState & {
   setQueenRally: (cmd: CommandSetQueenRally) => void;
   setMovementHold: (unitId: string | null) => void;
   attackTarget: (cmd: CommandAttackTarget) => void;
+  setBehavior: (cmd: CommandSetBehavior) => void;
   selectUnits: (unitIds: string[]) => void;
   addToSelection: (unitIds: string[]) => void;
   clearSelection: () => void;
@@ -1366,6 +1379,12 @@ export const useGameStore = create<Store>((set, get) => ({
             const finalSpawnPos = checkCollision(tentativeSpawnPos, tempUnit, draft.units, 2.5, movementPriorityIds, playerControlledOwnerIds, draft.unitOrders, draft.spatialGrid);
             tempUnit.position = finalSpawnPos;
 
+            // Reinforcements adopt the spawning Queen's posture, so a player who
+            // set their army to (say) Hold Ground gets newborns that hold too
+            // instead of defaulting and milling forward. Inherit a copy so later
+            // edits to either unit's behavior stay independent.
+            if (q.behavior) tempUnit.behavior = { ...q.behavior };
+
             // Spawn rally target: if the player set one on this Queen, send the
             // newborn there instead of letting it idle by the Queen. A 'point' rally
             // marches it to a fixed spot; a 'follow' rally makes it fall in behind a
@@ -1394,6 +1413,9 @@ export const useGameStore = create<Store>((set, get) => ({
               } else {
                 draft.unitOrders[tempUnit.id] = { ...rally.position };
                 tempUnit.unitState = 'moving_to_order';
+                // The rally point is a positional intent, so it is also the
+                // newborn's stance anchor — it will defend/return there.
+                tempUnit.anchor = { x: rally.position.x, y: 0, z: rally.position.z };
               }
             }
 
@@ -1812,115 +1834,120 @@ export const useGameStore = create<Store>((set, get) => ({
             }
           }
 
-          // PRIORITY 2: When idle (no movement orders), check for attack response
+          // PRIORITY 2: Idle (no movement order, no patrol) — resolve the unit's
+          // combat posture (stance + fire mode + target priority). This replaces
+          // the former hard-coded "engage within 10u, never return home" logic with
+          // the stance engine in unitBehavior.ts. The default Defensive stance on a
+          // unit that has no anchor reproduces that original engage-where-you-stand
+          // feel, so unmanaged armies behave exactly as before.
           else {
-            // Debug: Log when entering Priority 2 (idle state) logic
-            if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 30 === 0) {
-              console.log(`📍 PLAYER ${unit.animal} entered IDLE state - no active movement orders`);
-            }
+            const behavior = behaviorOf(unit);
+            const effectiveFire = resolveFireMode(behavior); // patrol ⇒ weapons-free
 
-            // ATTACK RESPONSE: When idle and under attack, fight back until enemy defeated or new order given
-            if (unit.currentAttackers && unit.currentAttackers.length > 0) {
-              // Debug: Log when player units are under attack while idle
-              if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
-                console.log(`PLAYER unit ${unit.animal} IDLE but UNDER ATTACK by ${unit.currentAttackers.length} attackers`);
-              }
-
-              // Select priority attacker (focus-fire: attack one until dead)
-              let priorityAttacker: Unit | null = null;
-
-              // First try to stick with current priority attacker if still attacking
-              if (unit.priorityAttacker && unit.currentAttackers.includes(unit.priorityAttacker)) {
-                priorityAttacker = unitById.get(unit.priorityAttacker) || null;
-              }
-
-              // If no priority attacker or they're not attacking anymore, find closest attacker
-              if (!priorityAttacker) {
-                const attackers = unit.currentAttackers
-                  .map(id => unitById.get(id))
-                  .filter(u => u && u.hp > 0) as Unit[];
-
-                if (attackers.length > 0) {
-                  priorityAttacker = attackers.reduce((closest, attacker) => {
-                    const distToCurrent = distanceSquared3D(unit.position, closest.position);
-                    const distToAttacker = distanceSquared3D(unit.position, attacker.position);
-                    return distToAttacker < distToCurrent ? attacker : closest;
-                  });
-                  unit.priorityAttacker = priorityAttacker.id;
-                }
-              }
-
-              if (priorityAttacker) {
-                unit.unitState = 'pursuing_enemy';
-                target = priorityAttacker;
-                if (tickDebug) console.log(`✅ PLAYER ${unit.animal} IDLE → fighting back against ${target.animal} (focus-fire)`);
-
-                // Debug: Confirm target is set for combat
-                if (tickDebug && unit.id.endsWith('0')) {
-                  console.log(`PLAYER unit ${unit.animal} combat target: ${target.animal} - will fight until defeated or new order given`);
+            // Guard/escort: the anchor tracks the protected entity each tick. If
+            // that entity dies, drop the link and hold the spot where it fell — the
+            // anchor keeps its last value (the locked "guard the death spot" rule).
+            if (behavior.stance === 'guard' || behavior.stance === 'escort') {
+              if (unit.guardTargetId) {
+                const guarded = unitById.get(unit.guardTargetId);
+                if (guarded && guarded.hp > 0) {
+                  unit.anchor = { x: guarded.position.x, y: 0, z: guarded.position.z };
+                } else {
+                  delete unit.guardTargetId;
                 }
               }
             }
-            // Clear priority attacker if no longer under attack and return to idle
-            else if (unit.priorityAttacker) {
+
+            const params = stanceParams(behavior.stance, unit);
+            const fleeing = behavior.stance === 'flee' || shouldFleeLowHp(unit);
+
+            if (fleeing) {
+              // Flee stance or the low-HP survival reflex: never engage. Head to the
+              // anchor, or directly away from the nearest threat when there is no
+              // home to fall back to. The retreat is a normal move order that the
+              // order branch carries next tick (so it still defends if cornered).
               delete unit.priorityAttacker;
-              unit.unitState = 'idle';
-              if (tickDebug) console.log(`PLAYER unit ${unit.animal} defeated all attackers → returning to IDLE state`);
-            }
+              let nearestEnemyPos: Position3D | null = null;
+              if (draft.spatialGrid) {
+                const threat = draft.spatialGrid.findClosestEnemy(unit, 50);
+                if (threat) nearestEnemyPos = threat.position;
+              }
+              const retreat = retreatDestination(unit, unit.anchor, nearestEnemyPos);
+              if (retreat) {
+                draft.unitOrders[unit.id] = retreat;
+                unit.unitState = 'moving_to_order';
+              } else {
+                unit.unitState = 'idle';
+              }
+            } else {
+              // Pursuit is measured from the anchor ("home"), falling back to the
+              // unit's current position when it has never been commanded — that
+              // keeps an uncommanded unit's engagement short and local.
+              const anchorRef = unit.anchor ?? unit.position;
+              const chaseRadiusSq = params.chaseRadius * params.chaseRadius;
+              const withinChase = (candidate: Unit) =>
+                distanceSquared3D(anchorRef, candidate.position) <= chaseRadiusSq;
 
-            // PRIORITY 3: Autonomous enemy detection when idle (enabled but with limited range)
-            // Player units will engage nearby enemies when not under attack and idle
-            else if (unit.unitState === 'idle' || unit.unitState === 'pursuing_enemy') {
-              // Detect nearby enemies
-              let enemyTarget: Unit | null = null;
-
-              // If we have a priority attacker that was just defeated, clear it
-              if (unit.priorityAttacker) {
-                const priorityAttackerUnit = unitById.get(unit.priorityAttacker);
-                if (!priorityAttackerUnit || priorityAttackerUnit.hp <= 0) {
-                  delete unit.priorityAttacker;
-                  if (tickDebug) console.log(`PLAYER unit ${unit.animal} defeated attacker - checking for other enemies`);
+              // ATTACK RESPONSE (gated by fire mode): fight back at attackers we are
+              // allowed to and willing to reach, keeping focus-fire on the current
+              // priority attacker while it stays in range.
+              if (effectiveFire === 'free' && params.engages &&
+                  unit.currentAttackers && unit.currentAttackers.length > 0) {
+                let chosen: Unit | null = null;
+                if (unit.priorityAttacker && unit.currentAttackers.includes(unit.priorityAttacker)) {
+                  const current = unitById.get(unit.priorityAttacker);
+                  if (current && current.hp > 0 && withinChase(current)) chosen = current;
                 }
+                if (!chosen) {
+                  const attackers = unit.currentAttackers
+                    .map(id => unitById.get(id))
+                    .filter((u): u is Unit => !!u && u.hp > 0 && withinChase(u));
+                  chosen = pickTargetByPriority(unit, attackers, behavior.priority);
+                }
+                if (chosen) {
+                  unit.priorityAttacker = chosen.id;
+                  unit.unitState = 'pursuing_enemy';
+                  target = chosen;
+                }
+              } else if (unit.priorityAttacker) {
+                delete unit.priorityAttacker;
               }
 
-              // First try to re-engage recent combat target (unless it was our priority attacker we just defeated)
-              if (unit.lastCombatTargetId && unit.lastCombatEngagementMs &&
-                  nowMs - unit.lastCombatEngagementMs < 3000 &&
-                  unit.lastCombatTargetId !== unit.priorityAttacker) {
-                const lastTarget = unitById.get(unit.lastCombatTargetId);
-                if (lastTarget && lastTarget.ownerId !== unit.ownerId && lastTarget.hp > 0) {
-                  const distToLastTarget = distanceSquared3D(unit.position, lastTarget.position);
-                  if (distToLastTarget <= 100) { // 10 units - closer re-engagement
-                    enemyTarget = lastTarget;
+              // AUTONOMOUS ACQUISITION when nothing has us engaged. Sticks with a
+              // recent combat target if still in reach (focus-fire persistence),
+              // otherwise picks from everything in detection range — filtered to the
+              // stance's chase radius from the anchor so it never over-extends — by
+              // the unit's target priority.
+              if (!target && effectiveFire === 'free' && params.engages && draft.spatialGrid) {
+                if (unit.lastCombatTargetId && unit.lastCombatEngagementMs &&
+                    nowMs - unit.lastCombatEngagementMs < 3000) {
+                  const last = unitById.get(unit.lastCombatTargetId);
+                  if (last && last.ownerId !== unit.ownerId && last.hp > 0 &&
+                      distanceSquared3D(unit.position, last.position) <= params.detectionRadius * params.detectionRadius &&
+                      withinChase(last)) {
+                    target = last;
                   }
                 }
+                if (!target) {
+                  const candidates = draft.spatialGrid
+                    .findEnemiesInRange(unit, params.detectionRadius)
+                    .filter((enemy) => enemy.hp > 0 && withinChase(enemy));
+                  target = pickTargetByPriority(unit, candidates, behavior.priority);
+                }
+                if (target) unit.unitState = 'pursuing_enemy';
               }
 
-              // If no recent target, find closest enemy within limited detection range
-              if (!enemyTarget && draft.spatialGrid) {
-                const nearbyEnemies = draft.spatialGrid.findEnemiesInRange(unit, 10);
-                if (nearbyEnemies.length > 0) {
-                  enemyTarget = nearbyEnemies.reduce((closest, enemy) => {
-                    const distToCurrent = distanceSquared3D(unit.position, closest.position);
-                    const distToEnemy = distanceSquared3D(unit.position, enemy.position);
-                    return distToEnemy < distToCurrent ? enemy : closest;
-                  });
+              // RETURN TO ANCHOR: nothing to fight and we have drifted from home, so
+              // walk back (issues a normal move order the order branch carries next
+              // tick). HoldGround and uncommanded (anchorless) units simply idle.
+              if (!target) {
+                if (params.returnsToAnchor && unit.anchor &&
+                    distanceXZ(unit.position, unit.anchor) > RETURN_DEADBAND) {
+                  draft.unitOrders[unit.id] = { x: unit.anchor.x, y: 0, z: unit.anchor.z };
+                  unit.unitState = 'moving_to_order';
+                } else {
+                  unit.unitState = 'idle';
                 }
-              }
-
-              // Pursue enemy if found
-              if (enemyTarget) {
-                unit.unitState = 'pursuing_enemy';
-                target = enemyTarget;
-
-                // Debug: Log enemy engagement
-                if (tickDebug && unit.id.endsWith('0') && draft.tickCounter % 60 === 0) {
-                  const distance = Math.sqrt(distanceSquared3D(unit.position, enemyTarget.position));
-                  console.log(`PLAYER unit ${unit.animal} IDLE → pursuing enemy ${enemyTarget.animal}: distance ${distance.toFixed(1)}`);
-                }
-              } else {
-                // No enemies found - stay idle
-                unit.unitState = 'idle';
               }
             }
           }
@@ -2489,6 +2516,12 @@ export const useGameStore = create<Store>((set, get) => ({
         // Set new movement order
         draft.unitOrders[id] = cmd.target;
 
+        // Re-home the stance anchor to the destination: a move order is a
+        // positional intent, so a Defensive/Skirmish/Guard unit now leashes and
+        // returns around where it was sent, not where it started. This is the one
+        // place a move updates the anchor (see UnitBehavior.anchor).
+        u.anchor = { x: cmd.target.x, y: 0, z: cmd.target.z };
+
         // Cancel any patrol route: an explicit move order replaces the patrol, so
         // the Queen must NOT resume walking the route once she reaches the order's
         // destination. Without this the order's arrival deletes only unitOrders and
@@ -2693,8 +2726,38 @@ export const useGameStore = create<Store>((set, get) => ({
     })
   ),
 
+  // Set the combat posture on the acting player's units. Routed through the
+  // lockstep engine like every other command so both peers mutate identically;
+  // `behavior` is merged axis-by-axis (the radial sets one axis at a time). When a
+  // unit first receives a stance it has no anchor, we seed one at its current
+  // position so "defend/skirmish here" has a home to leash and return to.
+  setBehavior: (cmd) => routeCommand({ type: 'setBehavior', payload: cmd }) ? undefined : set((prev) =>
+    produce(prev, (draft) => {
+      for (const id of cmd.unitIds) {
+        const unit = draft.units.find((u) => u.id === id);
+        if (!unit || unit.ownerId !== actingOwnerId(draft)) continue;
+
+        unit.behavior = mergeBehavior(behaviorOf(unit), cmd.behavior);
+
+        // Assigning a stance is a positional intent: anchor here if not already
+        // anchored, so the unit holds this ground rather than wandering.
+        if (!unit.anchor) {
+          unit.anchor = { x: unit.position.x, y: 0, z: unit.position.z };
+        }
+
+        // Guard/escort target wiring: a present id sets the protected entity, an
+        // explicit null clears it.
+        if (cmd.guardTargetId === null) {
+          delete unit.guardTargetId;
+        } else if (cmd.guardTargetId !== undefined) {
+          unit.guardTargetId = cmd.guardTargetId;
+        }
+      }
+    })
+  ),
+
   selectUnits: (unitIds) => set({ selectedUnitIds: unitIds }),
-  
+
   addToSelection: (unitIds) => set((prev) => ({
     selectedUnitIds: Array.from(new Set([...prev.selectedUnitIds, ...unitIds]))
   })),
@@ -3273,6 +3336,7 @@ export function applyNetCommand(playerId: string, command: NetCommand): void {
     switch (command.type) {
       case 'moveUnits': store.moveCommand(command.payload); break;
       case 'attackTarget': store.attackTarget(command.payload); break;
+      case 'setBehavior': store.setBehavior(command.payload); break;
       case 'setPatrol': store.setPatrol(command.payload); break;
       case 'setQueenRally': store.setQueenRally(command.payload); break;
       case 'setMovementHold': store.setMovementHold(command.payload.unitId); break;
@@ -3372,6 +3436,7 @@ function createQueen(ownerId: string, animal: AnimalId, position: Position3D, ro
     attackCooldownMs: stats.attackCooldownMs,
     lastAttackAtMs: 0,
     rotation,
+    behavior: defaultBehaviorFor(animal, 'Queen'),
   };
 }
 
@@ -3391,6 +3456,7 @@ function createKing(ownerId: string, animal: AnimalId, position: Position3D, rot
     attackCooldownMs: stats.attackCooldownMs,
     lastAttackAtMs: 0,
     rotation,
+    behavior: defaultBehaviorFor(animal, 'King'),
   };
 }
 
@@ -3410,6 +3476,7 @@ function createUnit(ownerId: string, animal: AnimalId, position: Position3D, rot
     attackCooldownMs: stats.attackCooldownMs,
     lastAttackAtMs: 0,
     rotation,
+    behavior: defaultBehaviorFor(animal, 'Unit'),
   };
 }
 

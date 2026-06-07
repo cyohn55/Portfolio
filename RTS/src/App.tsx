@@ -7,6 +7,7 @@ import { CameraController } from './components/CameraController';
 import { GamepadController } from './components/Working/GamepadController';
 import { UnitPlacementIndicator } from './components/Working/UnitPlacementIndicator';
 import { EdgePanChevrons } from './components/Working/EdgePanChevrons';
+import { BehaviorRadial } from './components/Working/BehaviorRadial';
 import { HUD } from './components/HUD';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { ModelPreloader } from './utils/ModelPreloader';
@@ -169,6 +170,8 @@ export default function App() {
       <div className="hud">
         <HUD />
       </div>
+      {/* Selection radial for the combat-posture system (stance / fire / priority). */}
+      <BehaviorRadial />
       {/* Yellow edge-scroll chevrons, lit only while the cursor is in a pan-trigger band. */}
       <EdgePanChevrons />
       <Canvas

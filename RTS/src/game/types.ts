@@ -35,6 +35,32 @@ export const ANIMAL_MOVEMENT_TYPES: Record<AnimalId, MovementType> = {
 
 export type UnitKind = 'Unit' | 'Queen' | 'King' | 'Base';
 
+// Combat-posture system. A unit's behavior is three orthogonal axes the player
+// sets independently (typically via the selection radial): how far it commits
+// (stance), whether it may auto-fire (fire), and what it picks first (priority).
+// Named "flavors" like Hunt/Harass/Siege are just presets that stamp these axes,
+// so they add no extra state. See unitBehavior.ts for how each stance resolves.
+export type UnitStance =
+  | 'aggressive'  // hunt enemies in vision, chase far from anchor
+  | 'defensive'   // engage within a leash radius, then return to anchor
+  | 'holdGround'  // attack only what is already in range; never move to engage
+  | 'skirmish'    // ranged kiting: engage at distance, back off when closed on
+  | 'flee'        // never engage; retreat toward anchor / away from enemies
+  | 'patrol'      // walk a route (implies weapons-free); engage like defensive
+  | 'guard'       // protect a target/spot; anchor tracks the guarded entity
+  | 'escort';     // follow a moving target while screening it
+
+export type FireMode = 'free' | 'hold'; // 'hold' = passive: never auto-acquires
+export type TargetPriority = 'nearest' | 'lowestHp' | 'highestThreat' | 'ranged' | 'monarch';
+
+// The three composable axes stored on each unit. Optional on Unit so legacy
+// state and the tick can fall back to defaultBehaviorFor() when it is absent.
+export interface UnitBehavior {
+  stance: UnitStance;
+  fire: FireMode;
+  priority: TargetPriority;
+}
+
 export interface Unit {
   id: string;
   ownerId: string;
@@ -62,6 +88,20 @@ export interface Unit {
   lastCombatTargetId?: string; // ID of last target engaged in combat for persistence
   lastCombatEngagementMs?: number; // timestamp of last combat engagement
   unitState?: 'idle' | 'moving_to_order' | 'pursuing_enemy'; // current unit behavior state
+  // Combat posture (see UnitBehavior). Seeded at creation by defaultBehaviorFor()
+  // and changed by the setBehavior command. The engage logic in tick() reads this
+  // to decide detection range, chase distance, fire permission, and target choice.
+  behavior?: UnitBehavior;
+  // "Home" for stances that return after a fight (defensive/skirmish/guard).
+  // Set when the player gives a positional intent — a move order (re-homes here)
+  // or assigning a stance (homes at the current spot). A unit that has never been
+  // commanded has no anchor and therefore does not walk home, preserving the
+  // original engage-where-you-are default. See unitBehavior.ts / moveCommand.
+  anchor?: Position3D;
+  // Guard/escort target: the friendly unit this one protects. The guard's anchor
+  // tracks this entity each tick; if it dies, the guard falls back to holding the
+  // spot where it died (anchor freezes at the last known position).
+  guardTargetId?: string;
   firstBlockedAtMs?: number; // timestamp when unit first became blocked
   currentAttackers?: string[]; // IDs of units currently attacking this unit
   priorityAttacker?: string; // ID of the attacker this unit is focusing on
@@ -353,6 +393,16 @@ export interface CommandSetQueenRally {
 export interface CommandAttackTarget {
   unitIds: string[];
   targetId: string; // Enemy unit ID to attack
+}
+
+// Sets the combat posture on a selection. `behavior` is a Partial so the radial
+// can change a single axis (just the stance, just the fire mode, just the
+// priority) and leave the others untouched. `guardTargetId`, when present, is the
+// entity to guard/escort (only meaningful for the guard/escort stances).
+export interface CommandSetBehavior {
+  unitIds: string[];
+  behavior: Partial<UnitBehavior>;
+  guardTargetId?: string | null; // null clears an existing guard target
 }
 
 export interface CommandThrowEggs {
