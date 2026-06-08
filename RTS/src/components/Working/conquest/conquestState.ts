@@ -1,15 +1,25 @@
 // Conquest game-mode state (separate Zustand store).
 //
 // Single responsibility: own the Conquest match's data model — the generated
-// world, the players, and which player owns each tile — and the deterministic
-// actions that set it up. Kept independent of the main RTS `useGameStore` so the
-// two modes stay low-coupled; Conquest only borrows shared primitives (SeededRng,
-// AnimalId, the geometry/biome modules).
+// world, the players, which player owns each tile, and (the conquest twist) which
+// player currently *controls* each army — plus the deterministic actions that set
+// it up and the capture action that transfers a defeated army. Kept independent of
+// the main RTS `useGameStore` so the two modes stay low-coupled; Conquest only
+// borrows shared primitives (SeededRng, AnimalId, the geometry/biome modules).
 //
 // Determinism: every random choice (spawn placement) flows through SeededRng
 // keyed off the match seed, so a given seed + player config reproduces the same
 // planet and the same starting positions for every client — the foundation a
 // future lockstep/AI layer builds on.
+//
+// Conquest rule (the defining mechanic): a player picks ONE animal and fields an
+// army of it — a king/queen monarch plus a squad of that animal. When an army's
+// monarch falls in battle the whole army is captured: every surviving unit, the
+// monarch included, switches to the conqueror's control (see `conquerArmy`). The
+// human can then pilot the captured army's monarch too, commanding several armies
+// at once. We track control as an `armyController` override keyed by the army's
+// original owner id, deliberately separate from the immutable spawn `units` so the
+// live field never has to rebuild (and lose unit positions) when control changes.
 
 import { create } from 'zustand';
 import * as THREE from 'three';
@@ -28,6 +38,11 @@ import { tileTopRadius } from './conquestGlobeGeometry';
 export const MAX_CONQUEST_PLAYERS = 12; // one per pentagon spawn node
 export const DEFAULT_CONQUEST_SUBDIVISIONS = 3; // GP(8,0) → 362 tiles
 
+// Army size: one monarch (the king/queen the player pilots) plus a squad of the
+// same animal that follows and fights alongside it. Kept small so each army reads
+// as a tight cluster on an acre-sized tile and so a capture is a meaningful prize.
+export const CONQUEST_SQUAD_SIZE = 6;
+
 /** Distinct, high-contrast team colors. Index 0 is always the human player. */
 export const CONQUEST_PLAYER_COLORS: readonly number[] = [
   0x4f8cff, 0xff5d5d, 0x4ade80, 0xfbbf24, 0xa855f7, 0xf472b6,
@@ -39,14 +54,15 @@ export interface ConquestPlayer {
   name: string;
   color: number;
   isAI: boolean;
-  animals: AnimalId[];   // reused RTS roster (length 3)
+  animal: AnimalId;      // the single animal this player's army is made of
   homeTileId: number;    // the pentagon this player spawned on
 }
 
 export interface ConquestSetup {
   seed: number;
   subdivisions: number;
-  humanAnimals: AnimalId[];
+  /** The one animal the human's army is made of. */
+  humanAnimal: AnimalId;
   /** Number of AI opponents; human + AI must not exceed MAX_CONQUEST_PLAYERS. */
   aiCount: number;
   worldGen?: WorldGenParams;
@@ -54,10 +70,11 @@ export interface ConquestSetup {
 
 /**
  * A unit's starting placement on the globe. The live simulation (movement,
- * piloting) reads this as the spawn point and then tracks each unit's position
- * itself; the store keeps the immutable spawn descriptor so a match can be
- * re-derived. Each player fields one monarch (their roster leader) plus the
- * rest of the roster as followers.
+ * piloting, combat) reads this as the spawn point and then tracks each unit's
+ * position itself; the store keeps the immutable spawn descriptor so a match can
+ * be re-derived. `ownerId` here is the army's *original* owner — its permanent
+ * army identity — which never changes; live control is tracked separately by
+ * `armyController` so capturing an army doesn't rebuild the field.
  */
 export interface ConquestUnitSpawn {
   id: string;
@@ -68,6 +85,16 @@ export interface ConquestUnitSpawn {
   position: { x: number; y: number; z: number };
 }
 
+/** How a match ends, from the human player's perspective. */
+export type ConquestOutcome = 'playing' | 'victory' | 'defeat';
+
+/** A capture event surfaced to the HUD as a transient banner. */
+export interface ConquestCaptureEvent {
+  conquerorId: string;
+  defeatedId: string;
+  atMs: number;
+}
+
 interface ConquestState {
   world: GoldbergWorld | null;
   biomes: TileBiome[];
@@ -76,6 +103,14 @@ interface ConquestState {
   units: ConquestUnitSpawn[];
   /** tileId → owning player id (absent/null = unclaimed). */
   tileOwners: Record<number, string>;
+  /**
+   * armyId (original owner id) → the player currently controlling that army.
+   * Absent means the army is still controlled by its original owner. Updated by
+   * `conquerArmy` when a monarch is captured.
+   */
+  armyController: Record<string, string>;
+  outcome: ConquestOutcome;
+  lastCapture: ConquestCaptureEvent | null;
   selectedTileId: number | null;
   /** Id of the human monarch the camera follows and the player pilots. */
   selectedMonarchId: string | null;
@@ -83,9 +118,11 @@ interface ConquestState {
   generate: (setup: ConquestSetup) => void;
   reset: () => void;
   selectTile: (tileId: number | null) => void;
-  /** Pilot the next of the local player's units (Tab in-match). */
+  /** Pilot the next monarch the human controls (Tab/cycle in-match). */
   cycleMonarch: () => void;
   setSelectedMonarch: (unitId: string) => void;
+  /** Transfer a defeated army to its conqueror (the core conquest mechanic). */
+  conquerArmy: (defeatedArmyId: string, conquerorId: string, atMs: number) => void;
 }
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
@@ -95,7 +132,7 @@ const X_AXIS = new THREE.Vector3(1, 0, 0);
 // reads as a small cluster near the tile center rather than spread across it.
 const SPAWN_CLUSTER_RADIUS = 0.012;
 
-/** Place a player's roster as units clustered on their home tile's surface. */
+/** Place a player's same-animal army (monarch at center, squad ringed) on its home tile. */
 function buildUnitsForPlayer(
   player: ConquestPlayer,
   world: GoldbergWorld,
@@ -113,19 +150,27 @@ function buildUnitsForPlayer(
   const right = new THREE.Vector3().crossVectors(normal, reference).normalize();
   const forward = new THREE.Vector3().crossVectors(normal, right).normalize();
 
-  return player.animals.map((animal, index) => {
-    const angle = (index / Math.max(1, player.animals.length)) * Math.PI * 2;
-    const position = surfacePoint.clone()
-      .addScaledVector(right, Math.cos(angle) * SPAWN_CLUSTER_RADIUS)
-      .addScaledVector(forward, Math.sin(angle) * SPAWN_CLUSTER_RADIUS);
-    return {
+  const followerCount = CONQUEST_SQUAD_SIZE - 1;
+  const units: ConquestUnitSpawn[] = [];
+  for (let index = 0; index < CONQUEST_SQUAD_SIZE; index++) {
+    const isMonarch = index === 0;
+    // Monarch stands at the tile center; the squad fans out in a ring behind it.
+    const position = surfacePoint.clone();
+    if (!isMonarch) {
+      const angle = ((index - 1) / Math.max(1, followerCount)) * Math.PI * 2;
+      position
+        .addScaledVector(right, Math.cos(angle) * SPAWN_CLUSTER_RADIUS)
+        .addScaledVector(forward, Math.sin(angle) * SPAWN_CLUSTER_RADIUS);
+    }
+    units.push({
       id: `${player.id}-u${index}`,
       ownerId: player.id,
-      animal,
-      isMonarch: index === 0, // roster leader pilots
+      animal: player.animal,
+      isMonarch,
       position: { x: position.x, y: position.y, z: position.z },
-    };
-  });
+    });
+  }
+  return units;
 }
 
 /** Deterministic in-place Fisher–Yates over a copy, driven by a seeded RNG. */
@@ -140,12 +185,10 @@ function seededShuffle<T>(items: readonly T[], rng: SeededRng): T[] {
   return shuffled;
 }
 
-/** Default AI rosters cycle distinct, recognizable archetypes for variety. */
-const AI_ROSTERS: AnimalId[][] = [
-  ['Bear', 'Owl', 'Bunny'],
-  ['Turtle', 'Frog', 'Chicken'],
-  ['Pig', 'Bee', 'Cat'],
-  ['Yetti', 'Fox', 'Dolphin'],
+/** AI armies cycle through distinct, recognizable animals for variety. */
+const AI_ANIMALS: AnimalId[] = [
+  'Bear', 'Fox', 'Turtle', 'Owl', 'Pig', 'Bee',
+  'Yetti', 'Dolphin', 'Cat', 'Frog', 'Chicken', 'Bunny',
 ];
 
 function buildPlayers(
@@ -168,22 +211,48 @@ function buildPlayers(
     name: 'You',
     color: CONQUEST_PLAYER_COLORS[0],
     isAI: false,
-    animals: setup.humanAnimals,
+    animal: setup.humanAnimal,
     homeTileId: spawnTileIds[0],
   }];
 
+  // AI armies avoid the human's animal where possible so allegiance reads clearly.
+  const aiPool = AI_ANIMALS.filter((animal) => animal !== setup.humanAnimal);
   for (let aiIndex = 1; aiIndex < totalPlayers; aiIndex++) {
     players.push({
       id: `ai${aiIndex}`,
       name: `AI ${aiIndex}`,
       color: CONQUEST_PLAYER_COLORS[aiIndex % CONQUEST_PLAYER_COLORS.length],
       isAI: true,
-      animals: AI_ROSTERS[(aiIndex - 1) % AI_ROSTERS.length],
+      animal: aiPool[(aiIndex - 1) % aiPool.length],
       homeTileId: spawnTileIds[aiIndex],
     });
   }
 
   return players;
+}
+
+/**
+ * Resolve who currently controls an army from the override map (defaulting to its
+ * original owner). Exported so the field sim and tests share one definition of
+ * "whose unit is this now?".
+ */
+export function effectiveController(
+  armyController: Record<string, string>,
+  armyId: string,
+): string {
+  return armyController[armyId] ?? armyId;
+}
+
+/** Compute the human's match outcome from current army control. */
+function evaluateOutcome(
+  players: ConquestPlayer[],
+  armyController: Record<string, string>,
+  humanId: string,
+): ConquestOutcome {
+  const controllers = players.map((player) => effectiveController(armyController, player.id));
+  if (controllers.every((controller) => controller === humanId)) return 'victory';
+  if (!controllers.some((controller) => controller === humanId)) return 'defeat';
+  return 'playing';
 }
 
 export const useConquestStore = create<ConquestState>((set, get) => ({
@@ -193,6 +262,9 @@ export const useConquestStore = create<ConquestState>((set, get) => ({
   players: [],
   units: [],
   tileOwners: {},
+  armyController: {},
+  outcome: 'playing',
+  lastCapture: null,
   selectedTileId: null,
   selectedMonarchId: null,
 
@@ -216,12 +288,14 @@ export const useConquestStore = create<ConquestState>((set, get) => ({
 
     set({
       world, biomes, seed: setup.seed, players, units, tileOwners,
+      armyController: {}, outcome: 'playing', lastCapture: null,
       selectedTileId: null, selectedMonarchId: humanMonarch?.id ?? null,
     });
   },
 
   reset: () => set({
     world: null, biomes: [], seed: 0, players: [], units: [], tileOwners: {},
+    armyController: {}, outcome: 'playing', lastCapture: null,
     selectedTileId: null, selectedMonarchId: null,
   }),
 
@@ -230,15 +304,56 @@ export const useConquestStore = create<ConquestState>((set, get) => ({
   setSelectedMonarch: (unitId) => set({ selectedMonarchId: unitId }),
 
   cycleMonarch: () => {
-    const { units, players, selectedMonarchId } = get();
+    const { units, players, armyController, selectedMonarchId } = get();
     const human = players.find((player) => !player.isAI);
     if (!human) return;
-    // Cycle through every unit the local player controls, in stable order.
-    const ownUnits = units.filter((unit) => unit.ownerId === human.id);
-    if (ownUnits.length === 0) return;
-    const currentIndex = ownUnits.findIndex((unit) => unit.id === selectedMonarchId);
-    const next = ownUnits[(currentIndex + 1) % ownUnits.length];
+    // Cycle only through the monarchs the human currently controls — each leads an
+    // army, so switching monarchs is how the player commands a different army.
+    const controlledMonarchs = units.filter((unit) =>
+      unit.isMonarch && effectiveController(armyController, unit.ownerId) === human.id);
+    if (controlledMonarchs.length === 0) return;
+    const currentIndex = controlledMonarchs.findIndex((unit) => unit.id === selectedMonarchId);
+    const next = controlledMonarchs[(currentIndex + 1) % controlledMonarchs.length];
     set({ selectedMonarchId: next.id });
+  },
+
+  conquerArmy: (defeatedArmyId, conquerorId, atMs) => {
+    const { players, armyController, tileOwners, selectedMonarchId, units } = get();
+    // Guard: an army can only be captured once into a given controller, and never
+    // re-captures itself (a monarch dying to its own controller is a no-op).
+    if (effectiveController(armyController, defeatedArmyId) === conquerorId) return;
+
+    const nextArmyController = { ...armyController, [defeatedArmyId]: conquerorId };
+
+    // The defeated army's territory passes to the conqueror.
+    const nextTileOwners: Record<number, string> = { ...tileOwners };
+    for (const [tileIdKey, ownerId] of Object.entries(nextTileOwners)) {
+      if (ownerId === defeatedArmyId) nextTileOwners[Number(tileIdKey)] = conquerorId;
+    }
+
+    const human = players.find((player) => !player.isAI);
+    const outcome = human
+      ? evaluateOutcome(players, nextArmyController, human.id)
+      : 'playing';
+
+    // If the human just lost the army they were piloting, hand the camera to any
+    // monarch they still control so control never strands on an enemy unit.
+    let nextSelected = selectedMonarchId;
+    const selected = units.find((unit) => unit.id === selectedMonarchId);
+    if (human && selected
+        && effectiveController(nextArmyController, selected.ownerId) !== human.id) {
+      const fallback = units.find((unit) =>
+        unit.isMonarch && effectiveController(nextArmyController, unit.ownerId) === human.id);
+      nextSelected = fallback?.id ?? null;
+    }
+
+    set({
+      armyController: nextArmyController,
+      tileOwners: nextTileOwners,
+      outcome,
+      lastCapture: { conquerorId, defeatedId: defeatedArmyId, atMs },
+      selectedMonarchId: nextSelected,
+    });
   },
 }));
 

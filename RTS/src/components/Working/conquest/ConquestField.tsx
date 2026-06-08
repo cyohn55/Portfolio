@@ -1,11 +1,13 @@
 // The playable Conquest field: units standing on the planet, monarch piloting,
-// and the third-person chase camera.
+// combat, army capture, and the third-person chase camera.
 //
 // Single responsibility: take the spawn descriptors from the store, give every
-// unit a live position on the sphere, let the player drive their selected
-// monarch across the surface, keep the rest of the roster following, and frame
-// it all with a third-person, slightly top-down camera locked onto the monarch —
-// the Conquest analogue of Quick Play's monarch piloting.
+// unit a live position on the sphere, let the player drive their selected monarch
+// across the surface, keep each army following its own monarch, resolve combat
+// between rival armies, and — the defining Conquest mechanic — transfer a defeated
+// army to its conqueror so the player commands more and more of the planet. It
+// frames everything with a third-person, slightly top-down camera locked onto the
+// piloted monarch (the Conquest analogue of Quick Play's monarch piloting).
 //
 // Controls are deliberately the SAME as Quick Play: the monarch is driven by the
 // player's remappable camera-drive bindings (camera-relative, default ESDF),
@@ -15,8 +17,9 @@
 // whatever a player remaps in Settings drives both modes identically.
 //
 // All per-frame work is imperative (mutating Object3D transforms and the camera
-// directly in useFrame) so driving never re-renders the React tree. The store is
-// only read for the static spawn set and the selected-monarch id.
+// directly in useFrame) so driving and combat never re-render the React tree. The
+// store is read for the static spawn set, current army control, and the selected
+// monarch; control changes flow back through the store's `conquerArmy` action.
 
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
@@ -32,7 +35,17 @@ import {
   type ActivationMode,
   type TokenGestureConfig,
 } from '../gestureModes';
-import { useConquestStore } from './conquestState';
+import { useConquestStore, effectiveController } from './conquestState';
+import {
+  conquestStatsFor,
+  selectNearestEnemy,
+  isWithinAttackRange,
+  isAttackReady,
+  regenAmount,
+  AGGRO_RANGE,
+  CHASE_SPEED,
+  type ConquestCombatStats,
+} from './conquestCombat';
 import {
   buildPoseVariants,
   selectPoseIndex,
@@ -50,6 +63,15 @@ import { tileTopRadius } from './conquestGlobeGeometry';
 // controlled unit stands out.
 const UNIT_SCALE = 0.005;
 const MONARCH_SCALE = 0.007;
+
+// Team-color allegiance ring drawn flat on the surface under each unit, in globe
+// units. The monarch's ring is larger so leaders are easy to pick out, and the
+// color tracks the unit's current controller so a captured army visibly flips to
+// the conqueror's color the instant it changes hands.
+const UNIT_RING_RADIUS = 0.011;
+const MONARCH_RING_RADIUS = 0.018;
+const RING_LIFT = 0.001; // sit just above the tile face to avoid z-fighting
+const RING_FORWARD = new THREE.Vector3(0, 0, 1); // RingGeometry's default normal
 
 // Piloting feel. Speeds are in globe-radius units per second (the planet has
 // radius 1, so a full lap at MOVE_SPEED takes ~2π / MOVE_SPEED seconds). Tuned
@@ -79,10 +101,23 @@ const MOVE_HOLD_MS = 160;
 
 interface LiveUnit {
   id: string;
-  ownerId: string;
+  /** Original owner id — the army's permanent identity, used for following/grouping. */
+  armyId: string;
+  /** Player currently controlling this unit; flips on capture. Drives friend/foe. */
+  controllerId: string;
   isMonarch: boolean;
   animal: AnimalId;
   movement: MovementType;
+  combat: ConquestCombatStats;
+  hp: number;
+  maxHp: number;
+  lastAttackMs: number;
+  lastCombatMs: number;
+  /** Controller of the unit that most recently damaged this one (the would-be conqueror). */
+  lastAttackerController: string | null;
+  dead: boolean;
+  /** Resolved each frame: the enemy this unit is engaging, if any. */
+  target: LiveUnit | null;
   poseVariants: PoseVariant[];
   poseGroups: (THREE.Group | null)[];
   scale: number;
@@ -92,6 +127,8 @@ interface LiveUnit {
   lastPosition: THREE.Vector3;
   lastMovedMs: number;
   group: THREE.Group | null;
+  ring: THREE.Mesh | null;
+  ringColor: number; // last hex applied to the ring, so we only recolor on change
 }
 
 function modelPath(animal: AnimalId): string {
@@ -149,7 +186,18 @@ export function ConquestField() {
   const world = useConquestStore((s) => s.world);
   const biomes = useConquestStore((s) => s.biomes);
   const unitSpawns = useConquestStore((s) => s.units);
+  const players = useConquestStore((s) => s.players);
   const cycleMonarch = useConquestStore((s) => s.cycleMonarch);
+
+  // Team colors keyed by player id, mirrored to a ref so the per-frame loop can
+  // recolor allegiance rings (on capture) without re-subscribing each render.
+  const colorByController = useMemo(() => {
+    const map = new Map<string, number>();
+    players.forEach((player) => map.set(player.id, player.color));
+    return map;
+  }, [players]);
+  const colorRef = useRef(colorByController);
+  colorRef.current = colorByController;
 
   // The SAME remappable bindings Quick Play uses, read from the shared store so a
   // player's Settings layout drives both modes. Mirrored to a ref so the per-frame
@@ -169,8 +217,15 @@ export function ConquestField() {
   }, [unitSpawns]);
   const gltfs = useGLTF(inPlayAnimals.map(modelPath)) as any[];
 
-  // Build the live (mutable) unit set once per match. Positions/facings here are
-  // mutated every frame by the sim; React never re-renders for movement.
+  // One shared ring geometry (unit-radius disc); each unit scales it and tints its
+  // own material instance. Disposed when the field unmounts to free the GPU buffer.
+  const ringGeometry = useMemo(() => new THREE.RingGeometry(0.6, 1.0, 24), []);
+  useEffect(() => () => ringGeometry.dispose(), [ringGeometry]);
+
+  // Build the live (mutable) unit set once per match. Positions/facings/HP here are
+  // mutated every frame by the sim; React never re-renders for movement or combat.
+  // Note this deliberately does NOT depend on army control — capturing an army
+  // mutates `controllerId` in place, so the field never rebuilds and loses state.
   const liveUnits = useMemo<LiveUnit[]>(() => {
     if (!world || biomes.length === 0) return [];
     const posesByAnimal = new Map<AnimalId, PoseVariant[]>();
@@ -182,18 +237,28 @@ export function ConquestField() {
     return unitSpawns.map((spawn) => {
       const position = new THREE.Vector3(spawn.position.x, spawn.position.y, spawn.position.z);
       const up = position.clone().normalize();
-      // Seed facing as an arbitrary tangent; piloting/following overwrite it.
+      // Seed facing as an arbitrary tangent; piloting/following/combat overwrite it.
       const facing = new THREE.Vector3().crossVectors(
         up, Math.abs(up.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0),
       ).normalize();
       const poseVariants = posesByAnimal.get(spawn.animal) ?? [];
       const scale = spawn.isMonarch ? MONARCH_SCALE : UNIT_SCALE;
+      const combat = conquestStatsFor(spawn.animal);
       return {
         id: spawn.id,
-        ownerId: spawn.ownerId,
+        armyId: spawn.ownerId,
+        controllerId: spawn.ownerId,
         isMonarch: spawn.isMonarch,
         animal: spawn.animal,
         movement: ANIMAL_MOVEMENT_TYPES[spawn.animal],
+        combat,
+        hp: combat.maxHp,
+        maxHp: combat.maxHp,
+        lastAttackMs: 0,
+        lastCombatMs: 0,
+        lastAttackerController: null,
+        dead: false,
+        target: null,
         poseVariants,
         poseGroups: new Array(poseVariants.length).fill(null),
         scale,
@@ -203,9 +268,19 @@ export function ConquestField() {
         lastPosition: position.clone(),
         lastMovedMs: 0,
         group: null,
+        ring: null,
+        ringColor: -1,
       };
     });
   }, [world, biomes, unitSpawns, gltfs, inPlayAnimals]);
+
+  // Each army's monarch, looked up by army id. Monarchs persist for the match
+  // (capture changes their controller, never removes them), so this is stable.
+  const monarchByArmy = useMemo(() => {
+    const map = new Map<string, LiveUnit>();
+    liveUnits.forEach((unit) => { if (unit.isMonarch) map.set(unit.armyId, unit); });
+    return map;
+  }, [liveUnits]);
 
   // --- Input: pressed keys + zoom, tracked in refs (no per-key re-render). ---
   const keys = useRef<Set<string>>(new Set());
@@ -222,7 +297,7 @@ export function ConquestField() {
   // drive/zoom keys are matched against the live layout in the per-frame loop.
   useEffect(() => {
     // In Conquest there is no King/Queen split, so both the "cycle" and "toggle"
-    // pilot bindings simply switch which of the player's units is controlled —
+    // pilot bindings simply switch which controlled monarch (army) is piloted —
     // the natural analogue that keeps each Quick Play key doing something useful.
     const runPilotAction = () => cycleMonarch();
 
@@ -298,6 +373,7 @@ export function ConquestField() {
     candidateDir: new THREE.Vector3(),
     basis: new THREE.Matrix4(),
     quat: new THREE.Quaternion(),
+    ringQuat: new THREE.Quaternion(),
     renderPos: new THREE.Vector3(),
     camDesired: new THREE.Vector3(),
     camBack: new THREE.Vector3(),
@@ -306,17 +382,52 @@ export function ConquestField() {
     drive: new THREE.Vector3(),
   });
 
+  // Move `unit` toward `targetPos` along the sphere surface, stopping when within
+  // `stopDistance`. Honors per-biome passability and re-seats the unit on the tile
+  // top. Returns true if it actually stepped (was outside the stop radius).
+  const moveToward = (
+    unit: LiveUnit,
+    targetPos: THREE.Vector3,
+    speed: number,
+    stopDistance: number,
+    delta: number,
+  ): boolean => {
+    const { up, step, candidateDir } = scratch.current;
+    step.subVectors(targetPos, unit.position);
+    const distance = step.length();
+    if (distance <= stopDistance) return false;
+    const travel = Math.min(speed * delta, distance - stopDistance);
+    candidateDir.copy(unit.position).addScaledVector(step.normalize(), travel).normalize();
+    const tileId = nearestTileId(candidateDir, world!);
+    if (isPassable(biomes[tileId], unit.movement)) {
+      unit.position.copy(candidateDir).multiplyScalar(tileTopRadius(biomes[tileId]));
+    }
+    up.copy(unit.position).normalize();
+    unit.facing.subVectors(targetPos, unit.position);
+    tangentize(unit.facing, up);
+    return true;
+  };
+
   useFrame((state, rawDelta) => {
     if (!world || liveUnits.length === 0) return;
     const delta = Math.min(rawDelta, 0.05); // clamp hitches
     const elapsedMs = state.clock.elapsedTime * 1000;
     const {
-      up, step, candidateDir, basis, quat, renderPos, camDesired, camBack,
+      up, step, candidateDir, basis, quat, ringQuat, renderPos, camDesired, camBack,
       camForwardTangent, camRightTangent, drive,
     } = scratch.current;
 
-    const monarchId = useConquestStore.getState().selectedMonarchId;
-    const monarch = liveUnits.find((unit) => unit.id === monarchId) ?? null;
+    const conquest = useConquestStore.getState();
+    const armyController = conquest.armyController;
+    const monarchId = conquest.selectedMonarchId;
+
+    // 0) Refresh allegiance from the store (the capture source of truth), so the
+    //    combat and ring color below reflect any army that changed hands.
+    for (const unit of liveUnits) {
+      unit.controllerId = effectiveController(armyController, unit.armyId);
+    }
+
+    const monarch = liveUnits.find((unit) => unit.id === monarchId && !unit.dead) ?? null;
 
     // Resolve the player's live drive/zoom bindings (default ESDF + wheel). Held
     // keys are matched the same way CameraController matches them in Quick Play.
@@ -327,15 +438,14 @@ export function ConquestField() {
     const leftKey = plainKeyToken(bindings.cameraLeft);
     const rightKey = plainKeyToken(bindings.cameraRight);
 
-    // 1) Drive the monarch from input, camera-relative on the sphere's tangent
-    //    plane (matching Quick Play's camera-relative ESDF drive) and constrained
-    //    to passable tiles. The unit faces the direction it moves; the chase
-    //    camera then re-frames behind that heading.
+    // 1) Drive the piloted monarch from input, camera-relative on the sphere's
+    //    tangent plane (matching Quick Play's camera-relative ESDF drive) and
+    //    constrained to passable tiles. When the player gives no input the monarch
+    //    is handled by the combat/idle pass below (so it auto-defends).
+    let drivingInput = false;
     if (monarch) {
       up.copy(monarch.position).normalize();
 
-      // Camera basis projected onto the tangent plane at the monarch. forward =
-      // "into the screen" along the surface, right = screen-right along it.
       camera.getWorldDirection(camForwardTangent);
       camForwardTangent.addScaledVector(up, -camForwardTangent.dot(up));
       if (camForwardTangent.lengthSq() < 1e-8) camForwardTangent.copy(monarch.facing);
@@ -348,6 +458,7 @@ export function ConquestField() {
         - (leftKey && pressed.has(leftKey) ? 1 : 0);
 
       if (forwardBack !== 0 || rightLeft !== 0) {
+        drivingInput = true;
         drive.copy(camForwardTangent).multiplyScalar(forwardBack)
           .addScaledVector(camRightTangent, rightLeft)
           .normalize();
@@ -365,8 +476,7 @@ export function ConquestField() {
     }
 
     // Held zoom keys (only if the player bound plain keys to zoom; the default
-    // zoom bindings are the wheel, handled in onWheel). Mirrors the wheel's
-    // exponential feel so keyboard and wheel zoom agree.
+    // zoom bindings are the wheel, handled in onWheel).
     const zoomInKey = plainKeyToken(bindings.cameraZoomIn);
     const zoomOutKey = plainKeyToken(bindings.cameraZoomOut);
     const zoomDir = (zoomOutKey && pressed.has(zoomOutKey) ? 1 : 0)
@@ -377,29 +487,85 @@ export function ConquestField() {
       );
     }
 
-    // 2) Followers (same owner as the monarch) trail it across the surface.
-    if (monarch) {
-      for (const unit of liveUnits) {
-        if (unit === monarch || unit.ownerId !== monarch.ownerId) continue;
-        step.subVectors(monarch.position, unit.position);
-        const distance = step.length();
-        if (distance > FOLLOW_GAP) {
-          const travel = Math.min(FOLLOW_SPEED * delta, distance - FOLLOW_GAP);
-          candidateDir.copy(unit.position).addScaledVector(step.normalize(), travel).normalize();
-          const tileId = nearestTileId(candidateDir, world);
-          if (isPassable(biomes[tileId], unit.movement)) {
-            unit.position.copy(candidateDir).multiplyScalar(tileTopRadius(biomes[tileId]));
-          }
-          up.copy(unit.position).normalize();
-          unit.facing.subVectors(monarch.position, unit.position);
-          tangentize(unit.facing, up);
-        }
-      }
+    // 2) Resolve each living unit's engage target (nearest enemy within aggro).
+    for (const unit of liveUnits) {
+      unit.target = unit.dead ? null : selectNearestEnemy(unit, liveUnits, AGGRO_RANGE);
     }
 
-    // 3) Push every unit's transform + animation pose to its groups.
+    // 3) Movement: engaged units close on (then hold at) their target; idle
+    //    monarchs hold position; followers trail their own army's monarch. The
+    //    actively piloted monarch is skipped here — its input drive already ran.
     for (const unit of liveUnits) {
-      if (!unit.group) continue;
+      if (unit.dead) continue;
+      if (unit === monarch && drivingInput) continue;
+
+      if (unit.target) {
+        const moved = moveToward(unit, unit.target.position, CHASE_SPEED, unit.combat.attackRange, delta);
+        if (!moved) {
+          up.copy(unit.position).normalize();
+          unit.facing.subVectors(unit.target.position, unit.position);
+          tangentize(unit.facing, up);
+        }
+      } else if (!unit.isMonarch) {
+        const armyMonarch = monarchByArmy.get(unit.armyId);
+        if (armyMonarch && !armyMonarch.dead) {
+          moveToward(unit, armyMonarch.position, FOLLOW_SPEED, FOLLOW_GAP, delta);
+        }
+      }
+      // Idle monarchs (no target, not driven) simply hold their position.
+    }
+
+    // 4) Attacks: a unit in range of its target lands a hit on cooldown, recording
+    //    the attacker's controller so a slain monarch knows who conquered it.
+    for (const unit of liveUnits) {
+      const target = unit.target;
+      if (unit.dead || !target || target.dead) continue;
+      if (!isWithinAttackRange(unit, target, unit.combat.attackRange)) continue;
+      if (!isAttackReady(unit.lastAttackMs, unit.combat.attackCooldownMs, elapsedMs)) continue;
+      unit.lastAttackMs = elapsedMs;
+      unit.lastCombatMs = elapsedMs;
+      target.hp -= unit.combat.damage;
+      target.lastCombatMs = elapsedMs;
+      target.lastAttackerController = unit.controllerId;
+    }
+
+    // 5) Out-of-combat regeneration keeps lulls from being permanently crippling.
+    for (const unit of liveUnits) {
+      if (unit.dead || unit.hp >= unit.maxHp) continue;
+      const heal = regenAmount(unit.maxHp, unit.lastCombatMs, elapsedMs, delta);
+      if (heal > 0) unit.hp = Math.min(unit.maxHp, unit.hp + heal);
+    }
+
+    // 6) Resolve casualties. A fallen follower is removed; a fallen monarch means
+    //    the whole army is CAPTURED — its survivors and the revived monarch switch
+    //    to the conqueror's control (the core Conquest mechanic).
+    for (const unit of liveUnits) {
+      if (unit.dead || unit.hp > 0) continue;
+      if (!unit.isMonarch) {
+        unit.dead = true;
+        if (unit.group) unit.group.visible = false;
+        if (unit.ring) unit.ring.visible = false;
+        continue;
+      }
+      const conqueror = unit.lastAttackerController;
+      if (!conqueror || conqueror === unit.controllerId) {
+        unit.hp = unit.maxHp; // anomaly: no valid captor — recover rather than die
+        continue;
+      }
+      const armyId = unit.armyId;
+      for (const member of liveUnits) {
+        if (member.armyId !== armyId || member.dead) continue;
+        member.controllerId = conqueror;
+        member.hp = member.maxHp; // captured units rally to full strength
+        member.lastAttackerController = null;
+        member.target = null;
+      }
+      conquest.conquerArmy(armyId, conqueror, elapsedMs);
+    }
+
+    // 7) Push every living unit's transform + animation pose + allegiance ring.
+    for (const unit of liveUnits) {
+      if (unit.dead || !unit.group) continue;
 
       // Movement detection drives the walk/idle pose split (with a short hold so
       // the walk cycle bridges momentary stops).
@@ -409,15 +575,14 @@ export function ConquestField() {
       unit.lastPosition.copy(unit.position);
       const isMoving = elapsedMs - unit.lastMovedMs < MOVE_HOLD_MS;
 
-      // Show only the active pose frame; hide the rest.
       const activePose = selectPoseIndex(unit.animal, isMoving, elapsedMs);
       for (let i = 0; i < unit.poseGroups.length; i++) {
         const poseGroup = unit.poseGroups[i];
         if (poseGroup) poseGroup.visible = i === activePose;
       }
 
-      // Stand on the surface (air units hover above it), facing `facing`, up
-      // along the surface normal.
+      // Stand on the surface (air units hover above it), facing `facing`, up along
+      // the surface normal.
       up.copy(unit.position).normalize();
       renderPos.copy(unit.position).addScaledVector(up, unit.airLift);
       scratch.current.right.crossVectors(up, unit.facing).normalize();
@@ -426,10 +591,24 @@ export function ConquestField() {
       quat.setFromRotationMatrix(basis);
       unit.group.position.copy(renderPos);
       unit.group.quaternion.copy(quat);
+
+      // Allegiance ring: lie flat on the surface, recolored when the controller
+      // changes (so a captured army flips to its new owner's color instantly).
+      if (unit.ring) {
+        unit.ring.position.copy(unit.position).addScaledVector(up, RING_LIFT);
+        ringQuat.setFromUnitVectors(RING_FORWARD, up);
+        unit.ring.quaternion.copy(ringQuat);
+        const color = colorRef.current.get(unit.controllerId);
+        if (color !== undefined && color !== unit.ringColor) {
+          (unit.ring.material as THREE.MeshBasicMaterial).color.setHex(color);
+          unit.ringColor = color;
+        }
+      }
     }
 
-    // 4) Third-person chase camera, locked onto the monarch. Camera distance is
-    //    proportional to the monarch's size so small animals still fill the frame.
+    // 8) Third-person chase camera, locked onto the piloted monarch. Camera
+    //    distance is proportional to the monarch's size so small animals fill the
+    //    frame. With no controlled monarch (defeat), the camera simply holds.
     if (monarch) {
       up.copy(monarch.position).normalize();
       const backDistance = monarch.scale * CAM_BACK_FACTOR * zoom.current;
@@ -473,6 +652,26 @@ export function ConquestField() {
             </group>
           ))}
         </group>
+      ))}
+
+      {/* Allegiance rings live outside the scaled unit groups so their size stays
+          fixed in globe space; the sim positions, orients, and recolors them. */}
+      {liveUnits.map((unit) => (
+        <mesh
+          key={`${unit.id}-ring`}
+          ref={(element) => { unit.ring = element; }}
+          geometry={ringGeometry}
+          scale={unit.isMonarch ? MONARCH_RING_RADIUS : UNIT_RING_RADIUS}
+          renderOrder={1}
+        >
+          <meshBasicMaterial
+            color={colorByController.get(unit.controllerId) ?? 0xffffff}
+            transparent
+            opacity={0.8}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
       ))}
     </group>
   );

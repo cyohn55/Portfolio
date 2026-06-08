@@ -12,13 +12,13 @@ import type { AnimalId } from '../src/game/types';
  * the structural rule that every player spawns on a distinct pentagon node.
  */
 
-const HUMAN_ANIMALS: AnimalId[] = ['Bear', 'Owl', 'Frog'];
+const HUMAN_ANIMAL: AnimalId = 'Bear';
 
 function generateMatch(seed: number, aiCount: number) {
   useConquestStore.getState().generate({
     seed,
     subdivisions: 3,
-    humanAnimals: HUMAN_ANIMALS,
+    humanAnimal: HUMAN_ANIMAL,
     aiCount,
   });
   return useConquestStore.getState();
@@ -30,7 +30,7 @@ test.describe('Conquest match setup', () => {
     expect(state.players.length).toBe(6);
     expect(state.players[0].id).toBe('p0');
     expect(state.players[0].isAI).toBe(false);
-    expect(state.players[0].animals).toEqual(HUMAN_ANIMALS);
+    expect(state.players[0].animal).toBe(HUMAN_ANIMAL);
     expect(state.players.slice(1).every((p) => p.isAI)).toBe(true);
   });
 
@@ -78,6 +78,64 @@ test.describe('Conquest match setup', () => {
     expect(state.world).toBeNull();
     expect(state.players).toEqual([]);
     expect(state.tileOwners).toEqual({});
+    expect(state.armyController).toEqual({});
+    expect(state.outcome).toBe('playing');
+    expect(state.lastCapture).toBeNull();
     expect(state.selectedTileId).toBeNull();
+  });
+});
+
+test.describe('Conquest capture mechanic', () => {
+  test('conquering an army transfers its control, territory, and a capture event', () => {
+    const state = generateMatch(42, 3);
+    const conqueror = state.players[0].id; // the human
+    const victim = state.players[1].id;    // an AI rival
+    const victimHome = state.players[1].homeTileId;
+
+    expect(state.tileOwners[victimHome]).toBe(victim);
+
+    useConquestStore.getState().conquerArmy(victim, conqueror, 1000);
+    const after = useConquestStore.getState();
+
+    // The defeated army is now controlled by the conqueror...
+    expect(after.armyController[victim]).toBe(conqueror);
+    // ...its territory has changed hands...
+    expect(after.tileOwners[victimHome]).toBe(conqueror);
+    // ...and the capture is surfaced to the HUD.
+    expect(after.lastCapture).toEqual({ conquerorId: conqueror, defeatedId: victim, atMs: 1000 });
+  });
+
+  test('a captured army adds its monarch to the human\'s cycle', () => {
+    const state = generateMatch(42, 3);
+    const human = state.players[0].id;
+    const victim = state.players[1].id;
+
+    // Before capture the human controls only their own monarch, so cycling is a
+    // no-op (one army = one monarch).
+    const startMonarch = useConquestStore.getState().selectedMonarchId;
+    useConquestStore.getState().cycleMonarch();
+    expect(useConquestStore.getState().selectedMonarchId).toBe(startMonarch);
+
+    // After capturing a rival, cycling reaches the captured army's monarch.
+    useConquestStore.getState().conquerArmy(victim, human, 500);
+    useConquestStore.getState().cycleMonarch();
+    const cycled = useConquestStore.getState();
+    const cycledUnit = cycled.units.find((u) => u.id === cycled.selectedMonarchId)!;
+    expect(cycledUnit.isMonarch).toBe(true);
+    expect(cycledUnit.ownerId).toBe(victim); // now controlled by the human via capture
+  });
+
+  test('losing every army to a rival is a defeat; controlling them all is victory', () => {
+    const state = generateMatch(42, 1); // human + one AI
+    const human = state.players[0].id;
+    const ai = state.players[1].id;
+
+    useConquestStore.getState().conquerArmy(ai, human, 100);
+    expect(useConquestStore.getState().outcome).toBe('victory');
+
+    // A fresh match where the human's own army falls to the AI is a defeat.
+    generateMatch(42, 1);
+    useConquestStore.getState().conquerArmy(human, ai, 200);
+    expect(useConquestStore.getState().outcome).toBe('defeat');
   });
 });

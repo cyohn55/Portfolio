@@ -1,9 +1,10 @@
 // Pre-match setup for the Conquest game mode.
 //
 // Single responsibility: collect the match configuration (seed, AI opponent
-// count, the human player's 3-animal roster), then generate the world and route
-// into the Conquest screen. It reuses the RTS animal roster so Conquest armies
-// are the same units the player already knows.
+// count, and the single animal the human's army is made of), then generate the
+// world and route into the Conquest screen. In Conquest a player commands one
+// animal — additional armies are won by conquest, not chosen here — so the lobby
+// picks exactly one of the shared RTS animals.
 
 import { useState } from 'react';
 import { useGameStore } from '../../../game/state';
@@ -21,7 +22,6 @@ const ALL_ANIMALS: AnimalId[] = [
 ];
 
 const ANIMAL_DISPLAY_NAME: Partial<Record<AnimalId, string>> = { Yetti: 'Yeti' };
-const REQUIRED_ANIMALS = 3;
 const MAX_AI = MAX_CONQUEST_PLAYERS - 1; // one slot is the human player
 
 function animalDisplayName(animal: AnimalId): string {
@@ -39,27 +39,19 @@ export function ConquestLobby() {
 
   const [seedText, setSeedText] = useState<string>(() => String(randomSeed()));
   const [aiCount, setAiCount] = useState<number>(3);
-  const [selectedAnimals, setSelectedAnimals] = useState<AnimalId[]>([]);
+  const [selectedAnimal, setSelectedAnimal] = useState<AnimalId | null>(null);
 
   const parsedSeed = Number.parseInt(seedText, 10);
   const seedIsValid = Number.isFinite(parsedSeed);
-  const rosterIsComplete = selectedAnimals.length === REQUIRED_ANIMALS;
+  const rosterIsComplete = selectedAnimal !== null;
   const canStart = seedIsValid && rosterIsComplete;
 
-  const toggleAnimal = (animal: AnimalId) => {
-    setSelectedAnimals((previous) => {
-      if (previous.includes(animal)) return previous.filter((a) => a !== animal);
-      if (previous.length >= REQUIRED_ANIMALS) return previous;
-      return [...previous, animal];
-    });
-  };
-
   const handleStart = () => {
-    if (!canStart) return;
+    if (!canStart || selectedAnimal === null) return;
     generate({
       seed: parsedSeed >>> 0,
       subdivisions: DEFAULT_CONQUEST_SUBDIVISIONS,
-      humanAnimals: selectedAnimals,
+      humanAnimal: selectedAnimal,
       aiCount,
     });
     transitionToScreen('conquest');
@@ -118,28 +110,32 @@ export function ConquestLobby() {
 
         <section className="conquest-config-panel">
           <h2 className="conquest-section-title">
-            Your Team <span className="conquest-roster-count">{selectedAnimals.length}/{REQUIRED_ANIMALS}</span>
+            Your Army <span className="conquest-roster-count">{selectedAnimal ? animalDisplayName(selectedAnimal) : '—'}</span>
           </h2>
 
           <div className="conquest-animal-grid">
             {ALL_ANIMALS.map((animal) => {
-              const isSelected = selectedAnimals.includes(animal);
+              const isSelected = selectedAnimal === animal;
               return (
                 <button
                   key={animal}
                   type="button"
                   className={`conquest-animal-chip ${isSelected ? 'selected' : ''}`}
-                  onClick={() => toggleAnimal(animal)}
+                  onClick={() => setSelectedAnimal(animal)}
                 >
                   {animalDisplayName(animal)}
                 </button>
               );
             })}
           </div>
-          {!rosterIsComplete && (
+          {!rosterIsComplete ? (
             <p className="conquest-hint">
-              Pick {REQUIRED_ANIMALS - selectedAnimals.length} more animal
-              {REQUIRED_ANIMALS - selectedAnimals.length === 1 ? '' : 's'} to march.
+              Pick the one animal your army marches as. Defeat a rival army and its
+              king or queen — and all its units — join your command.
+            </p>
+          ) : (
+            <p className="conquest-hint">
+              Capture rival monarchs to grow your command across the planet.
             </p>
           )}
         </section>

@@ -92,7 +92,7 @@ interface BridgeState {
 // (Bee, Frog, Owl) trade away HP/DPS for reach, and fast attackers trade per-hit
 // damage for cadence. Speed and range remain the identity axes; HP and per-hit
 // damage are the levers used to settle the budget.
-const ANIMALS: Record<AnimalId, { baseHp: number; dmg: number; speed: number; range: number; attackCooldownMs: number }> = {
+export const ANIMALS: Record<AnimalId, { baseHp: number; dmg: number; speed: number; range: number; attackCooldownMs: number }> = {
   Bee: { baseHp: 40, dmg: 11, speed: 20.4, range: 9, attackCooldownMs: 800 },      // Fastest: fragile flying ranged kiter, rapid stings
   Bear: { baseHp: 95, dmg: 36, speed: 8.16, range: 4, attackCooldownMs: 2050 },    // Slow heavy slammer, biggest single hit
   Bunny: { baseHp: 80, dmg: 14, speed: 18.36, range: 4, attackCooldownMs: 1000 },  // Fast evasive melee skirmisher

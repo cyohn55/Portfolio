@@ -6,7 +6,10 @@ import {
   tileTopRadius,
   DEFAULT_GLOBE_OPTIONS,
 } from '../src/components/Working/conquest/conquestGlobeGeometry';
-import { useConquestStore } from '../src/components/Working/conquest/conquestState';
+import {
+  useConquestStore,
+  CONQUEST_SQUAD_SIZE,
+} from '../src/components/Working/conquest/conquestState';
 import type { AnimalId } from '../src/game/types';
 
 /**
@@ -17,7 +20,7 @@ import type { AnimalId } from '../src/game/types';
  * relief) and store behavior, not constants copied from the implementation.
  */
 
-const HUMAN_ANIMALS: AnimalId[] = ['Bear', 'Owl', 'Frog'];
+const HUMAN_ANIMAL: AnimalId = 'Bear';
 
 // Triangles emitted per polygon side: flat top fan + 2 bevel + 2 wall + 1 bottom.
 const TRIANGLES_PER_SIDE = 6;
@@ -109,17 +112,20 @@ test.describe('Flat, beveled tile geometry', () => {
 test.describe('Conquest units and monarch selection', () => {
   function generate(seed: number, aiCount: number) {
     useConquestStore.getState().generate({
-      seed, subdivisions: 3, humanAnimals: HUMAN_ANIMALS, aiCount,
+      seed, subdivisions: 3, humanAnimal: HUMAN_ANIMAL, aiCount,
     });
     return useConquestStore.getState();
   }
 
-  test('every player fields its full roster with exactly one monarch', () => {
+  test('every player fields a same-animal squad with exactly one monarch', () => {
     const state = generate(42, 3);
-    expect(state.units.length).toBe(state.players.length * HUMAN_ANIMALS.length);
+    expect(state.units.length).toBe(state.players.length * CONQUEST_SQUAD_SIZE);
     for (const player of state.players) {
-      const monarchs = state.units.filter((u) => u.ownerId === player.id && u.isMonarch);
-      expect(monarchs.length).toBe(1);
+      const army = state.units.filter((u) => u.ownerId === player.id);
+      expect(army.length).toBe(CONQUEST_SQUAD_SIZE);
+      // A whole army is one animal — the player's single chosen unit type.
+      expect(army.every((u) => u.animal === player.animal)).toBe(true);
+      expect(army.filter((u) => u.isMonarch).length).toBe(1);
     }
   });
 
@@ -139,15 +145,17 @@ test.describe('Conquest units and monarch selection', () => {
     }
   });
 
-  test('cycling the monarch advances through the local player\'s units only', () => {
+  test('cycling stays on a monarch the local player controls', () => {
     const state = generate(42, 3);
     const human = state.players.find((p) => !p.isAI)!;
-    const before = useConquestStore.getState().selectedMonarchId;
 
     useConquestStore.getState().cycleMonarch();
     const after = useConquestStore.getState().selectedMonarchId;
+    const selected = state.units.find((u) => u.id === after)!;
 
-    expect(after).not.toBe(before);
-    expect(state.units.find((u) => u.id === after)!.ownerId).toBe(human.id);
+    // With one army the player commands exactly one monarch, so the selection is
+    // always a monarch under the human's control.
+    expect(selected.isMonarch).toBe(true);
+    expect(selected.ownerId).toBe(human.id);
   });
 });
