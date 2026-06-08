@@ -37,6 +37,10 @@ export function MainMenu() {
     transitionToScreen('leaderboard');
   };
 
+  const handleConquest = () => {
+    transitionToScreen('conquestLobby');
+  };
+
   return (
     <div className="main-menu">
       <div className="main-menu-content">
@@ -49,6 +53,13 @@ export function MainMenu() {
             onClick={handleQuickPlay}
           >
             QUICK PLAY
+          </button>
+
+          <button
+            className="menu-button"
+            onClick={handleConquest}
+          >
+            CONQUEST
           </button>
 
           <button

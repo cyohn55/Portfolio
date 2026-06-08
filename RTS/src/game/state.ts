@@ -576,7 +576,7 @@ function createEmptyMatchStats(): MatchStats {
   };
 }
 
-type GameScreen = 'menu' | 'lobby' | 'multiplayer' | 'playing' | 'postgame' | 'leaderboard';
+type GameScreen = 'menu' | 'lobby' | 'multiplayer' | 'playing' | 'postgame' | 'leaderboard' | 'conquestLobby' | 'conquest';
 
 type Store = GameState & {
   // Screen management

@@ -22,6 +22,8 @@ import { useMultiplayerSession, setPendingJoinCode } from './components/Working/
 import { readRoomCodeFromUrl } from './components/Working/roomInvite';
 import { PostGameScreen } from './components/screens/PostGameScreen';
 import { LeaderboardScreen } from './components/Working/LeaderboardScreen';
+import { ConquestLobby } from './components/Working/conquest/ConquestLobby';
+import { ConquestScreen } from './components/Working/conquest/ConquestScreen';
 import { useParentScrollBridge } from './components/Working/parentScrollBridge';
 import { BackgroundMusic } from './components/BackgroundMusic';
 import { InstructionsPopup } from './components/screens/InstructionsPopup';
@@ -151,6 +153,27 @@ export default function App() {
       <>
         <BackgroundMusic />
         <LeaderboardScreen />
+      </>
+    );
+  }
+
+  // Conquest game mode: pre-match setup, then the procedural-planet match view.
+  // Each owns its own Canvas, so they live outside the RTS battle-map render path
+  // below and tear down cleanly on transition.
+  if (currentScreen === 'conquestLobby') {
+    return (
+      <>
+        <BackgroundMusic />
+        <ConquestLobby />
+      </>
+    );
+  }
+
+  if (currentScreen === 'conquest') {
+    return (
+      <>
+        <BackgroundMusic />
+        <ConquestScreen />
       </>
     );
   }
