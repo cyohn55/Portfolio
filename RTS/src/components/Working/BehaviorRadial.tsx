@@ -62,9 +62,19 @@ const PRIORITY_OPTIONS: PriorityOption[] = [
   { priority: 'monarch', icon: '👑', label: 'Royalty', hint: 'Kings, Queens, and Bases first' },
 ];
 
-const INNER_RADIUS = 118; // px from center to each posture circle
-const OUTER_RADIUS = 196; // px from center to each priority circle
-const PANEL_SIZE = 500; // px square the rings live in
+// Circle sizes (kept in sync with the CSS below) so the ring radii can be derived
+// for equal radial gaps and guaranteed no overlap between the center toggle, the
+// inner ring, and the outer ring.
+const NODE_DIAMETER = 76; // each posture / priority option circle
+const CENTER_DIAMETER = 104; // the fire-mode toggle in the middle
+const RADIAL_GAP = 22; // equal clear gap between center→inner and inner→outer edges
+
+// Derived so every gap between consecutive ring edges is exactly RADIAL_GAP:
+//   inner edge of inner ring = CENTER_DIAMETER/2 + RADIAL_GAP + NODE_DIAMETER/2
+//   inner edge of outer ring = (inner ring outer edge) + RADIAL_GAP + NODE_DIAMETER/2
+const INNER_RADIUS = CENTER_DIAMETER / 2 + RADIAL_GAP + NODE_DIAMETER / 2; // 112
+const OUTER_RADIUS = INNER_RADIUS + NODE_DIAMETER + RADIAL_GAP; // 210
+const PANEL_SIZE = 2 * (OUTER_RADIUS + NODE_DIAMETER / 2) + 24; // fits the outer ring + margin
 
 // Returns the single shared value across the list, or null when they disagree
 // ("mixed" — shown so the player knows the selection is not uniform).
@@ -225,7 +235,7 @@ export function BehaviorRadial() {
                 return (
                   <button
                     key={option.priority}
-                    className={`rts-stance-node rts-stance-node-priority${active ? ' rts-stance-node-active' : ''}${hovered ? ' rts-stance-node-hover' : ''}`}
+                    className={`rts-stance-node${active ? ' rts-stance-node-active' : ''}${hovered ? ' rts-stance-node-hover' : ''}`}
                     style={{ transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
                     onClick={() => applyPriority(option.priority)}
                     title={option.hint}
@@ -246,7 +256,7 @@ export function BehaviorRadial() {
                 return (
                   <button
                     key={option.stance}
-                    className={`rts-stance-node rts-stance-node-posture${active ? ' rts-stance-node-active' : ''}${hovered ? ' rts-stance-node-hover' : ''}`}
+                    className={`rts-stance-node${active ? ' rts-stance-node-active' : ''}${hovered ? ' rts-stance-node-hover' : ''}`}
                     style={{ transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
                     onClick={() => applyStance(option.stance)}
                     title={option.hint}
@@ -257,9 +267,10 @@ export function BehaviorRadial() {
                 );
               })}
 
-              {/* Center: weapons-free / hold-fire toggle. */}
+              {/* Center: weapons-free / hold-fire toggle. Shares the option circles'
+                  background; its state is read from the icon + label, not color. */}
               <button
-                className={`rts-stance-center${fireIsFree ? ' rts-stance-center-free' : ''}${gamepadHover?.ring === 'fire' ? ' rts-stance-node-hover' : ''}`}
+                className={`rts-stance-node rts-stance-center${gamepadHover?.ring === 'fire' ? ' rts-stance-node-hover' : ''}`}
                 onClick={() => applyFire(effectiveFire === 'free' ? 'hold' : 'free')}
                 title="Toggle weapons-free / hold-fire"
               >
@@ -299,70 +310,68 @@ const STYLE = `
 .rts-stance-trigger-icon { font-size: 16px; }
 .rts-stance-trigger-key { color: #64748b; }
 
+/* Full-screen click-catcher that closes the radial on an outside click. It is
+   intentionally transparent (no dim, no blur) so the battlefield stays visible
+   behind the floating rings while the radial is open. */
 .rts-stance-backdrop {
   position: fixed; inset: 0; z-index: 1100; display: flex;
-  align-items: center; justify-content: center; background: rgba(4,8,18,0.45);
-  backdrop-filter: blur(2px);
+  align-items: center; justify-content: center; background: transparent;
 }
+/* No card: a transparent layout container so only the rings float on the scene. */
 .rts-stance-panel {
   display: flex; flex-direction: column; align-items: center;
-  background: rgba(13,18,32,0.94); border: 1px solid rgba(88,120,255,0.4);
-  border-radius: 16px; padding: 16px 18px 14px; color: #e2e8f0;
-  font-family: monospace; box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+  padding: 0; color: #e2e8f0; font-family: monospace;
 }
-.rts-stance-header { font-size: 13px; color: #94a3b8; letter-spacing: 0.5px; margin-bottom: 4px; }
+.rts-stance-header {
+  font-size: 13px; color: #e2e8f0; letter-spacing: 0.5px; margin-bottom: 8px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.95);
+}
 
 .rts-stance-ring { position: relative; }
 
-/* Shared circle for both rings; the modifier classes tint each ring distinctly. */
+/* One shared circle for every option — fire toggle, posture, and priority all use
+   the SAME background so color never signals which type an option is (the ring it
+   sits in does). The opaque fill + drop shadow + text shadow keep each circle and
+   its label legible floating directly over the battlefield (no backing card). */
 .rts-stance-node {
-  position: absolute; top: 50%; left: 50%; width: 84px; height: 84px;
+  position: absolute; top: 50%; left: 50%; width: 76px; height: 76px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  border-radius: 50%; cursor: pointer; color: #cbd5e1;
+  border-radius: 50%; cursor: pointer; color: #e2e8f0;
+  background: rgba(15,23,42,0.92); border: 1px solid rgba(148,163,184,0.55);
+  box-shadow: 0 3px 12px rgba(0,0,0,0.6);
   transition: transform 0.1s, border-color 0.15s, background 0.15s, color 0.15s, box-shadow 0.15s;
 }
-.rts-stance-node-icon { font-size: 22px; line-height: 1; }
-.rts-stance-node-label { font-size: 10px; font-weight: bold; text-align: center; }
+.rts-stance-node:hover { background: rgba(30,41,66,0.96); border-color: rgba(203,213,225,0.9); color: #fff; }
+.rts-stance-node-icon { font-size: 22px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9)); }
+.rts-stance-node-label { font-size: 10px; font-weight: bold; text-align: center; text-shadow: 0 1px 3px rgba(0,0,0,0.95); }
 
-/* Inner ring (posture): cool blue tint. */
-.rts-stance-node-posture {
-  background: rgba(24,32,52,0.94); border: 1px solid rgba(88,120,255,0.4);
-}
-.rts-stance-node-posture:hover { background: rgba(40,52,84,0.98); border-color: rgba(129,160,255,0.9); color: #fff; }
-.rts-stance-node-posture.rts-stance-node-active {
-  background: rgba(37,99,235,0.9); border-color: #93c5fd; color: #fff;
-}
-
-/* Outer ring (priority): teal tint so the two rings read as distinct axes. */
-.rts-stance-node-priority {
-  background: rgba(16,38,42,0.94); border: 1px solid rgba(45,212,191,0.4);
-}
-.rts-stance-node-priority:hover { background: rgba(22,54,60,0.98); border-color: rgba(94,234,212,0.9); color: #fff; }
-.rts-stance-node-priority.rts-stance-node-active {
-  background: rgba(13,148,136,0.9); border-color: #5eead4; color: #fff;
+/* Selected value on an axis: a single accent fill, shared by all three types so
+   the accent reads as "this is the current choice", not as a type color. */
+.rts-stance-node-active {
+  background: rgba(37,99,235,0.92); border-color: #93c5fd; color: #fff;
 }
 
 /* Controller right-stick aim highlight (distinct from the selected-state fill). */
 .rts-stance-node-hover {
   border-color: #fde047 !important; color: #fff;
-  box-shadow: 0 0 0 3px rgba(253,224,71,0.6);
+  box-shadow: 0 0 0 3px rgba(253,224,71,0.65), 0 3px 12px rgba(0,0,0,0.6);
 }
 
+/* The center fire toggle is only larger; it inherits the shared circle background
+   from .rts-stance-node above. Listed after it so the size/position win. */
 .rts-stance-center {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  width: 116px; height: 116px; border-radius: 50%;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-  background: rgba(30,18,18,0.96); border: 2px solid rgba(248,113,113,0.6);
-  color: #fca5a5; cursor: pointer; transition: border-color 0.15s, background 0.15s, color 0.15s, box-shadow 0.15s;
+  width: 104px; height: 104px;
+  transform: translate(-50%, -50%); gap: 4px;
 }
-.rts-stance-center:hover { border-color: rgba(248,113,113,0.95); }
-.rts-stance-center-free { background: rgba(34,24,12,0.96); border-color: rgba(251,146,60,0.75); color: #fdba74; }
-.rts-stance-center-icon { font-size: 30px; line-height: 1; }
-.rts-stance-center-label { font-size: 11px; font-weight: bold; text-align: center; }
+.rts-stance-center-icon { font-size: 30px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9)); }
+.rts-stance-center-label { font-size: 11px; font-weight: bold; text-align: center; text-shadow: 0 1px 3px rgba(0,0,0,0.95); }
 
-.rts-stance-footer { margin-top: 10px; font-size: 11px; color: #64748b; text-align: center; max-width: 460px; }
+.rts-stance-footer {
+  margin-top: 12px; font-size: 11px; color: #cbd5e1; text-align: center; max-width: 460px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.95);
+}
 .rts-stance-key {
-  display: inline-block; background: rgba(88,120,255,0.22); border: 1px solid rgba(129,160,255,0.5);
-  border-radius: 5px; padding: 0 5px; color: #c7d2fe; font-weight: bold;
+  display: inline-block; background: rgba(15,23,42,0.92); border: 1px solid rgba(203,213,225,0.7);
+  border-radius: 5px; padding: 0 5px; color: #fff; font-weight: bold;
 }
 `;
