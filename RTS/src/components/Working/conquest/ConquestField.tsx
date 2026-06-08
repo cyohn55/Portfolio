@@ -25,26 +25,30 @@ import type { TileBiome } from './conquestBiomes';
 import { BIOMES } from './conquestBiomes';
 import { tileTopRadius } from './conquestGlobeGeometry';
 
-// Model footprint on the unit-radius globe (a level-3 tile spans ~0.18 units, so
-// these read as small figures standing on a tile). The piloted monarch is a
-// touch larger so the controlled unit stands out.
-const UNIT_SCALE = 0.045;
-const MONARCH_SCALE = 0.06;
+// Model footprint on the unit-radius globe. A level-3 tile spans ~0.18 units, so
+// each tile should read as a large field ("an acre"): an animal is only a small
+// fraction of a tile across. The piloted monarch is a touch larger so the
+// controlled unit stands out.
+const UNIT_SCALE = 0.005;
+const MONARCH_SCALE = 0.007;
 
 // Piloting feel. Speeds are in globe-radius units per second (the planet has
-// radius 1, so a full lap at MOVE_SPEED takes ~2π / MOVE_SPEED seconds).
-const MOVE_SPEED = 0.32;
-const TURN_SPEED = 2.4; // radians / second
-const FOLLOW_SPEED = 0.38;
-const FOLLOW_GAP = 0.06; // followers hold this distance behind the monarch
+// radius 1, so a full lap at MOVE_SPEED takes ~2π / MOVE_SPEED seconds). Tuned
+// so crossing one acre-sized tile takes a couple of seconds, not a blink.
+const MOVE_SPEED = 0.1;
+const TURN_SPEED = 2.2; // radians / second
+const FOLLOW_SPEED = 0.12;
+const FOLLOW_GAP = 0.012; // followers hold this distance behind the monarch
 
-// Chase camera placement, scaled by the zoom factor. HEIGHT vs BACK sets the
-// pitch — comparable values give the requested "slightly top-down" angle.
-const CAM_BACK = 0.34;
-const CAM_HEIGHT = 0.24;
+// Chase camera placement, expressed as multiples of the monarch's model scale so
+// the third-person framing stays correct no matter how small the animals are.
+// HEIGHT vs BACK sets the pitch — these give the requested "slightly top-down"
+// angle. Multiplied further by the live zoom factor.
+const CAM_BACK_FACTOR = 7.0;
+const CAM_HEIGHT_FACTOR = 4.5;
 const CAM_LERP = 6.0; // higher = snappier follow
 const ZOOM_MIN = 0.45;
-const ZOOM_MAX = 3.0;
+const ZOOM_MAX = 4.0;
 
 interface LiveUnit {
   id: string;
@@ -261,13 +265,16 @@ export function ConquestField() {
       unit.group.quaternion.copy(quat);
     }
 
-    // 4) Third-person chase camera, locked onto the monarch.
+    // 4) Third-person chase camera, locked onto the monarch. Camera distance is
+    //    proportional to the monarch's size so small animals still fill the frame.
     if (monarch) {
       up.copy(monarch.position).normalize();
-      camBack.copy(monarch.facing).multiplyScalar(-CAM_BACK * zoom.current);
+      const backDistance = monarch.scale * CAM_BACK_FACTOR * zoom.current;
+      const heightDistance = monarch.scale * CAM_HEIGHT_FACTOR * zoom.current;
+      camBack.copy(monarch.facing).multiplyScalar(-backDistance);
       camDesired.copy(monarch.position)
         .add(camBack)
-        .addScaledVector(up, CAM_HEIGHT * zoom.current);
+        .addScaledVector(up, heightDistance);
 
       if (!cameraInitialized.current) {
         camera.position.copy(camDesired);

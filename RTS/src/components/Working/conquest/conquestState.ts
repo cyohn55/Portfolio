@@ -91,8 +91,9 @@ interface ConquestState {
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 // How far roster members sit from their home tile center at spawn, in the tile's
-// tangent plane. Small so the army reads as a cluster on a single tile.
-const SPAWN_CLUSTER_RADIUS = 0.03;
+// tangent plane. Kept tight (animals are tiny vs an acre-sized tile) so the army
+// reads as a small cluster near the tile center rather than spread across it.
+const SPAWN_CLUSTER_RADIUS = 0.012;
 
 /** Place a player's roster as units clustered on their home tile's surface. */
 function buildUnitsForPlayer(
