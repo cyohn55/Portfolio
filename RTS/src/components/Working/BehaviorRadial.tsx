@@ -3,23 +3,23 @@ import { useGameStore } from '../../game/state';
 import type { FireMode, TargetPriority, Unit, UnitStance } from '../../game/types';
 import { behaviorOf } from './unitBehavior';
 import { formatKeyboardToken } from './controlBindings';
-import { type RadialHover, halfWedgeDeg, hoverFromVector } from './radialGeometry';
+import { type RadialHover, hoverFromVector, semicircleAngleDeg } from './radialGeometry';
 
 /**
  * The selection radial for the combat-posture system. It drives the deterministic
  * `setBehavior` command (see state.ts / unitBehavior.ts), letting the player set
- * the three composable axes of a selection's behavior with two concentric rings
+ * the three composable axes of a selection's behavior with a single split ring
  * around a central toggle:
  *   - fire:     the center toggle (weapons-free vs hold-fire)
- *   - stance:   the INNER ring of posture circles (how far it commits)
- *   - priority: the OUTER ring of target-priority circles (what it targets first)
+ *   - stance:   the posture circles, filling the TOP half of the ring
+ *   - priority: the target-priority circles, filling the BOTTOM half of the ring
  *
  * Opens on the `b` key / R3 / the on-screen button while own, commandable units are
  * selected. With a controller the right stick aims: its deflection MAGNITUDE picks
- * the ring (at rest = the center fire toggle, a half-push = the posture ring, a
- * full push = the priority ring) and its ANGLE picks the wedge in that ring. RT
- * applies the highlighted option and the radial stays open so all three axes can be
- * set in one visit; B closes it. A mouse can also click any circle directly.
+ * center-vs-ring (at rest = the center fire toggle) and its ANGLE picks the option
+ * (a top-half angle = a posture, a bottom-half angle = a priority). RT applies the
+ * highlighted option and the radial stays open so all three axes can be set in one
+ * visit; B closes it. A mouse can also click any circle directly.
  *
  * Only the five combat stances are offered here; the positional stances
  * (patrol/guard/escort) need a target-placement gesture that is not built yet, so
@@ -69,33 +69,20 @@ const FIRE_COLOR = '#fb5607';
 const POSTURE_COLOR = '#2563eb';
 const PRIORITY_COLOR = '#9333ea';
 
-// Circle sizes (kept in sync with the CSS below) so the ring radii can be derived
-// rather than hand-tuned — keeping the no-overlap guarantees as the sizes change.
+// Circle sizes (kept in sync with the CSS below) so the ring radius can be derived
+// rather than hand-tuned — keeping the no-overlap guarantee as the sizes change.
 const NODE_DIAMETER = 76; // each posture / priority option circle
 const CENTER_DIAMETER = NODE_DIAMETER; // the fire-mode toggle is the same size as an option
-const RADIAL_GAP = 10; // clear gap between the center toggle and the inner ring (kept tight for a compact radial)
 
-// The outer (priority) ring is rotated by this half-wedge so each priority circle
-// sits in the gap between two posture circles instead of directly outside one.
-const PRIORITY_OFFSET_DEG = halfWedgeDeg(PRIORITY_OPTIONS.length);
+// Posture (top) and priority (bottom) share ONE ring. With equal group counts the
+// options end up uniformly spaced around the full ring, so size the radius from the
+// total option count: N circles evenly spaced clear each other when the chord
+// 2·R·sin(π/N) ≥ NODE_DIAMETER + RING_CLEARANCE.
+const RING_SLOT_COUNT = STANCE_OPTIONS.length + PRIORITY_OPTIONS.length; // 10
+const RING_CLEARANCE = 16; // px gap between adjacent circles on the shared ring
+const RING_RADIUS = (NODE_DIAMETER + RING_CLEARANCE) / (2 * Math.sin(Math.PI / RING_SLOT_COUNT));
 
-// Inner ring radius: the center toggle's edge plus RADIAL_GAP plus a circle radius.
-const INNER_RADIUS = CENTER_DIAMETER / 2 + RADIAL_GAP + NODE_DIAMETER / 2; // 86
-
-// Outer ring radius: pulled in as close to the center as possible. Because the
-// priority circles are STAGGERED into the posture gaps, the binding constraint is
-// not a radial edge gap but the DIAGONAL distance to the nearest posture circle
-// (which sits PRIORITY_OFFSET_DEG away). Solve the law of cosines for the smallest
-// OUTER_RADIUS whose priority circle still clears that posture circle by
-// STAGGER_CLEARANCE — letting the outer ring nest tightly without touching the
-// inner ring. (Assumes both rings hold the same option count, which they do.)
-const STAGGER_CLEARANCE = 14; // px between a priority circle and its nearest posture circle
-const STAGGER_SEP_RAD = (PRIORITY_OFFSET_DEG * Math.PI) / 180;
-const OUTER_RADIUS =
-  INNER_RADIUS * Math.cos(STAGGER_SEP_RAD) +
-  Math.sqrt((NODE_DIAMETER + STAGGER_CLEARANCE) ** 2 - (INNER_RADIUS * Math.sin(STAGGER_SEP_RAD)) ** 2);
-
-const PANEL_SIZE = 2 * (OUTER_RADIUS + NODE_DIAMETER / 2) + 24; // fits the outer ring + margin
+const PANEL_SIZE = 2 * (RING_RADIUS + NODE_DIAMETER / 2) + 24; // fits the ring + margin
 
 // Returns the single shared value across the list, or null when they disagree
 // ("mixed" — shown so the player knows the selection is not uniform).
@@ -244,14 +231,14 @@ export function BehaviorRadial() {
               Combat Posture · {commandable.length} unit{commandable.length === 1 ? '' : 's'}
             </div>
 
-            {/* Two concentric rings (posture inner, priority outer) around the fire toggle. */}
+            {/* One ring around the fire toggle: posture fills the top half, priority
+                the bottom half. */}
             <div className="rts-stance-ring" style={{ width: PANEL_SIZE, height: PANEL_SIZE }}>
-              {/* Outer ring: target priority — staggered a half-wedge so each
-                  circle nests in the gap between two posture circles. */}
+              {/* Bottom half of the ring: target priority. */}
               {PRIORITY_OPTIONS.map((option, index) => {
-                const angle = (-90 + PRIORITY_OFFSET_DEG + index * (360 / PRIORITY_OPTIONS.length)) * (Math.PI / 180);
-                const x = Math.cos(angle) * OUTER_RADIUS;
-                const y = Math.sin(angle) * OUTER_RADIUS;
+                const angle = semicircleAngleDeg('bottom', index, PRIORITY_OPTIONS.length) * (Math.PI / 180);
+                const x = Math.cos(angle) * RING_RADIUS;
+                const y = Math.sin(angle) * RING_RADIUS;
                 const active = currentPriority === option.priority;
                 const hovered = gamepadHover?.ring === 'priority' && gamepadHover.index === index;
                 return (
@@ -268,11 +255,11 @@ export function BehaviorRadial() {
                 );
               })}
 
-              {/* Inner ring: posture. */}
+              {/* Top half of the ring: posture. */}
               {STANCE_OPTIONS.map((option, index) => {
-                const angle = (-90 + index * (360 / STANCE_OPTIONS.length)) * (Math.PI / 180);
-                const x = Math.cos(angle) * INNER_RADIUS;
-                const y = Math.sin(angle) * INNER_RADIUS;
+                const angle = semicircleAngleDeg('top', index, STANCE_OPTIONS.length) * (Math.PI / 180);
+                const x = Math.cos(angle) * RING_RADIUS;
+                const y = Math.sin(angle) * RING_RADIUS;
                 const active = currentStance === option.stance;
                 const hovered = gamepadHover?.ring === 'posture' && gamepadHover.index === index;
                 return (
@@ -305,7 +292,7 @@ export function BehaviorRadial() {
             </div>
 
             <div className="rts-stance-footer">
-              Aim the right stick (center = fire · inner = posture · outer = priority) and press
+              Aim the right stick (center = fire · top = posture · bottom = priority) and press
               <span className="rts-stance-key"> RT</span> to set · <span className="rts-stance-key">B</span> to close ·
               or click a circle{triggerKeyLabel ? ` / press ${triggerKeyLabel}` : ''}
             </div>

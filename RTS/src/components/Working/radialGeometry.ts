@@ -1,74 +1,76 @@
-// Pure geometry for the two-ring combat-posture radial (see BehaviorRadial.tsx).
+// Pure geometry for the combat-posture radial (see BehaviorRadial.tsx).
 //
 // This module owns the math that turns a controller right-stick vector into the
-// ring + wedge it addresses, with no React / Three.js / DOM imports so it can be
+// option it addresses, with no React / Three.js / DOM imports so it can be
 // unit-tested directly and reused identically by the on-screen radial and the
-// gamepad poller. The radial lays out two concentric rings around a center toggle:
-//   - center  → the fire-mode toggle (addressed when the stick is near rest)
-//   - inner   → posture wedges       (addressed at a half-push)
-//   - outer   → target-priority wedges (addressed at a full push)
-// so the stick's deflection MAGNITUDE selects the ring and its ANGLE selects the
-// wedge within that ring.
+// gamepad poller. The radial is a single ring of option circles around a center
+// toggle:
+//   - center      → the fire-mode toggle (addressed when the stick is near rest)
+//   - TOP half     → the posture options   (upper semicircle)
+//   - BOTTOM half  → the target-priority options (lower semicircle)
+// so the stick's deflection MAGNITUDE chooses center-vs-ring and its ANGLE chooses
+// the option (a top-half angle resolves to a posture, a bottom-half angle to a
+// priority).
 
 export type RadialRing = 'fire' | 'posture' | 'priority';
 
 export interface RadialHover {
   ring: RadialRing;
-  /** Wedge index within the ring; ignored for the single-target fire ring. */
+  /** Option index within its group; ignored for the single-target fire ring. */
   index: number;
 }
 
-// Right-stick deflection bands that pick which ring the aim addresses. Below
-// FIRE_BAND the stick is "at rest" and the center fire toggle is addressed;
-// between the bands the inner posture ring; at/above POSTURE_BAND the outer
-// priority ring. A full deflection is magnitude 1, so POSTURE_BAND < 1 leaves
-// headroom for the outer ring.
+// Right-stick deflection below which the stick is "at rest" and the center fire
+// toggle is addressed; any larger push selects a ring option by angle.
 export const FIRE_BAND = 0.4;
-export const POSTURE_BAND = 0.75;
 
-// Half of one ring's wedge, in degrees. The outer (priority) ring is rotated by
-// this amount so its circles fall in the GAPS between the inner (posture) circles
-// rather than directly outside them. When both rings hold the same number of
-// options this lands each outer circle exactly between two inner ones.
-export function halfWedgeDeg(count: number): number {
-  return 360 / (2 * count);
+// Placement angle (screen degrees: 0°=right, 90°=down, 270°=up) for the index-th
+// option in a half-ring of `count` items. 'top' fills the upper semicircle
+// (180°→360°), used by the posture circles; 'bottom' fills the lower semicircle
+// (0°→180°), used by the priority circles. Each item is centered in an equal
+// sub-arc so its group is evenly spread and the two halves meet at clean gaps on
+// the horizontal split — no circle lands on the dividing line. With equal group
+// counts this places all options at one uniform angular step around the ring.
+export function semicircleAngleDeg(half: 'top' | 'bottom', index: number, count: number): number {
+  const base = half === 'top' ? 180 : 0;
+  return base + (180 / count) * (index + 0.5);
 }
 
-// Which wedge (of `count`, placed at angle_i = -90 + offsetDeg + i*(360/count)
-// degrees in screen space, x right / y down) a right-stick vector points at. The
-// stick uses the same x-right / y-down convention (up is negative), so the aim
-// angle maps straight onto the wedge angles. `offsetDeg` rotates the whole ring
-// (used to stagger the outer ring). Returns the index whose angle is closest,
-// wrapping correctly across the ±180° seam. `count` must be >= 1.
-export function wedgeFromVector(x: number, y: number, count: number, offsetDeg = 0): number {
-  const aimDeg = Math.atan2(y, x) * (180 / Math.PI);
-  let best = 0;
-  let bestDiff = Infinity;
-  for (let i = 0; i < count; i++) {
-    const wedgeDeg = -90 + offsetDeg + i * (360 / count);
-    const diff = Math.abs(((aimDeg - wedgeDeg + 540) % 360) - 180);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      best = i;
-    }
-  }
-  return best;
+// Smallest absolute difference between two angles (degrees), wrapping across the
+// ±180° seam so e.g. 350° and 10° are 20° apart.
+function angleDiffDeg(a: number, b: number): number {
+  return Math.abs(((a - b + 540) % 360) - 180);
 }
 
-// Resolve a raw right-stick vector into the ring + wedge it addresses. The
-// deflection magnitude selects the ring (rest = fire center, mid = posture ring,
-// full = priority ring); the angle selects the wedge within a ring. The wedge
-// counts are passed in so this stays decoupled from the radial's option lists.
-// The priority ring is staggered by a half-wedge so its hover mapping matches the
-// staggered circle placement in the UI.
+// Resolve a raw right-stick vector into the option it addresses. A near-rest stick
+// (magnitude below FIRE_BAND) addresses the center fire toggle; any larger push
+// selects the single ring option whose placement angle is closest to the aim — the
+// top half resolves to a posture, the bottom half to a priority. The group counts
+// are passed in so this stays decoupled from the radial's option lists.
 export function hoverFromVector(
   x: number,
   y: number,
   postureCount: number,
   priorityCount: number,
 ): RadialHover {
-  const magnitude = Math.hypot(x, y);
-  if (magnitude < FIRE_BAND) return { ring: 'fire', index: 0 };
-  if (magnitude < POSTURE_BAND) return { ring: 'posture', index: wedgeFromVector(x, y, postureCount) };
-  return { ring: 'priority', index: wedgeFromVector(x, y, priorityCount, halfWedgeDeg(priorityCount)) };
+  if (Math.hypot(x, y) < FIRE_BAND) return { ring: 'fire', index: 0 };
+
+  const aimDeg = Math.atan2(y, x) * (180 / Math.PI);
+  let best: RadialHover = { ring: 'posture', index: 0 };
+  let bestDiff = Infinity;
+  for (let i = 0; i < postureCount; i++) {
+    const diff = angleDiffDeg(aimDeg, semicircleAngleDeg('top', i, postureCount));
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = { ring: 'posture', index: i };
+    }
+  }
+  for (let j = 0; j < priorityCount; j++) {
+    const diff = angleDiffDeg(aimDeg, semicircleAngleDeg('bottom', j, priorityCount));
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = { ring: 'priority', index: j };
+    }
+  }
+  return best;
 }

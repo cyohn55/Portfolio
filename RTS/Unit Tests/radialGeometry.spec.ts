@@ -2,112 +2,105 @@ import { test, expect } from '@playwright/test';
 import {
   type RadialHover,
   FIRE_BAND,
-  POSTURE_BAND,
-  halfWedgeDeg,
   hoverFromVector,
-  wedgeFromVector,
+  semicircleAngleDeg,
 } from '../src/components/Working/radialGeometry';
 
 /**
  * Exercises the real radial geometry against real right-stick vectors. The radial
- * has five posture wedges (inner ring) and five priority wedges (outer ring), so
- * the tests derive every expectation from those counts and the documented layout
- * (wedge 0 at the top, clockwise) rather than hard-coding magic indices.
+ * is a single ring split into a top half of posture options and a bottom half of
+ * priority options, around a center fire toggle. The tests derive every
+ * expectation from the documented layout (top half = upper semicircle, bottom half
+ * = lower semicircle) and the option counts rather than hard-coding magic angles.
  */
 
 const POSTURE_COUNT = 5;
 const PRIORITY_COUNT = 5;
 
-// Build the unit vector that points straight at wedge `index` of `count`, using
-// the same -90°-at-top, clockwise, x-right / y-down convention the module lays the
-// wedges out with. `offsetDeg` matches a staggered ring (the outer priority ring).
-// Used so the tests describe "aim at wedge i" without restating the module's own
-// arithmetic verbatim.
-function aimAtWedge(index: number, count: number, offsetDeg = 0): { x: number; y: number } {
-  const deg = -90 + offsetDeg + index * (360 / count);
-  const rad = (deg * Math.PI) / 180;
+// Unit vector pointing at a screen angle (0°=right, 90°=down, 270°=up), the same
+// convention the module lays options out with. Lets the tests describe "aim here"
+// without restating the module's own arithmetic.
+function aimAt(angleDeg: number): { x: number; y: number } {
+  const rad = (angleDeg * Math.PI) / 180;
   return { x: Math.cos(rad), y: Math.sin(rad) };
 }
 
-test.describe('wedgeFromVector', () => {
-  test('maps a vector aimed at each wedge back to that wedge index', () => {
-    for (let index = 0; index < POSTURE_COUNT; index++) {
-      const { x, y } = aimAtWedge(index, POSTURE_COUNT);
-      expect(wedgeFromVector(x, y, POSTURE_COUNT)).toBe(index);
+test.describe('semicircleAngleDeg', () => {
+  test('places the top half across the upper semicircle (180°–360°)', () => {
+    for (let i = 0; i < POSTURE_COUNT; i++) {
+      const angle = semicircleAngleDeg('top', i, POSTURE_COUNT);
+      expect(angle).toBeGreaterThan(180);
+      expect(angle).toBeLessThan(360);
+      // Upper semicircle ⇒ screen-y is negative (up).
+      expect(Math.sin((angle * Math.PI) / 180)).toBeLessThan(0);
     }
   });
 
-  test('places wedge 0 straight up (stick up is negative y)', () => {
-    expect(wedgeFromVector(0, -1, POSTURE_COUNT)).toBe(0);
-  });
-
-  test('resolves a vector between two wedges to the nearer one', () => {
-    // Nudge the top wedge's aim slightly toward wedge 1; it must still pick wedge 0.
-    const a = aimAtWedge(0, POSTURE_COUNT);
-    const b = aimAtWedge(1, POSTURE_COUNT);
-    const nearTop = { x: a.x * 0.9 + b.x * 0.1, y: a.y * 0.9 + b.y * 0.1 };
-    expect(wedgeFromVector(nearTop.x, nearTop.y, POSTURE_COUNT)).toBe(0);
-  });
-
-  test('wraps correctly across the ±180° seam for a different wedge count', () => {
-    for (let index = 0; index < PRIORITY_COUNT; index++) {
-      const { x, y } = aimAtWedge(index, PRIORITY_COUNT);
-      expect(wedgeFromVector(x, y, PRIORITY_COUNT)).toBe(index);
+  test('places the bottom half across the lower semicircle (0°–180°)', () => {
+    for (let j = 0; j < PRIORITY_COUNT; j++) {
+      const angle = semicircleAngleDeg('bottom', j, PRIORITY_COUNT);
+      expect(angle).toBeGreaterThan(0);
+      expect(angle).toBeLessThan(180);
+      // Lower semicircle ⇒ screen-y is positive (down).
+      expect(Math.sin((angle * Math.PI) / 180)).toBeGreaterThan(0);
     }
+  });
+
+  test('centers each option in an equal sub-arc, leaving clean gaps at the split', () => {
+    // No option sits on the horizontal split line (0° or 180°): the nearest is half
+    // a sub-arc away, so the two halves meet at clean gaps.
+    const half = 180 / POSTURE_COUNT;
+    expect(semicircleAngleDeg('bottom', 0, PRIORITY_COUNT)).toBeCloseTo(half / 2, 6);
+    expect(semicircleAngleDeg('top', 0, POSTURE_COUNT)).toBeCloseTo(180 + half / 2, 6);
   });
 });
 
-test.describe('hoverFromVector ring selection', () => {
+test.describe('hoverFromVector', () => {
   test('a near-rest stick addresses the center fire toggle', () => {
     const hover: RadialHover = hoverFromVector(0, 0, POSTURE_COUNT, PRIORITY_COUNT);
     expect(hover.ring).toBe('fire');
   });
 
   test('a deflection just below the fire band still addresses fire', () => {
-    const magnitude = FIRE_BAND - 0.05;
-    const hover = hoverFromVector(0, -magnitude, POSTURE_COUNT, PRIORITY_COUNT);
+    const hover = hoverFromVector(0, -(FIRE_BAND - 0.05), POSTURE_COUNT, PRIORITY_COUNT);
     expect(hover.ring).toBe('fire');
   });
 
-  test('a mid deflection addresses the posture ring at the aimed wedge', () => {
-    const magnitude = (FIRE_BAND + POSTURE_BAND) / 2;
-    for (let index = 0; index < POSTURE_COUNT; index++) {
-      const dir = aimAtWedge(index, POSTURE_COUNT);
-      const hover = hoverFromVector(dir.x * magnitude, dir.y * magnitude, POSTURE_COUNT, PRIORITY_COUNT);
+  test('aiming at each posture angle (top half) selects that posture', () => {
+    for (let i = 0; i < POSTURE_COUNT; i++) {
+      const dir = aimAt(semicircleAngleDeg('top', i, POSTURE_COUNT));
+      const hover = hoverFromVector(dir.x, dir.y, POSTURE_COUNT, PRIORITY_COUNT);
       expect(hover.ring).toBe('posture');
-      expect(hover.index).toBe(index);
+      expect(hover.index).toBe(i);
     }
   });
 
-  test('a full deflection addresses the staggered priority ring at the aimed wedge', () => {
-    // The priority ring is rotated by a half-wedge, so aiming uses that same offset.
-    const offset = halfWedgeDeg(PRIORITY_COUNT);
-    for (let index = 0; index < PRIORITY_COUNT; index++) {
-      const dir = aimAtWedge(index, PRIORITY_COUNT, offset); // already unit length (magnitude 1)
+  test('aiming at each priority angle (bottom half) selects that priority', () => {
+    for (let j = 0; j < PRIORITY_COUNT; j++) {
+      const dir = aimAt(semicircleAngleDeg('bottom', j, PRIORITY_COUNT));
       const hover = hoverFromVector(dir.x, dir.y, POSTURE_COUNT, PRIORITY_COUNT);
       expect(hover.ring).toBe('priority');
-      expect(hover.index).toBe(index);
+      expect(hover.index).toBe(j);
     }
   });
 
-  test('priority circles are staggered into the posture gaps', () => {
-    // Aiming straight at a posture wedge (full deflection) must NOT line up with a
-    // single priority wedge center — the outer ring sits between the inner ones.
-    // Equal counts ⇒ the offset is half a wedge, so the posture direction lands on
-    // the boundary between two priority wedges (here, indices 4 and 0 at the top).
-    const offset = halfWedgeDeg(PRIORITY_COUNT);
-    expect(offset).toBeGreaterThan(0);
-    const towardPostureTop = aimAtWedge(0, POSTURE_COUNT); // straight up
-    const priorityIndex = wedgeFromVector(towardPostureTop.x, towardPostureTop.y, PRIORITY_COUNT, offset);
-    // Straight up bisects priority wedges 4 (just left of top) and 0 (just right);
-    // the nearest-wins tiebreak resolves to one of them, never a centered hit.
-    expect([0, PRIORITY_COUNT - 1]).toContain(priorityIndex);
+  test('straight up selects a posture, straight down selects a priority', () => {
+    expect(hoverFromVector(0, -1, POSTURE_COUNT, PRIORITY_COUNT).ring).toBe('posture');
+    expect(hoverFromVector(0, 1, POSTURE_COUNT, PRIORITY_COUNT).ring).toBe('priority');
   });
 
-  test('the band boundaries are inclusive toward the outer ring', () => {
-    // Exactly at FIRE_BAND leaves fire (→ posture); exactly at POSTURE_BAND leaves
-    // posture (→ priority). Verifies the boundary ownership the radial relies on.
-    expect(hoverFromVector(0, -FIRE_BAND, POSTURE_COUNT, PRIORITY_COUNT).ring).toBe('posture');
-    expect(hoverFromVector(0, -POSTURE_BAND, POSTURE_COUNT, PRIORITY_COUNT).ring).toBe('priority');
+  test('any upper-half aim resolves to posture, any lower-half aim to priority', () => {
+    for (const angle of [200, 250, 270, 300, 340]) {
+      expect(hoverFromVector(...aimedAt(angle), POSTURE_COUNT, PRIORITY_COUNT).ring).toBe('posture');
+    }
+    for (const angle of [20, 60, 90, 120, 160]) {
+      expect(hoverFromVector(...aimedAt(angle), POSTURE_COUNT, PRIORITY_COUNT).ring).toBe('priority');
+    }
   });
 });
+
+// Tuple form of aimAt so the vector can be spread straight into hoverFromVector.
+function aimedAt(angleDeg: number): [number, number] {
+  const { x, y } = aimAt(angleDeg);
+  return [x, y];
+}
