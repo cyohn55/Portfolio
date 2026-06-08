@@ -35,15 +35,17 @@ interface StanceOption {
   icon: string;
   label: string;
   hint: string;
+  color: string; // vibrant fill, always visible so the option is identifiable at a glance
 }
 
-// Ordered for the inner ring (placed clockwise from the top).
+// Ordered for the inner ring (placed clockwise from the top). Each stance carries a
+// distinct vibrant color so the option reads by color even before it is selected.
 const STANCE_OPTIONS: StanceOption[] = [
-  { stance: 'aggressive', icon: '⚔️', label: 'Aggressive', hint: 'Hunt & chase enemies in vision' },
-  { stance: 'skirmish', icon: '🏹', label: 'Skirmish', hint: 'Kite — fight at range, back off when closed on' },
-  { stance: 'holdGround', icon: '🚩', label: 'Hold Ground', hint: 'Attack only what is in range; never move' },
-  { stance: 'defensive', icon: '🛡️', label: 'Defensive', hint: 'Engage within a leash, then return home' },
-  { stance: 'flee', icon: '🏃', label: 'Flee', hint: 'Never engage; retreat toward home' },
+  { stance: 'aggressive', icon: '⚔️', label: 'Aggressive', hint: 'Hunt & chase enemies in vision', color: '#ef4444' },
+  { stance: 'skirmish', icon: '🏹', label: 'Skirmish', hint: 'Kite — fight at range, back off when closed on', color: '#f97316' },
+  { stance: 'holdGround', icon: '🚩', label: 'Hold Ground', hint: 'Attack only what is in range; never move', color: '#eab308' },
+  { stance: 'defensive', icon: '🛡️', label: 'Defensive', hint: 'Engage within a leash, then return home', color: '#3b82f6' },
+  { stance: 'flee', icon: '🏃', label: 'Flee', hint: 'Never engage; retreat toward home', color: '#22c55e' },
 ];
 
 interface PriorityOption {
@@ -51,33 +53,49 @@ interface PriorityOption {
   icon: string;
   label: string;
   hint: string;
+  color: string; // vibrant fill, always visible (kept in a different hue family from the stances)
 }
 
-// Ordered for the outer ring (placed clockwise from the top).
+// Ordered for the outer ring (placed clockwise from the top). Priority colors sit
+// in a different part of the wheel than the stance colors so the two rings stay
+// distinguishable while every individual option still has its own color.
 const PRIORITY_OPTIONS: PriorityOption[] = [
-  { priority: 'nearest', icon: '📍', label: 'Nearest', hint: 'Closest enemy first' },
-  { priority: 'lowestHp', icon: '🩸', label: 'Weakest', hint: 'Finish the lowest-HP enemy' },
-  { priority: 'highestThreat', icon: '💥', label: 'Threat', hint: 'Highest damage-per-second first' },
-  { priority: 'ranged', icon: '🎯', label: 'Ranged', hint: 'Longest-reach enemy first' },
-  { priority: 'monarch', icon: '👑', label: 'Royalty', hint: 'Kings, Queens, and Bases first' },
+  { priority: 'nearest', icon: '📍', label: 'Nearest', hint: 'Closest enemy first', color: '#06b6d4' },
+  { priority: 'lowestHp', icon: '🩸', label: 'Weakest', hint: 'Finish the lowest-HP enemy', color: '#ec4899' },
+  { priority: 'highestThreat', icon: '💥', label: 'Threat', hint: 'Highest damage-per-second first', color: '#a855f7' },
+  { priority: 'ranged', icon: '🎯', label: 'Ranged', hint: 'Longest-reach enemy first', color: '#6366f1' },
+  { priority: 'monarch', icon: '👑', label: 'Royalty', hint: 'Kings, Queens, and Bases first', color: '#14b8a6' },
 ];
 
+// The fire-mode toggle's always-visible color (a fiery red-orange, matching its 🔥).
+const FIRE_COLOR = '#fb5607';
+
 // Circle sizes (kept in sync with the CSS below) so the ring radii can be derived
-// for equal radial gaps and guaranteed no overlap between the center toggle, the
-// inner ring, and the outer ring.
+// rather than hand-tuned — keeping the no-overlap guarantees as the sizes change.
 const NODE_DIAMETER = 76; // each posture / priority option circle
 const CENTER_DIAMETER = NODE_DIAMETER; // the fire-mode toggle is the same size as an option
-const RADIAL_GAP = 10; // equal clear gap between center→inner and inner→outer edges (kept tight for a compact radial)
+const RADIAL_GAP = 10; // clear gap between the center toggle and the inner ring (kept tight for a compact radial)
 
 // The outer (priority) ring is rotated by this half-wedge so each priority circle
 // sits in the gap between two posture circles instead of directly outside one.
 const PRIORITY_OFFSET_DEG = halfWedgeDeg(PRIORITY_OPTIONS.length);
 
-// Derived so every gap between consecutive ring edges is exactly RADIAL_GAP:
-//   inner edge of inner ring = CENTER_DIAMETER/2 + RADIAL_GAP + NODE_DIAMETER/2
-//   inner edge of outer ring = (inner ring outer edge) + RADIAL_GAP + NODE_DIAMETER/2
-const INNER_RADIUS = CENTER_DIAMETER / 2 + RADIAL_GAP + NODE_DIAMETER / 2; // 112
-const OUTER_RADIUS = INNER_RADIUS + NODE_DIAMETER + RADIAL_GAP; // 210
+// Inner ring radius: the center toggle's edge plus RADIAL_GAP plus a circle radius.
+const INNER_RADIUS = CENTER_DIAMETER / 2 + RADIAL_GAP + NODE_DIAMETER / 2; // 86
+
+// Outer ring radius: pulled in as close to the center as possible. Because the
+// priority circles are STAGGERED into the posture gaps, the binding constraint is
+// not a radial edge gap but the DIAGONAL distance to the nearest posture circle
+// (which sits PRIORITY_OFFSET_DEG away). Solve the law of cosines for the smallest
+// OUTER_RADIUS whose priority circle still clears that posture circle by
+// STAGGER_CLEARANCE — letting the outer ring nest tightly without touching the
+// inner ring. (Assumes both rings hold the same option count, which they do.)
+const STAGGER_CLEARANCE = 14; // px between a priority circle and its nearest posture circle
+const STAGGER_SEP_RAD = (PRIORITY_OFFSET_DEG * Math.PI) / 180;
+const OUTER_RADIUS =
+  INNER_RADIUS * Math.cos(STAGGER_SEP_RAD) +
+  Math.sqrt((NODE_DIAMETER + STAGGER_CLEARANCE) ** 2 - (INNER_RADIUS * Math.sin(STAGGER_SEP_RAD)) ** 2);
+
 const PANEL_SIZE = 2 * (OUTER_RADIUS + NODE_DIAMETER / 2) + 24; // fits the outer ring + margin
 
 // Returns the single shared value across the list, or null when they disagree
@@ -241,7 +259,7 @@ export function BehaviorRadial() {
                   <button
                     key={option.priority}
                     className={`rts-stance-node${active ? ' rts-stance-node-active' : ''}${hovered ? ' rts-stance-node-hover' : ''}`}
-                    style={{ transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
+                    style={{ background: option.color, transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
                     onClick={() => applyPriority(option.priority)}
                     title={option.hint}
                   >
@@ -262,7 +280,7 @@ export function BehaviorRadial() {
                   <button
                     key={option.stance}
                     className={`rts-stance-node${active ? ' rts-stance-node-active' : ''}${hovered ? ' rts-stance-node-hover' : ''}`}
-                    style={{ transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
+                    style={{ background: option.color, transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
                     onClick={() => applyStance(option.stance)}
                     title={option.hint}
                   >
@@ -272,10 +290,11 @@ export function BehaviorRadial() {
                 );
               })}
 
-              {/* Center: weapons-free / hold-fire toggle. Shares the option circles'
-                  background; its state is read from the icon + label, not color. */}
+              {/* Center: weapons-free / hold-fire toggle. Always shows the fire color;
+                  its on/off state is read from the icon + label. */}
               <button
                 className={`rts-stance-node rts-stance-center${gamepadHover?.ring === 'fire' ? ' rts-stance-node-hover' : ''}`}
+                style={{ background: FIRE_COLOR }}
                 onClick={() => applyFire(effectiveFire === 'free' ? 'hold' : 'free')}
                 title="Toggle weapons-free / hold-fire"
               >
@@ -334,32 +353,38 @@ const STYLE = `
 
 .rts-stance-ring { position: relative; }
 
-/* One shared circle for every option — fire toggle, posture, and priority all use
-   the SAME background so color never signals which type an option is (the ring it
-   sits in does). The opaque fill + drop shadow + text shadow keep each circle and
-   its label legible floating directly over the battlefield (no backing card). */
+/* Every option circle — fire toggle, posture, and priority — carries its OWN
+   vibrant background (set inline per option) so its color is always visible, even
+   before it is selected. The white text/icon + shadows keep the label legible on
+   any hue floating directly over the battlefield (no backing card). The subtle
+   light rim gives each colored circle definition against the scene. */
 .rts-stance-node {
   position: absolute; top: 50%; left: 50%; width: 76px; height: 76px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  border-radius: 50%; cursor: pointer; color: #e2e8f0;
-  background: rgba(15,23,42,0.92); border: 1px solid rgba(148,163,184,0.55);
+  border-radius: 50%; cursor: pointer; color: #fff;
+  border: 2px solid rgba(255,255,255,0.4);
   box-shadow: 0 3px 12px rgba(0,0,0,0.6);
-  transition: transform 0.1s, border-color 0.15s, background 0.15s, color 0.15s, box-shadow 0.15s;
+  transition: transform 0.1s, border-color 0.15s, filter 0.15s, box-shadow 0.15s;
 }
-.rts-stance-node:hover { background: rgba(30,41,66,0.96); border-color: rgba(203,213,225,0.9); color: #fff; }
+/* Mouse hover brightens the circle (a background change can't win over the inline
+   per-option color, so use a filter instead). */
+.rts-stance-node:hover { filter: brightness(1.18); border-color: rgba(255,255,255,0.85); }
 .rts-stance-node-icon { font-size: 22px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9)); }
 .rts-stance-node-label { font-size: 10px; font-weight: bold; text-align: center; text-shadow: 0 1px 3px rgba(0,0,0,0.95); }
 
-/* Selected value on an axis: a single accent fill, shared by all three types so
-   the accent reads as "this is the current choice", not as a type color. */
+/* Selected value on an axis: keep the option's own color, mark it with a crisp
+   white ring + glow so "the current choice" reads without hiding the hue. */
 .rts-stance-node-active {
-  background: rgba(37,99,235,0.92); border-color: #93c5fd; color: #fff;
+  border-color: #fff;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.95), 0 3px 14px rgba(0,0,0,0.6);
 }
 
-/* Controller right-stick aim highlight (distinct from the selected-state fill). */
+/* Controller right-stick aim highlight: a yellow ring with a dark separator so it
+   stays visible on top of any option color (and distinct from the white selected
+   ring). Listed last so it wins over the selected ring when both apply. */
 .rts-stance-node-hover {
-  border-color: #fde047 !important; color: #fff;
-  box-shadow: 0 0 0 3px rgba(253,224,71,0.65), 0 3px 12px rgba(0,0,0,0.6);
+  border-color: #0b1020 !important;
+  box-shadow: 0 0 0 3px #fde047, 0 0 0 6px rgba(0,0,0,0.55), 0 3px 14px rgba(0,0,0,0.6);
 }
 
 /* The center fire toggle is the same size as the option circles and inherits the
