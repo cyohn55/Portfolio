@@ -3,7 +3,7 @@ import { useGameStore } from '../../game/state';
 import type { FireMode, TargetPriority, Unit, UnitStance } from '../../game/types';
 import { behaviorOf } from './unitBehavior';
 import { formatKeyboardToken } from './controlBindings';
-import { type RadialHover, hoverFromVector } from './radialGeometry';
+import { type RadialHover, halfWedgeDeg, hoverFromVector } from './radialGeometry';
 
 /**
  * The selection radial for the combat-posture system. It drives the deterministic
@@ -66,8 +66,12 @@ const PRIORITY_OPTIONS: PriorityOption[] = [
 // for equal radial gaps and guaranteed no overlap between the center toggle, the
 // inner ring, and the outer ring.
 const NODE_DIAMETER = 76; // each posture / priority option circle
-const CENTER_DIAMETER = 104; // the fire-mode toggle in the middle
+const CENTER_DIAMETER = NODE_DIAMETER; // the fire-mode toggle is the same size as an option
 const RADIAL_GAP = 22; // equal clear gap between center→inner and inner→outer edges
+
+// The outer (priority) ring is rotated by this half-wedge so each priority circle
+// sits in the gap between two posture circles instead of directly outside one.
+const PRIORITY_OFFSET_DEG = halfWedgeDeg(PRIORITY_OPTIONS.length);
 
 // Derived so every gap between consecutive ring edges is exactly RADIAL_GAP:
 //   inner edge of inner ring = CENTER_DIAMETER/2 + RADIAL_GAP + NODE_DIAMETER/2
@@ -225,9 +229,10 @@ export function BehaviorRadial() {
 
             {/* Two concentric rings (posture inner, priority outer) around the fire toggle. */}
             <div className="rts-stance-ring" style={{ width: PANEL_SIZE, height: PANEL_SIZE }}>
-              {/* Outer ring: target priority. */}
+              {/* Outer ring: target priority — staggered a half-wedge so each
+                  circle nests in the gap between two posture circles. */}
               {PRIORITY_OPTIONS.map((option, index) => {
-                const angle = (-90 + index * (360 / PRIORITY_OPTIONS.length)) * (Math.PI / 180);
+                const angle = (-90 + PRIORITY_OFFSET_DEG + index * (360 / PRIORITY_OPTIONS.length)) * (Math.PI / 180);
                 const x = Math.cos(angle) * OUTER_RADIUS;
                 const y = Math.sin(angle) * OUTER_RADIUS;
                 const active = currentPriority === option.priority;
@@ -357,14 +362,14 @@ const STYLE = `
   box-shadow: 0 0 0 3px rgba(253,224,71,0.65), 0 3px 12px rgba(0,0,0,0.6);
 }
 
-/* The center fire toggle is only larger; it inherits the shared circle background
-   from .rts-stance-node above. Listed after it so the size/position win. */
+/* The center fire toggle is the same size as the option circles and inherits the
+   shared circle background from .rts-stance-node above; it only needs its own
+   centering transform (ring nodes get an inline transform; the center does not). */
 .rts-stance-center {
-  width: 104px; height: 104px;
-  transform: translate(-50%, -50%); gap: 4px;
+  transform: translate(-50%, -50%);
 }
-.rts-stance-center-icon { font-size: 30px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9)); }
-.rts-stance-center-label { font-size: 11px; font-weight: bold; text-align: center; text-shadow: 0 1px 3px rgba(0,0,0,0.95); }
+.rts-stance-center-icon { font-size: 22px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9)); }
+.rts-stance-center-label { font-size: 9px; font-weight: bold; text-align: center; text-shadow: 0 1px 3px rgba(0,0,0,0.95); }
 
 .rts-stance-footer {
   margin-top: 12px; font-size: 11px; color: #cbd5e1; text-align: center; max-width: 460px;

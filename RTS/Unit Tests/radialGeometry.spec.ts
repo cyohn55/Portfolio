@@ -3,6 +3,7 @@ import {
   type RadialHover,
   FIRE_BAND,
   POSTURE_BAND,
+  halfWedgeDeg,
   hoverFromVector,
   wedgeFromVector,
 } from '../src/components/Working/radialGeometry';
@@ -19,10 +20,11 @@ const PRIORITY_COUNT = 5;
 
 // Build the unit vector that points straight at wedge `index` of `count`, using
 // the same -90°-at-top, clockwise, x-right / y-down convention the module lays the
-// wedges out with. Used so the tests describe "aim at wedge i" without restating
-// the module's own arithmetic verbatim.
-function aimAtWedge(index: number, count: number): { x: number; y: number } {
-  const deg = -90 + index * (360 / count);
+// wedges out with. `offsetDeg` matches a staggered ring (the outer priority ring).
+// Used so the tests describe "aim at wedge i" without restating the module's own
+// arithmetic verbatim.
+function aimAtWedge(index: number, count: number, offsetDeg = 0): { x: number; y: number } {
+  const deg = -90 + offsetDeg + index * (360 / count);
   const rad = (deg * Math.PI) / 180;
   return { x: Math.cos(rad), y: Math.sin(rad) };
 }
@@ -77,13 +79,29 @@ test.describe('hoverFromVector ring selection', () => {
     }
   });
 
-  test('a full deflection addresses the priority ring at the aimed wedge', () => {
+  test('a full deflection addresses the staggered priority ring at the aimed wedge', () => {
+    // The priority ring is rotated by a half-wedge, so aiming uses that same offset.
+    const offset = halfWedgeDeg(PRIORITY_COUNT);
     for (let index = 0; index < PRIORITY_COUNT; index++) {
-      const dir = aimAtWedge(index, PRIORITY_COUNT); // already unit length (magnitude 1)
+      const dir = aimAtWedge(index, PRIORITY_COUNT, offset); // already unit length (magnitude 1)
       const hover = hoverFromVector(dir.x, dir.y, POSTURE_COUNT, PRIORITY_COUNT);
       expect(hover.ring).toBe('priority');
       expect(hover.index).toBe(index);
     }
+  });
+
+  test('priority circles are staggered into the posture gaps', () => {
+    // Aiming straight at a posture wedge (full deflection) must NOT line up with a
+    // single priority wedge center — the outer ring sits between the inner ones.
+    // Equal counts ⇒ the offset is half a wedge, so the posture direction lands on
+    // the boundary between two priority wedges (here, indices 4 and 0 at the top).
+    const offset = halfWedgeDeg(PRIORITY_COUNT);
+    expect(offset).toBeGreaterThan(0);
+    const towardPostureTop = aimAtWedge(0, POSTURE_COUNT); // straight up
+    const priorityIndex = wedgeFromVector(towardPostureTop.x, towardPostureTop.y, PRIORITY_COUNT, offset);
+    // Straight up bisects priority wedges 4 (just left of top) and 0 (just right);
+    // the nearest-wins tiebreak resolves to one of them, never a centered hit.
+    expect([0, PRIORITY_COUNT - 1]).toContain(priorityIndex);
   });
 
   test('the band boundaries are inclusive toward the outer ring', () => {
