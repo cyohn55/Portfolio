@@ -46,19 +46,18 @@ const BEVEL_DROP_FRACTION = 0.6;
 
 /**
  * Radius of a tile's outer (top) surface — the height a unit standing on the
- * tile rests at. Shared by the mesh builder and the army renderer so models sit
- * exactly on the crust rather than floating above or sinking into it. Mountains
- * rise further the higher their noise elevation, matching the rendered relief.
+ * tile rests at. Shared by the mesh builder and the unit renderer so models sit
+ * exactly on the crust rather than floating above or sinking into it.
+ *
+ * For now every tile is the SAME height: a single uniform shell, so the planet
+ * reads as a clean tiled sphere with no biome relief. (The `tileBiome` argument
+ * is retained for callers and for when per-biome elevation is reintroduced.)
  */
 export function tileTopRadius(
-  tileBiome: TileBiome,
+  _tileBiome: TileBiome,
   thickness: number = DEFAULT_GLOBE_OPTIONS.thickness,
 ): number {
-  const elevationOffset = BIOMES[tileBiome.biome].elevationOffset;
-  const mountainBoost = tileBiome.biome === 'mountain'
-    ? (tileBiome.elevation - 0.5) * 0.18
-    : 0;
-  return 1.0 + elevationOffset + mountainBoost + thickness;
+  return 1.0 + thickness;
 }
 
 /**
@@ -134,10 +133,10 @@ export function buildGlobeGeometry(
     if (!tileBiome) continue;
 
     const color = resolveTileColor(tile.id, tileBiome, options);
-    const elevationOffset = BIOMES[tileBiome.biome].elevationOffset;
 
+    // Uniform shell: every tile shares the same top and bottom radius.
     const topRadius = tileTopRadius(tileBiome, options.thickness);
-    const bottomRadius = 1.0 + elevationOffset - options.thickness;
+    const bottomRadius = 1.0 - options.thickness;
     const normal = tile.center.clone().normalize();
     const center = tile.center;
     const sides = tile.corners.length;

@@ -46,7 +46,7 @@ export function ConquestScreen() {
       <TileInspectorPanel />
 
       <div className="conquest-screen-hint">
-        WASD / Arrows drive · Tab switch unit · Scroll zoom · Click a tile to inspect
+        Move keys drive (ESDF) · A switch unit · Scroll zoom · Click a tile to inspect
       </div>
     </div>
   );
