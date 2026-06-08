@@ -27,7 +27,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import type { AnimalId, MovementType } from '../../../game/types';
+import type { AnimalId, MovementType, UnitBehavior } from '../../../game/types';
 import { ANIMAL_MOVEMENT_TYPES } from '../../../game/types';
 import { ANIMAL_FILE_MAP } from '../../../utils/ModelPreloader';
 import { useGameStore } from '../../../game/state';
@@ -44,18 +44,22 @@ import {
 } from './conquestState';
 import {
   conquestStatsFor,
-  selectNearestEnemy,
   isWithinAttackRange,
   isAttackReady,
   regenAmount,
   kingBuffedDamage,
   queenHealAmount,
   isWithinAura,
-  AGGRO_RANGE,
   CHASE_SPEED,
   AURA_RADIUS,
   type ConquestCombatStats,
 } from './conquestCombat';
+import {
+  defaultBehaviorFor,
+  stanceParams,
+  selectTargetForBehavior,
+  type StanceParams,
+} from './conquestBehavior';
 import {
   buildPoseVariants,
   selectPoseIndex,
@@ -132,6 +136,10 @@ interface LiveUnit {
   animal: AnimalId;
   movement: MovementType;
   combat: ConquestCombatStats;
+  /** Combat posture (stance / fire / priority); drives auto-target and chase leashing. */
+  behavior: UnitBehavior;
+  /** Globe-scaled engagement radii resolved from `behavior.stance` (cached per unit). */
+  posture: StanceParams;
   hp: number;
   maxHp: number;
   /** A monarch at 0 HP is downed (not killed): it can't act and awaits capture or healing. */
@@ -273,6 +281,7 @@ export function ConquestField() {
       const poseVariants = posesByAnimal.get(spawn.animal) ?? [];
       const scale = spawn.isMonarch ? MONARCH_SCALE : UNIT_SCALE;
       const combat = conquestStatsFor(spawn.animal, spawn.kind);
+      const behavior = defaultBehaviorFor(spawn.animal, spawn.kind);
       return {
         id: spawn.id,
         armyId: spawn.ownerId,
@@ -282,6 +291,8 @@ export function ConquestField() {
         animal: spawn.animal,
         movement: ANIMAL_MOVEMENT_TYPES[spawn.animal],
         combat,
+        behavior,
+        posture: stanceParams(behavior.stance, combat.attackRange),
         hp: combat.maxHp,
         maxHp: combat.maxHp,
         downed: false,
@@ -549,9 +560,14 @@ export function ConquestField() {
     }
     if (monarch) leaderByArmy.set(monarch.armyId, monarch);
 
-    // 3) Resolve each living unit's engage target (nearest enemy within aggro).
+    // 3) Resolve each living unit's engage target under its combat posture: the best
+    //    enemy within the stance's detection radius ranked by the unit's target
+    //    priority. A weapons-tight (fire 'hold') or non-engaging (flee) unit acquires
+    //    nothing and simply stays with its army.
     for (const unit of liveUnits) {
-      unit.target = unit.dead ? null : selectNearestEnemy(unit, liveUnits, AGGRO_RANGE);
+      unit.target = unit.dead
+        ? null
+        : selectTargetForBehavior(unit, liveUnits, unit.behavior, unit.posture);
     }
 
     // 4) Aura pass (Queen heal + King damage), mirroring Quick Play. Computed once
@@ -582,27 +598,47 @@ export function ConquestField() {
       }
     }
 
-    // 5) Movement: engaged units close on (then hold at) their target; idle leaders
-    //    hold; everyone else trails their army's leader. Downed monarchs and the
-    //    actively piloted monarch are skipped (the latter's drive already ran).
+    // 5) Movement, governed by each unit's stance. An engaged unit closes on (then
+    //    holds at) its target unless its stance forbids advancing (hold-ground) or
+    //    pursuit would pull it past its chase leash from the army leader (its anchor)
+    //    — keeping defensive/guard units with the army while aggressive units pursue
+    //    far. With nothing to chase, a unit trails its leader; the leader itself, idle
+    //    and untargeted, holds. Downed monarchs and the actively piloted monarch are
+    //    skipped (the latter's drive already ran).
     for (const unit of liveUnits) {
       if (unit.dead || unit.downed) continue;
       if (unit === monarch && drivingInput) continue;
 
-      if (unit.target) {
-        const moved = moveToward(unit, unit.target.position, CHASE_SPEED, unit.combat.attackRange, delta);
-        if (!moved) {
-          up.copy(unit.position).normalize();
-          unit.facing.subVectors(unit.target.position, unit.position);
-          tangentize(unit.facing, up);
-        }
-        continue;
-      }
       const leader = leaderByArmy.get(unit.armyId);
+      const target = unit.target;
+
+      if (target) {
+        // Hold-ground: face and strike only what is already in range, never advance.
+        if (!unit.posture.movesToEngage) {
+          up.copy(unit.position).normalize();
+          unit.facing.subVectors(target.position, unit.position);
+          tangentize(unit.facing, up);
+          continue;
+        }
+        // Leash chasers to their anchor (the army leader): an aggressive unit's wide
+        // chase radius lets it pursue, a defensive unit's tight one pulls it home.
+        const beyondLeash = !!leader && leader !== unit
+          && leader.position.distanceToSquared(unit.position) > unit.posture.chaseRadius * unit.posture.chaseRadius;
+        if (!beyondLeash) {
+          const moved = moveToward(unit, target.position, CHASE_SPEED, unit.combat.attackRange, delta);
+          if (!moved) {
+            up.copy(unit.position).normalize();
+            unit.facing.subVectors(target.position, unit.position);
+            tangentize(unit.facing, up);
+          }
+          continue;
+        }
+        // Beyond the leash: abandon pursuit this frame and return to the leader below.
+      }
+
       if (leader && leader !== unit) {
         moveToward(unit, leader.position, FOLLOW_SPEED, FOLLOW_GAP, delta);
       }
-      // The leader itself (no target, not driven) simply holds position.
     }
 
     // 6) Attacks: a unit in range of its target lands a hit on cooldown (doubled in
