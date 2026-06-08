@@ -6,9 +6,15 @@ import {
   isWithinAttackRange,
   isAttackReady,
   regenAmount,
+  kingBuffedDamage,
+  queenHealAmount,
+  isWithinAura,
   AGGRO_RANGE,
+  AURA_RADIUS,
   OUT_OF_COMBAT_MS,
   REGEN_FRACTION_PER_SECOND,
+  KING_DAMAGE_MULTIPLIER,
+  QUEEN_HEAL_FRACTION_PER_SECOND,
   type CombatActor,
 } from '../src/components/Working/conquest/conquestCombat';
 
@@ -69,6 +75,46 @@ test.describe('Attack gating', () => {
   test('cooldown gate blocks until the cooldown elapses', () => {
     expect(isAttackReady(1000, 800, 1500)).toBe(false); // 500ms < 800ms
     expect(isAttackReady(1000, 800, 1900)).toBe(true);  // 900ms >= 800ms
+  });
+});
+
+test.describe('King / Queen role scaling', () => {
+  test('the King is a HP & damage juggernaut; the Queen is a durable support', () => {
+    const unit = conquestStatsFor('Fox', 'unit');
+    const king = conquestStatsFor('Fox', 'king');
+    const queen = conquestStatsFor('Fox', 'queen');
+
+    // King: triple HP and damage, slower; Queen: double HP, normal damage, faster.
+    expect(king.maxHp).toBeCloseTo(unit.maxHp * 3, 5);
+    expect(king.damage).toBeCloseTo(unit.damage * 3, 5);
+    expect(king.moveMultiplier).toBeLessThan(1);
+    expect(queen.maxHp).toBeCloseTo(unit.maxHp * 2, 5);
+    expect(queen.damage).toBeCloseTo(unit.damage, 5);
+    expect(queen.moveMultiplier).toBeGreaterThan(1);
+  });
+
+  test('defaults to a plain Unit when no role is given', () => {
+    expect(conquestStatsFor('Fox')).toEqual(conquestStatsFor('Fox', 'unit'));
+  });
+});
+
+test.describe('King and Queen auras', () => {
+  test('the King aura multiplies a buffed unit\'s damage', () => {
+    expect(kingBuffedDamage(10, false)).toBe(10);
+    expect(kingBuffedDamage(10, true)).toBe(10 * KING_DAMAGE_MULTIPLIER);
+  });
+
+  test('the Queen aura heals a fraction of max HP per second', () => {
+    expect(queenHealAmount(100, 1.0)).toBeCloseTo(100 * QUEEN_HEAL_FRACTION_PER_SECOND, 5);
+    expect(queenHealAmount(100, 0)).toBe(0);
+  });
+
+  test('aura membership is a radius test around the monarch', () => {
+    const monarch = actor('p0', 0, 0, 0);
+    const inside = actor('p0', AURA_RADIUS * 0.5, 0, 0);
+    const outside = actor('p0', AURA_RADIUS * 1.5, 0, 0);
+    expect(isWithinAura(monarch, inside, AURA_RADIUS)).toBe(true);
+    expect(isWithinAura(monarch, outside, AURA_RADIUS)).toBe(false);
   });
 });
 

@@ -19,6 +19,7 @@
 import * as THREE from 'three';
 import type { AnimalId } from '../../../game/types';
 import { ANIMALS } from '../../../game/state';
+import type { ConquestUnitKind } from './conquestState';
 
 /** Battlemap melee reach (state.ts MELEE_RANGE basis); the shortest authored range. */
 const BATTLEMAP_MELEE_RANGE = 4;
@@ -42,24 +43,67 @@ export const REGEN_FRACTION_PER_SECOND = 0.12;
 /** Time since the last hit dealt or taken before a unit begins regenerating. */
 export const OUT_OF_COMBAT_MS = 4000;
 
-/** Combat-relevant, globe-scaled stats for one animal. */
+// Per-role stat scaling, mirroring Quick Play's createKing / createQueen so a
+// monarch in Conquest is as formidable as on the battlemap: the King is a HP/damage
+// juggernaut that moves a little slower, the Queen a durable, fleet support unit.
+const KIND_SCALING: Record<ConquestUnitKind, { hp: number; damage: number; move: number }> = {
+  king: { hp: 3, damage: 3, move: 0.85 },
+  queen: { hp: 2, damage: 1, move: 1.53 },
+  unit: { hp: 1, damage: 1, move: 1 },
+};
+
+// Aura tuning, mirroring Quick Play's DEFAULT_CONFIG. The radius is the battlemap
+// regen / king-aura radius mapped into globe space; the King's multiplier matches
+// kingDamageMultiplier. The Queen heal is a fraction of max HP per second so it
+// scales across the animals' very different HP pools and — unlike the passive
+// out-of-combat regen — applies even mid-fight, which is the Queen's whole point.
+export const AURA_RADIUS = 8 * RANGE_BATTLEMAP_TO_GLOBE;
+export const KING_DAMAGE_MULTIPLIER = 2;
+export const QUEEN_HEAL_FRACTION_PER_SECOND = 0.07;
+
+/** Combat-relevant, globe-scaled stats for one unit in a given army role. */
 export interface ConquestCombatStats {
   maxHp: number;
   damage: number;
   /** Distance within which this unit can land a hit, in globe units. */
   attackRange: number;
   attackCooldownMs: number;
+  /** Per-role movement-speed multiplier applied to piloting / chase / follow. */
+  moveMultiplier: number;
 }
 
-/** Derive an animal's Conquest combat stats from the shared RTS balance table. */
-export function conquestStatsFor(animal: AnimalId): ConquestCombatStats {
+/**
+ * Derive a unit's Conquest combat stats from the shared RTS balance table, scaled
+ * by its army role. Defaults to a plain Unit so role-agnostic callers still work.
+ */
+export function conquestStatsFor(
+  animal: AnimalId,
+  kind: ConquestUnitKind = 'unit',
+): ConquestCombatStats {
   const base = ANIMALS[animal];
+  const scale = KIND_SCALING[kind];
   return {
-    maxHp: base.baseHp,
-    damage: base.dmg,
+    maxHp: base.baseHp * scale.hp,
+    damage: base.dmg * scale.damage,
     attackRange: base.range * RANGE_BATTLEMAP_TO_GLOBE,
     attackCooldownMs: base.attackCooldownMs,
+    moveMultiplier: scale.move,
   };
+}
+
+/** Damage a unit deals this hit, doubled while inside a friendly King's aura. */
+export function kingBuffedDamage(baseDamage: number, buffed: boolean): number {
+  return buffed ? baseDamage * KING_DAMAGE_MULTIPLIER : baseDamage;
+}
+
+/** HP a friendly unit recovers this frame from a nearby Queen's heal aura. */
+export function queenHealAmount(maxHp: number, deltaSeconds: number): number {
+  return maxHp * QUEEN_HEAL_FRACTION_PER_SECOND * deltaSeconds;
+}
+
+/** True when `target` lies within `radius` of `source` (shared by both auras). */
+export function isWithinAura(source: CombatActor, target: CombatActor, radius: number): boolean {
+  return source.position.distanceToSquared(target.position) <= radius * radius;
 }
 
 /** The minimal shape the combat helpers read from a live unit (keeps them pure). */

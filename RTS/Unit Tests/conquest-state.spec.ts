@@ -105,24 +105,38 @@ test.describe('Conquest capture mechanic', () => {
     expect(after.lastCapture).toEqual({ conquerorId: conqueror, defeatedId: victim, atMs: 1000 });
   });
 
-  test('a captured army adds its monarch to the human\'s cycle', () => {
+  test('a captured army adds its King and Queen to the human\'s cycle', () => {
     const state = generateMatch(42, 3);
     const human = state.players[0].id;
     const victim = state.players[1].id;
+    const monarchCount = state.units.filter((u) => u.isMonarch).length / state.players.length;
+    expect(monarchCount).toBe(2); // each army has a King and a Queen
 
-    // Before capture the human controls only their own monarch, so cycling is a
-    // no-op (one army = one monarch).
-    const startMonarch = useConquestStore.getState().selectedMonarchId;
-    useConquestStore.getState().cycleMonarch();
-    expect(useConquestStore.getState().selectedMonarchId).toBe(startMonarch);
+    // Cycle through everything the human controls and collect the distinct
+    // monarchs reached. Before capture: only the human's own King + Queen.
+    const reachable = () => {
+      const seen = new Set<string>();
+      for (let i = 0; i < state.units.length; i++) {
+        useConquestStore.getState().cycleMonarch();
+        const id = useConquestStore.getState().selectedMonarchId;
+        if (id) seen.add(id);
+      }
+      return seen;
+    };
 
-    // After capturing a rival, cycling reaches the captured army's monarch.
+    const before = reachable();
+    expect([...before].every((id) =>
+      state.units.find((u) => u.id === id)!.ownerId === human)).toBe(true);
+    expect(before.size).toBe(2);
+
+    // After capturing a rival, the cycle also reaches BOTH of its monarchs.
     useConquestStore.getState().conquerArmy(victim, human, 500);
-    useConquestStore.getState().cycleMonarch();
-    const cycled = useConquestStore.getState();
-    const cycledUnit = cycled.units.find((u) => u.id === cycled.selectedMonarchId)!;
-    expect(cycledUnit.isMonarch).toBe(true);
-    expect(cycledUnit.ownerId).toBe(victim); // now controlled by the human via capture
+    const after = reachable();
+    const victimMonarchs = state.units.filter((u) => u.ownerId === victim && u.isMonarch);
+    for (const monarch of victimMonarchs) {
+      expect(after.has(monarch.id)).toBe(true);
+    }
+    expect(after.size).toBe(4);
   });
 
   test('losing every army to a rival is a defeat; controlling them all is victory', () => {

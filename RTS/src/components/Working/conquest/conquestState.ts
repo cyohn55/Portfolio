@@ -38,10 +38,19 @@ import { tileTopRadius } from './conquestGlobeGeometry';
 export const MAX_CONQUEST_PLAYERS = 12; // one per pentagon spawn node
 export const DEFAULT_CONQUEST_SUBDIVISIONS = 3; // GP(8,0) → 362 tiles
 
-// Army size: one monarch (the king/queen the player pilots) plus a squad of the
-// same animal that follows and fights alongside it. Kept small so each army reads
-// as a tight cluster on an acre-sized tile and so a capture is a meaningful prize.
+// Army size: every army is led by a King and a Queen (the two monarchs the player
+// pilots and captures) plus a squad of the same animal that follows and fights
+// alongside them. Kept small so each army reads as a tight cluster on an acre-sized
+// tile and so a capture is a meaningful prize. SIZE - 2 are plain units.
 export const CONQUEST_SQUAD_SIZE = 6;
+
+/**
+ * The role a Conquest unit plays in its army. Mirrors Quick Play's King/Queen/Unit
+ * split: the King carries a damage-buff aura and hits hardest, the Queen carries a
+ * heal aura, and Units are the rank-and-file. Both King and Queen are "monarchs"
+ * (piloted and captured); see [[rts-monarch-piloting]].
+ */
+export type ConquestUnitKind = 'king' | 'queen' | 'unit';
 
 /** Distinct, high-contrast team colors. Index 0 is always the human player. */
 export const CONQUEST_PLAYER_COLORS: readonly number[] = [
@@ -80,6 +89,8 @@ export interface ConquestUnitSpawn {
   id: string;
   ownerId: string;
   animal: AnimalId;
+  kind: ConquestUnitKind;
+  /** Convenience flag: true for the King and Queen (the army's two monarchs). */
   isMonarch: boolean;
   /** Spawn position on the tile's top surface (world space, globe radius ~1). */
   position: { x: number; y: number; z: number };
@@ -132,7 +143,16 @@ const X_AXIS = new THREE.Vector3(1, 0, 0);
 // reads as a small cluster near the tile center rather than spread across it.
 const SPAWN_CLUSTER_RADIUS = 0.012;
 
-/** Place a player's same-animal army (monarch at center, squad ringed) on its home tile. */
+// Army composition: index 0 is the King, index 1 the Queen (both monarchs, held
+// near the tile center), and the remaining indices the unit squad ringed behind
+// them. Index → kind so the field can scale stats and auras per role.
+function kindForIndex(index: number): ConquestUnitKind {
+  if (index === 0) return 'king';
+  if (index === 1) return 'queen';
+  return 'unit';
+}
+
+/** Place a player's same-animal army (King + Queen at center, squad ringed) on its home tile. */
 function buildUnitsForPlayer(
   player: ConquestPlayer,
   world: GoldbergWorld,
@@ -150,14 +170,18 @@ function buildUnitsForPlayer(
   const right = new THREE.Vector3().crossVectors(normal, reference).normalize();
   const forward = new THREE.Vector3().crossVectors(normal, right).normalize();
 
-  const followerCount = CONQUEST_SQUAD_SIZE - 1;
+  const followerCount = CONQUEST_SQUAD_SIZE - 2;
   const units: ConquestUnitSpawn[] = [];
   for (let index = 0; index < CONQUEST_SQUAD_SIZE; index++) {
-    const isMonarch = index === 0;
-    // Monarch stands at the tile center; the squad fans out in a ring behind it.
+    const kind = kindForIndex(index);
     const position = surfacePoint.clone();
-    if (!isMonarch) {
-      const angle = ((index - 1) / Math.max(1, followerCount)) * Math.PI * 2;
+    if (kind === 'king') {
+      // King holds the tile center; Queen stands just beside him.
+      position.addScaledVector(right, -SPAWN_CLUSTER_RADIUS * 0.4);
+    } else if (kind === 'queen') {
+      position.addScaledVector(right, SPAWN_CLUSTER_RADIUS * 0.4);
+    } else {
+      const angle = ((index - 2) / Math.max(1, followerCount)) * Math.PI * 2;
       position
         .addScaledVector(right, Math.cos(angle) * SPAWN_CLUSTER_RADIUS)
         .addScaledVector(forward, Math.sin(angle) * SPAWN_CLUSTER_RADIUS);
@@ -166,7 +190,8 @@ function buildUnitsForPlayer(
       id: `${player.id}-u${index}`,
       ownerId: player.id,
       animal: player.animal,
-      isMonarch,
+      kind,
+      isMonarch: kind !== 'unit',
       position: { x: position.x, y: position.y, z: position.z },
     });
   }

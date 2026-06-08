@@ -1,13 +1,15 @@
 // The playable Conquest field: units standing on the planet, monarch piloting,
-// combat, army capture, and the third-person chase camera.
+// combat, King/Queen auras, army capture, and the third-person chase camera.
 //
 // Single responsibility: take the spawn descriptors from the store, give every
 // unit a live position on the sphere, let the player drive their selected monarch
-// across the surface, keep each army following its own monarch, resolve combat
-// between rival armies, and — the defining Conquest mechanic — transfer a defeated
-// army to its conqueror so the player commands more and more of the planet. It
-// frames everything with a third-person, slightly top-down camera locked onto the
-// piloted monarch (the Conquest analogue of Quick Play's monarch piloting).
+// across the surface, keep each army following its current leader, resolve combat
+// (including the King's damage aura and the Queen's heal aura) between rival
+// armies, and — the defining Conquest mechanic — transfer a defeated army to its
+// conqueror when BOTH its King and Queen are downed, so the player commands more
+// and more of the planet. It frames everything with a third-person, slightly
+// top-down camera locked onto the piloted monarch (the Conquest analogue of Quick
+// Play's monarch piloting).
 //
 // Controls are deliberately the SAME as Quick Play: the monarch is driven by the
 // player's remappable camera-drive bindings (camera-relative, default ESDF),
@@ -35,15 +37,23 @@ import {
   type ActivationMode,
   type TokenGestureConfig,
 } from '../gestureModes';
-import { useConquestStore, effectiveController } from './conquestState';
+import {
+  useConquestStore,
+  effectiveController,
+  type ConquestUnitKind,
+} from './conquestState';
 import {
   conquestStatsFor,
   selectNearestEnemy,
   isWithinAttackRange,
   isAttackReady,
   regenAmount,
+  kingBuffedDamage,
+  queenHealAmount,
+  isWithinAura,
   AGGRO_RANGE,
   CHASE_SPEED,
+  AURA_RADIUS,
   type ConquestCombatStats,
 } from './conquestCombat';
 import {
@@ -59,26 +69,38 @@ import { tileTopRadius } from './conquestGlobeGeometry';
 
 // Model footprint on the unit-radius globe. A level-3 tile spans ~0.18 units, so
 // each tile should read as a large field ("an acre"): an animal is only a small
-// fraction of a tile across. The piloted monarch is a touch larger so the
-// controlled unit stands out.
+// fraction of a tile across. Monarchs (King/Queen) are larger so leaders stand out.
 const UNIT_SCALE = 0.005;
 const MONARCH_SCALE = 0.007;
 
 // Team-color allegiance ring drawn flat on the surface under each unit, in globe
-// units. The monarch's ring is larger so leaders are easy to pick out, and the
-// color tracks the unit's current controller so a captured army visibly flips to
-// the conqueror's color the instant it changes hands.
+// units. A monarch's ring is larger so leaders are easy to pick out, and the color
+// tracks the unit's current controller so a captured army visibly flips to the
+// conqueror's color the instant it changes hands.
 const UNIT_RING_RADIUS = 0.011;
 const MONARCH_RING_RADIUS = 0.018;
 const RING_LIFT = 0.001; // sit just above the tile face to avoid z-fighting
-const RING_FORWARD = new THREE.Vector3(0, 0, 1); // RingGeometry's default normal
+const RING_FORWARD = new THREE.Vector3(0, 0, 1); // RingGeometry/CircleGeometry default normal
+
+// King/Queen aura discs: a soft, color-coded field showing each monarch's support
+// radius (gold = King's damage buff, green = Queen's heal). They pulse brighter
+// while the aura is actively benefiting a friendly unit.
+const KING_AURA_COLOR = 0xfbbf24;
+const QUEEN_AURA_COLOR = 0x4ade80;
+const AURA_OPACITY_IDLE = 0.07;
+const AURA_OPACITY_ACTIVE = 0.2;
+const AURA_PULSE_HZ = 1.4;
+const AURA_LIFT = 0.0008; // just under the allegiance ring
+// A King's buff ring counts as "active" while a buffed unit fought this recently.
+const RECENT_COMBAT_MS = 2000;
 
 // Piloting feel. Speeds are in globe-radius units per second (the planet has
-// radius 1, so a full lap at MOVE_SPEED takes ~2π / MOVE_SPEED seconds). Tuned
-// so crossing one acre-sized tile takes a couple of seconds, not a blink.
+// radius 1, so a full lap at MOVE_SPEED takes ~2π / MOVE_SPEED seconds). Tuned so
+// crossing one acre-sized tile takes a couple of seconds, not a blink. Per-role
+// move multipliers (King slower, Queen faster) scale these via combat stats.
 const MOVE_SPEED = 0.1;
 const FOLLOW_SPEED = 0.12;
-const FOLLOW_GAP = 0.012; // followers hold this distance behind the monarch
+const FOLLOW_GAP = 0.012; // followers hold this distance behind their leader
 
 // Chase camera placement, expressed as multiples of the monarch's model scale so
 // the third-person framing stays correct no matter how small the animals are.
@@ -105,12 +127,17 @@ interface LiveUnit {
   armyId: string;
   /** Player currently controlling this unit; flips on capture. Drives friend/foe. */
   controllerId: string;
+  kind: ConquestUnitKind;
   isMonarch: boolean;
   animal: AnimalId;
   movement: MovementType;
   combat: ConquestCombatStats;
   hp: number;
   maxHp: number;
+  /** A monarch at 0 HP is downed (not killed): it can't act and awaits capture or healing. */
+  downed: boolean;
+  /** True this frame while the monarch's aura is actively helping an ally (drives the pulse). */
+  auraActive: boolean;
   lastAttackMs: number;
   lastCombatMs: number;
   /** Controller of the unit that most recently damaged this one (the would-be conqueror). */
@@ -129,6 +156,7 @@ interface LiveUnit {
   group: THREE.Group | null;
   ring: THREE.Mesh | null;
   ringColor: number; // last hex applied to the ring, so we only recolor on change
+  auraMesh: THREE.Mesh | null; // monarchs only
 }
 
 function modelPath(animal: AnimalId): string {
@@ -217,10 +245,11 @@ export function ConquestField() {
   }, [unitSpawns]);
   const gltfs = useGLTF(inPlayAnimals.map(modelPath)) as any[];
 
-  // One shared ring geometry (unit-radius disc); each unit scales it and tints its
-  // own material instance. Disposed when the field unmounts to free the GPU buffer.
+  // Shared geometry: one ring (allegiance) and one disc (monarch aura). Each unit
+  // scales and tints its own material instance. Disposed when the field unmounts.
   const ringGeometry = useMemo(() => new THREE.RingGeometry(0.6, 1.0, 24), []);
-  useEffect(() => () => ringGeometry.dispose(), [ringGeometry]);
+  const auraGeometry = useMemo(() => new THREE.CircleGeometry(1.0, 36), []);
+  useEffect(() => () => { ringGeometry.dispose(); auraGeometry.dispose(); }, [ringGeometry, auraGeometry]);
 
   // Build the live (mutable) unit set once per match. Positions/facings/HP here are
   // mutated every frame by the sim; React never re-renders for movement or combat.
@@ -243,17 +272,20 @@ export function ConquestField() {
       ).normalize();
       const poseVariants = posesByAnimal.get(spawn.animal) ?? [];
       const scale = spawn.isMonarch ? MONARCH_SCALE : UNIT_SCALE;
-      const combat = conquestStatsFor(spawn.animal);
+      const combat = conquestStatsFor(spawn.animal, spawn.kind);
       return {
         id: spawn.id,
         armyId: spawn.ownerId,
         controllerId: spawn.ownerId,
+        kind: spawn.kind,
         isMonarch: spawn.isMonarch,
         animal: spawn.animal,
         movement: ANIMAL_MOVEMENT_TYPES[spawn.animal],
         combat,
         hp: combat.maxHp,
         maxHp: combat.maxHp,
+        downed: false,
+        auraActive: false,
         lastAttackMs: 0,
         lastCombatMs: 0,
         lastAttackerController: null,
@@ -270,16 +302,22 @@ export function ConquestField() {
         group: null,
         ring: null,
         ringColor: -1,
+        auraMesh: null,
       };
     });
   }, [world, biomes, unitSpawns, gltfs, inPlayAnimals]);
 
-  // Each army's monarch, looked up by army id. Monarchs persist for the match
-  // (capture changes their controller, never removes them), so this is stable.
-  const monarchByArmy = useMemo(() => {
-    const map = new Map<string, LiveUnit>();
-    liveUnits.forEach((unit) => { if (unit.isMonarch) map.set(unit.armyId, unit); });
-    return map;
+  // Each army's King and Queen, looked up by army id. Monarchs persist for the
+  // match (capture changes their controller; they down but never leave), so these
+  // are stable for the field's life.
+  const { kingByArmy, queenByArmy } = useMemo(() => {
+    const kings = new Map<string, LiveUnit>();
+    const queens = new Map<string, LiveUnit>();
+    liveUnits.forEach((unit) => {
+      if (unit.kind === 'king') kings.set(unit.armyId, unit);
+      else if (unit.kind === 'queen') queens.set(unit.armyId, unit);
+    });
+    return { kingByArmy: kings, queenByArmy: queens };
   }, [liveUnits]);
 
   // --- Input: pressed keys + zoom, tracked in refs (no per-key re-render). ---
@@ -296,9 +334,9 @@ export function ConquestField() {
   // Quick Play uses, so they honor the player's chosen activation mode; the held
   // drive/zoom keys are matched against the live layout in the per-frame loop.
   useEffect(() => {
-    // In Conquest there is no King/Queen split, so both the "cycle" and "toggle"
-    // pilot bindings simply switch which controlled monarch (army) is piloted —
-    // the natural analogue that keeps each Quick Play key doing something useful.
+    // Both the "cycle" and "toggle" pilot bindings switch which controlled monarch
+    // (King or Queen of any army the player commands) is piloted — the analogue
+    // that keeps each Quick Play key doing something useful in Conquest.
     const runPilotAction = () => cycleMonarch();
 
     const configFor = (
@@ -382,6 +420,10 @@ export function ConquestField() {
     drive: new THREE.Vector3(),
   });
 
+  // Per-frame combat scratch reused across frames (cleared at the top of each).
+  const kingBuffed = useRef<Set<string>>(new Set());
+  const queenHealed = useRef<Set<string>>(new Set());
+
   // Move `unit` toward `targetPos` along the sphere surface, stopping when within
   // `stopDistance`. Honors per-biome passability and re-seats the unit on the tile
   // top. Returns true if it actually stepped (was outside the stop radius).
@@ -396,7 +438,7 @@ export function ConquestField() {
     step.subVectors(targetPos, unit.position);
     const distance = step.length();
     if (distance <= stopDistance) return false;
-    const travel = Math.min(speed * delta, distance - stopDistance);
+    const travel = Math.min(speed * unit.combat.moveMultiplier * delta, distance - stopDistance);
     candidateDir.copy(unit.position).addScaledVector(step.normalize(), travel).normalize();
     const tileId = nearestTileId(candidateDir, world!);
     if (isPassable(biomes[tileId], unit.movement)) {
@@ -422,12 +464,21 @@ export function ConquestField() {
     const monarchId = conquest.selectedMonarchId;
 
     // 0) Refresh allegiance from the store (the capture source of truth), so the
-    //    combat and ring color below reflect any army that changed hands.
+    //    combat, auras, and ring colors below reflect any army that changed hands.
     for (const unit of liveUnits) {
       unit.controllerId = effectiveController(armyController, unit.armyId);
     }
 
-    const monarch = liveUnits.find((unit) => unit.id === monarchId && !unit.dead) ?? null;
+    // Resolve the piloted monarch. If the selected monarch is downed/dead, hand the
+    // camera to another monarch the same player controls so control never strands.
+    const selectedUnit = liveUnits.find((unit) => unit.id === monarchId) ?? null;
+    let monarch: LiveUnit | null =
+      selectedUnit && !selectedUnit.dead && !selectedUnit.downed ? selectedUnit : null;
+    if (!monarch && selectedUnit) {
+      monarch = liveUnits.find((unit) =>
+        unit.isMonarch && !unit.dead && !unit.downed
+        && unit.controllerId === selectedUnit.controllerId) ?? null;
+    }
 
     // Resolve the player's live drive/zoom bindings (default ESDF + wheel). Held
     // keys are matched the same way CameraController matches them in Quick Play.
@@ -440,8 +491,8 @@ export function ConquestField() {
 
     // 1) Drive the piloted monarch from input, camera-relative on the sphere's
     //    tangent plane (matching Quick Play's camera-relative ESDF drive) and
-    //    constrained to passable tiles. When the player gives no input the monarch
-    //    is handled by the combat/idle pass below (so it auto-defends).
+    //    constrained to passable tiles. With no input the monarch is handled by the
+    //    combat/idle pass below (so it auto-defends).
     let drivingInput = false;
     if (monarch) {
       up.copy(monarch.position).normalize();
@@ -462,7 +513,7 @@ export function ConquestField() {
         drive.copy(camForwardTangent).multiplyScalar(forwardBack)
           .addScaledVector(camRightTangent, rightLeft)
           .normalize();
-        step.copy(drive).multiplyScalar(MOVE_SPEED * delta);
+        step.copy(drive).multiplyScalar(MOVE_SPEED * monarch.combat.moveMultiplier * delta);
         candidateDir.copy(monarch.position).add(step).normalize();
         const tileId = nearestTileId(candidateDir, world);
         if (isPassable(biomes[tileId], monarch.movement)) {
@@ -487,16 +538,55 @@ export function ConquestField() {
       );
     }
 
-    // 2) Resolve each living unit's engage target (nearest enemy within aggro).
+    // 2) Each army's current leader (whom its units follow): the piloted monarch if
+    //    it belongs to that army, else the standing King, else the standing Queen.
+    const leaderByArmy = new Map<string, LiveUnit>();
+    for (const [armyId, king] of kingByArmy) {
+      const queen = queenByArmy.get(armyId);
+      const leader = (!king.dead && !king.downed) ? king
+        : (queen && !queen.dead && !queen.downed) ? queen : null;
+      if (leader) leaderByArmy.set(armyId, leader);
+    }
+    if (monarch) leaderByArmy.set(monarch.armyId, monarch);
+
+    // 3) Resolve each living unit's engage target (nearest enemy within aggro).
     for (const unit of liveUnits) {
       unit.target = unit.dead ? null : selectNearestEnemy(unit, liveUnits, AGGRO_RANGE);
     }
 
-    // 3) Movement: engaged units close on (then hold at) their target; idle
-    //    monarchs hold position; followers trail their own army's monarch. The
-    //    actively piloted monarch is skipped here — its input drive already ran.
+    // 4) Aura pass (Queen heal + King damage), mirroring Quick Play. Computed once
+    //    here so combat (the King buff) and the visuals (auraActive) agree. A downed
+    //    or dead monarch projects nothing.
+    const buffed = kingBuffed.current; buffed.clear();
+    const healed = queenHealed.current; healed.clear();
+    const livingKings: LiveUnit[] = [];
+    const livingQueens: LiveUnit[] = [];
+    for (const king of kingByArmy.values()) if (!king.dead && !king.downed) livingKings.push(king);
+    for (const queen of queenByArmy.values()) if (!queen.dead && !queen.downed) livingQueens.push(queen);
+
+    for (const king of livingKings) {
+      king.auraActive = false;
+      for (const unit of liveUnits) {
+        if (unit.dead || unit.controllerId !== king.controllerId || unit.kind === 'king') continue;
+        if (!isWithinAura(king, unit, AURA_RADIUS)) continue;
+        buffed.add(unit.id);
+        if (elapsedMs - unit.lastCombatMs < RECENT_COMBAT_MS) king.auraActive = true;
+      }
+    }
+    for (const queen of livingQueens) {
+      queen.auraActive = false;
+      for (const unit of liveUnits) {
+        if (unit.dead || unit.controllerId !== queen.controllerId) continue;
+        if (!isWithinAura(queen, unit, AURA_RADIUS)) continue;
+        if (unit.hp < unit.maxHp) { healed.add(unit.id); queen.auraActive = true; }
+      }
+    }
+
+    // 5) Movement: engaged units close on (then hold at) their target; idle leaders
+    //    hold; everyone else trails their army's leader. Downed monarchs and the
+    //    actively piloted monarch are skipped (the latter's drive already ran).
     for (const unit of liveUnits) {
-      if (unit.dead) continue;
+      if (unit.dead || unit.downed) continue;
       if (unit === monarch && drivingInput) continue;
 
       if (unit.target) {
@@ -506,74 +596,87 @@ export function ConquestField() {
           unit.facing.subVectors(unit.target.position, unit.position);
           tangentize(unit.facing, up);
         }
-      } else if (!unit.isMonarch) {
-        const armyMonarch = monarchByArmy.get(unit.armyId);
-        if (armyMonarch && !armyMonarch.dead) {
-          moveToward(unit, armyMonarch.position, FOLLOW_SPEED, FOLLOW_GAP, delta);
-        }
+        continue;
       }
-      // Idle monarchs (no target, not driven) simply hold their position.
+      const leader = leaderByArmy.get(unit.armyId);
+      if (leader && leader !== unit) {
+        moveToward(unit, leader.position, FOLLOW_SPEED, FOLLOW_GAP, delta);
+      }
+      // The leader itself (no target, not driven) simply holds position.
     }
 
-    // 4) Attacks: a unit in range of its target lands a hit on cooldown, recording
-    //    the attacker's controller so a slain monarch knows who conquered it.
+    // 6) Attacks: a unit in range of its target lands a hit on cooldown (doubled in
+    //    a friendly King's aura), recording the attacker's controller so a downed
+    //    monarch knows who is conquering it. Downed monarchs cannot attack.
     for (const unit of liveUnits) {
       const target = unit.target;
-      if (unit.dead || !target || target.dead) continue;
+      if (unit.dead || unit.downed || !target || target.dead) continue;
       if (!isWithinAttackRange(unit, target, unit.combat.attackRange)) continue;
       if (!isAttackReady(unit.lastAttackMs, unit.combat.attackCooldownMs, elapsedMs)) continue;
       unit.lastAttackMs = elapsedMs;
       unit.lastCombatMs = elapsedMs;
-      target.hp -= unit.combat.damage;
+      target.hp -= kingBuffedDamage(unit.combat.damage, buffed.has(unit.id));
       target.lastCombatMs = elapsedMs;
       target.lastAttackerController = unit.controllerId;
     }
 
-    // 5) Out-of-combat regeneration keeps lulls from being permanently crippling.
+    // 7) Healing: the Queen's aura (even mid-fight) plus passive out-of-combat
+    //    regen. A monarch healed back above 0 HP rises from being downed.
     for (const unit of liveUnits) {
       if (unit.dead || unit.hp >= unit.maxHp) continue;
-      const heal = regenAmount(unit.maxHp, unit.lastCombatMs, elapsedMs, delta);
-      if (heal > 0) unit.hp = Math.min(unit.maxHp, unit.hp + heal);
+      let healAmount = healed.has(unit.id) ? queenHealAmount(unit.maxHp, delta) : 0;
+      healAmount += regenAmount(unit.maxHp, unit.lastCombatMs, elapsedMs, delta);
+      if (healAmount > 0) {
+        unit.hp = Math.min(unit.maxHp, unit.hp + healAmount);
+        if (unit.downed && unit.hp > 0) unit.downed = false;
+      }
     }
 
-    // 6) Resolve casualties. A fallen follower is removed; a fallen monarch means
-    //    the whole army is CAPTURED — its survivors and the revived monarch switch
-    //    to the conqueror's control (the core Conquest mechanic).
+    // 8) Resolve casualties + capture. A fallen Unit is removed. A monarch at 0 HP
+    //    is downed (not killed); when BOTH an army's King and Queen are downed the
+    //    army is CAPTURED — its survivors and the revived monarchs switch to the
+    //    conqueror's control (the core Conquest mechanic).
     for (const unit of liveUnits) {
-      if (unit.dead || unit.hp > 0) continue;
+      if (unit.dead || unit.downed || unit.hp > 0) continue;
       if (!unit.isMonarch) {
         unit.dead = true;
         if (unit.group) unit.group.visible = false;
         if (unit.ring) unit.ring.visible = false;
         continue;
       }
-      const conqueror = unit.lastAttackerController;
-      if (!conqueror || conqueror === unit.controllerId) {
-        unit.hp = unit.maxHp; // anomaly: no valid captor — recover rather than die
-        continue;
-      }
-      const armyId = unit.armyId;
+      unit.downed = true;
+      unit.hp = 0;
+      unit.target = null;
+    }
+    for (const [armyId, king] of kingByArmy) {
+      const queen = queenByArmy.get(armyId);
+      if (!queen || !king.downed || !queen.downed) continue;
+      const conqueror = king.lastAttackerController ?? queen.lastAttackerController;
+      if (!conqueror || conqueror === king.controllerId) continue;
       for (const member of liveUnits) {
         if (member.armyId !== armyId || member.dead) continue;
         member.controllerId = conqueror;
-        member.hp = member.maxHp; // captured units rally to full strength
+        member.hp = member.maxHp;     // captured units rally to full strength
+        member.downed = false;        // King and Queen rise again under new command
         member.lastAttackerController = null;
         member.target = null;
       }
       conquest.conquerArmy(armyId, conqueror, elapsedMs);
     }
 
-    // 7) Push every living unit's transform + animation pose + allegiance ring.
+    // 9) Push every living unit's transform + animation pose + allegiance ring, and
+    //    each monarch's aura disc.
+    const auraPulse = (Math.sin(elapsedMs * 0.001 * AURA_PULSE_HZ * Math.PI * 2) + 1) * 0.5;
     for (const unit of liveUnits) {
       if (unit.dead || !unit.group) continue;
 
       // Movement detection drives the walk/idle pose split (with a short hold so
-      // the walk cycle bridges momentary stops).
+      // the walk cycle bridges momentary stops). Downed monarchs read as idle.
       if (unit.position.distanceToSquared(unit.lastPosition) > MOVE_EPSILON_SQ) {
         unit.lastMovedMs = elapsedMs;
       }
       unit.lastPosition.copy(unit.position);
-      const isMoving = elapsedMs - unit.lastMovedMs < MOVE_HOLD_MS;
+      const isMoving = !unit.downed && elapsedMs - unit.lastMovedMs < MOVE_HOLD_MS;
 
       const activePose = selectPoseIndex(unit.animal, isMoving, elapsedMs);
       for (let i = 0; i < unit.poseGroups.length; i++) {
@@ -594,9 +697,9 @@ export function ConquestField() {
 
       // Allegiance ring: lie flat on the surface, recolored when the controller
       // changes (so a captured army flips to its new owner's color instantly).
+      ringQuat.setFromUnitVectors(RING_FORWARD, up);
       if (unit.ring) {
         unit.ring.position.copy(unit.position).addScaledVector(up, RING_LIFT);
-        ringQuat.setFromUnitVectors(RING_FORWARD, up);
         unit.ring.quaternion.copy(ringQuat);
         const color = colorRef.current.get(unit.controllerId);
         if (color !== undefined && color !== unit.ringColor) {
@@ -604,11 +707,25 @@ export function ConquestField() {
           unit.ringColor = color;
         }
       }
+
+      // Monarch aura disc: pulse brighter while actively helping; hide while downed.
+      if (unit.auraMesh) {
+        const showAura = unit.isMonarch && !unit.downed;
+        unit.auraMesh.visible = showAura;
+        if (showAura) {
+          unit.auraMesh.position.copy(unit.position).addScaledVector(up, AURA_LIFT);
+          unit.auraMesh.quaternion.copy(ringQuat);
+          const material = unit.auraMesh.material as THREE.MeshBasicMaterial;
+          material.opacity = unit.auraActive
+            ? AURA_OPACITY_IDLE + (AURA_OPACITY_ACTIVE - AURA_OPACITY_IDLE) * auraPulse
+            : AURA_OPACITY_IDLE;
+        }
+      }
     }
 
-    // 8) Third-person chase camera, locked onto the piloted monarch. Camera
-    //    distance is proportional to the monarch's size so small animals fill the
-    //    frame. With no controlled monarch (defeat), the camera simply holds.
+    // 10) Third-person chase camera, locked onto the piloted monarch. Camera
+    //     distance is proportional to the monarch's size so small animals fill the
+    //     frame. With no controllable monarch (defeat), the camera simply holds.
     if (monarch) {
       up.copy(monarch.position).normalize();
       const backDistance = monarch.scale * CAM_BACK_FACTOR * zoom.current;
@@ -670,6 +787,26 @@ export function ConquestField() {
             opacity={0.8}
             side={THREE.DoubleSide}
             depthWrite={false}
+          />
+        </mesh>
+      ))}
+
+      {/* King/Queen aura discs (gold = damage buff, green = heal). */}
+      {liveUnits.filter((unit) => unit.isMonarch).map((unit) => (
+        <mesh
+          key={`${unit.id}-aura`}
+          ref={(element) => { unit.auraMesh = element; }}
+          geometry={auraGeometry}
+          scale={AURA_RADIUS}
+          renderOrder={0}
+        >
+          <meshBasicMaterial
+            color={unit.kind === 'king' ? KING_AURA_COLOR : QUEEN_AURA_COLOR}
+            transparent
+            opacity={AURA_OPACITY_IDLE}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
           />
         </mesh>
       ))}

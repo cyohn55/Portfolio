@@ -67,8 +67,9 @@ export function ConquestScreen() {
       <OutcomeOverlay onPlayAgain={handleBack} />
 
       <div className="conquest-screen-hint">
-        Move keys drive · A switch army · Scroll zoom · March onto a rival army to
-        battle — beat them and their king/queen join you · Click a tile to inspect
+        Move keys drive · A switch King/Queen · Scroll zoom · King (gold aura) buffs
+        damage, Queen (green aura) heals · Down a rival's King AND Queen to capture
+        their whole army · Click a tile to inspect
       </div>
     </div>
   );

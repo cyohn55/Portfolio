@@ -117,7 +117,7 @@ test.describe('Conquest units and monarch selection', () => {
     return useConquestStore.getState();
   }
 
-  test('every player fields a same-animal squad with exactly one monarch', () => {
+  test('every player fields a same-animal squad led by one King and one Queen', () => {
     const state = generate(42, 3);
     expect(state.units.length).toBe(state.players.length * CONQUEST_SQUAD_SIZE);
     for (const player of state.players) {
@@ -125,8 +125,20 @@ test.describe('Conquest units and monarch selection', () => {
       expect(army.length).toBe(CONQUEST_SQUAD_SIZE);
       // A whole army is one animal — the player's single chosen unit type.
       expect(army.every((u) => u.animal === player.animal)).toBe(true);
-      expect(army.filter((u) => u.isMonarch).length).toBe(1);
+      // Exactly one King + one Queen (both monarchs); the rest are plain units.
+      expect(army.filter((u) => u.kind === 'king').length).toBe(1);
+      expect(army.filter((u) => u.kind === 'queen').length).toBe(1);
+      expect(army.filter((u) => u.isMonarch).length).toBe(2);
+      expect(army.filter((u) => u.kind === 'unit').length).toBe(CONQUEST_SQUAD_SIZE - 2);
     }
+  });
+
+  test('the local player pilots their King first', () => {
+    const state = generate(42, 3);
+    const human = state.players.find((p) => !p.isAI)!;
+    const selected = state.units.find((u) => u.id === state.selectedMonarchId)!;
+    expect(selected.ownerId).toBe(human.id);
+    expect(selected.kind).toBe('king');
   });
 
   test('the local player pilots their own monarch first', () => {
