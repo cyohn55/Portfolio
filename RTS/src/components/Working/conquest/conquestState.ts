@@ -12,6 +12,7 @@
 // future lockstep/AI layer builds on.
 
 import { create } from 'zustand';
+import * as THREE from 'three';
 import type { AnimalId } from '../../../game/types';
 import { SeededRng } from '../net/prng';
 import { buildGoldbergWorld, type GoldbergWorld } from './goldbergWorld';
@@ -22,6 +23,7 @@ import {
   type TileBiome,
   type WorldGenParams,
 } from './conquestBiomes';
+import { tileTopRadius } from './conquestGlobeGeometry';
 
 export const MAX_CONQUEST_PLAYERS = 12; // one per pentagon spawn node
 export const DEFAULT_CONQUEST_SUBDIVISIONS = 3; // GP(8,0) → 362 tiles
@@ -50,18 +52,79 @@ export interface ConquestSetup {
   worldGen?: WorldGenParams;
 }
 
+/**
+ * A unit's starting placement on the globe. The live simulation (movement,
+ * piloting) reads this as the spawn point and then tracks each unit's position
+ * itself; the store keeps the immutable spawn descriptor so a match can be
+ * re-derived. Each player fields one monarch (their roster leader) plus the
+ * rest of the roster as followers.
+ */
+export interface ConquestUnitSpawn {
+  id: string;
+  ownerId: string;
+  animal: AnimalId;
+  isMonarch: boolean;
+  /** Spawn position on the tile's top surface (world space, globe radius ~1). */
+  position: { x: number; y: number; z: number };
+}
+
 interface ConquestState {
   world: GoldbergWorld | null;
   biomes: TileBiome[];
   seed: number;
   players: ConquestPlayer[];
+  units: ConquestUnitSpawn[];
   /** tileId → owning player id (absent/null = unclaimed). */
   tileOwners: Record<number, string>;
   selectedTileId: number | null;
+  /** Id of the human monarch the camera follows and the player pilots. */
+  selectedMonarchId: string | null;
 
   generate: (setup: ConquestSetup) => void;
   reset: () => void;
   selectTile: (tileId: number | null) => void;
+  /** Pilot the next of the local player's units (Tab in-match). */
+  cycleMonarch: () => void;
+  setSelectedMonarch: (unitId: string) => void;
+}
+
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const X_AXIS = new THREE.Vector3(1, 0, 0);
+// How far roster members sit from their home tile center at spawn, in the tile's
+// tangent plane. Small so the army reads as a cluster on a single tile.
+const SPAWN_CLUSTER_RADIUS = 0.03;
+
+/** Place a player's roster as units clustered on their home tile's surface. */
+function buildUnitsForPlayer(
+  player: ConquestPlayer,
+  world: GoldbergWorld,
+  biomes: TileBiome[],
+): ConquestUnitSpawn[] {
+  const tile = world.tiles[player.homeTileId];
+  const tileBiome = biomes[player.homeTileId];
+  if (!tile || !tileBiome) return [];
+
+  const normal = tile.center.clone().normalize();
+  const surfaceRadius = tileTopRadius(tileBiome);
+  const surfacePoint = normal.clone().multiplyScalar(surfaceRadius);
+
+  const reference = Math.abs(normal.x) < 0.9 ? X_AXIS : Y_AXIS;
+  const right = new THREE.Vector3().crossVectors(normal, reference).normalize();
+  const forward = new THREE.Vector3().crossVectors(normal, right).normalize();
+
+  return player.animals.map((animal, index) => {
+    const angle = (index / Math.max(1, player.animals.length)) * Math.PI * 2;
+    const position = surfacePoint.clone()
+      .addScaledVector(right, Math.cos(angle) * SPAWN_CLUSTER_RADIUS)
+      .addScaledVector(forward, Math.sin(angle) * SPAWN_CLUSTER_RADIUS);
+    return {
+      id: `${player.id}-u${index}`,
+      ownerId: player.id,
+      animal,
+      isMonarch: index === 0, // roster leader pilots
+      position: { x: position.x, y: position.y, z: position.z },
+    };
+  });
 }
 
 /** Deterministic in-place Fisher–Yates over a copy, driven by a seeded RNG. */
@@ -122,13 +185,15 @@ function buildPlayers(
   return players;
 }
 
-export const useConquestStore = create<ConquestState>((set) => ({
+export const useConquestStore = create<ConquestState>((set, get) => ({
   world: null,
   biomes: [],
   seed: 0,
   players: [],
+  units: [],
   tileOwners: {},
   selectedTileId: null,
+  selectedMonarchId: null,
 
   generate: (setup) => {
     const world = buildGoldbergWorld(setup.subdivisions);
@@ -143,14 +208,37 @@ export const useConquestStore = create<ConquestState>((set) => ({
       tileOwners[player.homeTileId] = player.id;
     }
 
-    set({ world, biomes, seed: setup.seed, players, tileOwners, selectedTileId: null });
+    const units = players.flatMap((player) => buildUnitsForPlayer(player, world, biomes));
+    // The local player pilots their own monarch first.
+    const human = players.find((player) => !player.isAI);
+    const humanMonarch = units.find((unit) => unit.ownerId === human?.id && unit.isMonarch);
+
+    set({
+      world, biomes, seed: setup.seed, players, units, tileOwners,
+      selectedTileId: null, selectedMonarchId: humanMonarch?.id ?? null,
+    });
   },
 
   reset: () => set({
-    world: null, biomes: [], seed: 0, players: [], tileOwners: {}, selectedTileId: null,
+    world: null, biomes: [], seed: 0, players: [], units: [], tileOwners: {},
+    selectedTileId: null, selectedMonarchId: null,
   }),
 
   selectTile: (tileId) => set({ selectedTileId: tileId }),
+
+  setSelectedMonarch: (unitId) => set({ selectedMonarchId: unitId }),
+
+  cycleMonarch: () => {
+    const { units, players, selectedMonarchId } = get();
+    const human = players.find((player) => !player.isAI);
+    if (!human) return;
+    // Cycle through every unit the local player controls, in stable order.
+    const ownUnits = units.filter((unit) => unit.ownerId === human.id);
+    if (ownUnits.length === 0) return;
+    const currentIndex = ownUnits.findIndex((unit) => unit.id === selectedMonarchId);
+    const next = ownUnits[(currentIndex + 1) % ownUnits.length];
+    set({ selectedMonarchId: next.id });
+  },
 }));
 
 /** Convenience: the biome rules for a tile, or null if the world isn't built. */

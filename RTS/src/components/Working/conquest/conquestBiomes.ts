@@ -37,7 +37,11 @@ export interface BiomeDefinition {
   elevationOffset: number;
 }
 
-const GROUND_AIR: ReadonlySet<MovementType> = new Set<MovementType>(['ground', 'air']);
+// Land (non-mountain) tiles take any land-capable unit. "water" units are
+// amphibious in the RTS — the type means they can ALSO cross water, not that
+// they're confined to it — so they roam land freely too. Ground units cannot
+// enter water; only air clears mountains.
+const LAND: ReadonlySet<MovementType> = new Set<MovementType>(['ground', 'water', 'air']);
 const WATER_AIR: ReadonlySet<MovementType> = new Set<MovementType>(['water', 'air']);
 const AIR_ONLY: ReadonlySet<MovementType> = new Set<MovementType>(['air']);
 
@@ -55,22 +59,22 @@ export const BIOMES: Record<BiomeId, BiomeDefinition> = {
   grassland: {
     id: 'grassland', label: 'Grassland', color: 0x4e9f3d,
     isWater: false, farmable: true, claimable: true,
-    passableBy: GROUND_AIR, elevationOffset: 0.01,
+    passableBy: LAND, elevationOffset: 0.01,
   },
   forest: {
     id: 'forest', label: 'Forest', color: 0x13543d,
     isWater: false, farmable: false, claimable: true,
-    passableBy: GROUND_AIR, elevationOffset: 0.02,
+    passableBy: LAND, elevationOffset: 0.02,
   },
   desert: {
     id: 'desert', label: 'Desert', color: 0xd69f44,
     isWater: false, farmable: false, claimable: true,
-    passableBy: GROUND_AIR, elevationOffset: 0.0,
+    passableBy: LAND, elevationOffset: 0.0,
   },
   snow: {
     id: 'snow', label: 'Snow & Ice', color: 0xecf3f9,
     isWater: false, farmable: false, claimable: true,
-    passableBy: GROUND_AIR, elevationOffset: 0.01,
+    passableBy: LAND, elevationOffset: 0.01,
   },
   mountain: {
     id: 'mountain', label: 'Mountain', color: 0x5c5b73,

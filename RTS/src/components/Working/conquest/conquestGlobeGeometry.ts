@@ -26,13 +26,23 @@ export interface GlobeBuildOptions {
   ownerColors: Map<number, number>;
   /** How strongly an owned tile is tinted toward its owner color (0..1). */
   ownerTint: number;
+  /** In-plane fraction of the flat top face replaced by the chamfered rim. */
+  bevel: number;
 }
 
 export const DEFAULT_GLOBE_OPTIONS: Omit<GlobeBuildOptions, 'ownerColors'> = {
-  tileGap: 0.06,
+  // Gaps closed: adjacent tiles meet edge-to-edge, with the bevel reading as the
+  // only seam between them.
+  tileGap: 0.0,
   thickness: 0.012,
   ownerTint: 0.55,
+  // Fraction of the flat top face given over to the chamfered rim (in-plane).
+  bevel: 0.12,
 };
+
+// Radial drop of the bevel rim below the flat top face, as a fraction of crust
+// thickness. Small, so the chamfer is a subtle edge rather than a tall wall.
+const BEVEL_DROP_FRACTION = 0.6;
 
 /**
  * Radius of a tile's outer (top) surface — the height a unit standing on the
@@ -83,9 +93,30 @@ function pushTriangle(
 }
 
 /**
- * Build the full globe geometry. Each tile becomes an inset, extruded polygon:
- * a top cap, a bottom cap, and side walls, so tiles read as distinct raised hex
- * plates with thin trenches between them.
+ * The corner direction (unit vector) for a tile corner, accounting for any
+ * inter-tile gap. With gap 0 this is just the corner itself.
+ */
+function cornerDirection(corner: THREE.Vector3, center: THREE.Vector3, inset: number): THREE.Vector3 {
+  if (inset >= 1) return corner.clone().normalize();
+  const inward = new THREE.Vector3().subVectors(corner, center).multiplyScalar(inset);
+  return center.clone().add(inward).normalize();
+}
+
+/**
+ * Project a corner direction onto the tangent plane {x·n = radius}. Unlike a
+ * radial projection (which curves with the sphere), this lands every corner on
+ * one plane, so the resulting polygon top is genuinely flat.
+ */
+function planeCorner(direction: THREE.Vector3, normal: THREE.Vector3, radius: number): THREE.Vector3 {
+  const scale = radius / direction.dot(normal);
+  return direction.clone().multiplyScalar(scale);
+}
+
+/**
+ * Build the full globe geometry. Each tile is an extruded prism with a FLAT top
+ * face (its corners lie on one tangent plane), a small chamfered bevel around
+ * the top rim, vertical side walls, and a bottom cap. Gaps are closed, so the
+ * bevels of neighboring tiles form the only seam between them.
  */
 export function buildGlobeGeometry(
   world: GoldbergWorld,
@@ -96,6 +127,7 @@ export function buildGlobeGeometry(
   const colors: number[] = [];
   const triangleTileIds: number[] = [];
   const inset = 1.0 - options.tileGap;
+  const bevelDrop = options.thickness * BEVEL_DROP_FRACTION;
 
   for (const tile of world.tiles) {
     const tileBiome = biomes[tile.id];
@@ -106,38 +138,50 @@ export function buildGlobeGeometry(
 
     const topRadius = tileTopRadius(tileBiome, options.thickness);
     const bottomRadius = 1.0 + elevationOffset - options.thickness;
-
+    const normal = tile.center.clone().normalize();
     const center = tile.center;
-    const topCorners: THREE.Vector3[] = [];
-    const bottomCorners: THREE.Vector3[] = [];
-
-    for (const corner of tile.corners) {
-      // Contract the corner toward the tile center to open the inter-tile gap,
-      // then re-project radially to the top/bottom shells.
-      const inwardDirection = new THREE.Vector3().subVectors(corner, center).multiplyScalar(inset);
-      const contracted = center.clone().add(inwardDirection).normalize();
-      topCorners.push(contracted.clone().multiplyScalar(topRadius));
-      bottomCorners.push(contracted.clone().multiplyScalar(bottomRadius));
-    }
+    const sides = tile.corners.length;
 
     const topCenter = center.clone().multiplyScalar(topRadius);
     const bottomCenter = center.clone().multiplyScalar(bottomRadius);
-    const sides = tile.corners.length;
+
+    // Three corner rings per tile:
+    //   face — flat top face edge, inset in-plane by the bevel amount,
+    //   rim  — outer bevel edge / wall top, full footprint a hair lower,
+    //   base — bottom of the wall.
+    const faceCorners: THREE.Vector3[] = [];
+    const rimCorners: THREE.Vector3[] = [];
+    const baseCorners: THREE.Vector3[] = [];
+
+    for (const corner of tile.corners) {
+      const direction = cornerDirection(corner, center, inset);
+      const topPlaneCorner = planeCorner(direction, normal, topRadius);
+      // Flat face corner: pull the planar corner inward toward the face center.
+      faceCorners.push(topPlaneCorner.clone().lerp(topCenter, options.bevel));
+      // Bevel rim: full footprint, dropped slightly below the top plane.
+      rimCorners.push(planeCorner(direction, normal, topRadius - bevelDrop));
+      baseCorners.push(planeCorner(direction, normal, bottomRadius));
+    }
 
     for (let i = 0; i < sides; i++) {
       const next = (i + 1) % sides;
 
-      // Top cap (outward winding).
+      // Flat top face (fan from the face center, outward winding).
       pushTriangle(positions, colors, triangleTileIds, tile.id, color,
-        topCenter, topCorners[i], topCorners[next]);
+        topCenter, faceCorners[i], faceCorners[next]);
+      // Beveled rim: from the inset face edge down-and-out to the wall top.
+      pushTriangle(positions, colors, triangleTileIds, tile.id, color,
+        faceCorners[i], rimCorners[i], rimCorners[next]);
+      pushTriangle(positions, colors, triangleTileIds, tile.id, color,
+        faceCorners[i], rimCorners[next], faceCorners[next]);
+      // Side wall.
+      pushTriangle(positions, colors, triangleTileIds, tile.id, color,
+        rimCorners[i], baseCorners[i], baseCorners[next]);
+      pushTriangle(positions, colors, triangleTileIds, tile.id, color,
+        rimCorners[i], baseCorners[next], rimCorners[next]);
       // Bottom cap (reverse winding).
       pushTriangle(positions, colors, triangleTileIds, tile.id, color,
-        bottomCenter, bottomCorners[next], bottomCorners[i]);
-      // Side wall (two triangles).
-      pushTriangle(positions, colors, triangleTileIds, tile.id, color,
-        topCorners[i], bottomCorners[i], bottomCorners[next]);
-      pushTriangle(positions, colors, triangleTileIds, tile.id, color,
-        topCorners[i], bottomCorners[next], topCorners[next]);
+        bottomCenter, baseCorners[next], baseCorners[i]);
     }
   }
 
@@ -165,13 +209,16 @@ export function buildTileHighlightGeometry(
   if (!tile || !tileBiome) return null;
 
   const inset = 1.0 - options.tileGap;
-  const radius = tileTopRadius(tileBiome, options.thickness) + 0.012;
+  // Lift the highlight just above the flat top face so it reads as an overlay.
+  const radius = tileTopRadius(tileBiome, options.thickness) + 0.008;
+  const normal = tile.center.clone().normalize();
 
   const center = tile.center;
   const topCenter = center.clone().multiplyScalar(radius);
   const corners = tile.corners.map((corner) => {
-    const inwardDirection = new THREE.Vector3().subVectors(corner, center).multiplyScalar(inset);
-    return center.clone().add(inwardDirection).normalize().multiplyScalar(radius);
+    const direction = cornerDirection(corner, center, inset);
+    // Match the flat face's inset so the highlight traces the visible top.
+    return planeCorner(direction, normal, radius).lerp(topCenter, options.bevel);
   });
 
   const positions: number[] = [];

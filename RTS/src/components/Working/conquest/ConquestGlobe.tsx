@@ -6,23 +6,17 @@
 // useConquestStore; this component is a pure view over that store plus local
 // hover state.
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
-import { useThree, type ThreeEvent } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { Suspense, useMemo, useState } from 'react';
+import { type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useConquestStore } from './conquestState';
-import { ConquestArmies } from './ConquestArmies';
+import { ConquestField } from './ConquestField';
 import {
   buildGlobeGeometry,
   buildTileHighlightGeometry,
   DEFAULT_GLOBE_OPTIONS,
   type GlobeBuildOptions,
 } from './conquestGlobeGeometry';
-
-// Distance the camera sits from the planet center when framing a spawn. Planet
-// radius is 1, so this keeps the home tile and its army comfortably in view
-// while leaving room to zoom in to the surface.
-const SPAWN_VIEW_DISTANCE = 2.4;
 
 export function ConquestGlobe() {
   const world = useConquestStore((s) => s.world);
@@ -80,17 +74,6 @@ export function ConquestGlobe() {
 
   return (
     <>
-      <OrbitControls
-        makeDefault
-        enablePan={false}
-        enableDamping
-        dampingFactor={0.06}
-        minDistance={1.3}
-        maxDistance={6}
-        rotateSpeed={0.5}
-      />
-      <SpawnCameraFramer />
-
       <mesh
         geometry={geometry}
         onPointerMove={handlePointerMove}
@@ -113,13 +96,14 @@ export function ConquestGlobe() {
       )}
 
       {/* Team-colored locator beacons floating above each spawn, so distant
-          enemies stay findable while orbiting; the armies themselves stand on
-          the surface below. */}
+          enemies stay findable while the camera is locked near your monarch. */}
       <SpawnBeacons />
-      {/* The real animal models, standing on each player's home tile. Wrapped in
-          its own Suspense so the globe stays visible while the GLBs stream in. */}
+
+      {/* Units on the surface + monarch piloting + the third-person chase camera.
+          Wrapped in its own Suspense so the globe stays visible while the animal
+          GLBs stream in. */}
       <Suspense fallback={null}>
-        <ConquestArmies />
+        <ConquestField />
       </Suspense>
     </>
   );
@@ -153,37 +137,4 @@ function SpawnBeacons() {
       })}
     </group>
   );
-}
-
-/**
- * Frames the camera on the local (human) player's spawn when the world loads —
- * the Conquest analogue of Quick Play opening on your own base — so the player
- * sees their army immediately instead of a random face of the planet. Runs once
- * per generated world; the player is free to orbit away afterward.
- */
-function SpawnCameraFramer() {
-  const world = useConquestStore((s) => s.world);
-  const players = useConquestStore((s) => s.players);
-  const camera = useThree((s) => s.camera);
-  const controls = useThree((s) => s.controls) as unknown as
-    { target: THREE.Vector3; update: () => void } | null;
-
-  useEffect(() => {
-    if (!world) return;
-    const human = players.find((player) => !player.isAI);
-    if (!human) return;
-    const tile = world.tiles[human.homeTileId];
-    if (!tile) return;
-
-    const outward = tile.center.clone().normalize();
-    camera.position.copy(outward.multiplyScalar(SPAWN_VIEW_DISTANCE));
-    camera.lookAt(0, 0, 0);
-    if (controls) {
-      controls.target.set(0, 0, 0);
-      controls.update();
-    }
-    // Re-frame whenever a new planet is generated (world identity changes).
-  }, [world, players, camera, controls]);
-
-  return null;
 }
