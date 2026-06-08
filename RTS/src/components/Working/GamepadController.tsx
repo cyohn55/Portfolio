@@ -241,11 +241,12 @@ export function GamepadController() {
   const patrolPrevRef = useRef(false);
 
   // True while the combat-posture radial is open (mirrored from BehaviorRadial via
-  // window events). While open the right stick aims a wedge instead of driving the
-  // cursor; radialAimedRef tracks whether the stick has been pushed out so a return
-  // to center reads as "release to confirm".
+  // window events). While open the right stick aims a ring/wedge instead of driving
+  // the cursor, RT applies the highlighted option, and B closes the radial. The
+  // prev-edge refs debounce RT/B to a single fire per press.
   const radialOpenRef = useRef(false);
-  const radialAimedRef = useRef(false);
+  const radialSelectPrevRef = useRef(false);
+  const radialClosePrevRef = useRef(false);
 
   // Stop the deploy designation interval (on release, pad disconnect, or unmount).
   const stopPlacementHold = () => {
@@ -359,11 +360,15 @@ export function GamepadController() {
   };
 
   // Track the posture radial's open state so the poll loop can hand the right stick
-  // to wedge selection while it is up. BehaviorRadial owns the state and broadcasts
-  // it; resetting radialAimedRef on close prevents a stale "release" confirm.
+  // to ring selection while it is up. BehaviorRadial owns the state and broadcasts
+  // it; resetting the RT/B edge refs on close prevents a stale press from firing.
   useEffect(() => {
     const onOpen = () => { radialOpenRef.current = true; };
-    const onClose = () => { radialOpenRef.current = false; radialAimedRef.current = false; };
+    const onClose = () => {
+      radialOpenRef.current = false;
+      radialSelectPrevRef.current = false;
+      radialClosePrevRef.current = false;
+    };
     window.addEventListener('rts:stance-radial-open', onOpen);
     window.addEventListener('rts:stance-radial-close', onClose);
     return () => {
@@ -651,6 +656,11 @@ export function GamepadController() {
     // All other gameplay actions are inert while paused or after the match ends.
     if (state.isPaused || state.gameOver || !state.matchStarted) return;
 
+    // While the posture radial is open it owns RT (Move/Attack) and B (Deselect) as
+    // its select/close inputs, so swallow those here too — defense against a chord
+    // binding reaching this path while the dispatch loop skip handles plain presses.
+    if (radialOpenRef.current && (actionId === 'secondaryAction' || actionId === 'deselect')) return;
+
     switch (actionId) {
       case 'primaryAction': {
         const ownId = nearestUnitId((ownerId, localId) => ownerId === localId);
@@ -835,21 +845,37 @@ export function GamepadController() {
     const { controllerBindings, isPaused, matchStarted } = useGameStore.getState();
     const radialOpen = radialOpenRef.current;
 
-    // --- Posture radial wedge selection (right stick). While the radial is open the
-    // right stick chooses a stance wedge instead of driving the cursor: push toward a
-    // wedge to highlight it, then release the stick to center to confirm. The cursor
-    // block below is suppressed (it hides via its else branch) so the two never fight
-    // over the stick. ---
+    // --- Posture radial selection (right stick + RT + B). While the radial is open
+    // the right stick aims a ring/wedge instead of driving the cursor: the deflection
+    // magnitude picks the ring (center = fire toggle, mid = posture, full = priority)
+    // and the angle picks the wedge. RT applies the highlighted option (the radial
+    // stays open so all three axes can be set); B closes it. The cursor block below
+    // is suppressed (it hides via its else branch) so the two never fight over the
+    // stick, and the dispatch loop skips RT/B so they don't also command/deselect. ---
     if (matchStarted && !isPaused && radialOpen) {
       const rx = gamepad.axes[2] ?? 0;
       const ry = gamepad.axes[3] ?? 0;
-      if (Math.hypot(rx, ry) > CONTROLLER_DEADZONE) {
-        window.dispatchEvent(new CustomEvent('rts:stance-radial-aim', { detail: { x: rx, y: ry } }));
-        radialAimedRef.current = true;
-      } else if (radialAimedRef.current) {
-        radialAimedRef.current = false;
-        window.dispatchEvent(new CustomEvent('rts:stance-radial-commit'));
+      // Stream the raw aim vector (including near-center) so the radial can derive
+      // the ring from the deflection — at rest the center fire toggle is addressed.
+      window.dispatchEvent(new CustomEvent('rts:stance-radial-aim', { detail: { x: rx, y: ry } }));
+
+      // RT applies the highlighted option; rising edge only so a held trigger does
+      // not repeat-apply every frame.
+      const selectActive = isControllerTokenActive(gamepad, controllerBindings.secondaryAction);
+      if (selectActive && !radialSelectPrevRef.current) {
+        window.dispatchEvent(new CustomEvent('rts:stance-radial-select'));
       }
+      radialSelectPrevRef.current = selectActive;
+
+      // B closes the radial; rising edge only. Reuses the toggle event (open → closed).
+      const closeActive = isControllerTokenActive(gamepad, controllerBindings.deselect);
+      if (closeActive && !radialClosePrevRef.current) {
+        window.dispatchEvent(new CustomEvent('rts:toggle-stance-radial'));
+      }
+      radialClosePrevRef.current = closeActive;
+    } else {
+      radialSelectPrevRef.current = false;
+      radialClosePrevRef.current = false;
     }
 
     // --- Camera intent (analog, held). Suppressed while paused. ---
@@ -1039,9 +1065,16 @@ export function GamepadController() {
     }
 
     // --- Activation-mode dispatch: feed each bound token's press/release edges to
-    // its resolver (which fires tap / double-tap / hold per the player's choice). ---
+    // its resolver (which fires tap / double-tap / hold per the player's choice).
+    // While the posture radial is open it owns RT (select) and B (close); skip those
+    // tokens so the resolver never registers a press — preventing both an in-radial
+    // command and a stray release firing once the radial closes. ---
     const dispatch = dispatchRef.current;
+    const radialOwnedTokens = radialOpen
+      ? new Set([controllerBindings.secondaryAction, controllerBindings.deselect].filter(Boolean))
+      : null;
     for (const [token, resolver] of dispatch.resolvers) {
+      if (radialOwnedTokens?.has(token)) continue;
       const active = isControllerTokenActive(gamepad, token);
       const wasActive = prevActive.current[token] ?? false;
       if (active && !wasActive) resolver.press(performance.now());
