@@ -48,7 +48,13 @@ service cloud.firestore {
     // ticket; DELETE so a host can clean up its own room on leave.
 
     match /rooms/{roomId} {
-      allow read, create, update, delete: if isSaneSignalingDoc();
+      // Reads/deletes carry no incoming document and are unconditional; only
+      // writes are shape-guarded. The guard MUST live on the write rules alone:
+      // `request.resource` is undefined on a read (referencing it errors, which
+      // Firestore evaluates as deny), so a combined `read, create, ...` rule that
+      // touches request.resource silently denies every read.
+      allow read, delete: if true;
+      allow create, update: if isSaneSignalingWrite();
       // Per-side ICE candidate streams (hostCandidates / guestCandidates).
       match /{candidateSet}/{candidateId} {
         allow read, create, delete: if true;
@@ -56,21 +62,20 @@ service cloud.firestore {
     }
 
     match /matchmaking/{ticketId} {
-      allow read, create, update, delete: if isSaneSignalingDoc();
+      allow read, delete: if true;
+      allow create, update: if isSaneSignalingWrite();
       match /{candidateSet}/{candidateId} {
         allow read, create, delete: if true;
       }
     }
 
-    // Light shape guard on signaling writes. Reads/deletes carry no resource
-    // body (request.resource is null) and are allowed through; writes are capped
-    // at a small top-level field count (a room/ticket has ~4 fields: offer,
-    // answer, status, createdAt) to reject obviously-malformed bulk writes.
-    // Field VALUE sizes are intentionally not restricted — an SDP blob is one
-    // large legitimate string.
-    function isSaneSignalingDoc() {
-      return request.resource == null
-        || request.resource.data.size() <= 16;
+    // Light shape guard on signaling WRITES only (create/update), where
+    // request.resource is always the incoming document. Caps the top-level field
+    // count (a room/ticket has ~4 fields: offer, answer, status, createdAt) to
+    // reject obviously-malformed bulk writes. Field VALUE sizes are intentionally
+    // not restricted — an SDP blob is one large legitimate string.
+    function isSaneSignalingWrite() {
+      return request.resource.data.size() <= 16;
     }
 
     // Mirrors the client-side contract in leaderboard.ts (isWellFormedEntry +
