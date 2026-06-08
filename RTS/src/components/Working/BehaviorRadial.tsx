@@ -35,17 +35,15 @@ interface StanceOption {
   icon: string;
   label: string;
   hint: string;
-  color: string; // vibrant fill, always visible so the option is identifiable at a glance
 }
 
-// Ordered for the inner ring (placed clockwise from the top). Each stance carries a
-// distinct vibrant color so the option reads by color even before it is selected.
+// Ordered for the inner ring (placed clockwise from the top).
 const STANCE_OPTIONS: StanceOption[] = [
-  { stance: 'aggressive', icon: '⚔️', label: 'Aggressive', hint: 'Hunt & chase enemies in vision', color: '#ef4444' },
-  { stance: 'skirmish', icon: '🏹', label: 'Skirmish', hint: 'Kite — fight at range, back off when closed on', color: '#f97316' },
-  { stance: 'holdGround', icon: '🚩', label: 'Hold Ground', hint: 'Attack only what is in range; never move', color: '#eab308' },
-  { stance: 'defensive', icon: '🛡️', label: 'Defensive', hint: 'Engage within a leash, then return home', color: '#3b82f6' },
-  { stance: 'flee', icon: '🏃', label: 'Flee', hint: 'Never engage; retreat toward home', color: '#22c55e' },
+  { stance: 'aggressive', icon: '⚔️', label: 'Aggressive', hint: 'Hunt & chase enemies in vision' },
+  { stance: 'skirmish', icon: '🏹', label: 'Skirmish', hint: 'Kite — fight at range, back off when closed on' },
+  { stance: 'holdGround', icon: '🚩', label: 'Hold Ground', hint: 'Attack only what is in range; never move' },
+  { stance: 'defensive', icon: '🛡️', label: 'Defensive', hint: 'Engage within a leash, then return home' },
+  { stance: 'flee', icon: '🏃', label: 'Flee', hint: 'Never engage; retreat toward home' },
 ];
 
 interface PriorityOption {
@@ -53,22 +51,23 @@ interface PriorityOption {
   icon: string;
   label: string;
   hint: string;
-  color: string; // vibrant fill, always visible (kept in a different hue family from the stances)
 }
 
-// Ordered for the outer ring (placed clockwise from the top). Priority colors sit
-// in a different part of the wheel than the stance colors so the two rings stay
-// distinguishable while every individual option still has its own color.
+// Ordered for the outer ring (placed clockwise from the top).
 const PRIORITY_OPTIONS: PriorityOption[] = [
-  { priority: 'nearest', icon: '📍', label: 'Nearest', hint: 'Closest enemy first', color: '#06b6d4' },
-  { priority: 'lowestHp', icon: '🩸', label: 'Weakest', hint: 'Finish the lowest-HP enemy', color: '#ec4899' },
-  { priority: 'highestThreat', icon: '💥', label: 'Threat', hint: 'Highest damage-per-second first', color: '#a855f7' },
-  { priority: 'ranged', icon: '🎯', label: 'Ranged', hint: 'Longest-reach enemy first', color: '#6366f1' },
-  { priority: 'monarch', icon: '👑', label: 'Royalty', hint: 'Kings, Queens, and Bases first', color: '#14b8a6' },
+  { priority: 'nearest', icon: '📍', label: 'Nearest', hint: 'Closest enemy first' },
+  { priority: 'lowestHp', icon: '🩸', label: 'Weakest', hint: 'Finish the lowest-HP enemy' },
+  { priority: 'highestThreat', icon: '💥', label: 'Threat', hint: 'Highest damage-per-second first' },
+  { priority: 'ranged', icon: '🎯', label: 'Ranged', hint: 'Longest-reach enemy first' },
+  { priority: 'monarch', icon: '👑', label: 'Royalty', hint: 'Kings, Queens, and Bases first' },
 ];
 
-// The fire-mode toggle's always-visible color (a fiery red-orange, matching its 🔥).
+// Three colors total, one per option type, so the ring an option belongs to is
+// readable by color alone (and always visible, not just when selected):
+//   center fire toggle → orange-red · inner posture ring → blue · outer priority ring → purple
 const FIRE_COLOR = '#fb5607';
+const POSTURE_COLOR = '#2563eb';
+const PRIORITY_COLOR = '#9333ea';
 
 // Circle sizes (kept in sync with the CSS below) so the ring radii can be derived
 // rather than hand-tuned — keeping the no-overlap guarantees as the sizes change.
@@ -259,7 +258,7 @@ export function BehaviorRadial() {
                   <button
                     key={option.priority}
                     className={`rts-stance-node${active ? ' rts-stance-node-active' : ''}${hovered ? ' rts-stance-node-hover' : ''}`}
-                    style={{ background: option.color, transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
+                    style={{ background: PRIORITY_COLOR, transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
                     onClick={() => applyPriority(option.priority)}
                     title={option.hint}
                   >
@@ -280,7 +279,7 @@ export function BehaviorRadial() {
                   <button
                     key={option.stance}
                     className={`rts-stance-node${active ? ' rts-stance-node-active' : ''}${hovered ? ' rts-stance-node-hover' : ''}`}
-                    style={{ background: option.color, transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
+                    style={{ background: POSTURE_COLOR, transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
                     onClick={() => applyStance(option.stance)}
                     title={option.hint}
                   >
@@ -353,11 +352,12 @@ const STYLE = `
 
 .rts-stance-ring { position: relative; }
 
-/* Every option circle — fire toggle, posture, and priority — carries its OWN
-   vibrant background (set inline per option) so its color is always visible, even
-   before it is selected. The white text/icon + shadows keep the label legible on
-   any hue floating directly over the battlefield (no backing card). The subtle
-   light rim gives each colored circle definition against the scene. */
+/* Every option circle carries a vibrant background set inline — one color per
+   type (fire / posture / priority), so its ring is readable by color alone and is
+   always visible, not just when selected. The white text/icon + shadows keep the
+   label legible on any hue floating directly over the battlefield (no backing
+   card). The subtle light rim gives each colored circle definition against the
+   scene. */
 .rts-stance-node {
   position: absolute; top: 50%; left: 50%; width: 76px; height: 76px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
