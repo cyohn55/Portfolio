@@ -6,10 +6,9 @@
 // the geometry/biome/combat modules; this is the composition root that wires them
 // to the screen.
 
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Canvas, useFrame, useLoader } from '@react-three/fiber';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { useGLTF } from '@react-three/drei';
 import { useGameStore } from '../../../game/state';
 import { useConquestStore, effectiveController } from './conquestState';
 import { BIOMES } from './conquestBiomes';
@@ -17,11 +16,13 @@ import { ConquestGlobe } from './ConquestGlobe';
 import './ConquestScreen.css';
 
 // The skybox is centered on the camera each frame and rendered behind everything,
-// so its only real constraint is fitting inside the camera's far plane. We fit it
-// to this radius at runtime from its bounding sphere (the source asset is ~800
-// units across) so the value is independent of the model's authored scale.
+// so its only real constraint is fitting inside the camera's far plane (100). The
+// source asset ships an 8192×4096 (2:1) equirectangular panorama, which maps
+// cleanly onto an inverted sphere's default UVs — far more robust than scaling the
+// enormous source gltf, whose authored transforms made runtime fitting fragile.
 const SKYBOX_RADIUS = 50;
-const SKYBOX_PATH = `${import.meta.env.BASE_URL}models/nebula_skybox/scene.gltf`;
+const SKYBOX_TEXTURE_PATH =
+  `${import.meta.env.BASE_URL}models/nebula_skybox/textures/Material.001_baseColor.jpeg`;
 
 export function ConquestScreen() {
   const transitionToScreen = useGameStore((s) => s.transitionToScreen);
@@ -74,45 +75,31 @@ export function ConquestScreen() {
 }
 
 /**
- * Nebula backdrop wrapping the planet. The source sphere is enormous, so we fit
- * it to SKYBOX_RADIUS from its measured bounding sphere, flip its faces inward,
- * and lock it to the camera each frame so it reads as an infinitely distant sky.
+ * Nebula backdrop wrapping the planet: the equirectangular panorama painted on the
+ * inside of a large sphere, locked to the camera each frame so it reads as an
+ * infinitely distant sky. A `meshBasicMaterial` makes it self-lit (independent of
+ * the scene lights), and disabling depth writes keeps it behind everything.
  */
 function NebulaSkybox() {
-  const gltf = useGLTF(SKYBOX_PATH);
-  const groupRef = useRef<THREE.Group>(null);
+  const texture = useLoader(THREE.TextureLoader, SKYBOX_TEXTURE_PATH);
+  const meshRef = useRef<THREE.Mesh>(null);
 
-  const { object, fitScale } = useMemo(() => {
-    const clone = gltf.scene.clone(true);
-    const boundingSphere = new THREE.Box3()
-      .setFromObject(clone)
-      .getBoundingSphere(new THREE.Sphere());
-    const nativeRadius = boundingSphere.radius || 1;
-
-    clone.traverse((node) => {
-      const mesh = node as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      const material = (mesh.material as THREE.MeshStandardMaterial).clone();
-      material.side = THREE.BackSide;   // we view the sphere from inside
-      material.depthWrite = false;
-      material.depthTest = false;       // always behind the scene
-      material.fog = false;
-      mesh.material = material;
-      mesh.renderOrder = -1;
-      mesh.frustumCulled = false;
-    });
-
-    return { object: clone, fitScale: SKYBOX_RADIUS / nativeRadius };
-  }, [gltf]);
+  useEffect(() => {
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.needsUpdate = true;
+  }, [texture]);
 
   useFrame(({ camera }) => {
-    groupRef.current?.position.copy(camera.position);
+    meshRef.current?.position.copy(camera.position);
   });
 
-  return <primitive ref={groupRef} object={object} scale={fitScale} />;
+  return (
+    <mesh ref={meshRef} renderOrder={-1} frustumCulled={false}>
+      <sphereGeometry args={[SKYBOX_RADIUS, 64, 40]} />
+      <meshBasicMaterial map={texture} side={THREE.BackSide} depthWrite={false} fog={false} />
+    </mesh>
+  );
 }
-
-useGLTF.preload(SKYBOX_PATH);
 
 /** Lists every commander, their team color, territory, and capture status. */
 function PlayerRosterPanel() {
