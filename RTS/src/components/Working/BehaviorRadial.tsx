@@ -67,7 +67,7 @@ const PRIORITY_OPTIONS: PriorityOption[] = [
 // inner ring, and the outer ring.
 const NODE_DIAMETER = 76; // each posture / priority option circle
 const CENTER_DIAMETER = NODE_DIAMETER; // the fire-mode toggle is the same size as an option
-const RADIAL_GAP = 22; // equal clear gap between center→inner and inner→outer edges
+const RADIAL_GAP = 10; // equal clear gap between center→inner and inner→outer edges (kept tight for a compact radial)
 
 // The outer (priority) ring is rotated by this half-wedge so each priority circle
 // sits in the gap between two posture circles instead of directly outside one.
