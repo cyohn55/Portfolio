@@ -6,11 +6,12 @@
 // useConquestStore; this component is a pure view over that store plus local
 // hover state.
 
-import { useMemo, useState } from 'react';
-import { type ThreeEvent } from '@react-three/fiber';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useConquestStore } from './conquestState';
+import { ConquestArmies } from './ConquestArmies';
 import {
   buildGlobeGeometry,
   buildTileHighlightGeometry,
@@ -18,9 +19,10 @@ import {
   type GlobeBuildOptions,
 } from './conquestGlobeGeometry';
 
-/** Slow idle spin so the planet feels alive without fighting the user's drag. */
-const AUTO_ROTATE_SPEED = 0.35;
-const SPAWN_MARKER_RADIUS = 1.16;
+// Distance the camera sits from the planet center when framing a spawn. Planet
+// radius is 1, so this keeps the home tile and its army comfortably in view
+// while leaving room to zoom in to the surface.
+const SPAWN_VIEW_DISTANCE = 2.4;
 
 export function ConquestGlobe() {
   const world = useConquestStore((s) => s.world);
@@ -79,15 +81,15 @@ export function ConquestGlobe() {
   return (
     <>
       <OrbitControls
+        makeDefault
         enablePan={false}
         enableDamping
         dampingFactor={0.06}
-        minDistance={1.7}
+        minDistance={1.3}
         maxDistance={6}
-        autoRotate
-        autoRotateSpeed={AUTO_ROTATE_SPEED}
         rotateSpeed={0.5}
       />
+      <SpawnCameraFramer />
 
       <mesh
         geometry={geometry}
@@ -110,13 +112,21 @@ export function ConquestGlobe() {
         </mesh>
       )}
 
-      <SpawnMarkers />
+      {/* Team-colored locator beacons floating above each spawn, so distant
+          enemies stay findable while orbiting; the armies themselves stand on
+          the surface below. */}
+      <SpawnBeacons />
+      {/* The real animal models, standing on each player's home tile. Wrapped in
+          its own Suspense so the globe stays visible while the GLBs stream in. */}
+      <Suspense fallback={null}>
+        <ConquestArmies />
+      </Suspense>
     </>
   );
 }
 
 /** A small floating beacon over each player's home pentagon, in team color. */
-function SpawnMarkers() {
+function SpawnBeacons() {
   const world = useConquestStore((s) => s.world);
   const players = useConquestStore((s) => s.players);
 
@@ -127,15 +137,15 @@ function SpawnMarkers() {
       {players.map((player) => {
         const tile = world.tiles[player.homeTileId];
         if (!tile) return null;
-        const position = tile.center.clone().multiplyScalar(SPAWN_MARKER_RADIUS);
-        const markerSize = player.isAI ? 0.035 : 0.05;
+        const position = tile.center.clone().multiplyScalar(1.22);
+        const markerSize = player.isAI ? 0.022 : 0.03;
         return (
           <mesh key={player.id} position={position}>
-            <sphereGeometry args={[markerSize, 16, 16]} />
+            <sphereGeometry args={[markerSize, 12, 12]} />
             <meshStandardMaterial
               color={player.color}
               emissive={player.color}
-              emissiveIntensity={player.isAI ? 0.4 : 0.8}
+              emissiveIntensity={player.isAI ? 0.5 : 0.9}
               roughness={0.3}
             />
           </mesh>
@@ -143,4 +153,37 @@ function SpawnMarkers() {
       })}
     </group>
   );
+}
+
+/**
+ * Frames the camera on the local (human) player's spawn when the world loads —
+ * the Conquest analogue of Quick Play opening on your own base — so the player
+ * sees their army immediately instead of a random face of the planet. Runs once
+ * per generated world; the player is free to orbit away afterward.
+ */
+function SpawnCameraFramer() {
+  const world = useConquestStore((s) => s.world);
+  const players = useConquestStore((s) => s.players);
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls) as unknown as
+    { target: THREE.Vector3; update: () => void } | null;
+
+  useEffect(() => {
+    if (!world) return;
+    const human = players.find((player) => !player.isAI);
+    if (!human) return;
+    const tile = world.tiles[human.homeTileId];
+    if (!tile) return;
+
+    const outward = tile.center.clone().normalize();
+    camera.position.copy(outward.multiplyScalar(SPAWN_VIEW_DISTANCE));
+    camera.lookAt(0, 0, 0);
+    if (controls) {
+      controls.target.set(0, 0, 0);
+      controls.update();
+    }
+    // Re-frame whenever a new planet is generated (world identity changes).
+  }, [world, players, camera, controls]);
+
+  return null;
 }

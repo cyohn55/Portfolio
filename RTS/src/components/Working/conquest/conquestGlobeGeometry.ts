@@ -35,6 +35,23 @@ export const DEFAULT_GLOBE_OPTIONS: Omit<GlobeBuildOptions, 'ownerColors'> = {
 };
 
 /**
+ * Radius of a tile's outer (top) surface — the height a unit standing on the
+ * tile rests at. Shared by the mesh builder and the army renderer so models sit
+ * exactly on the crust rather than floating above or sinking into it. Mountains
+ * rise further the higher their noise elevation, matching the rendered relief.
+ */
+export function tileTopRadius(
+  tileBiome: TileBiome,
+  thickness: number = DEFAULT_GLOBE_OPTIONS.thickness,
+): number {
+  const elevationOffset = BIOMES[tileBiome.biome].elevationOffset;
+  const mountainBoost = tileBiome.biome === 'mountain'
+    ? (tileBiome.elevation - 0.5) * 0.18
+    : 0;
+  return 1.0 + elevationOffset + mountainBoost + thickness;
+}
+
+/**
  * Resolve a tile's display color: its biome color, blended toward the owning
  * player's color when claimed so territory reads at a glance.
  */
@@ -87,11 +104,7 @@ export function buildGlobeGeometry(
     const color = resolveTileColor(tile.id, tileBiome, options);
     const elevationOffset = BIOMES[tileBiome.biome].elevationOffset;
 
-    // Mountains protrude further the higher their noise elevation rose.
-    const mountainBoost = tileBiome.biome === 'mountain'
-      ? (tileBiome.elevation - 0.5) * 0.18
-      : 0;
-    const topRadius = 1.0 + elevationOffset + mountainBoost + options.thickness;
+    const topRadius = tileTopRadius(tileBiome, options.thickness);
     const bottomRadius = 1.0 + elevationOffset - options.thickness;
 
     const center = tile.center;
@@ -152,11 +165,7 @@ export function buildTileHighlightGeometry(
   if (!tile || !tileBiome) return null;
 
   const inset = 1.0 - options.tileGap;
-  const elevationOffset = BIOMES[tileBiome.biome].elevationOffset;
-  const mountainBoost = tileBiome.biome === 'mountain'
-    ? (tileBiome.elevation - 0.5) * 0.18
-    : 0;
-  const radius = 1.0 + elevationOffset + mountainBoost + options.thickness + 0.012;
+  const radius = tileTopRadius(tileBiome, options.thickness) + 0.012;
 
   const center = tile.center;
   const topCenter = center.clone().multiplyScalar(radius);
