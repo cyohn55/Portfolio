@@ -1,7 +1,11 @@
 import { test, expect } from '@playwright/test';
 import {
   isFarmableTile,
+  isClaimableTile,
   countOwnedFarmTiles,
+  countOwnedTiles,
+  countClaimableTiles,
+  territoryPercent,
   populationCap,
   planetPopulationCeiling,
   canGrowUnit,
@@ -10,11 +14,12 @@ import {
 import type { TileBiome, BiomeId } from '../src/components/Working/conquest/conquestBiomes';
 
 /**
- * Unit tests for the Conquest Increment 5 growth rules (pure Node). The arithmetic
- * behind a Queen growing her nation — which tiles are farmable, how much territory a
- * controller owns, the population cap that territory buys, and whether another unit
- * may be grown — is side-effect-free, so we assert it directly against real biome
- * definitions rather than driving the field sim.
+ * Unit tests for the Conquest Increment 5/6 growth + territory rules (pure Node). The
+ * arithmetic behind a Queen growing her nation and a nation holding the planet — which
+ * tiles are farmable vs. merely claimable, how much territory a controller owns, the
+ * population cap that farmland buys, and a controller's share of the map — is
+ * side-effect-free, so we assert it directly against real biome definitions rather
+ * than driving the field sim.
  */
 
 // Minimal TileBiome whose only field the growth rules read is `biome`.
@@ -36,6 +41,29 @@ test.describe('Farmable-tile predicate', () => {
   });
 });
 
+test.describe('Claimable-tile predicate (increment 6)', () => {
+  test('every biome but the impassable mountains is claimable', () => {
+    expect(isClaimableTile(tileOf('grassland'))).toBe(true);
+    expect(isClaimableTile(tileOf('forest'))).toBe(true);
+    expect(isClaimableTile(tileOf('desert'))).toBe(true);
+    expect(isClaimableTile(tileOf('snow'))).toBe(true);
+    expect(isClaimableTile(tileOf('ocean'))).toBe(true);
+    expect(isClaimableTile(tileOf('lake'))).toBe(true);
+    expect(isClaimableTile(tileOf('mountain'))).toBe(false);
+  });
+
+  test('an undefined tile is never claimable', () => {
+    expect(isClaimableTile(undefined)).toBe(false);
+  });
+
+  test('non-farmable terrain is claimable but never farmable', () => {
+    for (const biome of ['forest', 'desert', 'snow', 'ocean', 'lake'] as BiomeId[]) {
+      expect(isClaimableTile(tileOf(biome))).toBe(true);
+      expect(isFarmableTile(tileOf(biome))).toBe(false);
+    }
+  });
+});
+
 test.describe('Owned farmland count', () => {
   const biomes = [
     tileOf('grassland'), // 0
@@ -54,6 +82,42 @@ test.describe('Owned farmland count', () => {
 
   test('an empty ownership map yields no farmland', () => {
     expect(countOwnedFarmTiles({}, biomes, 'p0')).toBe(0);
+  });
+});
+
+test.describe('Owned territory count (increment 6)', () => {
+  const biomes = [
+    tileOf('grassland'), // 0 — p0, farmable
+    tileOf('forest'),    // 1 — p0, claimable not farmable
+    tileOf('ocean'),     // 2 — p0, claimable not farmable
+    tileOf('mountain'),  // 3 — p0 in map, but NOT claimable
+    tileOf('desert'),    // 4 — rival
+  ];
+
+  test('counts every claimable tile a controller owns, not just farmland', () => {
+    const owners: Record<number, string> = { 0: 'p0', 1: 'p0', 2: 'p0', 3: 'p0', 4: 'ai1' };
+    // p0 holds grassland + forest + ocean (3); the mountain entry is not claimable.
+    expect(countOwnedTiles(owners, biomes, 'p0')).toBe(3);
+    expect(countOwnedFarmTiles(owners, biomes, 'p0')).toBe(1); // only the grassland feeds growth
+    expect(countOwnedTiles(owners, biomes, 'ai1')).toBe(1);
+  });
+
+  test('counts every claimable tile on the planet', () => {
+    expect(countClaimableTiles(biomes)).toBe(4); // all but the mountain
+  });
+});
+
+test.describe('Territory share (increment 6)', () => {
+  test('share is a whole-number percent of the claimable planet', () => {
+    expect(territoryPercent(0, 200)).toBe(0);
+    expect(territoryPercent(50, 200)).toBe(25);
+    expect(territoryPercent(200, 200)).toBe(100);
+    expect(territoryPercent(1, 3)).toBe(33); // rounds 33.33 → 33
+    expect(territoryPercent(2, 3)).toBe(67); // rounds 66.66 → 67
+  });
+
+  test('a planet with no claimable land never divides by zero', () => {
+    expect(territoryPercent(0, 0)).toBe(0);
   });
 });
 

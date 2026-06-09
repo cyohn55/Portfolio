@@ -115,7 +115,7 @@ import {
   type ScreenBox,
 } from './conquestSelection';
 import {
-  isFarmableTile,
+  isClaimableTile,
   countOwnedFarmTiles,
   populationCap,
   canGrowUnit,
@@ -1586,10 +1586,13 @@ export function ConquestField() {
       conquest.conquerArmy(armyId, conqueror, elapsedMs);
     }
 
-    // 8.5) Occupation claiming (increment 5): a living unit standing on a farmable
-    //      (grassland) tile flips that tile to its controller — the farmland a Queen
-    //      grows on. Throttled (a unit rarely crosses onto new farmland between scans)
-    //      and batched into one store update, so it never thrashes the HUD's re-render.
+    // 8.5) Occupation claiming (increment 6): a living unit standing on any CLAIMABLE
+    //      tile (every biome but the impassable mountains — forest, desert, snow, and
+    //      water now, not just the grassland increment 5 claimed) flips that tile to its
+    //      controller. Holding the grassland still feeds growth (step 8.6); the broader
+    //      claim builds the territory map the HUD reads as dominance. Throttled (a unit
+    //      rarely crosses onto a new tile between scans) and batched into one store
+    //      update, so it never thrashes the HUD's re-render.
     if (elapsedMs - lastClaimScanMs.current >= CLAIM_SCAN_INTERVAL_MS) {
       lastClaimScanMs.current = elapsedMs;
       const owners = conquest.tileOwners;
@@ -1599,7 +1602,7 @@ export function ConquestField() {
         up.copy(unit.position).normalize();
         const tileId = nearestTileId(up, world);
         unit.currentTileId = tileId;
-        if (!isFarmableTile(biomes[tileId])) continue;
+        if (!isClaimableTile(biomes[tileId])) continue;
         if (owners[tileId] === unit.controllerId) continue;
         claims[tileId] = unit.controllerId; // a contested tile goes to the last unit scanned
       }

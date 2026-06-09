@@ -16,6 +16,9 @@ import {
   countOwnedFarmTiles,
   populationCap,
   planetPopulationCeiling,
+  countOwnedTiles,
+  countClaimableTiles,
+  territoryPercent,
 } from './conquestGrowth';
 import { ConquestGlobe } from './ConquestGlobe';
 import './ConquestScreen.css';
@@ -78,9 +81,9 @@ export function ConquestScreen() {
         Move keys drive · A switch King/Queen · Scroll zoom · Left-click / drag-box
         select your units · Right-click to move (or an enemy to attack) · Shift +
         right-click sets a selected Queen's rally · Both mouse buttons fire your army's
-        ability · Stand on grassland to claim it; each owned field lets your Queens grow
-        +2 units · King (gold aura) buffs damage, Queen (green aura) heals · Down a
-        rival's King AND Queen to capture their whole army
+        ability · Occupy any terrain to claim it for your territory; owned grassland also
+        lets your Queens grow +2 units each · King (gold aura) buffs damage, Queen (green
+        aura) heals · Down a rival's King AND Queen to capture their whole army
       </div>
     </div>
   );
@@ -132,12 +135,23 @@ function PlayerRosterPanel() {
   const yourCap = populationCap(countOwnedFarmTiles(tileOwners, biomes, HUMAN_ID));
   const planetCeiling = planetPopulationCeiling(biomes);
 
+  // Your share of the whole claimable planet (every biome but the mountains) — the
+  // dominance pressure increment 6 added on top of farmland-only claiming.
+  const yourTerritory = territoryPercent(
+    countOwnedTiles(tileOwners, biomes, HUMAN_ID),
+    countClaimableTiles(biomes),
+  );
+
   return (
     <div className="conquest-roster">
       <h3 className="conquest-panel-heading">Commanders</h3>
       <div className="conquest-roster-forces">
         <span>Your forces</span>
         <span>{yourForces} / {yourCap}<span className="conquest-roster-ceiling"> (max {planetCeiling})</span></span>
+      </div>
+      <div className="conquest-roster-forces">
+        <span>Your territory</span>
+        <span>{yourTerritory}%</span>
       </div>
       {players.map((player) => {
         const controller = effectiveController(armyController, player.id);
