@@ -23,7 +23,7 @@
 // store is read for the static spawn set, current army control, and the selected
 // monarch; control changes flow back through the store's `conquerArmy` action.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
@@ -31,12 +31,19 @@ import type { AnimalId, MovementType, UnitBehavior } from '../../../game/types';
 import { ANIMAL_MOVEMENT_TYPES } from '../../../game/types';
 import { ANIMAL_FILE_MAP } from '../../../utils/ModelPreloader';
 import { useGameStore } from '../../../game/state';
-import { keyboardEventToToken } from '../controlBindings';
+import {
+  keyboardEventToToken,
+  isControllerTokenActive,
+  controllerTokenMagnitude,
+  type ControlActionId,
+} from '../controlBindings';
 import {
   buildTokenDispatch,
   type ActivationMode,
   type TokenGestureConfig,
+  type TokenDispatch,
 } from '../gestureModes';
+import { activeConquestGamepad, axisWithDeadzone } from './conquestGamepad';
 import {
   useConquestStore,
   effectiveController,
@@ -443,6 +450,21 @@ const COMMAND_GESTURE_ACTIONS: readonly string[] = [
   'toggleBehaviorRadial',
 ];
 
+// The discrete actions the controller poll drives through the activation-mode dispatch
+// (tap / double-tap / hold / chord). It is the keyboard command set MINUS
+// toggleBehaviorRadial (the posture radial owns its OWN controller open/close, so the
+// field must not also toggle it and cancel out) PLUS the reticle-aimed actions the
+// mouse owns: select / order / deselect / ability / Queen rally / Queen patrol.
+const CONTROLLER_GESTURE_ACTIONS: readonly ControlActionId[] = [
+  'pilotCycleMonarch', 'pilotToggleMonarch', 'rally', 'selectAllUnits', 'deployUnits',
+  'primaryAction', 'secondaryAction', 'deselect', 'useAbility', 'setQueenRally', 'setPatrol',
+];
+
+// Right-stick reticle travel speed across the screen, in pixels per second at full
+// deflection. Mirrors GamepadController.RETICLE_SPEED_PX_PER_SEC so the controller
+// cursor sweeps the globe at the same pace in both modes.
+const RETICLE_SPEED_PX_PER_SEC = 900;
+
 /**
  * A camera-drive / zoom binding is only usable as a held key when it is a single
  * plain key — no modifier chord, and not a mouse button or wheel direction.
@@ -541,6 +563,16 @@ export function ConquestField() {
   const keyboardBindingModes = useGameStore((s) => s.keyboardBindingModes);
   const bindingsRef = useRef(keyboardBindings);
   bindingsRef.current = keyboardBindings;
+
+  // The SAME controller layout Quick Play uses, read from the shared store so a
+  // player's remapped pad drives Conquest identically. Conquest mounts no
+  // GamepadController, so the field polls the pad itself (drive + reticle below);
+  // the live layout is mirrored to a ref for the per-frame poll, and the discrete
+  // controller dispatch is rebuilt whenever the layout or its modes change.
+  const controllerBindings = useGameStore((s) => s.controllerBindings);
+  const controllerBindingModes = useGameStore((s) => s.controllerBindingModes);
+  const controllerBindingsRef = useRef(controllerBindings);
+  controllerBindingsRef.current = controllerBindings;
 
   const { camera, gl } = useThree();
 
@@ -683,12 +715,12 @@ export function ConquestField() {
     tileClaimProgress.current.clear(); // reset every tile's capture timer
   }, [initialUnits]);
 
-  // Re-subscribe only when the binding layout changes. The discrete command
-  // gestures (cycle/toggle monarch, rally, select-all, muster) run through the same
-  // gestureModes dispatch Quick Play uses, so they honor the player's chosen
-  // activation mode; the held drive/zoom keys are matched against the live layout in
-  // the per-frame loop.
-  useEffect(() => {
+  // The army-command gesture handlers (cycle/toggle monarch, rally, select-all,
+  // muster, posture radial) — the SINGLE source shared by the keyboard dispatch and
+  // the controller poll, so a rally feels identical on either device and the logic
+  // lives in one place. Everything reads live state via refs / getState(), so the
+  // memo only needs to rebuild when the player ('humanId') or pilot action changes.
+  const commandHandlers = useMemo(() => {
     // Cycle and toggle both switch which controlled monarch (King or Queen of any
     // army the player commands) is piloted — the analogue that keeps each Quick Play
     // pilot key doing something useful in Conquest.
@@ -768,6 +800,17 @@ export function ConquestField() {
       }
     };
 
+    return { controlsArmy, resolvePilotedMonarch, handlerFor };
+  }, [humanId, cycleMonarch]);
+
+  // Re-subscribe only when the binding layout changes. The discrete command
+  // gestures (cycle/toggle monarch, rally, select-all, muster) run through the same
+  // gestureModes dispatch Quick Play uses, so they honor the player's chosen
+  // activation mode; the held drive/zoom keys are matched against the live layout in
+  // the per-frame loop.
+  useEffect(() => {
+    const { handlerFor } = commandHandlers;
+
     const configFor = (
       actionId: string,
       mode: ActivationMode,
@@ -831,54 +874,15 @@ export function ConquestField() {
       window.removeEventListener('keyup', onKeyUp);
       canvas.removeEventListener('wheel', onWheel);
     };
-  }, [cycleMonarch, gl, keyboardBindings, keyboardBindingModes, humanId]);
+  }, [commandHandlers, gl, keyboardBindings, keyboardBindingModes]);
 
-  // Pointer interaction, mirroring Quick Play's mouse model so the player commands
-  // their armies the same way on the globe (the camera stays the chase cam):
-  //   • LEFT click            — select the controlled unit under the cursor (or clear).
-  //   • LEFT drag (a box)     — box-select every controlled unit inside the rectangle.
-  //   • RIGHT click on a tile — move-order the selection there (great-circle travel).
-  //   • RIGHT click on an enemy — attack-order the selection onto that enemy.
-  //   • RIGHT hold on a Queen — draw a gold line and set her back-and-forth patrol.
-  //   • SHIFT + RIGHT click   — set the selected Queen's spawn rally point.
-  //   • BOTH buttons together — fire the piloted army's ability (suppresses the above).
-  // Only units the human currently controls can be selected/ordered (the army-command
-  // model). The ability fire is recorded as an edge the per-frame loop consumes.
-  const abilityRequested = useRef(false);
-  useEffect(() => {
+  // Screen-space pick + order helpers — the SINGLE source shared by the mouse
+  // handlers and the controller reticle, so a select / move / attack resolves on the
+  // globe identically whether it came from a click or a stick-aimed reticle. They are
+  // pure given (camera, world, biomes, humanId) and read live units / selection from
+  // refs, so the memo only rebuilds when one of those inputs changes.
+  const pointer = useMemo(() => {
     const canvas = gl.domElement;
-
-    // A green rubber-band box drawn during a left-drag select (page-positioned).
-    const selectionBox = document.createElement('div');
-    Object.assign(selectionBox.style, {
-      position: 'fixed', border: '1px solid #ffffff',
-      backgroundColor: 'rgba(255,255,255,0.12)', pointerEvents: 'none',
-      display: 'none', zIndex: '1000',
-    } as CSSStyleDeclaration);
-    document.body.appendChild(selectionBox);
-
-    // A gold dotted line previewing a Queen's patrol route during a right-button hold
-    // on her (committed on release), reusing Quick Play's shared indicator helper.
-    const patrolArrow = createDottedArrow(PATROL_ARROW_COLOR);
-    document.body.appendChild(patrolArrow);
-
-    let leftDown = false;
-    let rightDown = false;
-    let abilityGesture = false; // both buttons were held during this gesture
-    let dragActive = false;
-    let dragMoved = false;
-    let startX = 0;
-    let startY = 0;
-
-    // Right-hold-on-a-Queen patrol gesture state. `patrolQueenId` is the Queen the
-    // hold is arming; `patrolArmed` flips true once the hold passes PATROL_HOLD_MS
-    // (the gold line then shows and a release commits the route). The cursor is
-    // tracked so the line re-aims as the pointer moves during the hold.
-    let patrolQueenId: string | null = null;
-    let patrolArmed = false;
-    let patrolCursorX = 0;
-    let patrolCursorY = 0;
-    let patrolTimer: ReturnType<typeof setTimeout> | null = null;
 
     // Project a world point to client (page) pixels; `behind` flags points off-frustum.
     const projectToClient = (worldPos: THREE.Vector3) => {
@@ -968,9 +972,9 @@ export function ConquestField() {
       }
     };
 
-    // Shift + right-click sets the rally point of every selected Queen the player
-    // controls: her future grown units muster there instead of joining the army
-    // (increment 5). Selecting no controlled Queen leaves any standing rally untouched.
+    // Shift + right-click (mouse) / the rally button (controller) sets the rally point
+    // of every selected Queen the player controls: her future grown units muster there
+    // instead of joining the army. No controlled Queen selected leaves any rally as-is.
     const setQueenRally = (clientX: number, clientY: number) => {
       const dest = tileDestFromClient(clientX, clientY);
       if (!dest) return;
@@ -980,6 +984,63 @@ export function ConquestField() {
         queenRallies.current.set(unit.id, dest.clone());
       }
     };
+
+    return {
+      projectToClient, controls, pickUnitAt, applyBoxSelection,
+      tileDestFromClient, issueOrder, setQueenRally,
+    };
+  }, [camera, gl, world, biomes, humanId]);
+
+  // Pointer interaction, mirroring Quick Play's mouse model so the player commands
+  // their armies the same way on the globe (the camera stays the chase cam):
+  //   • LEFT click            — select the controlled unit under the cursor (or clear).
+  //   • LEFT drag (a box)     — box-select every controlled unit inside the rectangle.
+  //   • RIGHT click on a tile — move-order the selection there (great-circle travel).
+  //   • RIGHT click on an enemy — attack-order the selection onto that enemy.
+  //   • RIGHT hold on a Queen — draw a gold line and set her back-and-forth patrol.
+  //   • SHIFT + RIGHT click   — set the selected Queen's spawn rally point.
+  //   • BOTH buttons together — fire the piloted army's ability (suppresses the above).
+  // Only units the human currently controls can be selected/ordered (the army-command
+  // model). The ability fire is recorded as an edge the per-frame loop consumes.
+  const abilityRequested = useRef(false);
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const {
+      projectToClient, controls, pickUnitAt, applyBoxSelection,
+      tileDestFromClient, issueOrder, setQueenRally,
+    } = pointer;
+
+    // A green rubber-band box drawn during a left-drag select (page-positioned).
+    const selectionBox = document.createElement('div');
+    Object.assign(selectionBox.style, {
+      position: 'fixed', border: '1px solid #ffffff',
+      backgroundColor: 'rgba(255,255,255,0.12)', pointerEvents: 'none',
+      display: 'none', zIndex: '1000',
+    } as CSSStyleDeclaration);
+    document.body.appendChild(selectionBox);
+
+    // A gold dotted line previewing a Queen's patrol route during a right-button hold
+    // on her (committed on release), reusing Quick Play's shared indicator helper.
+    const patrolArrow = createDottedArrow(PATROL_ARROW_COLOR);
+    document.body.appendChild(patrolArrow);
+
+    let leftDown = false;
+    let rightDown = false;
+    let abilityGesture = false; // both buttons were held during this gesture
+    let dragActive = false;
+    let dragMoved = false;
+    let startX = 0;
+    let startY = 0;
+
+    // Right-hold-on-a-Queen patrol gesture state. `patrolQueenId` is the Queen the
+    // hold is arming; `patrolArmed` flips true once the hold passes PATROL_HOLD_MS
+    // (the gold line then shows and a release commits the route). The cursor is
+    // tracked so the line re-aims as the pointer moves during the hold.
+    let patrolQueenId: string | null = null;
+    let patrolArmed = false;
+    let patrolCursorX = 0;
+    let patrolCursorY = 0;
+    let patrolTimer: ReturnType<typeof setTimeout> | null = null;
 
     // --- Right-hold-on-a-Queen patrol gesture helpers ---
     const clearPatrolTimer = () => {
@@ -1131,7 +1192,7 @@ export function ConquestField() {
       document.body.removeChild(selectionBox);
       document.body.removeChild(patrolArrow);
     };
-  }, [gl, camera, world, biomes, humanId]);
+  }, [gl, pointer]);
 
   // Combat-posture radial bridge: the radial (a DOM overlay in ConquestScreen) asks
   // the field to apply a partial behavior to the current selection via this event.
@@ -1153,6 +1214,174 @@ export function ConquestField() {
     window.addEventListener('rts:conquest-apply-behavior', onApply);
     return () => window.removeEventListener('rts:conquest-apply-behavior', onApply);
   }, [humanId]);
+
+  // ---------------------------------------------------------------------------
+  // Controller parity: Conquest mounts no GamepadController, so the field runs its
+  // OWN reticle + discrete-action poll. The left stick drives (above, in the main
+  // loop); here the right stick aims a screen reticle and the bound buttons select,
+  // order, fire the ability, set Queen rally/patrol, and run the army gestures —
+  // honoring the player's controller layout AND activation modes, reusing the very
+  // same pick/order/command handlers the mouse and keyboard use.
+  // ---------------------------------------------------------------------------
+
+  // The right-stick reticle's screen position (client px) and its DOM crosshair. The
+  // reticle is only shown while a pad is connected and the posture radial isn't aiming.
+  const reticlePos = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const reticleElRef = useRef<HTMLDivElement | null>(null);
+  // True while the posture radial is open (mirrored from ConquestBehaviorRadial). While
+  // open the radial owns the right stick + RT/B, so the field suppresses its reticle
+  // aim and its order/clear on those inputs — mirroring GamepadController's deferral.
+  const radialOpenRef = useRef(false);
+  // The controller activation-mode dispatch (token → resolver), rebuilt on a rebind, and
+  // the previous-frame active state per token for press/release edge detection.
+  const controllerDispatchRef = useRef<TokenDispatch>({ resolvers: new Map(), chordActions: [] });
+  const controllerPrevActive = useRef<Record<string, boolean>>({});
+
+  // The handler each controller action fires: the shared army-command gestures first,
+  // then the reticle-aimed actions the mouse owns (select / order / clear / ability /
+  // Queen rally / Queen patrol), all reading the live reticle point and selection.
+  const controllerHandlerFor = useCallback((actionId: string): (() => void) | null => {
+    const command = commandHandlers.handlerFor(actionId);
+    if (command) return command;
+    switch (actionId) {
+      case 'primaryAction':
+        return () => {
+          const picked = pointer.pickUnitAt(reticlePos.current.x, reticlePos.current.y, pointer.controls);
+          selectedIds.current = picked ? new Set([picked.id]) : new Set();
+        };
+      case 'secondaryAction':
+        return () => pointer.issueOrder(reticlePos.current.x, reticlePos.current.y);
+      case 'deselect':
+        return () => { selectedIds.current = new Set(); };
+      case 'useAbility':
+        return () => { abilityRequested.current = true; };
+      case 'setQueenRally':
+        return () => pointer.setQueenRally(reticlePos.current.x, reticlePos.current.y);
+      case 'setPatrol':
+        // A lone controlled Queen selected gets a back-and-forth route from her current
+        // spot to the reticle tile — the controller analogue of the right-hold patrol.
+        return () => {
+          if (selectedIds.current.size !== 1) return;
+          const [onlyId] = selectedIds.current;
+          const queen = unitsRef.current.find((unit) => unit.id === onlyId);
+          if (!queen || queen.kind !== 'queen' || queen.dead || !pointer.controls(queen)) return;
+          const dest = pointer.tileDestFromClient(reticlePos.current.x, reticlePos.current.y);
+          if (!dest) return;
+          queen.patrol = makePatrolRoute(queen.position, dest);
+          queen.orderPos = null;
+          queen.orderAttackId = null;
+        };
+      default:
+        return null;
+    }
+  }, [commandHandlers, pointer]);
+
+  // (Re)build the controller dispatch whenever the layout or its activation modes
+  // change. Tap / double-tap / hold each fire the action's handler in that mode; chords
+  // fire on the rising edge in the poll. Old resolvers are reset so pending hold/double-
+  // tap timing can't outlive the rebind.
+  useEffect(() => {
+    const configFor = (actionId: string, mode: ActivationMode): Partial<TokenGestureConfig> | undefined => {
+      const handler = controllerHandlerFor(actionId);
+      if (!handler) return undefined;
+      if (mode === 'tap') return { onTap: handler };
+      if (mode === 'double-tap') return { onDoubleTap: handler };
+      if (mode === 'hold') return { onHoldStart: handler };
+      return undefined; // chord fires on the rising edge in the poll
+    };
+    controllerDispatchRef.current.resolvers.forEach((resolver) => resolver.reset());
+    controllerDispatchRef.current = buildTokenDispatch({
+      bindings: controllerBindings,
+      modes: controllerBindingModes,
+      actionIds: CONTROLLER_GESTURE_ACTIONS,
+      configFor,
+    });
+  }, [controllerBindings, controllerBindingModes, controllerHandlerFor]);
+
+  // Mount the reticle crosshair once and track the posture radial's open state. The
+  // crosshair is a DOM overlay (like the selection box), hidden until the poll shows it.
+  useEffect(() => {
+    const reticle = document.createElement('div');
+    Object.assign(reticle.style, {
+      position: 'fixed', width: '26px', height: '26px', marginLeft: '-13px', marginTop: '-13px',
+      border: '2px solid #000080', borderRadius: '50%',
+      boxShadow: '0 0 6px rgba(0,0,128,0.9), inset 0 0 4px rgba(0,0,128,0.7)',
+      pointerEvents: 'none', display: 'none', zIndex: '1000',
+    } as CSSStyleDeclaration);
+    document.body.appendChild(reticle);
+    reticleElRef.current = reticle;
+
+    const onRadialOpen = () => { radialOpenRef.current = true; };
+    const onRadialClose = () => { radialOpenRef.current = false; };
+    window.addEventListener('rts:conquest-radial-open', onRadialOpen);
+    window.addEventListener('rts:conquest-radial-close', onRadialClose);
+    return () => {
+      window.removeEventListener('rts:conquest-radial-open', onRadialOpen);
+      window.removeEventListener('rts:conquest-radial-close', onRadialClose);
+      if (reticleElRef.current) document.body.removeChild(reticleElRef.current);
+      reticleElRef.current = null;
+    };
+  }, []);
+
+  // The controller poll: move the reticle with the right stick and feed each bound
+  // token's press/release edges to its resolver (tap / double-tap / hold) plus chords
+  // on the rising edge. A disconnected pad hides the reticle and resets all edges so a
+  // mid-press unplug can't strand a held gesture.
+  useFrame((_, delta) => {
+    const gamepad = activeConquestGamepad();
+    const reticle = reticleElRef.current;
+    if (!gamepad) {
+      controllerPrevActive.current = {};
+      controllerDispatchRef.current.resolvers.forEach((resolver) => resolver.reset());
+      if (reticle) reticle.style.display = 'none';
+      return;
+    }
+
+    const radialOpen = radialOpenRef.current;
+    const layout = controllerBindingsRef.current;
+
+    // Aim the reticle with the right stick (suppressed while the radial owns it).
+    if (!radialOpen) {
+      const dx = axisWithDeadzone(gamepad, 2);
+      const dy = axisWithDeadzone(gamepad, 3);
+      if (dx !== 0 || dy !== 0) {
+        const stepPx = RETICLE_SPEED_PX_PER_SEC * delta;
+        reticlePos.current.x = THREE.MathUtils.clamp(reticlePos.current.x + dx * stepPx, 0, window.innerWidth);
+        reticlePos.current.y = THREE.MathUtils.clamp(reticlePos.current.y + dy * stepPx, 0, window.innerHeight);
+      }
+    }
+    if (reticle) {
+      reticle.style.display = radialOpen ? 'none' : 'block';
+      reticle.style.left = `${reticlePos.current.x}px`;
+      reticle.style.top = `${reticlePos.current.y}px`;
+    }
+
+    // While the radial is open it owns the order/clear inputs (RT/B); skip those tokens
+    // so a posture apply/close never also issues an order or clears the selection.
+    const dispatch = controllerDispatchRef.current;
+    const radialOwned = radialOpen
+      ? new Set([layout.secondaryAction, layout.deselect].filter(Boolean))
+      : null;
+    const now = performance.now();
+    for (const [token, resolver] of dispatch.resolvers) {
+      const active = isControllerTokenActive(gamepad, token);
+      // While the radial owns this token, still TRACK its state (so closing the radial
+      // with the button held doesn't read as a fresh press next frame) but fire nothing.
+      if (!radialOwned?.has(token)) {
+        const wasActive = controllerPrevActive.current[token] ?? false;
+        if (active && !wasActive) resolver.press(now);
+        else if (!active && wasActive) resolver.release(now);
+      }
+      controllerPrevActive.current[token] = active;
+    }
+    for (const chord of dispatch.chordActions) {
+      const key = `chord:${chord.actionId}`;
+      const active = isControllerTokenActive(gamepad, chord.token);
+      const wasActive = controllerPrevActive.current[key] ?? false;
+      if (active && !wasActive) controllerHandlerFor(chord.actionId)?.();
+      controllerPrevActive.current[key] = active;
+    }
+  });
 
   // Reusable scratch (no per-frame allocation in the hot loop).
   const scratch = useRef({
@@ -1507,6 +1736,16 @@ export function ConquestField() {
     const leftKey = plainKeyToken(bindings.cameraLeft);
     const rightKey = plainKeyToken(bindings.cameraRight);
 
+    // Analog controller drive: Conquest mounts no GamepadController, so the left stick
+    // is polled here and fed into the SAME heading-based steering as the keyboard —
+    // stick X turns the heading, stick up (axis 1 negative) walks forward. The pad's
+    // analog magnitude rides alongside the keyboard's digital intent so either device
+    // (or both) drives the monarch identically.
+    const controllerLayout = controllerBindingsRef.current;
+    const gamepad = activeConquestGamepad();
+    const padTurn = gamepad ? axisWithDeadzone(gamepad, 0) : 0;
+    const padForward = gamepad ? -axisWithDeadzone(gamepad, 1) : 0;
+
     // 1) Drive the piloted monarch with heading-based steering, the scheme suited to
     //    traversing a globe: left/right TURN the monarch's heading at a fixed rate and
     //    forward/back walk ALONG (or against) that heading. This deliberately replaces
@@ -1523,10 +1762,16 @@ export function ConquestField() {
       up.copy(monarch.position).normalize();
       tangentize(monarch.facing, up); // keep the heading on the tangent plane as we curve
 
-      const forwardBack = (forwardKey && pressed.has(forwardKey) ? 1 : 0)
-        - (backwardKey && pressed.has(backwardKey) ? 1 : 0);
-      const turn = (rightKey && pressed.has(rightKey) ? 1 : 0)
-        - (leftKey && pressed.has(leftKey) ? 1 : 0);
+      const forwardBack = THREE.MathUtils.clamp(
+        (forwardKey && pressed.has(forwardKey) ? 1 : 0)
+        - (backwardKey && pressed.has(backwardKey) ? 1 : 0)
+        + padForward, -1, 1,
+      );
+      const turn = THREE.MathUtils.clamp(
+        (rightKey && pressed.has(rightKey) ? 1 : 0)
+        - (leftKey && pressed.has(leftKey) ? 1 : 0)
+        + padTurn, -1, 1,
+      );
 
       // Steer: rotate the heading about the surface normal at a fixed rate. Turning
       // right is clockwise seen from outside the surface, i.e. a negative spin about up.
@@ -1561,8 +1806,16 @@ export function ConquestField() {
     // zoom bindings are the wheel, handled in onWheel).
     const zoomInKey = plainKeyToken(bindings.cameraZoomIn);
     const zoomOutKey = plainKeyToken(bindings.cameraZoomOut);
+    // Held zoom intent combines the keyboard's bound plain keys with the controller's
+    // bound zoom inputs (default triggers, analog) so the pad zooms the chase camera
+    // exactly as the wheel/keys do.
+    const padZoom = gamepad
+      ? controllerTokenMagnitude(gamepad, controllerLayout.cameraZoomOut)
+        - controllerTokenMagnitude(gamepad, controllerLayout.cameraZoomIn)
+      : 0;
     const zoomDir = (zoomOutKey && pressed.has(zoomOutKey) ? 1 : 0)
-      - (zoomInKey && pressed.has(zoomInKey) ? 1 : 0);
+      - (zoomInKey && pressed.has(zoomInKey) ? 1 : 0)
+      + padZoom;
     if (zoomDir !== 0) {
       zoom.current = THREE.MathUtils.clamp(
         zoom.current * Math.exp(zoomDir * ZOOM_KEY_SPEED * delta), ZOOM_MIN, ZOOM_MAX,

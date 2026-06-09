@@ -28,8 +28,8 @@ import { useGameStore } from '../../../game/state';
 import {
   formatKeyboardToken,
   isControllerTokenActive,
-  type GamepadLike,
 } from '../controlBindings';
+import { activeConquestGamepad } from './conquestGamepad';
 import { semicircleAngleDeg, hoverFromVector, type RadialHover } from '../radialGeometry';
 import {
   STANCE_OPTIONS,
@@ -48,15 +48,6 @@ import { useConquestStore } from './conquestState';
 /** Ask the field to merge a partial behavior into every selected, controlled unit. */
 function applyBehavior(behavior: Partial<UnitBehavior>): void {
   window.dispatchEvent(new CustomEvent('rts:conquest-apply-behavior', { detail: { behavior } }));
-}
-
-/** The first connected gamepad, or null. Mirrors GamepadController.getActiveGamepad. */
-function activeGamepad(): GamepadLike | null {
-  if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
-  for (const pad of navigator.getGamepads()) {
-    if (pad && pad.connected) return pad as unknown as GamepadLike;
-  }
-  return null;
 }
 
 /** Whether two radial hovers address the same ring + wedge (to skip redundant re-renders). */
@@ -112,6 +103,13 @@ export function ConquestBehaviorRadial() {
     }
   }, [hasSelection, isOpen]);
 
+  // Broadcast open/close so the field's controller poll knows when the radial owns the
+  // right stick + RT/B (it then suppresses its own reticle aim and order/clear on those
+  // inputs, exactly as Quick Play's GamepadController defers to its stance radial).
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(isOpen ? 'rts:conquest-radial-open' : 'rts:conquest-radial-close'));
+  }, [isOpen]);
+
   // Controller poller (Conquest has no GamepadController of its own). Runs for the
   // component's whole life so R3 can OPEN the radial, then aims/applies/closes while
   // open — reading the live controller bindings each frame so a rebind takes effect.
@@ -130,7 +128,7 @@ export function ConquestBehaviorRadial() {
 
     const poll = () => {
       raf = requestAnimationFrame(poll);
-      const pad = activeGamepad();
+      const pad = activeConquestGamepad();
       if (!pad) { togglePrev = selectPrev = closePrev = false; return; }
       const bindings = useGameStore.getState().controllerBindings;
 
