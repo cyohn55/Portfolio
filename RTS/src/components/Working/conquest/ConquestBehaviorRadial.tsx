@@ -1,24 +1,36 @@
 // The Conquest combat-posture radial: the same split-ring posture picker Quick Play
-// uses, bridged to Conquest's event model.
+// uses, bridged to Conquest's event model and driven by mouse OR controller.
 //
 // Single responsibility: render the stance / fire / priority radial for the current
-// Conquest selection and turn a click into a posture command. Unlike Quick Play's
-// store-driven BehaviorRadial, Conquest keeps its selection and per-unit behavior
-// inside the field component (ConquestField), so this overlay is a thin bridge:
+// Conquest selection and turn a click (or controller aim) into a posture command.
+// Unlike Quick Play's store-driven BehaviorRadial, Conquest keeps its selection and
+// per-unit behavior inside the field component (ConquestField), so this overlay is a
+// thin bridge:
 //   - it READS the selection's posture from the published `behaviorSummary` (so the
 //     active option on each axis is highlighted), and
 //   - it WRITES a chosen axis by dispatching `rts:conquest-apply-behavior`, which the
 //     field applies to the selected units.
-// Opening/closing is driven by `rts:conquest-toggle-radial`, dispatched by the field
-// when the player presses the bound key (so the activation mode is honored there).
+// Keyboard open/close is driven by `rts:conquest-toggle-radial`, dispatched by the
+// field when the player presses the bound key (so the activation mode is honored).
+//
+// Controller support: Conquest does not mount Quick Play's GamepadController, so this
+// component runs its OWN minimal right-stick poller while mounted — R3 (the
+// toggleBehaviorRadial binding) opens/closes it, the right stick aims a ring/wedge
+// (deflection magnitude picks center-vs-ring), RT applies the highlighted option (the
+// radial stays open), and B closes it. This mirrors GamepadController's radial block.
+//
 // The rings, colors, sizing, and stylesheet come from the shared behaviorRadialModel,
 // so this radial is visually identical to Quick Play's.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FireMode, TargetPriority, UnitBehavior, UnitStance } from '../../../game/types';
 import { useGameStore } from '../../../game/state';
-import { formatKeyboardToken } from '../controlBindings';
-import { semicircleAngleDeg } from '../radialGeometry';
+import {
+  formatKeyboardToken,
+  isControllerTokenActive,
+  type GamepadLike,
+} from '../controlBindings';
+import { semicircleAngleDeg, hoverFromVector, type RadialHover } from '../radialGeometry';
 import {
   STANCE_OPTIONS,
   PRIORITY_OPTIONS,
@@ -38,11 +50,30 @@ function applyBehavior(behavior: Partial<UnitBehavior>): void {
   window.dispatchEvent(new CustomEvent('rts:conquest-apply-behavior', { detail: { behavior } }));
 }
 
+/** The first connected gamepad, or null. Mirrors GamepadController.getActiveGamepad. */
+function activeGamepad(): GamepadLike | null {
+  if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
+  for (const pad of navigator.getGamepads()) {
+    if (pad && pad.connected) return pad as unknown as GamepadLike;
+  }
+  return null;
+}
+
+/** Whether two radial hovers address the same ring + wedge (to skip redundant re-renders). */
+function sameHover(a: RadialHover | null, b: RadialHover | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.ring === b.ring && a.index === b.index;
+}
+
 export function ConquestBehaviorRadial() {
   const summary = useConquestStore((s) => s.behaviorSummary);
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
 
   const [isOpen, setIsOpen] = useState(false);
+  // The ring + wedge the controller's right stick is currently addressing (null = no
+  // controller aim), used to draw the yellow aim highlight while the stick is in play.
+  const [gamepadHover, setGamepadHover] = useState<RadialHover | null>(null);
 
   // The bound key for the radial, shown on the trigger so the hint survives a rebind.
   const triggerKeyLabel = useMemo(() => {
@@ -55,17 +86,88 @@ export function ConquestBehaviorRadial() {
   const currentFire: FireMode | null = summary?.fire ?? null;
   const currentPriority: TargetPriority | null = summary?.priority ?? null;
 
-  // Toggle on the field's key event; never open on an empty selection.
+  // Live mirrors the controller poll loop reads without re-subscribing each frame.
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
+  const hasSelectionRef = useRef(hasSelection);
+  hasSelectionRef.current = hasSelection;
+  const currentFireRef = useRef(currentFire);
+  currentFireRef.current = currentFire;
+  const hoverRef = useRef<RadialHover | null>(null);
+
+  // Toggle on the field's keyboard event; never open on an empty selection.
   useEffect(() => {
     const onToggle = () => setIsOpen((prev) => (prev ? false : hasSelection));
     window.addEventListener('rts:conquest-toggle-radial', onToggle);
     return () => window.removeEventListener('rts:conquest-toggle-radial', onToggle);
   }, [hasSelection]);
 
-  // Close automatically the moment there is nothing to command (e.g. deselect).
+  // Close automatically the moment there is nothing to command (e.g. deselect), and
+  // clear any stale controller aim whenever the radial closes.
   useEffect(() => {
     if (!hasSelection && isOpen) setIsOpen(false);
+    if (!isOpen && hoverRef.current) {
+      hoverRef.current = null;
+      setGamepadHover(null);
+    }
   }, [hasSelection, isOpen]);
+
+  // Controller poller (Conquest has no GamepadController of its own). Runs for the
+  // component's whole life so R3 can OPEN the radial, then aims/applies/closes while
+  // open — reading the live controller bindings each frame so a rebind takes effect.
+  useEffect(() => {
+    let raf = 0;
+    let togglePrev = false;
+    let selectPrev = false;
+    let closePrev = false;
+
+    const applyHover = (hover: RadialHover | null) => {
+      if (!hover) return;
+      if (hover.ring === 'fire') applyBehavior({ fire: fireToggleNext(currentFireRef.current) });
+      else if (hover.ring === 'posture') applyBehavior({ stance: STANCE_OPTIONS[hover.index].stance });
+      else applyBehavior({ priority: PRIORITY_OPTIONS[hover.index].priority });
+    };
+
+    const poll = () => {
+      raf = requestAnimationFrame(poll);
+      const pad = activeGamepad();
+      if (!pad) { togglePrev = selectPrev = closePrev = false; return; }
+      const bindings = useGameStore.getState().controllerBindings;
+
+      // Open/close on the radial toggle button (default R3), rising edge — works
+      // whether the radial is open or closed, and never opens on an empty selection.
+      const toggleActive = isControllerTokenActive(pad, bindings.toggleBehaviorRadial);
+      if (toggleActive && !togglePrev) {
+        setIsOpen((prev) => (prev ? false : hasSelectionRef.current));
+      }
+      togglePrev = toggleActive;
+
+      if (isOpenRef.current && hasSelectionRef.current) {
+        // Stream the raw aim (including near-center, where the fire toggle is
+        // addressed) so the radial derives the ring from the deflection magnitude.
+        const aim = hoverFromVector(pad.axes[2] ?? 0, pad.axes[3] ?? 0, STANCE_OPTIONS.length, PRIORITY_OPTIONS.length);
+        if (!sameHover(aim, hoverRef.current)) {
+          hoverRef.current = aim;
+          setGamepadHover(aim);
+        }
+
+        // RT applies the highlighted option; rising edge so a held trigger applies once.
+        const selectActive = isControllerTokenActive(pad, bindings.secondaryAction);
+        if (selectActive && !selectPrev) applyHover(hoverRef.current);
+        selectPrev = selectActive;
+
+        // B closes; rising edge.
+        const closeActive = isControllerTokenActive(pad, bindings.deselect);
+        if (closeActive && !closePrev) setIsOpen(false);
+        closePrev = closeActive;
+      } else {
+        selectPrev = closePrev = false;
+      }
+    };
+
+    raf = requestAnimationFrame(poll);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   if (!hasSelection && !isOpen) return null;
   const count = summary?.count ?? 0;
@@ -109,10 +211,11 @@ export function ConquestBehaviorRadial() {
                 const x = Math.cos(angle) * RING_RADIUS;
                 const y = Math.sin(angle) * RING_RADIUS;
                 const active = currentPriority === option.priority;
+                const hovered = gamepadHover?.ring === 'priority' && gamepadHover.index === index;
                 return (
                   <button
                     key={option.priority}
-                    className={`rts-stance-node${active ? ' rts-stance-node-active' : ''}`}
+                    className={`rts-stance-node${active ? ' rts-stance-node-active' : ''}${hovered ? ' rts-stance-node-hover' : ''}`}
                     style={{ background: PRIORITY_COLOR, transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
                     onClick={() => applyBehavior({ priority: option.priority })}
                     title={option.hint}
@@ -129,10 +232,11 @@ export function ConquestBehaviorRadial() {
                 const x = Math.cos(angle) * RING_RADIUS;
                 const y = Math.sin(angle) * RING_RADIUS;
                 const active = currentStance === option.stance;
+                const hovered = gamepadHover?.ring === 'posture' && gamepadHover.index === index;
                 return (
                   <button
                     key={option.stance}
-                    className={`rts-stance-node${active ? ' rts-stance-node-active' : ''}`}
+                    className={`rts-stance-node${active ? ' rts-stance-node-active' : ''}${hovered ? ' rts-stance-node-hover' : ''}`}
                     style={{ background: POSTURE_COLOR, transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
                     onClick={() => applyBehavior({ stance: option.stance })}
                     title={option.hint}
@@ -145,7 +249,7 @@ export function ConquestBehaviorRadial() {
 
               {/* Center: weapons-free / hold-fire toggle. */}
               <button
-                className="rts-stance-node rts-stance-center"
+                className={`rts-stance-node rts-stance-center${gamepadHover?.ring === 'fire' ? ' rts-stance-node-hover' : ''}`}
                 style={{ background: FIRE_COLOR }}
                 onClick={() => applyBehavior({ fire: fireToggleNext(currentFire) })}
                 title="Toggle weapons-free / hold-fire"
@@ -158,8 +262,10 @@ export function ConquestBehaviorRadial() {
             </div>
 
             <div className="rts-stance-footer">
-              Click a circle to set posture · center toggles fire ·
-              {triggerKeyLabel ? ` press ${triggerKeyLabel} or` : ''} click outside to close
+              Click a circle (center toggles fire) — or aim the right stick and press
+              <span className="rts-stance-key"> RT</span> to set ·
+              <span className="rts-stance-key"> B</span> /
+              {triggerKeyLabel ? ` ${triggerKeyLabel} /` : ''} click outside to close
             </div>
           </div>
         </div>
