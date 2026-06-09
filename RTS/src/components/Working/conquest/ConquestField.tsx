@@ -44,12 +44,14 @@ import {
 } from './conquestState';
 import {
   conquestStatsFor,
+  selectNearestEnemy,
   isWithinAttackRange,
   isAttackReady,
   regenAmount,
   kingBuffedDamage,
   queenHealAmount,
   isWithinAura,
+  AGGRO_RANGE,
   CHASE_SPEED,
   AURA_RADIUS,
   type ConquestCombatStats,
@@ -65,6 +67,10 @@ import {
   computeHissPushes,
   selectSwarmTarget,
   swarmStingKills,
+  stepGreatCircle,
+  surfaceAimDirection,
+  eggHitTarget,
+  selectNearestUnclaimedEnemy,
   HISS_RANGE,
   HISS_PUSH_SPEED,
   HISS_PUSH_MS,
@@ -73,7 +79,41 @@ import {
   SHELL_RETRIGGER_MS,
   SWARM_DIVE_SPEED,
   SWARM_STING_RANGE,
+  EGG_DAMAGE,
+  EGG_SPEED,
+  EGG_HIT_RADIUS,
+  EGG_MAX_RANGE,
+  EGG_COOLDOWN_MS,
+  EGG_THROW_POSE_MS,
+  EGG_LIFT,
+  TONGUE_RANGE,
+  TONGUE_EXTEND_SPEED,
+  TONGUE_RETRACT_SPEED,
+  TONGUE_HIT_RADIUS,
+  TONGUE_WINDUP_MS,
+  TONGUE_COOLDOWN_MS,
+  TONGUE_DRAG_STOP_DIST,
+  OWL_FLIGHT_LIFT,
+  OWL_PLUCK_LIFT,
+  OWL_CARRY_HANG,
+  OWL_SWOOP_SPEED,
+  OWL_DESCENT_SPEED,
+  OWL_ASCENT_SPEED,
+  OWL_GRAB_RANGE,
+  OWL_CARRY_DURATION_MS,
+  OWL_FALL_DAMAGE,
+  OWL_PICKUP_COOLDOWN_MS,
+  type ConquestTongue,
+  type ConquestPickup,
+  type ConquestEgg,
 } from './conquestAbilities';
+import {
+  raySphereHit,
+  screenBoxFromDrag,
+  pointInScreenBox,
+  screenDistanceSquared,
+  type ScreenBox,
+} from './conquestSelection';
 import {
   buildPoseVariants,
   selectPoseIndex,
@@ -139,6 +179,35 @@ const ZOOM_KEY_SPEED = 1.6;
 const MOVE_EPSILON_SQ = 0.0002 * 0.0002;
 const MOVE_HOLD_MS = 160;
 
+// Chicken egg projectiles: a fixed pool of small spheres reused across throws so
+// the egg count never re-renders React. Eggs beyond the pool's capacity (a huge
+// volley) simply aren't drawn; the simulation still resolves their hits. The
+// render radius is a fraction of a tile so an egg reads as a thrown projectile.
+const EGG_POOL_SIZE = 64;
+const EGG_RENDER_RADIUS = 0.004;
+const EGG_COLOR = 0xfff4d6;
+
+// Frog tongue beam: a thin cylinder stretched from the frog's mouth to the tongue
+// tip each frame. The beam rides slightly above the surface so it reads over the
+// terrain, and its width is a sliver of a tile.
+const TONGUE_WIDTH = 0.0016;
+const TONGUE_LIFT = 0.004;
+const TONGUE_COLOR = 0xd9607a;
+const BEAM_UP = new THREE.Vector3(0, 1, 0); // CylinderGeometry's long axis
+
+// Pointer selection (increment 4). A drag past this many pixels is a box-select
+// rather than a click; a click within this pixel radius of a unit picks it. The
+// selection ring is a bright halo drawn a hair larger than the allegiance ring.
+const DRAG_THRESHOLD_PX = 6;
+const CLICK_PICK_RADIUS_PX = 28;
+const SELECTION_RING_RADIUS = 0.015;
+const MONARCH_SELECTION_RING_RADIUS = 0.022;
+const SELECTION_RING_LIFT = 0.0014; // just above the allegiance ring
+const SELECTION_RING_COLOR = 0xffffff;
+// The approximate globe radius a pointer ray is intersected against to place a move
+// order (tile tops sit at ~1.0; the exact tile is resolved from the hit direction).
+const ORDER_SPHERE_RADIUS = 1.0;
+
 interface LiveUnit {
   id: string;
   /** Original owner id — the army's permanent identity, used for following/grouping. */
@@ -178,6 +247,27 @@ interface LiveUnit {
   knockbackDir: THREE.Vector3;
   /** Bee Swarm: the enemy unit id this follower bee is diving at, or null when not swarming. */
   swarmTargetId: string | null;
+  /** Chicken Eggs: when this chicken last threw (gates its cooldown). */
+  lastEggMs: number;
+  /** Chicken Eggs: while in the future, this chicken holds its egg-throw pose. */
+  eggThrowUntilMs: number;
+  /** Frog Tongue: the live grab state machine, or null when no tongue is out. */
+  tongue: ConquestTongue | null;
+  /** Frog Tongue: when this frog last fired (gates its cooldown). */
+  lastTongueMs: number;
+  /** Owl Pickup: the live abduction state machine (this unit is the owl), or null. */
+  pickup: ConquestPickup | null;
+  /** Owl Pickup: when this owl last abducted (gates its cooldown). */
+  lastPickupMs: number;
+  /** Owl Pickup: id of the owl carrying THIS unit, or null. A carried unit is owned by its owl. */
+  carriedByOwlId: string | null;
+  /** Radial lift above the surface in globe units (a flying/abducting owl, or its dangling catch). */
+  flightLift: number;
+  // --- Player commands (increment 4: pointer selection + orders) ---
+  /** A move order's destination on the sphere surface, or null. Overrides auto-follow. */
+  orderPos: THREE.Vector3 | null;
+  /** An attack order's target unit id, or null. Forces engagement of that unit. */
+  orderAttackId: string | null;
   dead: boolean;
   /** Resolved each frame: the enemy this unit is engaging, if any. */
   target: LiveUnit | null;
@@ -193,6 +283,8 @@ interface LiveUnit {
   ring: THREE.Mesh | null;
   ringColor: number; // last hex applied to the ring, so we only recolor on change
   auraMesh: THREE.Mesh | null; // monarchs only
+  tongueMesh: THREE.Mesh | null; // frogs only: the grab beam
+  selectionRing: THREE.Mesh | null; // shown while the unit is selected
 }
 
 function modelPath(animal: AnimalId): string {
@@ -234,6 +326,18 @@ function nearestTileId(direction: THREE.Vector3, world: GoldbergWorld): number {
 function isPassable(tileBiome: TileBiome | undefined, movement: MovementType): boolean {
   if (!tileBiome) return false;
   return BIOMES[tileBiome.biome].passableBy.has(movement);
+}
+
+/**
+ * Move a radial lift toward `goal` at `speed` globe units/sec without overshooting.
+ * Used to animate an abducting Owl (and its dangling catch) down into a swoop and
+ * back up to flight height.
+ */
+function approachLift(current: number, goal: number, speed: number, deltaSeconds: number): number {
+  const remaining = goal - current;
+  const step = speed * deltaSeconds;
+  if (Math.abs(remaining) <= step) return goal;
+  return current + Math.sign(remaining) * step;
 }
 
 /** Re-orthogonalize `facing` to be a unit tangent at the surface point `up`. */
@@ -285,7 +389,24 @@ export function ConquestField() {
   // scales and tints its own material instance. Disposed when the field unmounts.
   const ringGeometry = useMemo(() => new THREE.RingGeometry(0.6, 1.0, 24), []);
   const auraGeometry = useMemo(() => new THREE.CircleGeometry(1.0, 36), []);
-  useEffect(() => () => { ringGeometry.dispose(); auraGeometry.dispose(); }, [ringGeometry, auraGeometry]);
+  // Egg projectile sphere and tongue beam cylinder (unit-sized; each instance scales
+  // itself). The cylinder is built along +Y, centered, so a midpoint placement plus a
+  // (0,1,0)->beam rotation orients it; its Y scale becomes the beam length.
+  const eggGeometry = useMemo(() => new THREE.SphereGeometry(EGG_RENDER_RADIUS, 8, 8), []);
+  const tongueGeometry = useMemo(() => new THREE.CylinderGeometry(1, 1, 1, 6), []);
+  useEffect(() => () => {
+    ringGeometry.dispose(); auraGeometry.dispose();
+    eggGeometry.dispose(); tongueGeometry.dispose();
+  }, [ringGeometry, auraGeometry, eggGeometry, tongueGeometry]);
+
+  // Whether this match fields any Frog army, so the tongue beam meshes are only
+  // mounted when a frog can actually fire one (most matches have none).
+  const hasFrog = useMemo(() => inPlayAnimals.includes('Frog'), [inPlayAnimals]);
+
+  // In-flight eggs (a mutable pool the sim owns) and the meshes that draw them.
+  const eggs = useRef<ConquestEgg[]>([]);
+  const eggIdCounter = useRef(0);
+  const eggMeshes = useRef<(THREE.Mesh | null)[]>(new Array(EGG_POOL_SIZE).fill(null));
 
   // Build the live (mutable) unit set once per match. Positions/facings/HP here are
   // mutated every frame by the sim; React never re-renders for movement or combat.
@@ -335,6 +456,16 @@ export function ConquestField() {
         knockbackUntilMs: 0,
         knockbackDir: new THREE.Vector3(),
         swarmTargetId: null,
+        lastEggMs: 0,
+        eggThrowUntilMs: 0,
+        tongue: null,
+        lastTongueMs: 0,
+        pickup: null,
+        lastPickupMs: 0,
+        carriedByOwlId: null,
+        flightLift: 0,
+        orderPos: null,
+        orderAttackId: null,
         dead: false,
         target: null,
         poseVariants,
@@ -349,6 +480,8 @@ export function ConquestField() {
         ring: null,
         ringColor: -1,
         auraMesh: null,
+        tongueMesh: null,
+        selectionRing: null,
       };
     });
   }, [world, biomes, unitSpawns, gltfs, inPlayAnimals]);
@@ -366,13 +499,27 @@ export function ConquestField() {
     return { kingByArmy: kings, queenByArmy: queens };
   }, [liveUnits]);
 
+  // The human player's id ('p0'); only units this player currently controls can be
+  // selected and ordered (the army-command model — see effectiveController).
+  const humanId = useMemo(
+    () => players.find((player) => !player.isAI)?.id ?? null,
+    [players],
+  );
+
   // --- Input: pressed keys + zoom, tracked in refs (no per-key re-render). ---
   const keys = useRef<Set<string>>(new Set());
   const zoom = useRef(1.0);
   const cameraInitialized = useRef(false);
 
+  // Pointer selection (increment 4): the set of selected unit ids, tracked in a ref
+  // so selecting never re-renders the field (the per-frame loop reads it to draw the
+  // selection rings, exactly as it reads control for the allegiance rings).
+  const selectedIds = useRef<Set<string>>(new Set());
+  useEffect(() => { selectedIds.current.clear(); }, [liveUnits]); // clear on a new match
+
   useEffect(() => {
     cameraInitialized.current = false; // re-frame on a new match
+    eggs.current = [];                 // clear any in-flight projectiles
   }, [liveUnits]);
 
   // Re-subscribe only when the binding layout changes. The discrete pilot
@@ -448,39 +595,193 @@ export function ConquestField() {
     };
   }, [cycleMonarch, gl, keyboardBindings, keyboardBindingModes]);
 
-  // Ability trigger: both mouse buttons pressed together fire the piloted army's
-  // per-animal special, mirroring Quick Play's simultaneous primary+secondary
-  // press. Recorded here as an edge (one fire per both-down transition); the
-  // per-frame loop consumes the flag and dispatches it against the live army.
+  // Pointer interaction, mirroring Quick Play's mouse model so the player commands
+  // their armies the same way on the globe (the camera stays the chase cam):
+  //   • LEFT click            — select the controlled unit under the cursor (or clear).
+  //   • LEFT drag (a box)     — box-select every controlled unit inside the rectangle.
+  //   • RIGHT click on a tile — move-order the selection there (great-circle travel).
+  //   • RIGHT click on an enemy — attack-order the selection onto that enemy.
+  //   • BOTH buttons together — fire the piloted army's ability (suppresses the above).
+  // Only units the human currently controls can be selected/ordered (the army-command
+  // model). The ability fire is recorded as an edge the per-frame loop consumes.
   const abilityRequested = useRef(false);
   useEffect(() => {
     const canvas = gl.domElement;
+
+    // A green rubber-band box drawn during a left-drag select (page-positioned).
+    const selectionBox = document.createElement('div');
+    Object.assign(selectionBox.style, {
+      position: 'fixed', border: '1px solid #ffffff',
+      backgroundColor: 'rgba(255,255,255,0.12)', pointerEvents: 'none',
+      display: 'none', zIndex: '1000',
+    } as CSSStyleDeclaration);
+    document.body.appendChild(selectionBox);
+
     let leftDown = false;
     let rightDown = false;
+    let abilityGesture = false; // both buttons were held during this gesture
+    let dragActive = false;
+    let dragMoved = false;
+    let startX = 0;
+    let startY = 0;
+
+    // Project a world point to client (page) pixels; `behind` flags points off-frustum.
+    const projectToClient = (worldPos: THREE.Vector3) => {
+      const ndc = worldPos.clone().project(camera);
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (ndc.x * 0.5 + 0.5) * rect.width + rect.left,
+        y: (-ndc.y * 0.5 + 0.5) * rect.height + rect.top,
+        behind: ndc.z > 1,
+      };
+    };
+
+    // A unit is selectable/visible only when it faces the camera (on the near side of
+    // the globe), so a click never picks a unit hidden behind the planet.
+    const isFrontFacing = (unit: LiveUnit) => {
+      const normal = unit.position.clone().normalize();
+      return unit.position.clone().sub(camera.position).dot(normal) < 0;
+    };
+
+    const controls = (unit: LiveUnit) =>
+      humanId !== null
+      && effectiveController(useConquestStore.getState().armyController, unit.armyId) === humanId;
+
+    // The nearest on-screen unit to a client point passing `filter`, within the pick radius.
+    const pickUnitAt = (clientX: number, clientY: number, filter: (u: LiveUnit) => boolean) => {
+      let best: LiveUnit | null = null;
+      let bestSq = CLICK_PICK_RADIUS_PX * CLICK_PICK_RADIUS_PX;
+      for (const unit of liveUnits) {
+        if (unit.dead || unit.carriedByOwlId !== null || !filter(unit) || !isFrontFacing(unit)) continue;
+        const screen = projectToClient(unit.position);
+        if (screen.behind) continue;
+        const distSq = screenDistanceSquared(clientX, clientY, screen.x, screen.y);
+        if (distSq <= bestSq) { bestSq = distSq; best = unit; }
+      }
+      return best;
+    };
+
+    const applyBoxSelection = (box: ScreenBox) => {
+      const next = new Set<string>();
+      for (const unit of liveUnits) {
+        if (unit.dead || unit.carriedByOwlId !== null || !controls(unit) || !isFrontFacing(unit)) continue;
+        const screen = projectToClient(unit.position);
+        if (!screen.behind && pointInScreenBox(screen.x, screen.y, box)) next.add(unit.id);
+      }
+      selectedIds.current = next;
+    };
+
+    // Resolve a right-click into a move or attack order for the current selection.
+    const issueOrder = (clientX: number, clientY: number) => {
+      if (selectedIds.current.size === 0 || !world) return;
+
+      // An enemy under the cursor turns the order into an attack on that unit.
+      const enemy = pickUnitAt(clientX, clientY, (u) => !controls(u) && !u.downed);
+      if (enemy) {
+        for (const unit of liveUnits) {
+          if (!selectedIds.current.has(unit.id) || unit.dead || unit.downed || unit.carriedByOwlId !== null) continue;
+          unit.orderAttackId = enemy.id;
+          unit.orderPos = null;
+        }
+        return;
+      }
+
+      // Otherwise project the pointer ray onto the planet and move-order the selection
+      // to the tile it lands on.
+      const rect = canvas.getBoundingClientRect();
+      const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
+      const rayDir = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(camera).sub(camera.position).normalize();
+      const hit = raySphereHit(camera.position, rayDir, ORDER_SPHERE_RADIUS);
+      if (!hit) return;
+      const direction = hit.normalize();
+      const tileId = nearestTileId(direction, world);
+      const dest = direction.multiplyScalar(tileTopRadius(biomes[tileId]));
+      for (const unit of liveUnits) {
+        if (!selectedIds.current.has(unit.id) || unit.dead || unit.downed || unit.carriedByOwlId !== null) continue;
+        unit.orderPos = dest.clone();
+        unit.orderAttackId = null;
+      }
+    };
+
+    const hideBox = () => { selectionBox.style.display = 'none'; };
+
     const onMouseDown = (event: MouseEvent) => {
       if (event.button === 0) leftDown = true;
       else if (event.button === 2) rightDown = true;
-      if (leftDown && rightDown) abilityRequested.current = true;
+      if (leftDown && rightDown) {
+        // Both buttons: an ability fire. Cancel any drag-select the first button began.
+        abilityGesture = true;
+        abilityRequested.current = true;
+        dragActive = false;
+        dragMoved = false;
+        hideBox();
+        return;
+      }
+      if (event.button === 0) {
+        dragActive = true;
+        dragMoved = false;
+        startX = event.clientX;
+        startY = event.clientY;
+      }
     };
+
+    const onMouseMove = (event: MouseEvent) => {
+      if (!dragActive || abilityGesture) return;
+      const dx = event.clientX - startX;
+      const dy = event.clientY - startY;
+      if (!dragMoved && dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
+      dragMoved = true;
+      const box = screenBoxFromDrag(startX, startY, event.clientX, event.clientY);
+      Object.assign(selectionBox.style, {
+        display: 'block',
+        left: `${box.minX}px`, top: `${box.minY}px`,
+        width: `${box.maxX - box.minX}px`, height: `${box.maxY - box.minY}px`,
+      } as CSSStyleDeclaration);
+    };
+
     const onMouseUp = (event: MouseEvent) => {
-      if (event.button === 0) leftDown = false;
-      else if (event.button === 2) rightDown = false;
+      if (event.button === 0) {
+        if (!abilityGesture) {
+          if (dragMoved) {
+            applyBoxSelection(screenBoxFromDrag(startX, startY, event.clientX, event.clientY));
+          } else {
+            const picked = pickUnitAt(event.clientX, event.clientY, controls);
+            selectedIds.current = picked ? new Set([picked.id]) : new Set();
+          }
+        }
+        dragActive = false;
+        dragMoved = false;
+        hideBox();
+        leftDown = false;
+      } else if (event.button === 2) {
+        if (!abilityGesture) issueOrder(event.clientX, event.clientY);
+        rightDown = false;
+      }
+      if (!leftDown && !rightDown) abilityGesture = false; // gesture fully released
     };
-    // The right-button press is an ability input here, not a context menu.
+
+    // The right button is a command input here, never a browser context menu.
     const onContextMenu = (event: MouseEvent) => event.preventDefault();
-    const onBlur = () => { leftDown = false; rightDown = false; };
+    const onBlur = () => {
+      leftDown = false; rightDown = false; abilityGesture = false;
+      dragActive = false; dragMoved = false; hideBox();
+    };
 
     canvas.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     canvas.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('blur', onBlur);
     return () => {
       canvas.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
       canvas.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('blur', onBlur);
+      document.body.removeChild(selectionBox);
     };
-  }, [gl]);
+  }, [gl, camera, world, biomes, liveUnits, humanId]);
 
   // Reusable scratch (no per-frame allocation in the hot loop).
   const scratch = useRef({
@@ -498,6 +799,10 @@ export function ConquestField() {
     camForwardTangent: new THREE.Vector3(),
     camRightTangent: new THREE.Vector3(),
     drive: new THREE.Vector3(),
+    beamTip: new THREE.Vector3(),
+    beamMid: new THREE.Vector3(),
+    beamVec: new THREE.Vector3(),
+    beamQuat: new THREE.Quaternion(),
   });
 
   // Per-frame combat scratch reused across frames (cleared at the top of each).
@@ -533,8 +838,10 @@ export function ConquestField() {
   // Fire the piloted army's per-animal special (both-mouse-button trigger). The
   // player commands the WHOLE army, so every living unit of the army's single
   // animal acts at once: turtles shell up, cats hiss, bee followers commit to a
-  // dive. The projectile / beam / carry abilities (eggs, tongue, pickup) are wired
-  // in the next increment; an unsupported animal simply does nothing here.
+  // dive, chickens lob eggs, frogs shoot tongues, owl followers swoop to abduct.
+  // The projectile / beam / carry abilities auto-aim at each unit's nearest enemy
+  // (Conquest has no cursor pick yet — selection arrives in the next increment);
+  // an animal without a special simply does nothing here.
   const fireArmyAbility = (piloted: LiveUnit | null, nowMs: number) => {
     if (!piloted) return;
     const ability = abilityFor(piloted.animal);
@@ -582,6 +889,209 @@ export function ConquestField() {
         bee.swarmTargetId = prey.id;
         claimedTargetIds.add(prey.id);
       }
+      return;
+    }
+
+    if (ability === 'eggs') {
+      // Each chicken lobs an egg toward its nearest enemy (or straight ahead if none
+      // is near), riding it slightly above the surface; the per-frame egg pass curves
+      // it along the planet and resolves the first enemy it grazes.
+      for (const chicken of liveUnits) {
+        if (chicken.armyId !== armyId || chicken.dead || chicken.downed) continue;
+        if (nowMs - chicken.lastEggMs < EGG_COOLDOWN_MS) continue;
+        chicken.lastEggMs = nowMs;
+        chicken.eggThrowUntilMs = nowMs + EGG_THROW_POSE_MS;
+        const prey = selectNearestEnemy(chicken, liveUnits, AGGRO_RANGE * 5);
+        const aim = prey ? surfaceAimDirection(chicken.position, prey.position) : chicken.facing.clone();
+        chicken.facing.copy(aim); // face the throw
+        const launchRadius = chicken.position.length() + EGG_LIFT;
+        eggs.current.push({
+          id: ++eggIdCounter.current,
+          controllerId: chicken.controllerId,
+          position: chicken.position.clone().normalize().multiplyScalar(launchRadius),
+          direction: aim.clone(),
+          traveled: 0,
+          damage: EGG_DAMAGE,
+        });
+      }
+      // Keep the pool bounded: a huge volley drops its oldest eggs from the draw list.
+      if (eggs.current.length > EGG_POOL_SIZE) {
+        eggs.current.splice(0, eggs.current.length - EGG_POOL_SIZE);
+      }
+      return;
+    }
+
+    if (ability === 'tongue') {
+      // Each frog claims its nearest unclaimed enemy in reach and begins the grab
+      // (one enemy per frog, so a line of frogs spreads its grabs). A frog with no
+      // enemy in range still fires a whiff straight ahead.
+      const claimedTargetIds = new Set<string>();
+      for (const unit of liveUnits) {
+        if (unit.tongue?.targetId) claimedTargetIds.add(unit.tongue.targetId);
+      }
+      for (const frog of liveUnits) {
+        if (frog.armyId !== armyId || frog.dead || frog.downed) continue;
+        if (frog.tongue) continue; // already mid-grab
+        if (nowMs - frog.lastTongueMs < TONGUE_COOLDOWN_MS) continue;
+        const prey = selectNearestUnclaimedEnemy(frog, liveUnits, claimedTargetIds, TONGUE_RANGE);
+        const aim = prey ? surfaceAimDirection(frog.position, prey.position) : frog.facing.clone();
+        if (prey) claimedTargetIds.add(prey.id);
+        frog.lastTongueMs = nowMs;
+        frog.facing.copy(aim);
+        frog.target = null; // the grab supersedes any current engagement
+        frog.tongue = {
+          phase: 'windup',
+          targetId: prey?.id ?? null,
+          direction: aim.clone(),
+          length: 0,
+          maxLength: TONGUE_RANGE,
+          grabbed: false,
+          phaseUntilMs: nowMs + TONGUE_WINDUP_MS,
+          damageDealt: false,
+        };
+      }
+      return;
+    }
+
+    if (ability === 'pickup') {
+      // Each follower owl (royals never risk a swoop) claims its nearest unclaimed
+      // enemy ground/water unit — air units can't be plucked from flight — and dives
+      // to abduct it.
+      const claimedTargetIds = new Set<string>();
+      for (const unit of liveUnits) {
+        if (unit.pickup) claimedTargetIds.add(unit.pickup.targetId);
+        if (unit.carriedByOwlId !== null) claimedTargetIds.add(unit.id);
+      }
+      const grabbable = liveUnits.filter(
+        (unit) => unit.movement !== 'air' && unit.carriedByOwlId === null,
+      );
+      for (const owl of liveUnits) {
+        if (owl.armyId !== armyId || owl.dead || owl.downed || owl.isMonarch) continue;
+        if (owl.pickup) continue; // already swooping
+        if (nowMs - owl.lastPickupMs < OWL_PICKUP_COOLDOWN_MS) continue;
+        const prey = selectNearestUnclaimedEnemy(owl, grabbable, claimedTargetIds, AGGRO_RANGE * 3);
+        if (!prey) continue;
+        claimedTargetIds.add(prey.id);
+        owl.lastPickupMs = nowMs;
+        owl.target = null;
+        owl.pickup = { phase: 'swooping', targetId: prey.id, grabbed: false, carryUntilMs: 0 };
+        owl.flightLift = OWL_FLIGHT_LIFT; // descend from cruising altitude into the swoop
+      }
+    }
+  };
+
+  // Advance one Frog's tongue grab a frame (the frog is pinned for the whole grab,
+  // so this is called in lieu of its normal movement). Mirrors Quick Play's
+  // updateFrogTongues, re-derived for the sphere (great-circle tip + surface drag).
+  const advanceFrogTongue = (frog: LiveUnit, nowMs: number, delta: number) => {
+    const tongue = frog.tongue!;
+    const target = tongue.targetId
+      ? liveUnits.find((unit) => unit.id === tongue.targetId) ?? null
+      : null;
+    const targetAlive = !!target && !target.dead && !target.downed;
+    const rangeSq = TONGUE_RANGE * TONGUE_RANGE;
+
+    if (tongue.phase === 'windup') {
+      if (nowMs < tongue.phaseUntilMs) return; // hold the mouth-open beat
+      if (tongue.targetId) {
+        if (!targetAlive || frog.position.distanceToSquared(target!.position) > rangeSq) {
+          frog.tongue = null; // claimed enemy died or fled reach — fizzle (cooldown still applies)
+          return;
+        }
+        tongue.direction.copy(surfaceAimDirection(frog.position, target!.position));
+      }
+      tongue.phase = 'extending';
+      return;
+    }
+
+    if (tongue.phase === 'extending') {
+      tongue.length = Math.min(tongue.length + TONGUE_EXTEND_SPEED * delta, tongue.maxLength);
+      if (targetAlive) {
+        tongue.direction.copy(surfaceAimDirection(frog.position, target!.position));
+        const tip = stepGreatCircle(frog.position, tongue.direction, tongue.length).position;
+        if (tip.distanceToSquared(target!.position) <= TONGUE_HIT_RADIUS * TONGUE_HIT_RADIUS) {
+          tongue.grabbed = true;
+          if (!tongue.damageDealt) {
+            tongue.damageDealt = true;
+            target!.hp -= frog.combat.damage;
+            target!.lastCombatMs = nowMs;
+            target!.lastAttackerController = frog.controllerId;
+            frog.lastAttackMs = nowMs;
+            frog.lastCombatMs = nowMs;
+          }
+          tongue.phase = 'retracting';
+          return;
+        }
+      }
+      if (tongue.length >= tongue.maxLength) tongue.phase = 'retracting'; // apex: a miss
+      return;
+    }
+
+    // retracting — reel back; drag a latched, living catch along the surface.
+    tongue.length = Math.max(tongue.length - TONGUE_RETRACT_SPEED * delta, 0);
+    if (tongue.grabbed && targetAlive
+      && frog.position.distanceToSquared(target!.position) > TONGUE_DRAG_STOP_DIST * TONGUE_DRAG_STOP_DIST) {
+      const tip = stepGreatCircle(frog.position, tongue.direction, tongue.length).position;
+      const tileId = nearestTileId(scratch.current.up.copy(tip).normalize(), world!);
+      target!.position.copy(scratch.current.up).multiplyScalar(tileTopRadius(biomes[tileId]));
+    }
+    if (tongue.length <= 0) frog.tongue = null; // fully reeled in — the frog is free
+  };
+
+  // Glue an abducted unit to a point OWL_CARRY_HANG below its owl, matching the
+  // owl's surface position and facing so it dangles beneath the talons.
+  const glueCarried = (owl: LiveUnit, carried: LiveUnit) => {
+    carried.position.copy(owl.position);
+    carried.facing.copy(owl.facing);
+    carried.flightLift = Math.max(0, owl.flightLift - OWL_CARRY_HANG);
+  };
+
+  // Advance one Owl's abduction a frame (the owl drives itself and its catch in lieu
+  // of normal movement). Mirrors Quick Play's updateOwlPickups: swoop down, grab,
+  // carry up, then drop the enemy for fall damage. Sphere-native (radial lift).
+  const advanceOwlPickup = (owl: LiveUnit, nowMs: number, delta: number) => {
+    const pickup = owl.pickup!;
+    const target = liveUnits.find((unit) => unit.id === pickup.targetId) ?? null;
+    const lostTarget = !target || target.dead || target.downed
+      || (target.carriedByOwlId !== null && target.carriedByOwlId !== owl.id);
+    if (lostTarget) {
+      if (target && target.carriedByOwlId === owl.id) { target.carriedByOwlId = null; target.flightLift = 0; }
+      owl.pickup = null;
+      owl.flightLift = 0;
+      return;
+    }
+
+    if (pickup.phase === 'swooping') {
+      owl.flightLift = approachLift(owl.flightLift, OWL_PLUCK_LIFT, OWL_DESCENT_SPEED, delta);
+      const overTarget = owl.position.distanceToSquared(target!.position) <= OWL_GRAB_RANGE * OWL_GRAB_RANGE;
+      if (overTarget && owl.flightLift <= OWL_PLUCK_LIFT + 1e-5) {
+        target!.carriedByOwlId = owl.id;
+        target!.target = null;
+        target!.swarmTargetId = null;
+        pickup.phase = 'carrying';
+        pickup.grabbed = true;
+        pickup.carryUntilMs = nowMs + OWL_CARRY_DURATION_MS;
+        glueCarried(owl, target!);
+        return;
+      }
+      moveToward(owl, target!.position, OWL_SWOOP_SPEED, 0, delta);
+      return;
+    }
+
+    // carrying — rise to flight height towing the catch, then drop it once the timer
+    // elapses at cruising altitude (an enemy takes fall damage on impact).
+    owl.flightLift = approachLift(owl.flightLift, OWL_FLIGHT_LIFT, OWL_ASCENT_SPEED, delta);
+    glueCarried(owl, target!);
+    if (nowMs >= pickup.carryUntilMs && owl.flightLift >= OWL_FLIGHT_LIFT - 1e-5) {
+      target!.carriedByOwlId = null;
+      target!.flightLift = 0;
+      if (target!.controllerId !== owl.controllerId) {
+        target!.hp -= OWL_FALL_DAMAGE;
+        target!.lastCombatMs = nowMs;
+        target!.lastAttackerController = owl.controllerId;
+      }
+      owl.pickup = null;
+      owl.flightLift = 0;
     }
   };
 
@@ -653,6 +1163,8 @@ export function ConquestField() {
 
       if (forwardBack !== 0 || rightLeft !== 0) {
         drivingInput = true;
+        monarch.orderPos = null;       // taking the wheel cancels any standing order
+        monarch.orderAttackId = null;
         drive.copy(camForwardTangent).multiplyScalar(forwardBack)
           .addScaledVector(camRightTangent, rightLeft)
           .normalize();
@@ -697,9 +1209,12 @@ export function ConquestField() {
     //    priority. A weapons-tight (fire 'hold') or non-engaging (flee) unit acquires
     //    nothing and simply stays with its army.
     for (const unit of liveUnits) {
-      // A shelled turtle can't fight, and a swarming bee is committed to its dive,
-      // so neither acquires a normal engagement target.
-      unit.target = (unit.dead || unit.shelled || unit.swarmTargetId !== null)
+      // A shelled turtle can't fight, a swarming bee / abducting owl is committed to
+      // its dive, a frog mid-grab fights through its tongue, and a carried unit is
+      // helpless — none of them acquire a normal engagement target.
+      const busyWithAbility = unit.shelled || unit.swarmTargetId !== null
+        || unit.tongue !== null || unit.pickup !== null || unit.carriedByOwlId !== null;
+      unit.target = (unit.dead || busyWithAbility)
         ? null
         : selectTargetForBehavior(unit, liveUnits, unit.behavior, unit.posture);
     }
@@ -741,6 +1256,17 @@ export function ConquestField() {
     //    skipped (the latter's drive already ran).
     for (const unit of liveUnits) {
       if (unit.dead || unit.downed) continue;
+
+      // A unit in an Owl's talons is positioned by that Owl (glueCarried), so its
+      // own movement and combat are suspended this frame.
+      if (unit.carriedByOwlId !== null) continue;
+
+      // Owl Pickup: an abducting owl drives its whole swoop/carry/drop machine in
+      // place of normal movement (it owns its catch too).
+      if (unit.pickup) { advanceOwlPickup(unit, elapsedMs, delta); continue; }
+
+      // Frog Tongue: a frog mid-grab is pinned while its tongue extends/retracts.
+      if (unit.tongue) { advanceFrogTongue(unit, elapsedMs, delta); continue; }
 
       // Turtle Shell: pulled in, the unit is pinned in place (and ignores knockback).
       if (unit.shelled) continue;
@@ -789,6 +1315,37 @@ export function ConquestField() {
       }
 
       if (unit === monarch && drivingInput) continue;
+
+      // Player orders (increment 4) take precedence over auto-follow. An attack order
+      // forces the unit to close on and engage the ordered enemy; a move order sends
+      // it to the destination while still auto-engaging threats it passes (per stance),
+      // and clears once it arrives so the unit resumes following its army.
+      if (unit.orderAttackId !== null) {
+        const ordered = liveUnits.find((candidate) => candidate.id === unit.orderAttackId) ?? null;
+        if (!ordered || ordered.dead || ordered.downed) {
+          unit.orderAttackId = null;
+        } else {
+          unit.target = ordered; // override stance acquisition: strike what the player picked
+          const moved = moveToward(unit, ordered.position, CHASE_SPEED, unit.combat.attackRange, delta);
+          if (!moved) {
+            up.copy(unit.position).normalize();
+            unit.facing.subVectors(ordered.position, unit.position);
+            tangentize(unit.facing, up);
+          }
+          continue;
+        }
+      }
+      if (unit.orderPos !== null) {
+        const enRouteTarget = unit.target;
+        const chasingSq = unit.posture.chaseRadius * unit.posture.chaseRadius;
+        if (enRouteTarget && unit.posture.movesToEngage
+          && unit.position.distanceToSquared(enRouteTarget.position) <= chasingSq) {
+          moveToward(unit, enRouteTarget.position, CHASE_SPEED, unit.combat.attackRange, delta);
+        } else if (!moveToward(unit, unit.orderPos, MOVE_SPEED, FOLLOW_GAP, delta)) {
+          unit.orderPos = null; // arrived — resume following the army
+        }
+        continue;
+      }
 
       const leader = leaderByArmy.get(unit.armyId);
       const target = unit.target;
@@ -850,6 +1407,28 @@ export function ConquestField() {
       }
     }
 
+    // 7.5) Advance in-flight Chicken eggs: each curves along its great circle, and
+    //      the first enemy it grazes takes its damage and pops it; an egg that flies
+    //      its full range without a hit simply expires.
+    const eggList = eggs.current;
+    for (let i = eggList.length - 1; i >= 0; i--) {
+      const egg = eggList[i];
+      const stepLength = EGG_SPEED * delta;
+      const advanced = stepGreatCircle(egg.position, egg.direction, stepLength);
+      egg.position.copy(advanced.position);
+      egg.direction.copy(advanced.direction);
+      egg.traveled += stepLength;
+      const hit = eggHitTarget(egg.position, egg.controllerId, liveUnits, EGG_HIT_RADIUS);
+      if (hit) {
+        hit.hp -= egg.damage;
+        hit.lastCombatMs = elapsedMs;
+        hit.lastAttackerController = egg.controllerId;
+        eggList.splice(i, 1);
+        continue;
+      }
+      if (egg.traveled >= EGG_MAX_RANGE) eggList.splice(i, 1);
+    }
+
     // 8) Resolve casualties + capture. A fallen Unit is removed. A monarch at 0 HP
     //    is downed (not killed); when BOTH an army's King and Queen are downed the
     //    army is CAPTURED — its survivors and the revived monarchs switch to the
@@ -878,6 +1457,9 @@ export function ConquestField() {
         member.downed = false;        // King and Queen rise again under new command
         member.lastAttackerController = null;
         member.target = null;
+        member.orderPos = null;       // an army changing hands drops its old orders
+        member.orderAttackId = null;
+        selectedIds.current.delete(member.id);
       }
       conquest.conquerArmy(armyId, conqueror, elapsedMs);
     }
@@ -903,15 +1485,22 @@ export function ConquestField() {
       else if (unit.animal === 'Cat' && unit.hissUntilMs > elapsedMs) {
         activePose = Math.min(2, unit.poseGroups.length - 1);
       }
+      // A chicken mid-throw and a frog mid-grab hold their action pose.
+      else if (unit.animal === 'Chicken' && unit.eggThrowUntilMs > elapsedMs) {
+        activePose = unit.poseGroups.length - 1;
+      } else if (unit.animal === 'Frog' && unit.tongue) {
+        activePose = Math.min(2, unit.poseGroups.length - 1);
+      }
       for (let i = 0; i < unit.poseGroups.length; i++) {
         const poseGroup = unit.poseGroups[i];
         if (poseGroup) poseGroup.visible = i === activePose;
       }
 
       // Stand on the surface (air units hover above it), facing `facing`, up along
-      // the surface normal.
+      // the surface normal. A flying/abducting owl (or its dangling catch) adds its
+      // radial flight lift on top of the baseline hover.
       up.copy(unit.position).normalize();
-      renderPos.copy(unit.position).addScaledVector(up, unit.airLift);
+      renderPos.copy(unit.position).addScaledVector(up, unit.airLift + unit.flightLift);
       scratch.current.right.crossVectors(up, unit.facing).normalize();
       scratch.current.forward.crossVectors(scratch.current.right, up).normalize();
       basis.makeBasis(scratch.current.right, up, scratch.current.forward);
@@ -932,6 +1521,16 @@ export function ConquestField() {
         }
       }
 
+      // Selection halo: a bright ring shown only while the unit is selected.
+      if (unit.selectionRing) {
+        const selected = selectedIds.current.has(unit.id);
+        unit.selectionRing.visible = selected;
+        if (selected) {
+          unit.selectionRing.position.copy(unit.position).addScaledVector(up, SELECTION_RING_LIFT);
+          unit.selectionRing.quaternion.copy(ringQuat);
+        }
+      }
+
       // Monarch aura disc: pulse brighter while actively helping; hide while downed.
       if (unit.auraMesh) {
         const showAura = unit.isMonarch && !unit.downed;
@@ -944,6 +1543,46 @@ export function ConquestField() {
             ? AURA_OPACITY_IDLE + (AURA_OPACITY_ACTIVE - AURA_OPACITY_IDLE) * auraPulse
             : AURA_OPACITY_IDLE;
         }
+      }
+
+      // Frog tongue beam: a thin cylinder from the frog's mouth to the live tip,
+      // stretched along its length. Hidden whenever no tongue is out.
+      if (unit.tongueMesh) {
+        const tongue = unit.tongue;
+        if (tongue && tongue.length > 1e-4) {
+          const { beamTip, beamMid, beamVec, beamQuat } = scratch.current;
+          beamTip.copy(stepGreatCircle(unit.position, tongue.direction, tongue.length).position);
+          renderPos.copy(unit.position).addScaledVector(up, TONGUE_LIFT); // mouth point
+          beamTip.addScaledVector(up, TONGUE_LIFT);
+          beamVec.subVectors(beamTip, renderPos);
+          const beamLength = beamVec.length();
+          if (beamLength > 1e-5) {
+            beamMid.copy(renderPos).addScaledVector(beamVec, 0.5);
+            beamQuat.setFromUnitVectors(BEAM_UP, beamVec.normalize());
+            unit.tongueMesh.visible = true;
+            unit.tongueMesh.position.copy(beamMid);
+            unit.tongueMesh.quaternion.copy(beamQuat);
+            unit.tongueMesh.scale.set(TONGUE_WIDTH, beamLength, TONGUE_WIDTH);
+          } else {
+            unit.tongueMesh.visible = false;
+          }
+        } else {
+          unit.tongueMesh.visible = false;
+        }
+      }
+    }
+
+    // Draw the in-flight eggs from the pool (extra eggs beyond the pool go undrawn).
+    const eggMeshList = eggMeshes.current;
+    for (let i = 0; i < EGG_POOL_SIZE; i++) {
+      const mesh = eggMeshList[i];
+      if (!mesh) continue;
+      const egg = eggList[i];
+      if (egg) {
+        mesh.visible = true;
+        mesh.position.copy(egg.position);
+      } else if (mesh.visible) {
+        mesh.visible = false;
       }
     }
 
@@ -1034,6 +1673,53 @@ export function ConquestField() {
           />
         </mesh>
       ))}
+
+      {/* Selection halos (one per unit; the sim shows the selected ones). */}
+      {liveUnits.map((unit) => (
+        <mesh
+          key={`${unit.id}-sel`}
+          ref={(element) => { unit.selectionRing = element; }}
+          geometry={ringGeometry}
+          scale={unit.isMonarch ? MONARCH_SELECTION_RING_RADIUS : SELECTION_RING_RADIUS}
+          visible={false}
+          renderOrder={2}
+        >
+          <meshBasicMaterial
+            color={SELECTION_RING_COLOR}
+            transparent
+            opacity={0.9}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+
+      {/* Frog tongue beams (one per frog; the sim stretches/hides each). */}
+      {hasFrog && liveUnits.filter((unit) => unit.animal === 'Frog').map((unit) => (
+        <mesh
+          key={`${unit.id}-tongue`}
+          ref={(element) => { unit.tongueMesh = element; }}
+          geometry={tongueGeometry}
+          visible={false}
+          renderOrder={2}
+        >
+          <meshBasicMaterial color={TONGUE_COLOR} />
+        </mesh>
+      ))}
+
+      {/* Chicken egg projectile pool (the sim positions/hides each). */}
+      {liveUnits.some((unit) => unit.animal === 'Chicken') &&
+        Array.from({ length: EGG_POOL_SIZE }, (_, index) => (
+          <mesh
+            key={`egg-${index}`}
+            ref={(element) => { eggMeshes.current[index] = element; }}
+            geometry={eggGeometry}
+            visible={false}
+            renderOrder={2}
+          >
+            <meshBasicMaterial color={EGG_COLOR} />
+          </mesh>
+        ))}
     </group>
   );
 }

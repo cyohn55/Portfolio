@@ -6,6 +6,10 @@ import {
   computeHissPushes,
   selectSwarmTarget,
   swarmStingKills,
+  stepGreatCircle,
+  surfaceAimDirection,
+  eggHitTarget,
+  selectNearestUnclaimedEnemy,
   HISS_RANGE,
   HISS_PUSH_DISTANCE,
   HISS_PUSH_MS,
@@ -13,9 +17,16 @@ import {
   SWARM_DIVE_SPEED,
   SWARM_STING_RANGE,
   SWARM_STING_KILL_CHANCE,
+  EGG_SPEED,
+  EGG_HIT_RADIUS,
+  EGG_MAX_RANGE,
+  TONGUE_RANGE,
+  TONGUE_EXTEND_SPEED,
+  OWL_FLIGHT_LIFT,
+  OWL_PLUCK_LIFT,
   type AbilityActor,
 } from '../src/components/Working/conquest/conquestAbilities';
-import { CHASE_SPEED } from '../src/components/Working/conquest/conquestCombat';
+import { AGGRO_RANGE, CHASE_SPEED } from '../src/components/Working/conquest/conquestCombat';
 
 /**
  * Unit tests for the Conquest per-animal abilities (Increment 3). Pure Node —
@@ -162,5 +173,105 @@ test.describe('Swarm sting coin flip', () => {
     expect(swarmStingKills(SWARM_STING_KILL_CHANCE - 0.0001)).toBe(true);
     expect(swarmStingKills(SWARM_STING_KILL_CHANCE)).toBe(false);
     expect(swarmStingKills(0.999)).toBe(false);
+  });
+});
+
+test.describe('Projectile/beam/carry tuning (increment 3 part 2)', () => {
+  test('egg flies faster than a chase, hits at near-contact, ranges a few tiles', () => {
+    expect(EGG_SPEED).toBeGreaterThan(CHASE_SPEED);
+    expect(EGG_HIT_RADIUS).toBeGreaterThan(0);
+    expect(EGG_HIT_RADIUS).toBeLessThan(AGGRO_RANGE);   // a near miss whiffs
+    expect(EGG_MAX_RANGE).toBeGreaterThan(AGGRO_RANGE); // reaches past the aggro bubble
+  });
+
+  test('a tongue reaches past the aggro bubble and extends quickly', () => {
+    expect(TONGUE_RANGE).toBeGreaterThan(AGGRO_RANGE);
+    expect(TONGUE_EXTEND_SPEED).toBeGreaterThan(CHASE_SPEED);
+  });
+
+  test('an owl carries higher than it swoops (a real lift, then a drop)', () => {
+    expect(OWL_FLIGHT_LIFT).toBeGreaterThan(OWL_PLUCK_LIFT);
+    expect(OWL_PLUCK_LIFT).toBeGreaterThan(0);
+  });
+});
+
+test.describe('Great-circle surface travel', () => {
+  test('a step preserves the projectile altitude and advances the expected arc', () => {
+    const radius = 1.05;
+    const start = new THREE.Vector3(1, 0, 0).multiplyScalar(radius);
+    const heading = new THREE.Vector3(0, 0, 1); // tangent at the start
+    const arc = 0.2;
+
+    const stepped = stepGreatCircle(start, heading, arc);
+
+    expect(stepped.position.length()).toBeCloseTo(radius, 9); // stays on its own sphere
+    // Arc length = angle * radius, so the angle turned is arc / radius.
+    const angle = start.angleTo(stepped.position);
+    expect(angle).toBeCloseTo(arc / radius, 6);
+    // The carried heading stays a unit tangent at the new point.
+    expect(stepped.direction.length()).toBeCloseTo(1, 6);
+    expect(stepped.direction.dot(stepped.position.clone().normalize())).toBeCloseTo(0, 6);
+  });
+
+  test('a degenerate heading (straight up) leaves the point put', () => {
+    const start = new THREE.Vector3(0, 1, 0);
+    const stepped = stepGreatCircle(start, new THREE.Vector3(0, 1, 0), 0.3);
+    expect(stepped.position.distanceTo(start)).toBeCloseTo(0, 9);
+  });
+});
+
+test.describe('Surface aim', () => {
+  test('the aim heading is a unit tangent pointing toward the target', () => {
+    const from = new THREE.Vector3(0, 1, 0);
+    const to = new THREE.Vector3(0.3, 1, 0);
+    const aim = surfaceAimDirection(from, to);
+    expect(aim.length()).toBeCloseTo(1, 6);
+    expect(aim.dot(from.clone().normalize())).toBeCloseTo(0, 6); // tangent at the launch point
+    // A step along the aim moves closer to the target.
+    const before = from.distanceTo(to);
+    const after = from.clone().addScaledVector(aim, 0.01).distanceTo(to);
+    expect(after).toBeLessThan(before);
+  });
+});
+
+test.describe('Egg collision', () => {
+  const egg = new THREE.Vector3(0, 1, 0).multiplyScalar(1.02);
+  test('hits the nearest living enemy inside the radius, never an ally or the dead', () => {
+    const near = actorAt('near', 'ai1', new THREE.Vector3(0.005, 1, 0), 1);
+    const ally = actorAt('ally', 'p0', new THREE.Vector3(0.004, 1, 0), 1);
+    const dead = actorAt('dead', 'ai1', new THREE.Vector3(0.003, 1, 0), 1, { dead: true });
+    const far = actorAt('far', 'ai1', new THREE.Vector3(0, -1, 0), 1);
+    const hit = eggHitTarget(egg, 'p0', [near, ally, dead, far], EGG_HIT_RADIUS);
+    expect(hit?.id).toBe('near');
+  });
+
+  test('misses when the nearest enemy is outside the radius', () => {
+    const far = actorAt('far', 'ai1', new THREE.Vector3(0.5, 1, 0), 1);
+    expect(eggHitTarget(egg, 'p0', [far], EGG_HIT_RADIUS)).toBeNull();
+  });
+});
+
+test.describe('Tongue/pickup claiming', () => {
+  const frog = actorAt('frog', 'p0', new THREE.Vector3(0, 1, 0));
+  const near = actorAt('near', 'ai1', new THREE.Vector3(0.02, 1, 0));
+  const far = actorAt('far', 'ai1', new THREE.Vector3(0.05, 1, 0));
+  const ally = actorAt('ally', 'p0', new THREE.Vector3(0.01, 1, 0));
+  const downed = actorAt('downed', 'ai1', new THREE.Vector3(0.015, 1, 0), 1, { downed: true });
+  const outOfRange = actorAt('out', 'ai1', new THREE.Vector3(0, -1, 0));
+
+  test('claims the nearest in-range unclaimed enemy, skipping allies and the downed', () => {
+    const picked = selectNearestUnclaimedEnemy(
+      frog, [frog, ally, downed, near, far, outOfRange], new Set(), TONGUE_RANGE,
+    );
+    expect(picked?.id).toBe('near');
+  });
+
+  test('a claimed enemy is skipped so a line spreads its grabs', () => {
+    const picked = selectNearestUnclaimedEnemy(frog, [near, far], new Set(['near']), TONGUE_RANGE);
+    expect(picked?.id).toBe('far');
+  });
+
+  test('returns null when the only enemy is out of range', () => {
+    expect(selectNearestUnclaimedEnemy(frog, [outOfRange], new Set(), TONGUE_RANGE)).toBeNull();
   });
 });

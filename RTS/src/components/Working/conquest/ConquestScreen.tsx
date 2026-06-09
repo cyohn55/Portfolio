@@ -67,9 +67,10 @@ export function ConquestScreen() {
       <OutcomeOverlay onPlayAgain={handleBack} />
 
       <div className="conquest-screen-hint">
-        Move keys drive · A switch King/Queen · Scroll zoom · King (gold aura) buffs
-        damage, Queen (green aura) heals · Down a rival's King AND Queen to capture
-        their whole army · Click a tile to inspect
+        Move keys drive · A switch King/Queen · Scroll zoom · Left-click / drag-box
+        select your units · Right-click to move (or an enemy to attack) · Both mouse
+        buttons fire your army's ability · King (gold aura) buffs damage, Queen (green
+        aura) heals · Down a rival's King AND Queen to capture their whole army
       </div>
     </div>
   );
