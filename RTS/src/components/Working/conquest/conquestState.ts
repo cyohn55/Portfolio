@@ -23,7 +23,7 @@
 
 import { create } from 'zustand';
 import * as THREE from 'three';
-import type { AnimalId } from '../../../game/types';
+import type { AnimalId, FireMode, TargetPriority, UnitStance } from '../../../game/types';
 import { SeededRng } from '../net/prng';
 import { buildGoldbergWorld, type GoldbergWorld } from './goldbergWorld';
 import {
@@ -96,6 +96,20 @@ export interface ConquestUnitSpawn {
   position: { x: number; y: number; z: number };
 }
 
+/**
+ * The current selection's combat posture, published from the live field so the
+ * posture radial (a DOM overlay outside the canvas) can highlight the active axes
+ * without reaching into the field's per-unit state. `count` is how many commandable
+ * units are selected; each axis is the shared value or null when the selection is
+ * mixed. Null (the whole summary) means nothing commandable is selected.
+ */
+export interface ConquestBehaviorSummary {
+  count: number;
+  stance: UnitStance | null;
+  fire: FireMode | null;
+  priority: TargetPriority | null;
+}
+
 /** How a match ends, from the human player's perspective. */
 export type ConquestOutcome = 'playing' | 'victory' | 'defeat';
 
@@ -131,6 +145,8 @@ interface ConquestState {
   selectedTileId: number | null;
   /** Id of the human monarch the camera follows and the player pilots. */
   selectedMonarchId: string | null;
+  /** The selection's posture summary for the radial HUD (null = nothing selected). */
+  behaviorSummary: ConquestBehaviorSummary | null;
 
   generate: (setup: ConquestSetup) => void;
   reset: () => void;
@@ -149,6 +165,8 @@ interface ConquestState {
   claimTiles: (updates: Record<number, string | null>) => void;
   /** Publish the live per-controller unit counts from the field (throttled). */
   setControlledUnitCounts: (counts: Record<string, number>) => void;
+  /** Publish the current selection's posture summary for the radial (or null). */
+  setBehaviorSummary: (summary: ConquestBehaviorSummary | null) => void;
 }
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
@@ -308,6 +326,7 @@ export const useConquestStore = create<ConquestState>((set, get) => ({
   lastCapture: null,
   selectedTileId: null,
   selectedMonarchId: null,
+  behaviorSummary: null,
 
   generate: (setup) => {
     const world = buildGoldbergWorld(setup.subdivisions);
@@ -330,14 +349,14 @@ export const useConquestStore = create<ConquestState>((set, get) => ({
     set({
       world, biomes, seed: setup.seed, players, units, tileOwners,
       armyController: {}, controlledUnitCounts: {}, outcome: 'playing', lastCapture: null,
-      selectedTileId: null, selectedMonarchId: humanMonarch?.id ?? null,
+      selectedTileId: null, selectedMonarchId: humanMonarch?.id ?? null, behaviorSummary: null,
     });
   },
 
   reset: () => set({
     world: null, biomes: [], seed: 0, players: [], units: [], tileOwners: {},
     armyController: {}, controlledUnitCounts: {}, outcome: 'playing', lastCapture: null,
-    selectedTileId: null, selectedMonarchId: null,
+    selectedTileId: null, selectedMonarchId: null, behaviorSummary: null,
   }),
 
   selectTile: (tileId) => set({ selectedTileId: tileId }),
@@ -420,6 +439,8 @@ export const useConquestStore = create<ConquestState>((set, get) => ({
   },
 
   setControlledUnitCounts: (counts) => set({ controlledUnitCounts: counts }),
+
+  setBehaviorSummary: (summary) => set({ behaviorSummary: summary }),
 }));
 
 /** Convenience: the biome rules for a tile, or null if the world isn't built. */

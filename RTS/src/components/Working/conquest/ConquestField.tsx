@@ -60,6 +60,8 @@ import {
   defaultBehaviorFor,
   stanceParams,
   selectTargetForBehavior,
+  mergeBehavior,
+  summarizeBehaviors,
   type StanceParams,
 } from './conquestBehavior';
 import {
@@ -114,6 +116,22 @@ import {
   screenDistanceSquared,
   type ScreenBox,
 } from './conquestSelection';
+import {
+  selectArmyUnitIds,
+  selectAllControlledUnitIds,
+} from './conquestCommands';
+import {
+  makePatrolRoute,
+  patrolTarget,
+  advancePatrol,
+  type PatrolRoute,
+} from './conquestPatrol';
+import {
+  createDottedArrow,
+  positionDottedArrow,
+  hideDottedArrow,
+  PATROL_ARROW_COLOR,
+} from '../dottedArrow';
 import {
   isClaimableTile,
   countOwnedFarmTiles,
@@ -219,6 +237,9 @@ const BEAM_UP = new THREE.Vector3(0, 1, 0); // CylinderGeometry's long axis
 // selection ring is a bright halo drawn a hair larger than the allegiance ring.
 const DRAG_THRESHOLD_PX = 6;
 const CLICK_PICK_RADIUS_PX = 28;
+// Right-button hold (ms) on a controlled Queen before the gesture commits a patrol
+// route instead of a normal move/attack order — matching Quick Play's PATROL_HOLD_MS.
+const PATROL_HOLD_MS = 750;
 const SELECTION_RING_RADIUS = 0.015;
 const MONARCH_SELECTION_RING_RADIUS = 0.022;
 const SELECTION_RING_LIFT = 0.0014; // just above the allegiance ring
@@ -295,6 +316,8 @@ interface LiveUnit {
   orderPos: THREE.Vector3 | null;
   /** An attack order's target unit id, or null. Forces engagement of that unit. */
   orderAttackId: string | null;
+  /** A Queen's back-and-forth patrol route, or null. Walks between two surface points. */
+  patrol: PatrolRoute | null;
   // --- Growth + territory (increment 5) ---
   /** A grown unit's garrison point: when set it musters/holds here instead of following the army. */
   rallyPos: THREE.Vector3 | null;
@@ -377,6 +400,7 @@ function buildLiveUnit(args: {
     flightLift: 0,
     orderPos: null,
     orderAttackId: null,
+    patrol: null,
     rallyPos: null,
     currentTileId: -1,
     lastGrowthMs: 0,
@@ -404,10 +428,20 @@ function modelPath(animal: AnimalId): string {
   return `${import.meta.env.BASE_URL}models/${ANIMAL_FILE_MAP[animal]}`;
 }
 
-// The discrete (non-held) Quick Play pilot gestures Conquest honors. Drive and
-// zoom are held keys read directly each frame; these fire on a tap/double-tap/hold
-// of their bound input, exactly as KeyboardShortcuts dispatches them in Quick Play.
-const PILOT_GESTURE_ACTIONS: readonly string[] = ['pilotCycleMonarch', 'pilotToggleMonarch'];
+// The discrete (non-held) Quick Play gestures Conquest honors through the shared
+// gestureModes dispatch. Drive and zoom are held keys read directly each frame;
+// these fire on a tap/double-tap/hold of their bound input, exactly as
+// KeyboardShortcuts dispatches them in Quick Play:
+//   - pilotCycleMonarch / pilotToggleMonarch — switch which monarch is piloted.
+//   - rally (default Tap Space)        — regroup + select the piloted army.
+//   - selectAllUnits (default 2-Tap)   — select every unit the player controls.
+//   - deployUnits (default Hold Space) — muster all controlled units on the monarch.
+//   - toggleBehaviorRadial (default B)  — open/close the combat-posture radial.
+// Reusing the player's bindings/modes means a Space layout drives both modes alike.
+const COMMAND_GESTURE_ACTIONS: readonly string[] = [
+  'pilotCycleMonarch', 'pilotToggleMonarch', 'rally', 'selectAllUnits', 'deployUnits',
+  'toggleBehaviorRadial',
+];
 
 /**
  * A camera-drive / zoom binding is only usable as a held key when it is a single
@@ -649,30 +683,107 @@ export function ConquestField() {
     tileClaimProgress.current.clear(); // reset every tile's capture timer
   }, [initialUnits]);
 
-  // Re-subscribe only when the binding layout changes. The discrete pilot
-  // gestures (cycle / toggle monarch) run through the same gestureModes dispatch
-  // Quick Play uses, so they honor the player's chosen activation mode; the held
-  // drive/zoom keys are matched against the live layout in the per-frame loop.
+  // Re-subscribe only when the binding layout changes. The discrete command
+  // gestures (cycle/toggle monarch, rally, select-all, muster) run through the same
+  // gestureModes dispatch Quick Play uses, so they honor the player's chosen
+  // activation mode; the held drive/zoom keys are matched against the live layout in
+  // the per-frame loop.
   useEffect(() => {
-    // Both the "cycle" and "toggle" pilot bindings switch which controlled monarch
-    // (King or Queen of any army the player commands) is piloted — the analogue
-    // that keeps each Quick Play key doing something useful in Conquest.
+    // Cycle and toggle both switch which controlled monarch (King or Queen of any
+    // army the player commands) is piloted — the analogue that keeps each Quick Play
+    // pilot key doing something useful in Conquest.
     const runPilotAction = () => cycleMonarch();
 
+    // Whether the player currently controls a given army (capture-aware), resolved
+    // fresh from the store so a just-captured army is commandable immediately.
+    const controlsArmy = (armyId: string) =>
+      humanId !== null
+      && effectiveController(useConquestStore.getState().armyController, armyId) === humanId;
+
+    // The monarch the player is piloting, falling back to any controlled living
+    // monarch if the selected one is down — so a rally/muster still has an anchor.
+    const resolvePilotedMonarch = (): LiveUnit | null => {
+      const monarchId = useConquestStore.getState().selectedMonarchId;
+      const selected = unitsRef.current.find((unit) => unit.id === monarchId) ?? null;
+      if (selected && !selected.dead && !selected.downed) return selected;
+      if (!selected) return null;
+      return unitsRef.current.find((unit) =>
+        unit.isMonarch && !unit.dead && !unit.downed && controlsArmy(unit.armyId)) ?? null;
+    };
+
+    // Rally (Tap): select the piloted army and clear its units' standing orders and
+    // grown-unit garrisons so they fall back in and follow the monarch.
+    const runRally = () => {
+      const monarch = resolvePilotedMonarch();
+      if (!monarch) return;
+      const idSet = new Set(selectArmyUnitIds(unitsRef.current, monarch.armyId, controlsArmy));
+      for (const unit of unitsRef.current) {
+        if (!idSet.has(unit.id)) continue;
+        unit.orderPos = null;
+        unit.orderAttackId = null;
+        unit.patrol = null;
+        unit.rallyPos = null;
+      }
+      selectedIds.current = idSet;
+    };
+
+    // Select All (Double-Tap): select every unit the player controls (all armies).
+    const runSelectAll = () => {
+      selectedIds.current = new Set(selectAllControlledUnitIds(unitsRef.current, controlsArmy));
+    };
+
+    // Muster (Hold): order every controlled unit to converge on the piloted monarch
+    // and select them — a "call the nation in" gather, distinct from the tap's
+    // army-only regroup. A downed unit can't march and the monarch is the rally point.
+    const runMuster = () => {
+      const monarch = resolvePilotedMonarch();
+      if (!monarch) return;
+      const idSet = new Set(selectAllControlledUnitIds(unitsRef.current, controlsArmy));
+      for (const unit of unitsRef.current) {
+        if (!idSet.has(unit.id) || unit === monarch || unit.downed) continue;
+        unit.orderPos = monarch.position.clone();
+        unit.orderAttackId = null;
+        unit.patrol = null;
+        unit.rallyPos = null;
+      }
+      selectedIds.current = idSet;
+    };
+
+    // Toggle the combat-posture radial. The radial is a DOM overlay owned by
+    // ConquestScreen; ConquestField owns the key (so it honors the chosen activation
+    // mode) and asks the overlay to toggle via a window event, mirroring how Quick
+    // Play's KeyboardShortcuts drives its BehaviorRadial.
+    const toggleRadial = () => window.dispatchEvent(new CustomEvent('rts:conquest-toggle-radial'));
+
+    // The handler each command action fires (regardless of its activation mode).
+    const handlerFor = (actionId: string): (() => void) | null => {
+      switch (actionId) {
+        case 'pilotCycleMonarch':
+        case 'pilotToggleMonarch': return runPilotAction;
+        case 'rally': return runRally;
+        case 'selectAllUnits': return runSelectAll;
+        case 'deployUnits': return runMuster;
+        case 'toggleBehaviorRadial': return toggleRadial;
+        default: return null;
+      }
+    };
+
     const configFor = (
-      _actionId: string,
+      actionId: string,
       mode: ActivationMode,
     ): Partial<TokenGestureConfig> | undefined => {
-      if (mode === 'tap') return { onTap: runPilotAction };
-      if (mode === 'double-tap') return { onDoubleTap: runPilotAction };
-      if (mode === 'hold') return { onHoldStart: runPilotAction };
+      const handler = handlerFor(actionId);
+      if (!handler) return undefined;
+      if (mode === 'tap') return { onTap: handler };
+      if (mode === 'double-tap') return { onDoubleTap: handler };
+      if (mode === 'hold') return { onHoldStart: handler };
       return undefined; // chord fires on press below
     };
 
     const dispatch = buildTokenDispatch({
       bindings: keyboardBindings,
       modes: keyboardBindingModes,
-      actionIds: PILOT_GESTURE_ACTIONS,
+      actionIds: COMMAND_GESTURE_ACTIONS,
       configFor,
     });
     const ownsToken = (token: string) =>
@@ -687,7 +798,7 @@ export function ConquestField() {
       event.preventDefault();
       if (event.repeat) return; // OS auto-repeat; the resolver owns held cadence
       for (const chord of dispatch.chordActions) {
-        if (chord.token === token) runPilotAction();
+        if (chord.token === token) handlerFor(chord.actionId)?.();
       }
       dispatch.resolvers.get(token)?.press(performance.now());
     };
@@ -720,7 +831,7 @@ export function ConquestField() {
       window.removeEventListener('keyup', onKeyUp);
       canvas.removeEventListener('wheel', onWheel);
     };
-  }, [cycleMonarch, gl, keyboardBindings, keyboardBindingModes]);
+  }, [cycleMonarch, gl, keyboardBindings, keyboardBindingModes, humanId]);
 
   // Pointer interaction, mirroring Quick Play's mouse model so the player commands
   // their armies the same way on the globe (the camera stays the chase cam):
@@ -728,6 +839,8 @@ export function ConquestField() {
   //   • LEFT drag (a box)     — box-select every controlled unit inside the rectangle.
   //   • RIGHT click on a tile — move-order the selection there (great-circle travel).
   //   • RIGHT click on an enemy — attack-order the selection onto that enemy.
+  //   • RIGHT hold on a Queen — draw a gold line and set her back-and-forth patrol.
+  //   • SHIFT + RIGHT click   — set the selected Queen's spawn rally point.
   //   • BOTH buttons together — fire the piloted army's ability (suppresses the above).
   // Only units the human currently controls can be selected/ordered (the army-command
   // model). The ability fire is recorded as an edge the per-frame loop consumes.
@@ -744,6 +857,11 @@ export function ConquestField() {
     } as CSSStyleDeclaration);
     document.body.appendChild(selectionBox);
 
+    // A gold dotted line previewing a Queen's patrol route during a right-button hold
+    // on her (committed on release), reusing Quick Play's shared indicator helper.
+    const patrolArrow = createDottedArrow(PATROL_ARROW_COLOR);
+    document.body.appendChild(patrolArrow);
+
     let leftDown = false;
     let rightDown = false;
     let abilityGesture = false; // both buttons were held during this gesture
@@ -751,6 +869,16 @@ export function ConquestField() {
     let dragMoved = false;
     let startX = 0;
     let startY = 0;
+
+    // Right-hold-on-a-Queen patrol gesture state. `patrolQueenId` is the Queen the
+    // hold is arming; `patrolArmed` flips true once the hold passes PATROL_HOLD_MS
+    // (the gold line then shows and a release commits the route). The cursor is
+    // tracked so the line re-aims as the pointer moves during the hold.
+    let patrolQueenId: string | null = null;
+    let patrolArmed = false;
+    let patrolCursorX = 0;
+    let patrolCursorY = 0;
+    let patrolTimer: ReturnType<typeof setTimeout> | null = null;
 
     // Project a world point to client (page) pixels; `behind` flags points off-frustum.
     const projectToClient = (worldPos: THREE.Vector3) => {
@@ -824,6 +952,7 @@ export function ConquestField() {
           if (!selectedIds.current.has(unit.id) || unit.dead || unit.downed || unit.carriedByOwlId !== null) continue;
           unit.orderAttackId = enemy.id;
           unit.orderPos = null;
+          unit.patrol = null; // an explicit order supersedes a standing patrol
         }
         return;
       }
@@ -835,6 +964,7 @@ export function ConquestField() {
         if (!selectedIds.current.has(unit.id) || unit.dead || unit.downed || unit.carriedByOwlId !== null) continue;
         unit.orderPos = dest.clone();
         unit.orderAttackId = null;
+        unit.patrol = null; // an explicit order supersedes a standing patrol
       }
     };
 
@@ -851,18 +981,52 @@ export function ConquestField() {
       }
     };
 
+    // --- Right-hold-on-a-Queen patrol gesture helpers ---
+    const clearPatrolTimer = () => {
+      if (patrolTimer !== null) { clearTimeout(patrolTimer); patrolTimer = null; }
+    };
+    const resetPatrolHold = () => {
+      clearPatrolTimer();
+      patrolQueenId = null;
+      patrolArmed = false;
+      hideDottedArrow(patrolArrow);
+    };
+    const patrolQueen = (): LiveUnit | null =>
+      patrolQueenId === null ? null : unitsRef.current.find((u) => u.id === patrolQueenId) ?? null;
+
+    // Re-aim the gold line from the held Queen to the current cursor tile.
+    const aimPatrolLine = () => {
+      const queen = patrolQueen();
+      if (!queen) return;
+      const start = projectToClient(queen.position);
+      positionDottedArrow(patrolArrow, { x: start.x, y: start.y }, { x: patrolCursorX, y: patrolCursorY });
+    };
+
+    // Commit the held Queen's patrol: a route from her current spot to the cursor tile.
+    const commitPatrol = () => {
+      const queen = patrolQueen();
+      if (!queen) return;
+      const dest = tileDestFromClient(patrolCursorX, patrolCursorY);
+      if (!dest) return;
+      queen.patrol = makePatrolRoute(queen.position, dest);
+      queen.orderPos = null;
+      queen.orderAttackId = null;
+    };
+
     const hideBox = () => { selectionBox.style.display = 'none'; };
 
     const onMouseDown = (event: MouseEvent) => {
       if (event.button === 0) leftDown = true;
       else if (event.button === 2) rightDown = true;
       if (leftDown && rightDown) {
-        // Both buttons: an ability fire. Cancel any drag-select the first button began.
+        // Both buttons: an ability fire. Cancel any drag-select or patrol the first
+        // button began.
         abilityGesture = true;
         abilityRequested.current = true;
         dragActive = false;
         dragMoved = false;
         hideBox();
+        resetPatrolHold();
         return;
       }
       if (event.button === 0) {
@@ -870,10 +1034,32 @@ export function ConquestField() {
         dragMoved = false;
         startX = event.clientX;
         startY = event.clientY;
+      } else if (event.button === 2 && !event.shiftKey) {
+        // Right press on a controlled Queen arms a patrol hold (Shift is the rally
+        // gesture, so it never arms patrol). A quick release before the threshold
+        // falls through to a normal move/attack order in onMouseUp.
+        const queen = pickUnitAt(event.clientX, event.clientY, (u) => u.kind === 'queen' && controls(u));
+        if (queen) {
+          resetPatrolHold();
+          patrolQueenId = queen.id;
+          patrolCursorX = event.clientX;
+          patrolCursorY = event.clientY;
+          patrolTimer = setTimeout(() => {
+            patrolTimer = null;
+            patrolArmed = true;
+            aimPatrolLine();
+          }, PATROL_HOLD_MS);
+        }
       }
     };
 
     const onMouseMove = (event: MouseEvent) => {
+      // While a patrol hold is live, track the cursor and (once armed) re-aim the line.
+      if (patrolQueenId !== null && !abilityGesture) {
+        patrolCursorX = event.clientX;
+        patrolCursorY = event.clientY;
+        if (patrolArmed) aimPatrolLine();
+      }
       if (!dragActive || abilityGesture) return;
       const dx = event.clientX - startX;
       const dy = event.clientY - startY;
@@ -889,7 +1075,10 @@ export function ConquestField() {
 
     const onMouseUp = (event: MouseEvent) => {
       if (event.button === 0) {
-        if (!abilityGesture) {
+        // Only act on a release whose press began on the canvas (leftDown). A click
+        // that started on a DOM overlay (the posture radial, HUD buttons) reaches this
+        // window-level listener too, but must not re-select or clear units.
+        if (leftDown && !abilityGesture) {
           if (dragMoved) {
             applyBoxSelection(screenBoxFromDrag(startX, startY, event.clientX, event.clientY));
           } else {
@@ -902,10 +1091,18 @@ export function ConquestField() {
         hideBox();
         leftDown = false;
       } else if (event.button === 2) {
-        if (!abilityGesture) {
-          if (event.shiftKey) setQueenRally(event.clientX, event.clientY);
-          else issueOrder(event.clientX, event.clientY);
+        // As above, only a press that began on the canvas (rightDown) issues a command.
+        // An armed patrol hold commits the route and suppresses the normal order; a
+        // release before the threshold falls through to move/attack (or rally).
+        if (rightDown) {
+          if (patrolArmed) {
+            commitPatrol();
+          } else if (!abilityGesture) {
+            if (event.shiftKey) setQueenRally(event.clientX, event.clientY);
+            else issueOrder(event.clientX, event.clientY);
+          }
         }
+        resetPatrolHold();
         rightDown = false;
       }
       if (!leftDown && !rightDown) abilityGesture = false; // gesture fully released
@@ -916,6 +1113,7 @@ export function ConquestField() {
     const onBlur = () => {
       leftDown = false; rightDown = false; abilityGesture = false;
       dragActive = false; dragMoved = false; hideBox();
+      resetPatrolHold();
     };
 
     canvas.addEventListener('mousedown', onMouseDown);
@@ -929,9 +1127,32 @@ export function ConquestField() {
       window.removeEventListener('mouseup', onMouseUp);
       canvas.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('blur', onBlur);
+      clearPatrolTimer();
       document.body.removeChild(selectionBox);
+      document.body.removeChild(patrolArrow);
     };
   }, [gl, camera, world, biomes, humanId]);
+
+  // Combat-posture radial bridge: the radial (a DOM overlay in ConquestScreen) asks
+  // the field to apply a partial behavior to the current selection via this event.
+  // Only the player's own commandable units are changed; posture radii are recomputed
+  // so the new stance takes effect immediately. The reverse direction — publishing the
+  // selection's current posture for the radial to highlight — is the per-frame summary.
+  useEffect(() => {
+    const onApply = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { behavior?: Partial<UnitBehavior> } | undefined;
+      if (!detail?.behavior) return;
+      const armyController = useConquestStore.getState().armyController;
+      for (const unit of unitsRef.current) {
+        if (!selectedIds.current.has(unit.id) || unit.dead) continue;
+        if (humanId === null || effectiveController(armyController, unit.armyId) !== humanId) continue;
+        unit.behavior = mergeBehavior(unit.behavior, detail.behavior);
+        unit.posture = stanceParams(unit.behavior.stance, unit.combat.attackRange);
+      }
+    };
+    window.addEventListener('rts:conquest-apply-behavior', onApply);
+    return () => window.removeEventListener('rts:conquest-apply-behavior', onApply);
+  }, [humanId]);
 
   // Reusable scratch (no per-frame allocation in the hot loop).
   const scratch = useRef({
@@ -1313,6 +1534,7 @@ export function ConquestField() {
         drivingInput = true;
         monarch.orderPos = null;       // taking the wheel cancels any standing order
         monarch.orderAttackId = null;
+        monarch.patrol = null;         // and any standing patrol
         quat.setFromAxisAngle(up, -turn * TURN_RATE * delta);
         monarch.facing.applyQuaternion(quat);
         tangentize(monarch.facing, up);
@@ -1323,6 +1545,7 @@ export function ConquestField() {
         drivingInput = true;
         monarch.orderPos = null;
         monarch.orderAttackId = null;
+        monarch.patrol = null;
         step.copy(monarch.facing).multiplyScalar(forwardBack * MOVE_SPEED * monarch.combat.moveMultiplier * delta);
         candidateDir.copy(monarch.position).add(step).normalize();
         const tileId = nearestTileId(candidateDir, world);
@@ -1527,6 +1750,15 @@ export function ConquestField() {
         // Beyond the leash: abandon pursuit this frame and return to the leader below.
       }
 
+      // A Queen on patrol walks back and forth between her two route endpoints (with
+      // no enemy to engage); reaching one flips her toward the other. Patrol outranks
+      // following so a patrolling leader Queen leads her army along the beat.
+      if (unit.patrol) {
+        const arrived = !moveToward(unit, patrolTarget(unit.patrol), FOLLOW_SPEED, FOLLOW_GAP, delta);
+        unit.patrol.towardB = advancePatrol(unit.patrol.towardB, arrived);
+        continue;
+      }
+
       // A grown unit with a rally point garrisons there (mustering to a Queen-set
       // front) instead of trailing the army; everyone else follows the army leader.
       if (unit.rallyPos) {
@@ -1616,6 +1848,7 @@ export function ConquestField() {
         member.target = null;
         member.orderPos = null;       // an army changing hands drops its old orders
         member.orderAttackId = null;
+        member.patrol = null;         // and any standing patrol
         member.rallyPos = null;       // and grown units stop garrisoning the old front
         selectedIds.current.delete(member.id);
       }
@@ -1732,6 +1965,29 @@ export function ConquestField() {
         }
       }
       if (changed) conquest.setControlledUnitCounts(published);
+    }
+
+    // 8.8) Publish the selection's combat-posture summary for the radial overlay,
+    //      diffed so it only writes when the selection (or its postures) actually
+    //      change — the radial reads this to highlight each axis's active option.
+    {
+      const selectedBehaviors: UnitBehavior[] = [];
+      for (const unit of liveUnits) {
+        if (unit.dead || !selectedIds.current.has(unit.id)) continue;
+        if (humanId === null || effectiveController(armyController, unit.armyId) !== humanId) continue;
+        selectedBehaviors.push(unit.behavior);
+      }
+      const summary = selectedBehaviors.length === 0
+        ? null
+        : { count: selectedBehaviors.length, ...summarizeBehaviors(selectedBehaviors) };
+      const previous = conquest.behaviorSummary;
+      const changed = (previous === null) !== (summary === null)
+        || (!!previous && !!summary && (
+          previous.count !== summary.count
+          || previous.stance !== summary.stance
+          || previous.fire !== summary.fire
+          || previous.priority !== summary.priority));
+      if (changed) conquest.setBehaviorSummary(summary);
     }
 
     // 9) Push every living unit's transform + animation pose + allegiance ring, and

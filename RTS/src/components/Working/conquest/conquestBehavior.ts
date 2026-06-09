@@ -184,3 +184,32 @@ export function mergeBehavior(current: UnitBehavior, patch: Partial<UnitBehavior
     priority: patch.priority ?? current.priority,
   };
 }
+
+// --- Selection summary (radial menu) ----------------------------------------
+
+/** Each behavior axis across a selection, or null on that axis when units disagree. */
+export interface BehaviorSummary {
+  stance: UnitStance | null;
+  fire: FireMode | null;
+  priority: TargetPriority | null;
+}
+
+/** The single shared value across a list, or null when it is mixed (or empty). */
+function uniformAxis<T>(values: readonly T[]): T | null {
+  if (values.length === 0) return null;
+  const first = values[0];
+  return values.every((value) => value === first) ? first : null;
+}
+
+/**
+ * Summarize a selection's behaviors for the posture radial: each axis is the shared
+ * value across the selection, or null ("Mixed") when the units disagree. Pure so the
+ * field can compute it from its live units and publish the compact result to the HUD.
+ */
+export function summarizeBehaviors(behaviors: readonly UnitBehavior[]): BehaviorSummary {
+  return {
+    stance: uniformAxis(behaviors.map((behavior) => behavior.stance)),
+    fire: uniformAxis(behaviors.map((behavior) => behavior.fire)),
+    priority: uniformAxis(behaviors.map((behavior) => behavior.priority)),
+  };
+}

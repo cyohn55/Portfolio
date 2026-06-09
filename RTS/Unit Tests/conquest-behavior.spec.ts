@@ -6,8 +6,10 @@ import {
   resolveFireMode,
   selectTargetForBehavior,
   mergeBehavior,
+  summarizeBehaviors,
   type BehaviorActor,
 } from '../src/components/Working/conquest/conquestBehavior';
+import type { UnitBehavior } from '../src/game/types';
 import { conquestStatsFor } from '../src/components/Working/conquest/conquestCombat';
 import type { ConquestUnitKind } from '../src/components/Working/conquest/conquestState';
 
@@ -141,5 +143,27 @@ test.describe('Behavior merge (forward-compat with the set-behavior command)', (
     const current = { stance: 'defensive', fire: 'free', priority: 'nearest' } as const;
     expect(mergeBehavior(current, { stance: 'aggressive' })).toEqual({ stance: 'aggressive', fire: 'free', priority: 'nearest' });
     expect(mergeBehavior(current, { fire: 'hold' })).toEqual({ stance: 'defensive', fire: 'hold', priority: 'nearest' });
+  });
+});
+
+test.describe('summarizeBehaviors (radial selection summary)', () => {
+  const aggressive: UnitBehavior = { stance: 'aggressive', fire: 'free', priority: 'monarch' };
+  const defensive: UnitBehavior = { stance: 'defensive', fire: 'free', priority: 'nearest' };
+
+  test('reports each axis when the whole selection agrees', () => {
+    expect(summarizeBehaviors([aggressive, { ...aggressive }])).toEqual({
+      stance: 'aggressive', fire: 'free', priority: 'monarch',
+    });
+  });
+
+  test('reports null on the axes that disagree, keeping the shared ones', () => {
+    // Stance and priority differ; fire ('free') is shared across both.
+    expect(summarizeBehaviors([aggressive, defensive])).toEqual({
+      stance: null, fire: 'free', priority: null,
+    });
+  });
+
+  test('an empty selection summarizes to all-null', () => {
+    expect(summarizeBehaviors([])).toEqual({ stance: null, fire: null, priority: null });
   });
 });

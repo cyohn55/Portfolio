@@ -21,6 +21,7 @@ import {
   territoryPercent,
 } from './conquestGrowth';
 import { ConquestGlobe } from './ConquestGlobe';
+import { ConquestBehaviorRadial } from './ConquestBehaviorRadial';
 import './ConquestScreen.css';
 
 /** The human player's controller id (index 0 of the roster). */
@@ -75,16 +76,19 @@ export function ConquestScreen() {
       <PlayerRosterPanel />
       <TileInspectorPanel />
       <CaptureBanner />
+      <ConquestBehaviorRadial />
       <OutcomeOverlay onPlayAgain={handleBack} />
 
       <div className="conquest-screen-hint">
         Move keys drive · A switch King/Queen · Scroll zoom · Left-click / drag-box
-        select your units · Right-click to move (or an enemy to attack) · Shift +
-        right-click sets a selected Queen's rally · Both mouse buttons fire your army's
-        ability · Hold any terrain for 15s with no enemy on it to capture it, then keep a
-        unit there to hold it; owned grassland also lets your Queens grow +2 units each ·
-        King (gold aura) buffs damage, Queen (green
-        aura) heals · Down a rival's King AND Queen to capture their whole army
+        select your units · Right-click to move (or an enemy to attack) · Space rally
+        your army (double-tap = select all, hold = muster on the monarch) · B opens the
+        combat-posture radial · Shift + right-click sets a selected Queen's rally · Hold
+        right-click on a Queen to draw a patrol route · Both mouse buttons fire your
+        army's ability · Hold any terrain for 15s with no enemy on it to capture it, then
+        keep a unit there to hold it; owned grassland also lets your Queens grow +2 units
+        each · King (gold aura) buffs damage, Queen (green aura) heals · Down a rival's
+        King AND Queen to capture their whole army
       </div>
     </div>
   );
