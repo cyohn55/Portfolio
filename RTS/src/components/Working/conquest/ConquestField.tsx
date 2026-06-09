@@ -61,6 +61,20 @@ import {
   type StanceParams,
 } from './conquestBehavior';
 import {
+  abilityFor,
+  computeHissPushes,
+  selectSwarmTarget,
+  swarmStingKills,
+  HISS_RANGE,
+  HISS_PUSH_SPEED,
+  HISS_PUSH_MS,
+  HISS_POSE_MS,
+  HISS_COOLDOWN_MS,
+  SHELL_RETRIGGER_MS,
+  SWARM_DIVE_SPEED,
+  SWARM_STING_RANGE,
+} from './conquestAbilities';
+import {
   buildPoseVariants,
   selectPoseIndex,
   airLiftFactor,
@@ -150,6 +164,20 @@ interface LiveUnit {
   lastCombatMs: number;
   /** Controller of the unit that most recently damaged this one (the would-be conqueror). */
   lastAttackerController: string | null;
+  // --- Per-animal ability state (increment 3) ---
+  /** Turtle Shell: while true the unit is immovable, invulnerable, and cannot attack. */
+  shelled: boolean;
+  /** Stamp of the last shell toggle, so a held both-button press can't flicker it each frame. */
+  lastShellToggleMs: number;
+  /** Cat Hiss: when the cat last hissed (gates its cooldown). */
+  lastHissMs: number;
+  /** Cat Hiss: while in the future, this cat shows the Kitty_F2 hiss pose. */
+  hissUntilMs: number;
+  /** Cat Hiss knockback on THIS unit: while in the future, slide it along `knockbackDir`. */
+  knockbackUntilMs: number;
+  knockbackDir: THREE.Vector3;
+  /** Bee Swarm: the enemy unit id this follower bee is diving at, or null when not swarming. */
+  swarmTargetId: string | null;
   dead: boolean;
   /** Resolved each frame: the enemy this unit is engaging, if any. */
   target: LiveUnit | null;
@@ -300,6 +328,13 @@ export function ConquestField() {
         lastAttackMs: 0,
         lastCombatMs: 0,
         lastAttackerController: null,
+        shelled: false,
+        lastShellToggleMs: 0,
+        lastHissMs: 0,
+        hissUntilMs: 0,
+        knockbackUntilMs: 0,
+        knockbackDir: new THREE.Vector3(),
+        swarmTargetId: null,
         dead: false,
         target: null,
         poseVariants,
@@ -413,6 +448,40 @@ export function ConquestField() {
     };
   }, [cycleMonarch, gl, keyboardBindings, keyboardBindingModes]);
 
+  // Ability trigger: both mouse buttons pressed together fire the piloted army's
+  // per-animal special, mirroring Quick Play's simultaneous primary+secondary
+  // press. Recorded here as an edge (one fire per both-down transition); the
+  // per-frame loop consumes the flag and dispatches it against the live army.
+  const abilityRequested = useRef(false);
+  useEffect(() => {
+    const canvas = gl.domElement;
+    let leftDown = false;
+    let rightDown = false;
+    const onMouseDown = (event: MouseEvent) => {
+      if (event.button === 0) leftDown = true;
+      else if (event.button === 2) rightDown = true;
+      if (leftDown && rightDown) abilityRequested.current = true;
+    };
+    const onMouseUp = (event: MouseEvent) => {
+      if (event.button === 0) leftDown = false;
+      else if (event.button === 2) rightDown = false;
+    };
+    // The right-button press is an ability input here, not a context menu.
+    const onContextMenu = (event: MouseEvent) => event.preventDefault();
+    const onBlur = () => { leftDown = false; rightDown = false; };
+
+    canvas.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('contextmenu', onContextMenu);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      canvas.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mouseup', onMouseUp);
+      canvas.removeEventListener('contextmenu', onContextMenu);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [gl]);
+
   // Reusable scratch (no per-frame allocation in the hot loop).
   const scratch = useRef({
     up: new THREE.Vector3(),
@@ -461,6 +530,61 @@ export function ConquestField() {
     return true;
   };
 
+  // Fire the piloted army's per-animal special (both-mouse-button trigger). The
+  // player commands the WHOLE army, so every living unit of the army's single
+  // animal acts at once: turtles shell up, cats hiss, bee followers commit to a
+  // dive. The projectile / beam / carry abilities (eggs, tongue, pickup) are wired
+  // in the next increment; an unsupported animal simply does nothing here.
+  const fireArmyAbility = (piloted: LiveUnit | null, nowMs: number) => {
+    if (!piloted) return;
+    const ability = abilityFor(piloted.animal);
+    if (!ability) return;
+    const armyId = piloted.armyId;
+
+    if (ability === 'shell') {
+      for (const unit of liveUnits) {
+        if (unit.armyId !== armyId || unit.dead || unit.downed) continue;
+        if (nowMs - unit.lastShellToggleMs < SHELL_RETRIGGER_MS) continue;
+        unit.shelled = !unit.shelled;
+        unit.lastShellToggleMs = nowMs;
+        if (unit.shelled) unit.target = null; // pulling in drops any current engagement
+      }
+      return;
+    }
+
+    if (ability === 'hiss') {
+      for (const cat of liveUnits) {
+        if (cat.armyId !== armyId || cat.dead || cat.downed || cat.shelled) continue;
+        if (nowMs - cat.lastHissMs < HISS_COOLDOWN_MS) continue;
+        cat.lastHissMs = nowMs;
+        cat.hissUntilMs = nowMs + HISS_POSE_MS;
+        for (const push of computeHissPushes(cat, liveUnits, HISS_RANGE)) {
+          const enemy = liveUnits.find((unit) => unit.id === push.id);
+          if (!enemy || enemy.shelled || enemy.downed) continue; // shelled/downed resist the shove
+          enemy.knockbackDir.copy(push.direction);
+          enemy.knockbackUntilMs = nowMs + HISS_PUSH_MS;
+        }
+      }
+      return;
+    }
+
+    if (ability === 'swarm') {
+      // Enemies already claimed by a bee mid-dive, so a cloud spreads its stings.
+      const claimedTargetIds = new Set<string>();
+      for (const unit of liveUnits) {
+        if (unit.swarmTargetId !== null) claimedTargetIds.add(unit.swarmTargetId);
+      }
+      for (const bee of liveUnits) {
+        if (bee.armyId !== armyId || bee.dead || bee.isMonarch) continue; // sacrificial: followers only
+        if (bee.swarmTargetId !== null) continue;                         // already diving
+        const prey = selectSwarmTarget(bee, liveUnits, claimedTargetIds);
+        if (!prey) continue;
+        bee.swarmTargetId = prey.id;
+        claimedTargetIds.add(prey.id);
+      }
+    }
+  };
+
   useFrame((state, rawDelta) => {
     if (!world || liveUnits.length === 0) return;
     const delta = Math.min(rawDelta, 0.05); // clamp hitches
@@ -491,6 +615,12 @@ export function ConquestField() {
         && unit.controllerId === selectedUnit.controllerId) ?? null;
     }
 
+    // Ability dispatch: a both-mouse-button press fires the piloted army's special.
+    if (abilityRequested.current) {
+      abilityRequested.current = false;
+      fireArmyAbility(monarch, elapsedMs);
+    }
+
     // Resolve the player's live drive/zoom bindings (default ESDF + wheel). Held
     // keys are matched the same way CameraController matches them in Quick Play.
     const bindings = bindingsRef.current;
@@ -504,8 +634,10 @@ export function ConquestField() {
     //    tangent plane (matching Quick Play's camera-relative ESDF drive) and
     //    constrained to passable tiles. With no input the monarch is handled by the
     //    combat/idle pass below (so it auto-defends).
+    // A shelled monarch is immovable; a monarch mid-hiss-knockback is owned by the
+    // shove (handled in the movement pass), so neither is driven by input this frame.
     let drivingInput = false;
-    if (monarch) {
+    if (monarch && !monarch.shelled && monarch.knockbackUntilMs <= elapsedMs) {
       up.copy(monarch.position).normalize();
 
       camera.getWorldDirection(camForwardTangent);
@@ -565,7 +697,9 @@ export function ConquestField() {
     //    priority. A weapons-tight (fire 'hold') or non-engaging (flee) unit acquires
     //    nothing and simply stays with its army.
     for (const unit of liveUnits) {
-      unit.target = unit.dead
+      // A shelled turtle can't fight, and a swarming bee is committed to its dive,
+      // so neither acquires a normal engagement target.
+      unit.target = (unit.dead || unit.shelled || unit.swarmTargetId !== null)
         ? null
         : selectTargetForBehavior(unit, liveUnits, unit.behavior, unit.posture);
     }
@@ -607,6 +741,53 @@ export function ConquestField() {
     //    skipped (the latter's drive already ran).
     for (const unit of liveUnits) {
       if (unit.dead || unit.downed) continue;
+
+      // Turtle Shell: pulled in, the unit is pinned in place (and ignores knockback).
+      if (unit.shelled) continue;
+
+      // Cat Hiss knockback: while shoved, the unit slides along the stored tangent
+      // and its normal AI is suppressed (the impulse owns its motion this frame).
+      if (unit.knockbackUntilMs > elapsedMs) {
+        up.copy(unit.position).normalize();
+        tangentize(unit.knockbackDir, up); // keep the shove along the surface as it curves
+        step.copy(unit.knockbackDir).multiplyScalar(HISS_PUSH_SPEED * delta);
+        candidateDir.copy(unit.position).add(step).normalize();
+        const tileId = nearestTileId(candidateDir, world);
+        unit.position.copy(candidateDir).multiplyScalar(tileTopRadius(biomes[tileId]));
+        unit.facing.copy(unit.knockbackDir);
+        tangentize(unit.facing, candidateDir);
+        continue;
+      }
+      unit.knockbackUntilMs = 0;
+
+      // Bee Swarm dive: a committed bee flies straight at its claimed enemy and, on
+      // contact, stings once — a coin flip that kills both it and the target or fizzles.
+      if (unit.swarmTargetId !== null) {
+        const prey = liveUnits.find((candidate) => candidate.id === unit.swarmTargetId);
+        if (prey && !prey.dead && !prey.downed) {
+          if (unit.position.distanceToSquared(prey.position) <= SWARM_STING_RANGE * SWARM_STING_RANGE) {
+            unit.lastAttackMs = elapsedMs;
+            unit.lastCombatMs = elapsedMs;
+            if (swarmStingKills(Math.random())) {
+              prey.hp = 0;
+              prey.lastCombatMs = elapsedMs;
+              prey.lastAttackerController = unit.controllerId; // credit the would-be conqueror
+              // The bee dies with the sting — kill it outright so a friendly Queen's
+              // heal can't undo the sacrifice before the casualty pass runs.
+              unit.hp = 0;
+              unit.dead = true;
+              if (unit.group) unit.group.visible = false;
+              if (unit.ring) unit.ring.visible = false;
+            }
+            unit.swarmTargetId = null;
+          } else {
+            moveToward(unit, prey.position, SWARM_DIVE_SPEED, 0, delta);
+          }
+          continue;
+        }
+        unit.swarmTargetId = null; // target gone — break off and resume normal AI below
+      }
+
       if (unit === monarch && drivingInput) continue;
 
       const leader = leaderByArmy.get(unit.armyId);
@@ -647,6 +828,7 @@ export function ConquestField() {
     for (const unit of liveUnits) {
       const target = unit.target;
       if (unit.dead || unit.downed || !target || target.dead) continue;
+      if (target.shelled) continue; // a shelled turtle shrugs off the blow
       if (!isWithinAttackRange(unit, target, unit.combat.attackRange)) continue;
       if (!isAttackReady(unit.lastAttackMs, unit.combat.attackCooldownMs, elapsedMs)) continue;
       unit.lastAttackMs = elapsedMs;
@@ -714,7 +896,13 @@ export function ConquestField() {
       unit.lastPosition.copy(unit.position);
       const isMoving = !unit.downed && elapsedMs - unit.lastMovedMs < MOVE_HOLD_MS;
 
-      const activePose = selectPoseIndex(unit.animal, isMoving, elapsedMs);
+      let activePose = selectPoseIndex(unit.animal, isMoving, elapsedMs);
+      // Ability poses override the walk/idle cycle: a shelled Turtle holds its shell
+      // frame (F0); a hissing Cat flashes the Kitty_F2 hiss frame for the pose window.
+      if (unit.shelled && unit.animal === 'Turtle') activePose = 0;
+      else if (unit.animal === 'Cat' && unit.hissUntilMs > elapsedMs) {
+        activePose = Math.min(2, unit.poseGroups.length - 1);
+      }
       for (let i = 0; i < unit.poseGroups.length; i++) {
         const poseGroup = unit.poseGroups[i];
         if (poseGroup) poseGroup.visible = i === activePose;
