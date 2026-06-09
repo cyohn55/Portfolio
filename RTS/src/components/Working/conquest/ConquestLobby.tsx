@@ -12,8 +12,8 @@ import type { AnimalId } from '../../../game/types';
 import {
   useConquestStore,
   MAX_CONQUEST_PLAYERS,
-  DEFAULT_CONQUEST_SUBDIVISIONS,
 } from './conquestState';
+import type { WorldArchetype } from './conquestBiomes';
 import './ConquestLobby.css';
 
 const ALL_ANIMALS: AnimalId[] = [
@@ -28,6 +28,34 @@ function animalDisplayName(animal: AnimalId): string {
   return ANIMAL_DISPLAY_NAME[animal] ?? animal;
 }
 
+/** Map-size choices → Goldberg subdivision level (tiles = 10·4^level + 2). */
+interface MapSizeOption {
+  label: string;
+  subdivisions: number;
+}
+const MAP_SIZES: MapSizeOption[] = [
+  { label: 'Small', subdivisions: 2 },
+  { label: 'Medium', subdivisions: 3 },
+  { label: 'Large', subdivisions: 4 },
+];
+
+/**
+ * World-type choices. `archetype: null` is the balanced, fully seed-derived world;
+ * the named archetypes bias the seed roll toward a recognizable flavor.
+ */
+interface WorldTypeOption {
+  label: string;
+  archetype: WorldArchetype | null;
+}
+const WORLD_TYPES: WorldTypeOption[] = [
+  { label: 'Balanced', archetype: null },
+  { label: 'Continents', archetype: 'continents' },
+  { label: 'Islands', archetype: 'islands' },
+  { label: 'Pangaea', archetype: 'pangaea' },
+  { label: 'Frozen', archetype: 'frozen' },
+  { label: 'Arid', archetype: 'arid' },
+];
+
 /** A fresh 32-bit seed for the "randomize" button (worldgen itself is seeded). */
 function randomSeed(): number {
   return Math.floor(Math.random() * 0xffffffff) >>> 0;
@@ -40,6 +68,8 @@ export function ConquestLobby() {
   const [seedText, setSeedText] = useState<string>(() => String(randomSeed()));
   const [aiCount, setAiCount] = useState<number>(3);
   const [selectedAnimal, setSelectedAnimal] = useState<AnimalId | null>(null);
+  const [subdivisions, setSubdivisions] = useState<number>(MAP_SIZES[1].subdivisions);
+  const [archetype, setArchetype] = useState<WorldArchetype | null>(null);
 
   const parsedSeed = Number.parseInt(seedText, 10);
   const seedIsValid = Number.isFinite(parsedSeed);
@@ -50,9 +80,10 @@ export function ConquestLobby() {
     if (!canStart || selectedAnimal === null) return;
     generate({
       seed: parsedSeed >>> 0,
-      subdivisions: DEFAULT_CONQUEST_SUBDIVISIONS,
+      subdivisions,
       humanAnimal: selectedAnimal,
       aiCount,
+      archetype: archetype ?? undefined,
     });
     transitionToScreen('conquest');
   };
@@ -106,6 +137,34 @@ export function ConquestLobby() {
           <p className="conquest-hint">
             Up to 12 players spawn on the planet's twelve pentagon nodes.
           </p>
+
+          <label className="conquest-field-label">Map Size</label>
+          <div className="conquest-animal-grid">
+            {MAP_SIZES.map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                className={`conquest-animal-chip ${subdivisions === option.subdivisions ? 'selected' : ''}`}
+                onClick={() => setSubdivisions(option.subdivisions)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <label className="conquest-field-label">World Type</label>
+          <div className="conquest-animal-grid">
+            {WORLD_TYPES.map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                className={`conquest-animal-chip ${archetype === option.archetype ? 'selected' : ''}`}
+                onClick={() => setArchetype(option.archetype)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </section>
 
         <section className="conquest-config-panel">

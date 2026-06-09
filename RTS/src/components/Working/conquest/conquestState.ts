@@ -29,9 +29,10 @@ import { buildGoldbergWorld, type GoldbergWorld } from './goldbergWorld';
 import {
   classifyWorld,
   BIOMES,
-  DEFAULT_WORLDGEN,
+  deriveWorldGenParams,
   type TileBiome,
   type WorldGenParams,
+  type WorldArchetype,
 } from './conquestBiomes';
 import { tileTopRadius } from './conquestGlobeGeometry';
 
@@ -74,6 +75,12 @@ export interface ConquestSetup {
   humanAnimal: AnimalId;
   /** Number of AI opponents; human + AI must not exceed MAX_CONQUEST_PLAYERS. */
   aiCount: number;
+  /**
+   * Optional world flavor that biases the seed-derived parameters (Continents,
+   * Islands, Pangaea, Frozen, Arid). Absent = balanced seed-derived world.
+   */
+  archetype?: WorldArchetype;
+  /** Explicit parameter override; when absent they are derived from the seed. */
   worldGen?: WorldGenParams;
 }
 
@@ -330,7 +337,10 @@ export const useConquestStore = create<ConquestState>((set, get) => ({
 
   generate: (setup) => {
     const world = buildGoldbergWorld(setup.subdivisions);
-    const biomes = classifyWorld(world.tiles, setup.seed, setup.worldGen ?? DEFAULT_WORLDGEN);
+    // Each seed derives its own world character (sea level, climate, continents);
+    // an explicit override or a lobby archetype can bias that.
+    const worldGen = setup.worldGen ?? deriveWorldGenParams(setup.seed, setup.archetype);
+    const biomes = classifyWorld(world.tiles, setup.seed, worldGen);
 
     const rng = new SeededRng(setup.seed);
     const players = buildPlayers(setup, world.pentagonIds, rng);

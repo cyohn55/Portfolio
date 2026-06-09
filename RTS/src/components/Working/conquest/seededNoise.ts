@@ -91,16 +91,57 @@ export class SeededNoise {
   /**
    * Fractional Brownian motion: layered octaves of noise normalized to [0, 1].
    * This is the field the biome classifier actually samples.
+   *
+   * `gain` controls how fast amplitude decays per octave (roughness) and
+   * `lacunarity` how fast frequency grows (detail spacing). They default to the
+   * classic 0.5 / 2, so an unparameterized call is byte-identical to the original
+   * fBm — new behavior is strictly opt-in.
    */
-  fbm(x: number, y: number, z: number, octaves = 4): number {
+  fbm(
+    x: number,
+    y: number,
+    z: number,
+    octaves = 4,
+    gain = 0.5,
+    lacunarity = 2,
+  ): number {
     let value = 0;
     let amplitude = 0.5;
     let frequency = 1;
     for (let octave = 0; octave < octaves; octave++) {
       value += amplitude * this.noise(x * frequency, y * frequency, z * frequency);
-      amplitude *= 0.5;
-      frequency *= 2;
+      amplitude *= gain;
+      frequency *= lacunarity;
     }
     return (value + 1) / 2;
+  }
+
+  /**
+   * Ridged fractional Brownian motion: accumulates `1 - |noise|` (squared to
+   * sharpen the creases) so the field peaks along thin ridge lines instead of
+   * rounded hills. Normalized to [0, 1] by the total octave amplitude, so it is a
+   * total function the mountain-range pass can threshold directly. Sharing the
+   * permutation table with `fbm` keeps every field on one seeded source.
+   */
+  ridgedFbm(
+    x: number,
+    y: number,
+    z: number,
+    octaves = 4,
+    gain = 0.5,
+    lacunarity = 2,
+  ): number {
+    let value = 0;
+    let amplitude = 0.5;
+    let frequency = 1;
+    let totalAmplitude = 0;
+    for (let octave = 0; octave < octaves; octave++) {
+      const ridge = 1 - Math.abs(this.noise(x * frequency, y * frequency, z * frequency));
+      value += amplitude * ridge * ridge;
+      totalAmplitude += amplitude;
+      amplitude *= gain;
+      frequency *= lacunarity;
+    }
+    return totalAmplitude > 0 ? value / totalAmplitude : 0;
   }
 }

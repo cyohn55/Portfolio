@@ -49,15 +49,17 @@ const BEVEL_DROP_FRACTION = 0.6;
  * tile rests at. Shared by the mesh builder and the unit renderer so models sit
  * exactly on the crust rather than floating above or sinking into it.
  *
- * For now every tile is the SAME height: a single uniform shell, so the planet
- * reads as a clean tiled sphere with no biome relief. (The `tileBiome` argument
- * is retained for callers and for when per-biome elevation is reintroduced.)
+ * Relief comes from the tile's biome: each biome carries a small radial
+ * `elevationOffset` (mountains stand proud, oceans sink) so the planet shows real
+ * terrain instead of a uniform shell. The offset is intentionally subtle — the
+ * simulation seats units with this same helper, so large relief would lift units
+ * noticeably; a gentle shell keeps seating stable while still reading as terrain.
  */
 export function tileTopRadius(
-  _tileBiome: TileBiome,
+  tileBiome: TileBiome,
   thickness: number = DEFAULT_GLOBE_OPTIONS.thickness,
 ): number {
-  return 1.0 + thickness;
+  return 1.0 + thickness + BIOMES[tileBiome.biome].elevationOffset;
 }
 
 /**
