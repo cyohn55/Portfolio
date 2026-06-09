@@ -119,8 +119,10 @@ import {
   countOwnedFarmTiles,
   populationCap,
   canGrowUnit,
+  stepTileClaims,
   QUEEN_GROWTH_INTERVAL_MS,
   CLAIM_SCAN_INTERVAL_MS,
+  type TileClaimProgress,
 } from './conquestGrowth';
 import {
   buildPoseVariants,
@@ -604,6 +606,8 @@ export function ConquestField() {
   const spawnCounter = useRef(0);
   const lastClaimScanMs = useRef(0);
   const lastPopulationPublishMs = useRef(0);
+  // Per-tile capture progress for the 15s timed-occupation claim (tileId → controller+elapsed).
+  const tileClaimProgress = useRef<Map<number, TileClaimProgress>>(new Map());
 
   useEffect(() => {
     selectedIds.current.clear();       // drop any selection on a new match
@@ -613,6 +617,7 @@ export function ConquestField() {
     spawnCounter.current = 0;
     lastClaimScanMs.current = 0;
     lastPopulationPublishMs.current = 0;
+    tileClaimProgress.current.clear(); // reset every tile's capture timer
   }, [initialUnits]);
 
   // Re-subscribe only when the binding layout changes. The discrete pilot
@@ -1586,27 +1591,41 @@ export function ConquestField() {
       conquest.conquerArmy(armyId, conqueror, elapsedMs);
     }
 
-    // 8.5) Occupation claiming (increment 6): a living unit standing on any CLAIMABLE
-    //      tile (every biome but the impassable mountains — forest, desert, snow, and
-    //      water now, not just the grassland increment 5 claimed) flips that tile to its
-    //      controller. Holding the grassland still feeds growth (step 8.6); the broader
-    //      claim builds the territory map the HUD reads as dominance. Throttled (a unit
-    //      rarely crosses onto a new tile between scans) and batched into one store
-    //      update, so it never thrashes the HUD's re-render.
+    // 8.5) Timed-occupation claiming: a controller captures any CLAIMABLE tile (every
+    //      biome but the impassable mountains — grassland, forest, desert, snow, and
+    //      water) by occupying it continuously for 15 seconds with no enemy on the same
+    //      tile, then holds it only while it keeps at least one unit there — walking off
+    //      releases it. The pure stepTileClaims reducer owns the timer/hold rules; the
+    //      field just measures who stands on each claimable tile this scan. Throttled and
+    //      batched into one store update so it never thrashes the HUD's re-render.
     if (elapsedMs - lastClaimScanMs.current >= CLAIM_SCAN_INTERVAL_MS) {
+      // Cap the step so the first scan of a match (or a long frame stall) can't bank a
+      // capture all at once; steady scans run at ~CLAIM_SCAN_INTERVAL_MS apart.
+      const deltaMs = Math.min(elapsedMs - lastClaimScanMs.current, CLAIM_SCAN_INTERVAL_MS * 2);
       lastClaimScanMs.current = elapsedMs;
-      const owners = conquest.tileOwners;
-      const claims: Record<number, string> = {};
+
+      const occupantsByTile = new Map<number, Set<string>>();
       for (const unit of liveUnits) {
         if (unit.dead || unit.downed || unit.carriedByOwlId !== null) continue;
         up.copy(unit.position).normalize();
         const tileId = nearestTileId(up, world);
         unit.currentTileId = tileId;
         if (!isClaimableTile(biomes[tileId])) continue;
-        if (owners[tileId] === unit.controllerId) continue;
-        claims[tileId] = unit.controllerId; // a contested tile goes to the last unit scanned
+        let occupants = occupantsByTile.get(tileId);
+        if (!occupants) occupantsByTile.set(tileId, (occupants = new Set<string>()));
+        occupants.add(unit.controllerId);
       }
-      if (Object.keys(claims).length > 0) conquest.claimTiles(claims);
+
+      const { ownerChanges, progress } = stepTileClaims({
+        occupantsByTile,
+        tileOwners: conquest.tileOwners,
+        progress: tileClaimProgress.current,
+        deltaMs,
+      });
+      tileClaimProgress.current = progress;
+      if (ownerChanges.size > 0) {
+        conquest.claimTiles(Object.fromEntries(ownerChanges));
+      }
     }
 
     // 8.6) Queen unit growth (increment 5): tally each controller's living units, then

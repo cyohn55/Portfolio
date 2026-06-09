@@ -141,11 +141,12 @@ interface ConquestState {
   /** Transfer a defeated army to its conqueror (the core conquest mechanic). */
   conquerArmy: (defeatedArmyId: string, conquerorId: string, atMs: number) => void;
   /**
-   * Flip the owner of one or more tiles in a single update (occupation claiming —
-   * Increment 5). Merges `updates` (tileId → new owner) into `tileOwners`; a no-op
-   * when nothing actually changes, so the field can call it without thrashing React.
+   * Flip the owner of one or more tiles in a single update (timed-occupation claiming).
+   * Merges `updates` (tileId → new owner, or `null` to release a lapsed claim) into
+   * `tileOwners`; a no-op when nothing actually changes, so the field can call it without
+   * thrashing React.
    */
-  claimTiles: (updates: Record<number, string>) => void;
+  claimTiles: (updates: Record<number, string | null>) => void;
   /** Publish the live per-controller unit counts from the field (throttled). */
   setControlledUnitCounts: (counts: Record<string, number>) => void;
 }
@@ -399,12 +400,18 @@ export const useConquestStore = create<ConquestState>((set, get) => ({
   claimTiles: (updates) => {
     const { tileOwners } = get();
     // Only commit a new object (and the re-render it triggers) if some tile's owner
-    // actually changes, so a unit standing on already-owned farmland is free.
+    // actually changes, so a held tile whose owner is unchanged is free. A null owner
+    // releases a lapsed claim (the tile becomes unowned again).
     let changed = false;
     const nextTileOwners: Record<number, string> = { ...tileOwners };
     for (const [tileIdKey, ownerId] of Object.entries(updates)) {
       const tileId = Number(tileIdKey);
-      if (nextTileOwners[tileId] !== ownerId) {
+      if (ownerId === null) {
+        if (tileId in nextTileOwners) {
+          delete nextTileOwners[tileId];
+          changed = true;
+        }
+      } else if (nextTileOwners[tileId] !== ownerId) {
         nextTileOwners[tileId] = ownerId;
         changed = true;
       }

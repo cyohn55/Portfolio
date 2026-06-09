@@ -81,8 +81,9 @@ export function ConquestScreen() {
         Move keys drive · A switch King/Queen · Scroll zoom · Left-click / drag-box
         select your units · Right-click to move (or an enemy to attack) · Shift +
         right-click sets a selected Queen's rally · Both mouse buttons fire your army's
-        ability · Occupy any terrain to claim it for your territory; owned grassland also
-        lets your Queens grow +2 units each · King (gold aura) buffs damage, Queen (green
+        ability · Hold any terrain for 15s with no enemy on it to capture it, then keep a
+        unit there to hold it; owned grassland also lets your Queens grow +2 units each ·
+        King (gold aura) buffs damage, Queen (green
         aura) heals · Down a rival's King AND Queen to capture their whole army
       </div>
     </div>
