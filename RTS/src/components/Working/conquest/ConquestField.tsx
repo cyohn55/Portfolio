@@ -148,6 +148,10 @@ const MONARCH_SCALE = 0.007;
 const UNIT_RING_RADIUS = 0.011;
 const MONARCH_RING_RADIUS = 0.018;
 const RING_LIFT = 0.001; // sit just above the tile face to avoid z-fighting
+// Tiny radial lift applied to every unit model so it rests a hair above the flat
+// tile face rather than z-fighting it (the position itself is already seated on
+// the face plane via seatRadiusOnTile, so this only guards against curvature/seams).
+const GROUND_CLEARANCE = 0.0004;
 const RING_FORWARD = new THREE.Vector3(0, 0, 1); // RingGeometry/CircleGeometry default normal
 
 // King/Queen aura discs: a soft, color-coded field showing each monarch's support
@@ -169,6 +173,11 @@ const RECENT_COMBAT_MS = 2000;
 const MOVE_SPEED = 0.1;
 const FOLLOW_SPEED = 0.12;
 const FOLLOW_GAP = 0.012; // followers hold this distance behind their leader
+// Radians/sec the piloted monarch turns when steering left/right. Heading-based
+// steering (turn the heading, then walk along it) is what suits driving around a
+// globe: it keeps turning independent of the chase camera, so a held turn rotates
+// at this fixed rate instead of spinning the monarch in a tight runaway circle.
+const TURN_RATE = 2.2;
 
 // Chase camera placement, expressed as multiples of the monarch's model scale so
 // the third-person framing stays correct no matter how small the animals are.
@@ -430,6 +439,26 @@ function nearestTileId(direction: THREE.Vector3, world: GoldbergWorld): number {
 function isPassable(tileBiome: TileBiome | undefined, movement: MovementType): boolean {
   if (!tileBiome) return false;
   return BIOMES[tileBiome.biome].passableBy.has(movement);
+}
+
+/**
+ * Radius along `direction` (a unit vector) at which a unit rests on tile `tileId`'s
+ * FLAT top face. The Goldberg tile tops are flat polygons lying on a tangent plane,
+ * so a point off the tile center sits FARTHER from the globe center than the
+ * inscribed-sphere radius `tileTopRadius`. Seating units — and their order
+ * destinations — on that plane instead of the sphere keeps models flush with the
+ * visible crust rather than sinking into the bulge of the flat face near tile edges
+ * (the source of the "geometry clipping through the planet" artifact). The divisor
+ * is clamped so a direction grazing the tile's silhouette can't blow the radius up.
+ */
+function seatRadiusOnTile(
+  direction: THREE.Vector3,
+  tileId: number,
+  world: GoldbergWorld,
+  biome: TileBiome,
+): number {
+  const cosToCenter = direction.dot(world.tiles[tileId].center);
+  return tileTopRadius(biome) / Math.max(cosToCenter, 0.5);
 }
 
 /**
@@ -781,7 +810,7 @@ export function ConquestField() {
       if (!hit) return null;
       const direction = hit.normalize();
       const tileId = nearestTileId(direction, world);
-      return direction.multiplyScalar(tileTopRadius(biomes[tileId]));
+      return direction.multiplyScalar(seatRadiusOnTile(direction, tileId, world, biomes[tileId]));
     };
 
     // Resolve a right-click into a move or attack order for the current selection.
@@ -917,9 +946,6 @@ export function ConquestField() {
     renderPos: new THREE.Vector3(),
     camDesired: new THREE.Vector3(),
     camBack: new THREE.Vector3(),
-    camForwardTangent: new THREE.Vector3(),
-    camRightTangent: new THREE.Vector3(),
-    drive: new THREE.Vector3(),
     beamTip: new THREE.Vector3(),
     beamMid: new THREE.Vector3(),
     beamVec: new THREE.Vector3(),
@@ -948,7 +974,7 @@ export function ConquestField() {
     candidateDir.copy(unit.position).addScaledVector(step.normalize(), travel).normalize();
     const tileId = nearestTileId(candidateDir, world!);
     if (isPassable(biomes[tileId], unit.movement)) {
-      unit.position.copy(candidateDir).multiplyScalar(tileTopRadius(biomes[tileId]));
+      unit.position.copy(candidateDir).multiplyScalar(seatRadiusOnTile(candidateDir, tileId, world!, biomes[tileId]));
     }
     up.copy(unit.position).normalize();
     unit.facing.subVectors(targetPos, unit.position);
@@ -1154,7 +1180,7 @@ export function ConquestField() {
       && frog.position.distanceToSquared(target!.position) > TONGUE_DRAG_STOP_DIST * TONGUE_DRAG_STOP_DIST) {
       const tip = stepGreatCircle(frog.position, tongue.direction, tongue.length).position;
       const tileId = nearestTileId(scratch.current.up.copy(tip).normalize(), world!);
-      target!.position.copy(scratch.current.up).multiplyScalar(tileTopRadius(biomes[tileId]));
+      target!.position.copy(scratch.current.up).multiplyScalar(seatRadiusOnTile(scratch.current.up, tileId, world!, biomes[tileId]));
     }
     if (tongue.length <= 0) frog.tongue = null; // fully reeled in — the frog is free
   };
@@ -1222,7 +1248,6 @@ export function ConquestField() {
     const elapsedMs = state.clock.elapsedTime * 1000;
     const {
       up, step, candidateDir, basis, quat, ringQuat, renderPos, camDesired, camBack,
-      camForwardTangent, camRightTangent, drive,
     } = scratch.current;
 
     const conquest = useConquestStore.getState();
@@ -1261,43 +1286,50 @@ export function ConquestField() {
     const leftKey = plainKeyToken(bindings.cameraLeft);
     const rightKey = plainKeyToken(bindings.cameraRight);
 
-    // 1) Drive the piloted monarch from input, camera-relative on the sphere's
-    //    tangent plane (matching Quick Play's camera-relative ESDF drive) and
-    //    constrained to passable tiles. With no input the monarch is handled by the
-    //    combat/idle pass below (so it auto-defends).
+    // 1) Drive the piloted monarch with heading-based steering, the scheme suited to
+    //    traversing a globe: left/right TURN the monarch's heading at a fixed rate and
+    //    forward/back walk ALONG (or against) that heading. This deliberately replaces
+    //    Quick Play's camera-relative drive, which broke on the sphere — feeding the
+    //    chase camera's own orientation back into the drive direction made reverse
+    //    jitter and a held turn spin the monarch in a tight runaway circle. Turning is
+    //    now independent of the camera, and reverse just walks backward (the camera
+    //    stays put behind the heading, so the framing no longer flips). With no input
+    //    the monarch is handled by the combat/idle pass below (so it auto-defends).
     // A shelled monarch is immovable; a monarch mid-hiss-knockback is owned by the
     // shove (handled in the movement pass), so neither is driven by input this frame.
     let drivingInput = false;
     if (monarch && !monarch.shelled && monarch.knockbackUntilMs <= elapsedMs) {
       up.copy(monarch.position).normalize();
-
-      camera.getWorldDirection(camForwardTangent);
-      camForwardTangent.addScaledVector(up, -camForwardTangent.dot(up));
-      if (camForwardTangent.lengthSq() < 1e-8) camForwardTangent.copy(monarch.facing);
-      camForwardTangent.normalize();
-      camRightTangent.crossVectors(camForwardTangent, up).normalize();
+      tangentize(monarch.facing, up); // keep the heading on the tangent plane as we curve
 
       const forwardBack = (forwardKey && pressed.has(forwardKey) ? 1 : 0)
         - (backwardKey && pressed.has(backwardKey) ? 1 : 0);
-      const rightLeft = (rightKey && pressed.has(rightKey) ? 1 : 0)
+      const turn = (rightKey && pressed.has(rightKey) ? 1 : 0)
         - (leftKey && pressed.has(leftKey) ? 1 : 0);
 
-      if (forwardBack !== 0 || rightLeft !== 0) {
+      // Steer: rotate the heading about the surface normal at a fixed rate. Turning
+      // right is clockwise seen from outside the surface, i.e. a negative spin about up.
+      if (turn !== 0) {
         drivingInput = true;
         monarch.orderPos = null;       // taking the wheel cancels any standing order
         monarch.orderAttackId = null;
-        drive.copy(camForwardTangent).multiplyScalar(forwardBack)
-          .addScaledVector(camRightTangent, rightLeft)
-          .normalize();
-        step.copy(drive).multiplyScalar(MOVE_SPEED * monarch.combat.moveMultiplier * delta);
+        quat.setFromAxisAngle(up, -turn * TURN_RATE * delta);
+        monarch.facing.applyQuaternion(quat);
+        tangentize(monarch.facing, up);
+      }
+
+      // Translate along the heading (reverse simply walks backward along it).
+      if (forwardBack !== 0) {
+        drivingInput = true;
+        monarch.orderPos = null;
+        monarch.orderAttackId = null;
+        step.copy(monarch.facing).multiplyScalar(forwardBack * MOVE_SPEED * monarch.combat.moveMultiplier * delta);
         candidateDir.copy(monarch.position).add(step).normalize();
         const tileId = nearestTileId(candidateDir, world);
         if (isPassable(biomes[tileId], monarch.movement)) {
-          const radius = tileTopRadius(biomes[tileId]);
-          monarch.position.copy(candidateDir).multiplyScalar(radius);
+          monarch.position.copy(candidateDir).multiplyScalar(seatRadiusOnTile(candidateDir, tileId, world, biomes[tileId]));
           up.copy(candidateDir);
-          monarch.facing.copy(drive);
-          tangentize(monarch.facing, up);
+          tangentize(monarch.facing, up); // re-seat the heading on the new surface point
         }
       }
     }
@@ -1400,7 +1432,7 @@ export function ConquestField() {
         step.copy(unit.knockbackDir).multiplyScalar(HISS_PUSH_SPEED * delta);
         candidateDir.copy(unit.position).add(step).normalize();
         const tileId = nearestTileId(candidateDir, world);
-        unit.position.copy(candidateDir).multiplyScalar(tileTopRadius(biomes[tileId]));
+        unit.position.copy(candidateDir).multiplyScalar(seatRadiusOnTile(candidateDir, tileId, world, biomes[tileId]));
         unit.facing.copy(unit.knockbackDir);
         tangentize(unit.facing, candidateDir);
         continue;
@@ -1665,7 +1697,7 @@ export function ConquestField() {
         .normalize();
       const spawnTileId = nearestTileId(candidateDir, world);
       const position = isPassable(biomes[spawnTileId], queen.movement)
-        ? candidateDir.clone().multiplyScalar(tileTopRadius(biomes[spawnTileId]))
+        ? candidateDir.clone().multiplyScalar(seatRadiusOnTile(candidateDir, spawnTileId, world, biomes[spawnTileId]))
         : queen.position.clone();
 
       const recruit = buildLiveUnit({
@@ -1738,7 +1770,7 @@ export function ConquestField() {
       // the surface normal. A flying/abducting owl (or its dangling catch) adds its
       // radial flight lift on top of the baseline hover.
       up.copy(unit.position).normalize();
-      renderPos.copy(unit.position).addScaledVector(up, unit.airLift + unit.flightLift);
+      renderPos.copy(unit.position).addScaledVector(up, GROUND_CLEARANCE + unit.airLift + unit.flightLift);
       scratch.current.right.crossVectors(up, unit.facing).normalize();
       scratch.current.forward.crossVectors(scratch.current.right, up).normalize();
       basis.makeBasis(scratch.current.right, up, scratch.current.forward);
