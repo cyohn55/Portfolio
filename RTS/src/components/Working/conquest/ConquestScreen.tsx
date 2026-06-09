@@ -12,8 +12,16 @@ import * as THREE from 'three';
 import { useGameStore } from '../../../game/state';
 import { useConquestStore, effectiveController } from './conquestState';
 import { BIOMES } from './conquestBiomes';
+import {
+  countOwnedFarmTiles,
+  populationCap,
+  planetPopulationCeiling,
+} from './conquestGrowth';
 import { ConquestGlobe } from './ConquestGlobe';
 import './ConquestScreen.css';
+
+/** The human player's controller id (index 0 of the roster). */
+const HUMAN_ID = 'p0';
 
 // The skybox is centered on the camera each frame and rendered behind everything,
 // so its only real constraint is fitting inside the camera's far plane (100). The
@@ -68,9 +76,11 @@ export function ConquestScreen() {
 
       <div className="conquest-screen-hint">
         Move keys drive · A switch King/Queen · Scroll zoom · Left-click / drag-box
-        select your units · Right-click to move (or an enemy to attack) · Both mouse
-        buttons fire your army's ability · King (gold aura) buffs damage, Queen (green
-        aura) heals · Down a rival's King AND Queen to capture their whole army
+        select your units · Right-click to move (or an enemy to attack) · Shift +
+        right-click sets a selected Queen's rally · Both mouse buttons fire your army's
+        ability · Stand on grassland to claim it; each owned field lets your Queens grow
+        +2 units · King (gold aura) buffs damage, Queen (green aura) heals · Down a
+        rival's King AND Queen to capture their whole army
       </div>
     </div>
   );
@@ -107,16 +117,28 @@ function NebulaSkybox() {
 function PlayerRosterPanel() {
   const players = useConquestStore((s) => s.players);
   const tileOwners = useConquestStore((s) => s.tileOwners);
+  const biomes = useConquestStore((s) => s.biomes);
   const armyController = useConquestStore((s) => s.armyController);
+  const controlledUnitCounts = useConquestStore((s) => s.controlledUnitCounts);
 
   const tileCountByPlayer = new Map<string, number>();
   for (const ownerId of Object.values(tileOwners)) {
     tileCountByPlayer.set(ownerId, (tileCountByPlayer.get(ownerId) ?? 0) + 1);
   }
 
+  // Your nation's standing forces against its territory-derived population cap (two
+  // units per owned farmable tile), with the planet's total farmland as the ceiling.
+  const yourForces = controlledUnitCounts[HUMAN_ID] ?? 0;
+  const yourCap = populationCap(countOwnedFarmTiles(tileOwners, biomes, HUMAN_ID));
+  const planetCeiling = planetPopulationCeiling(biomes);
+
   return (
     <div className="conquest-roster">
       <h3 className="conquest-panel-heading">Commanders</h3>
+      <div className="conquest-roster-forces">
+        <span>Your forces</span>
+        <span>{yourForces} / {yourCap}<span className="conquest-roster-ceiling"> (max {planetCeiling})</span></span>
+      </div>
       {players.map((player) => {
         const controller = effectiveController(armyController, player.id);
         const isYours = controller === 'p0';

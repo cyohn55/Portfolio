@@ -23,7 +23,7 @@
 // store is read for the static spawn set, current army control, and the selected
 // monarch; control changes flow back through the store's `conquerArmy` action.
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
@@ -114,6 +114,14 @@ import {
   screenDistanceSquared,
   type ScreenBox,
 } from './conquestSelection';
+import {
+  isFarmableTile,
+  countOwnedFarmTiles,
+  populationCap,
+  canGrowUnit,
+  QUEEN_GROWTH_INTERVAL_MS,
+  CLAIM_SCAN_INTERVAL_MS,
+} from './conquestGrowth';
 import {
   buildPoseVariants,
   selectPoseIndex,
@@ -208,6 +216,14 @@ const SELECTION_RING_COLOR = 0xffffff;
 // order (tile tops sit at ~1.0; the exact tile is resolved from the hit direction).
 const ORDER_SPHERE_RADIUS = 1.0;
 
+// Queen unit growth (increment 5). A grown unit musters this far from its Queen on
+// the tangent plane (a fraction of a tile, so it appears beside her), and the Queen's
+// rally marker — where her new units head when she has set one — is sized like a
+// monarch ring. Live unit counts are pushed to the store for the HUD on this cadence.
+const SPAWN_TANGENT_OFFSET = 0.01;
+const RALLY_MARKER_RADIUS = 0.02;
+const POPULATION_PUBLISH_INTERVAL_MS = 500;
+
 interface LiveUnit {
   id: string;
   /** Original owner id — the army's permanent identity, used for following/grouping. */
@@ -268,6 +284,13 @@ interface LiveUnit {
   orderPos: THREE.Vector3 | null;
   /** An attack order's target unit id, or null. Forces engagement of that unit. */
   orderAttackId: string | null;
+  // --- Growth + territory (increment 5) ---
+  /** A grown unit's garrison point: when set it musters/holds here instead of following the army. */
+  rallyPos: THREE.Vector3 | null;
+  /** The tile this unit last stood on, for occupation-claim transition detection (-1 = none yet). */
+  currentTileId: number;
+  /** Queens only: when this Queen last grew a unit (gates her growth interval). */
+  lastGrowthMs: number;
   dead: boolean;
   /** Resolved each frame: the enemy this unit is engaging, if any. */
   target: LiveUnit | null;
@@ -285,6 +308,85 @@ interface LiveUnit {
   auraMesh: THREE.Mesh | null; // monarchs only
   tongueMesh: THREE.Mesh | null; // frogs only: the grab beam
   selectionRing: THREE.Mesh | null; // shown while the unit is selected
+  rallyMesh: THREE.Mesh | null; // queens only: the rally-point marker
+}
+
+/**
+ * Build a fresh live unit with all per-frame state at its defaults. Used both to seed
+ * the match's starting armies and to mint a Queen's grown reinforcements (Increment 5),
+ * so a spawned unit is indistinguishable from a starting one. Render refs (group, ring,
+ * …) start null and are wired when React mounts the unit's meshes.
+ */
+function buildLiveUnit(args: {
+  id: string;
+  armyId: string;
+  controllerId: string;
+  animal: AnimalId;
+  kind: ConquestUnitKind;
+  isMonarch: boolean;
+  position: THREE.Vector3;
+  facing: THREE.Vector3;
+  poseVariants: PoseVariant[];
+}): LiveUnit {
+  const scale = args.isMonarch ? MONARCH_SCALE : UNIT_SCALE;
+  const combat = conquestStatsFor(args.animal, args.kind);
+  const behavior = defaultBehaviorFor(args.animal, args.kind);
+  return {
+    id: args.id,
+    armyId: args.armyId,
+    controllerId: args.controllerId,
+    kind: args.kind,
+    isMonarch: args.isMonarch,
+    animal: args.animal,
+    movement: ANIMAL_MOVEMENT_TYPES[args.animal],
+    combat,
+    behavior,
+    posture: stanceParams(behavior.stance, combat.attackRange),
+    hp: combat.maxHp,
+    maxHp: combat.maxHp,
+    downed: false,
+    auraActive: false,
+    lastAttackMs: 0,
+    lastCombatMs: 0,
+    lastAttackerController: null,
+    shelled: false,
+    lastShellToggleMs: 0,
+    lastHissMs: 0,
+    hissUntilMs: 0,
+    knockbackUntilMs: 0,
+    knockbackDir: new THREE.Vector3(),
+    swarmTargetId: null,
+    lastEggMs: 0,
+    eggThrowUntilMs: 0,
+    tongue: null,
+    lastTongueMs: 0,
+    pickup: null,
+    lastPickupMs: 0,
+    carriedByOwlId: null,
+    flightLift: 0,
+    orderPos: null,
+    orderAttackId: null,
+    rallyPos: null,
+    currentTileId: -1,
+    lastGrowthMs: 0,
+    dead: false,
+    target: null,
+    poseVariants: args.poseVariants,
+    poseGroups: new Array(args.poseVariants.length).fill(null),
+    scale,
+    airLift: airLiftFactor(args.animal) * scale,
+    position: args.position,
+    facing: args.facing,
+    lastPosition: args.position.clone(),
+    lastMovedMs: 0,
+    group: null,
+    ring: null,
+    ringColor: -1,
+    auraMesh: null,
+    tongueMesh: null,
+    selectionRing: null,
+    rallyMesh: null,
+  };
 }
 
 function modelPath(animal: AnimalId): string {
@@ -408,18 +510,24 @@ export function ConquestField() {
   const eggIdCounter = useRef(0);
   const eggMeshes = useRef<(THREE.Mesh | null)[]>(new Array(EGG_POOL_SIZE).fill(null));
 
-  // Build the live (mutable) unit set once per match. Positions/facings/HP here are
-  // mutated every frame by the sim; React never re-renders for movement or combat.
-  // Note this deliberately does NOT depend on army control — capturing an army
-  // mutates `controllerId` in place, so the field never rebuilds and loses state.
-  const liveUnits = useMemo<LiveUnit[]>(() => {
-    if (!world || biomes.length === 0) return [];
-    const posesByAnimal = new Map<AnimalId, PoseVariant[]>();
+  // Pose-frame variants per animal, built from the loaded models. Hoisted so both the
+  // initial army build and a Queen's grown reinforcements (increment 5) mint units
+  // with the same pose set.
+  const posesByAnimal = useMemo(() => {
+    const map = new Map<AnimalId, PoseVariant[]>();
     inPlayAnimals.forEach((animal, index) => {
       const gltf = gltfs[index];
-      if (gltf) posesByAnimal.set(animal, buildPoseVariants(animal, gltf));
+      if (gltf) map.set(animal, buildPoseVariants(animal, gltf));
     });
+    return map;
+  }, [inPlayAnimals, gltfs]);
 
+  // The match's STARTING armies. Positions/facings/HP here are mutated every frame by
+  // the sim; React never re-renders for movement or combat. Deliberately does NOT
+  // depend on army control — capturing an army mutates `controllerId` in place, so the
+  // starting set never rebuilds and loses state.
+  const initialUnits = useMemo<LiveUnit[]>(() => {
+    if (!world || biomes.length === 0) return [];
     return unitSpawns.map((spawn) => {
       const position = new THREE.Vector3(spawn.position.x, spawn.position.y, spawn.position.z);
       const up = position.clone().normalize();
@@ -427,64 +535,37 @@ export function ConquestField() {
       const facing = new THREE.Vector3().crossVectors(
         up, Math.abs(up.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0),
       ).normalize();
-      const poseVariants = posesByAnimal.get(spawn.animal) ?? [];
-      const scale = spawn.isMonarch ? MONARCH_SCALE : UNIT_SCALE;
-      const combat = conquestStatsFor(spawn.animal, spawn.kind);
-      const behavior = defaultBehaviorFor(spawn.animal, spawn.kind);
-      return {
+      return buildLiveUnit({
         id: spawn.id,
         armyId: spawn.ownerId,
         controllerId: spawn.ownerId,
+        animal: spawn.animal,
         kind: spawn.kind,
         isMonarch: spawn.isMonarch,
-        animal: spawn.animal,
-        movement: ANIMAL_MOVEMENT_TYPES[spawn.animal],
-        combat,
-        behavior,
-        posture: stanceParams(behavior.stance, combat.attackRange),
-        hp: combat.maxHp,
-        maxHp: combat.maxHp,
-        downed: false,
-        auraActive: false,
-        lastAttackMs: 0,
-        lastCombatMs: 0,
-        lastAttackerController: null,
-        shelled: false,
-        lastShellToggleMs: 0,
-        lastHissMs: 0,
-        hissUntilMs: 0,
-        knockbackUntilMs: 0,
-        knockbackDir: new THREE.Vector3(),
-        swarmTargetId: null,
-        lastEggMs: 0,
-        eggThrowUntilMs: 0,
-        tongue: null,
-        lastTongueMs: 0,
-        pickup: null,
-        lastPickupMs: 0,
-        carriedByOwlId: null,
-        flightLift: 0,
-        orderPos: null,
-        orderAttackId: null,
-        dead: false,
-        target: null,
-        poseVariants,
-        poseGroups: new Array(poseVariants.length).fill(null),
-        scale,
-        airLift: airLiftFactor(spawn.animal) * scale,
         position,
         facing,
-        lastPosition: position.clone(),
-        lastMovedMs: 0,
-        group: null,
-        ring: null,
-        ringColor: -1,
-        auraMesh: null,
-        tongueMesh: null,
-        selectionRing: null,
-      };
+        poseVariants: posesByAnimal.get(spawn.animal) ?? [],
+      });
     });
-  }, [world, biomes, unitSpawns, gltfs, inPlayAnimals]);
+  }, [world, biomes, unitSpawns, posesByAnimal]);
+
+  // Queen-grown reinforcements, appended over the match (increment 5). Kept SEPARATE
+  // from the starting set so growth only ever APPENDS units — the existing live units
+  // keep their identity and positions (no teleport), and only a new spawn re-renders.
+  const [spawnedUnits, setSpawnedUnits] = useState<LiveUnit[]>([]);
+  useEffect(() => { setSpawnedUnits([]); }, [initialUnits]); // a new match starts with no growth
+
+  // The full live set the sim and renderer iterate: starting armies plus any grown
+  // reinforcements. Appending a spawn rebuilds this array reference (mounting the new
+  // unit's meshes) while preserving every existing unit object.
+  const liveUnits = useMemo<LiveUnit[]>(
+    () => (spawnedUnits.length > 0 ? [...initialUnits, ...spawnedUnits] : initialUnits),
+    [initialUnits, spawnedUnits],
+  );
+  // The current live set, mirrored to a ref so the pointer handlers read it without
+  // re-binding their listeners every time a unit is grown.
+  const unitsRef = useRef(liveUnits);
+  unitsRef.current = liveUnits;
 
   // Each army's King and Queen, looked up by army id. Monarchs persist for the
   // match (capture changes their controller; they down but never leave), so these
@@ -515,12 +596,24 @@ export function ConquestField() {
   // so selecting never re-renders the field (the per-frame loop reads it to draw the
   // selection rings, exactly as it reads control for the allegiance rings).
   const selectedIds = useRef<Set<string>>(new Set());
-  useEffect(() => { selectedIds.current.clear(); }, [liveUnits]); // clear on a new match
+
+  // Queen unit growth (increment 5): each Queen's rally point (id → muster destination),
+  // a monotonic id source for grown units, and the throttle clocks for the claim scan
+  // and the HUD population publish. Reset per match alongside the camera below.
+  const queenRallies = useRef<Map<string, THREE.Vector3>>(new Map());
+  const spawnCounter = useRef(0);
+  const lastClaimScanMs = useRef(0);
+  const lastPopulationPublishMs = useRef(0);
 
   useEffect(() => {
+    selectedIds.current.clear();       // drop any selection on a new match
     cameraInitialized.current = false; // re-frame on a new match
     eggs.current = [];                 // clear any in-flight projectiles
-  }, [liveUnits]);
+    queenRallies.current.clear();      // clear standing rally points
+    spawnCounter.current = 0;
+    lastClaimScanMs.current = 0;
+    lastPopulationPublishMs.current = 0;
+  }, [initialUnits]);
 
   // Re-subscribe only when the binding layout changes. The discrete pilot
   // gestures (cycle / toggle monarch) run through the same gestureModes dispatch
@@ -651,7 +744,7 @@ export function ConquestField() {
     const pickUnitAt = (clientX: number, clientY: number, filter: (u: LiveUnit) => boolean) => {
       let best: LiveUnit | null = null;
       let bestSq = CLICK_PICK_RADIUS_PX * CLICK_PICK_RADIUS_PX;
-      for (const unit of liveUnits) {
+      for (const unit of unitsRef.current) {
         if (unit.dead || unit.carriedByOwlId !== null || !filter(unit) || !isFrontFacing(unit)) continue;
         const screen = projectToClient(unit.position);
         if (screen.behind) continue;
@@ -663,12 +756,27 @@ export function ConquestField() {
 
     const applyBoxSelection = (box: ScreenBox) => {
       const next = new Set<string>();
-      for (const unit of liveUnits) {
+      for (const unit of unitsRef.current) {
         if (unit.dead || unit.carriedByOwlId !== null || !controls(unit) || !isFrontFacing(unit)) continue;
         const screen = projectToClient(unit.position);
         if (!screen.behind && pointInScreenBox(screen.x, screen.y, box)) next.add(unit.id);
       }
       selectedIds.current = next;
+    };
+
+    // Project a pointer ray onto the planet and resolve the surface point of the tile
+    // it lands on, or null if it misses. Shared by move orders and Queen rally points.
+    const tileDestFromClient = (clientX: number, clientY: number): THREE.Vector3 | null => {
+      if (!world) return null;
+      const rect = canvas.getBoundingClientRect();
+      const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
+      const rayDir = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(camera).sub(camera.position).normalize();
+      const hit = raySphereHit(camera.position, rayDir, ORDER_SPHERE_RADIUS);
+      if (!hit) return null;
+      const direction = hit.normalize();
+      const tileId = nearestTileId(direction, world);
+      return direction.multiplyScalar(tileTopRadius(biomes[tileId]));
     };
 
     // Resolve a right-click into a move or attack order for the current selection.
@@ -678,7 +786,7 @@ export function ConquestField() {
       // An enemy under the cursor turns the order into an attack on that unit.
       const enemy = pickUnitAt(clientX, clientY, (u) => !controls(u) && !u.downed);
       if (enemy) {
-        for (const unit of liveUnits) {
+        for (const unit of unitsRef.current) {
           if (!selectedIds.current.has(unit.id) || unit.dead || unit.downed || unit.carriedByOwlId !== null) continue;
           unit.orderAttackId = enemy.id;
           unit.orderPos = null;
@@ -686,21 +794,26 @@ export function ConquestField() {
         return;
       }
 
-      // Otherwise project the pointer ray onto the planet and move-order the selection
-      // to the tile it lands on.
-      const rect = canvas.getBoundingClientRect();
-      const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
-      const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
-      const rayDir = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(camera).sub(camera.position).normalize();
-      const hit = raySphereHit(camera.position, rayDir, ORDER_SPHERE_RADIUS);
-      if (!hit) return;
-      const direction = hit.normalize();
-      const tileId = nearestTileId(direction, world);
-      const dest = direction.multiplyScalar(tileTopRadius(biomes[tileId]));
-      for (const unit of liveUnits) {
+      // Otherwise move-order the selection to the tile the pointer lands on.
+      const dest = tileDestFromClient(clientX, clientY);
+      if (!dest) return;
+      for (const unit of unitsRef.current) {
         if (!selectedIds.current.has(unit.id) || unit.dead || unit.downed || unit.carriedByOwlId !== null) continue;
         unit.orderPos = dest.clone();
         unit.orderAttackId = null;
+      }
+    };
+
+    // Shift + right-click sets the rally point of every selected Queen the player
+    // controls: her future grown units muster there instead of joining the army
+    // (increment 5). Selecting no controlled Queen leaves any standing rally untouched.
+    const setQueenRally = (clientX: number, clientY: number) => {
+      const dest = tileDestFromClient(clientX, clientY);
+      if (!dest) return;
+      for (const unit of unitsRef.current) {
+        if (unit.kind !== 'queen' || unit.dead || !controls(unit)) continue;
+        if (!selectedIds.current.has(unit.id)) continue;
+        queenRallies.current.set(unit.id, dest.clone());
       }
     };
 
@@ -755,7 +868,10 @@ export function ConquestField() {
         hideBox();
         leftDown = false;
       } else if (event.button === 2) {
-        if (!abilityGesture) issueOrder(event.clientX, event.clientY);
+        if (!abilityGesture) {
+          if (event.shiftKey) setQueenRally(event.clientX, event.clientY);
+          else issueOrder(event.clientX, event.clientY);
+        }
         rightDown = false;
       }
       if (!leftDown && !rightDown) abilityGesture = false; // gesture fully released
@@ -781,7 +897,7 @@ export function ConquestField() {
       window.removeEventListener('blur', onBlur);
       document.body.removeChild(selectionBox);
     };
-  }, [gl, camera, world, biomes, liveUnits, humanId]);
+  }, [gl, camera, world, biomes, humanId]);
 
   // Reusable scratch (no per-frame allocation in the hot loop).
   const scratch = useRef({
@@ -1374,7 +1490,11 @@ export function ConquestField() {
         // Beyond the leash: abandon pursuit this frame and return to the leader below.
       }
 
-      if (leader && leader !== unit) {
+      // A grown unit with a rally point garrisons there (mustering to a Queen-set
+      // front) instead of trailing the army; everyone else follows the army leader.
+      if (unit.rallyPos) {
+        moveToward(unit, unit.rallyPos, FOLLOW_SPEED, FOLLOW_GAP, delta);
+      } else if (leader && leader !== unit) {
         moveToward(unit, leader.position, FOLLOW_SPEED, FOLLOW_GAP, delta);
       }
     }
@@ -1459,9 +1579,105 @@ export function ConquestField() {
         member.target = null;
         member.orderPos = null;       // an army changing hands drops its old orders
         member.orderAttackId = null;
+        member.rallyPos = null;       // and grown units stop garrisoning the old front
         selectedIds.current.delete(member.id);
       }
+      queenRallies.current.delete(queen.id); // the captured Queen's rally is void
       conquest.conquerArmy(armyId, conqueror, elapsedMs);
+    }
+
+    // 8.5) Occupation claiming (increment 5): a living unit standing on a farmable
+    //      (grassland) tile flips that tile to its controller — the farmland a Queen
+    //      grows on. Throttled (a unit rarely crosses onto new farmland between scans)
+    //      and batched into one store update, so it never thrashes the HUD's re-render.
+    if (elapsedMs - lastClaimScanMs.current >= CLAIM_SCAN_INTERVAL_MS) {
+      lastClaimScanMs.current = elapsedMs;
+      const owners = conquest.tileOwners;
+      const claims: Record<number, string> = {};
+      for (const unit of liveUnits) {
+        if (unit.dead || unit.downed || unit.carriedByOwlId !== null) continue;
+        up.copy(unit.position).normalize();
+        const tileId = nearestTileId(up, world);
+        unit.currentTileId = tileId;
+        if (!isFarmableTile(biomes[tileId])) continue;
+        if (owners[tileId] === unit.controllerId) continue;
+        claims[tileId] = unit.controllerId; // a contested tile goes to the last unit scanned
+      }
+      if (Object.keys(claims).length > 0) conquest.claimTiles(claims);
+    }
+
+    // 8.6) Queen unit growth (increment 5): tally each controller's living units, then
+    //      let every standing Queen grow one unit on her interval while her controller
+    //      is under its territory-derived population cap (two per owned farmable tile).
+    //      A grown unit musters by the Queen and either joins the army or marches to her
+    //      rally point. Counting includes units queued earlier this frame so two Queens
+    //      of one nation can't both overshoot the shared cap.
+    const controllerCounts = new Map<string, number>();
+    for (const unit of liveUnits) {
+      if (unit.dead) continue;
+      controllerCounts.set(unit.controllerId, (controllerCounts.get(unit.controllerId) ?? 0) + 1);
+    }
+    const grownUnits: LiveUnit[] = [];
+    const owners = conquest.tileOwners;
+    for (const queen of queenByArmy.values()) {
+      if (queen.dead || queen.downed) continue;
+      if (elapsedMs - queen.lastGrowthMs < QUEEN_GROWTH_INTERVAL_MS) continue;
+      const controller = queen.controllerId;
+      const cap = populationCap(countOwnedFarmTiles(owners, biomes, controller));
+      const current = controllerCounts.get(controller) ?? 0;
+      if (!canGrowUnit(current, cap)) continue;
+      queen.lastGrowthMs = elapsedMs;
+      controllerCounts.set(controller, current + 1);
+
+      // Muster a fraction of a tile from the Queen, spread by a golden-angle step so
+      // successive recruits fan out rather than stack; fall back to her own tile if the
+      // chosen spot is impassable for the army's animal.
+      up.copy(queen.position).normalize();
+      const reference = Math.abs(up.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      scratch.current.right.crossVectors(up, reference).normalize();
+      scratch.current.forward.crossVectors(up, scratch.current.right).normalize();
+      const angle = spawnCounter.current * 2.39996323; // golden angle (radians)
+      candidateDir.copy(queen.position)
+        .addScaledVector(scratch.current.right, Math.cos(angle) * SPAWN_TANGENT_OFFSET)
+        .addScaledVector(scratch.current.forward, Math.sin(angle) * SPAWN_TANGENT_OFFSET)
+        .normalize();
+      const spawnTileId = nearestTileId(candidateDir, world);
+      const position = isPassable(biomes[spawnTileId], queen.movement)
+        ? candidateDir.clone().multiplyScalar(tileTopRadius(biomes[spawnTileId]))
+        : queen.position.clone();
+
+      const recruit = buildLiveUnit({
+        id: `${queen.armyId}-s${++spawnCounter.current}`,
+        armyId: queen.armyId,
+        controllerId: controller,
+        animal: queen.animal,
+        kind: 'unit',
+        isMonarch: false,
+        position,
+        facing: queen.facing.clone(),
+        poseVariants: posesByAnimal.get(queen.animal) ?? [],
+      });
+      const rally = queenRallies.current.get(queen.id);
+      recruit.rallyPos = rally ? rally.clone() : null;
+      grownUnits.push(recruit);
+    }
+    if (grownUnits.length > 0) setSpawnedUnits((prev) => [...prev, ...grownUnits]);
+
+    // 8.7) Publish each controller's live unit count for the HUD (throttled), so the
+    //      population readout reflects growth, losses, and captures without per-frame
+    //      store writes.
+    if (elapsedMs - lastPopulationPublishMs.current >= POPULATION_PUBLISH_INTERVAL_MS) {
+      lastPopulationPublishMs.current = elapsedMs;
+      const published: Record<string, number> = {};
+      controllerCounts.forEach((count, controller) => { published[controller] = count; });
+      const previous = conquest.controlledUnitCounts;
+      let changed = Object.keys(published).length !== Object.keys(previous).length;
+      if (!changed) {
+        for (const key in published) {
+          if (published[key] !== previous[key]) { changed = true; break; }
+        }
+      }
+      if (changed) conquest.setControlledUnitCounts(published);
     }
 
     // 9) Push every living unit's transform + animation pose + allegiance ring, and
@@ -1586,6 +1802,25 @@ export function ConquestField() {
       }
     }
 
+    // 9.5) Queen rally markers (increment 5): a team-colored ring on the tile where a
+    //      Queen's grown units muster, shown only while she has set a rally point.
+    for (const queen of queenByArmy.values()) {
+      if (!queen.rallyMesh) continue;
+      const rally = queenRallies.current.get(queen.id);
+      const show = !!rally && !queen.dead;
+      queen.rallyMesh.visible = show;
+      if (show && rally) {
+        up.copy(rally).normalize();
+        ringQuat.setFromUnitVectors(RING_FORWARD, up);
+        queen.rallyMesh.position.copy(rally).addScaledVector(up, RING_LIFT);
+        queen.rallyMesh.quaternion.copy(ringQuat);
+        const color = colorRef.current.get(queen.controllerId);
+        if (color !== undefined) {
+          (queen.rallyMesh.material as THREE.MeshBasicMaterial).color.setHex(color);
+        }
+      }
+    }
+
     // 10) Third-person chase camera, locked onto the piloted monarch. Camera
     //     distance is proportional to the monarch's size so small animals fill the
     //     frame. With no controllable monarch (defeat), the camera simply holds.
@@ -1688,6 +1923,26 @@ export function ConquestField() {
             color={SELECTION_RING_COLOR}
             transparent
             opacity={0.9}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+
+      {/* Queen rally markers (one per Queen; the sim shows/positions each). */}
+      {liveUnits.filter((unit) => unit.kind === 'queen').map((unit) => (
+        <mesh
+          key={`${unit.id}-rally`}
+          ref={(element) => { unit.rallyMesh = element; }}
+          geometry={ringGeometry}
+          scale={RALLY_MARKER_RADIUS}
+          visible={false}
+          renderOrder={2}
+        >
+          <meshBasicMaterial
+            color={colorByController.get(unit.controllerId) ?? 0xffffff}
+            transparent
+            opacity={0.7}
             side={THREE.DoubleSide}
             depthWrite={false}
           />

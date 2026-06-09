@@ -65,6 +65,29 @@
   overflow-y: auto;
 }
 
+.conquest-roster-forces {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.82rem;
+  color: #cbd5e1;
+}
+
+.conquest-roster-forces > span:last-child {
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.conquest-roster-ceiling {
+  font-weight: 400;
+  color: #64748b;
+}
+
 .conquest-roster-row {
   display: flex;
   align-items: center;

@@ -120,6 +120,12 @@ interface ConquestState {
    * `conquerArmy` when a monarch is captured.
    */
   armyController: Record<string, string>;
+  /**
+   * controllerId → number of living units that controller commands right now.
+   * Published from the live field on a throttle (the field owns unit life/death);
+   * the HUD reads it against each controller's territory-derived population cap.
+   */
+  controlledUnitCounts: Record<string, number>;
   outcome: ConquestOutcome;
   lastCapture: ConquestCaptureEvent | null;
   selectedTileId: number | null;
@@ -134,6 +140,14 @@ interface ConquestState {
   setSelectedMonarch: (unitId: string) => void;
   /** Transfer a defeated army to its conqueror (the core conquest mechanic). */
   conquerArmy: (defeatedArmyId: string, conquerorId: string, atMs: number) => void;
+  /**
+   * Flip the owner of one or more tiles in a single update (occupation claiming —
+   * Increment 5). Merges `updates` (tileId → new owner) into `tileOwners`; a no-op
+   * when nothing actually changes, so the field can call it without thrashing React.
+   */
+  claimTiles: (updates: Record<number, string>) => void;
+  /** Publish the live per-controller unit counts from the field (throttled). */
+  setControlledUnitCounts: (counts: Record<string, number>) => void;
 }
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
@@ -288,6 +302,7 @@ export const useConquestStore = create<ConquestState>((set, get) => ({
   units: [],
   tileOwners: {},
   armyController: {},
+  controlledUnitCounts: {},
   outcome: 'playing',
   lastCapture: null,
   selectedTileId: null,
@@ -313,14 +328,14 @@ export const useConquestStore = create<ConquestState>((set, get) => ({
 
     set({
       world, biomes, seed: setup.seed, players, units, tileOwners,
-      armyController: {}, outcome: 'playing', lastCapture: null,
+      armyController: {}, controlledUnitCounts: {}, outcome: 'playing', lastCapture: null,
       selectedTileId: null, selectedMonarchId: humanMonarch?.id ?? null,
     });
   },
 
   reset: () => set({
     world: null, biomes: [], seed: 0, players: [], units: [], tileOwners: {},
-    armyController: {}, outcome: 'playing', lastCapture: null,
+    armyController: {}, controlledUnitCounts: {}, outcome: 'playing', lastCapture: null,
     selectedTileId: null, selectedMonarchId: null,
   }),
 
@@ -380,6 +395,24 @@ export const useConquestStore = create<ConquestState>((set, get) => ({
       selectedMonarchId: nextSelected,
     });
   },
+
+  claimTiles: (updates) => {
+    const { tileOwners } = get();
+    // Only commit a new object (and the re-render it triggers) if some tile's owner
+    // actually changes, so a unit standing on already-owned farmland is free.
+    let changed = false;
+    const nextTileOwners: Record<number, string> = { ...tileOwners };
+    for (const [tileIdKey, ownerId] of Object.entries(updates)) {
+      const tileId = Number(tileIdKey);
+      if (nextTileOwners[tileId] !== ownerId) {
+        nextTileOwners[tileId] = ownerId;
+        changed = true;
+      }
+    }
+    if (changed) set({ tileOwners: nextTileOwners });
+  },
+
+  setControlledUnitCounts: (counts) => set({ controlledUnitCounts: counts }),
 }));
 
 /** Convenience: the biome rules for a tile, or null if the world isn't built. */
