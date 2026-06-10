@@ -9,8 +9,11 @@ import * as THREE from 'three';
 //
 // The push is applied in OBJECT space, before the per-instance/world scale, so a
 // fixed thickness here yields an outline whose width tracks each model's on-field
-// size (a big Yetti and a small Bee both read as equally thin). Tune via thickness.
-const DEFAULT_OUTLINE_THICKNESS = 0.018;
+// size (a big Yetti and a small Bee both read as equally thin). The models bake to
+// a longest edge of ~1 unit, so this is roughly the rim width as a fraction of the
+// model — ~6% reads as a thin-but-clearly-visible edge at gameplay camera distance
+// (1-2% was invisibly thin). Tune via thickness.
+const DEFAULT_OUTLINE_THICKNESS = 0.06;
 
 // Bright, slightly glowing team colors (tone mapping is left off so they stay
 // saturated against the scene rather than being crushed by the AgX grade).
@@ -45,9 +48,6 @@ export function createOutlineMaterial(options?: {
         '#include <begin_vertex>\n  transformed += normalize( objectNormal ) * uOutlineThickness;',
       );
   };
-  // Keep every outline material sharing one compiled program (the only thing that
-  // varies is the uniform/color, not the shader source).
-  material.customProgramCacheKey = () => `unit-outline-${thickness}`;
 
   return material;
 }
