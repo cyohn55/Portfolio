@@ -2694,6 +2694,7 @@ export function ConquestField() {
                     material={OUTLINE_ENEMY_MAT}
                     renderOrder={-1}
                     visible={false}
+                    raycast={() => {}}
                     ref={(element) => { unit.outlineMeshes[variantIndex][partIndex] = element; }}
                   />
                 </Fragment>

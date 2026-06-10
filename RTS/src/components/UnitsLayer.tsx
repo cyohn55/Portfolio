@@ -1223,6 +1223,7 @@ function InstancedUnits() {
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.castShadow = false;
     mesh.receiveShadow = false;
+    mesh.raycast = () => {}; // purely decorative — never intercept unit/terrain picking
     mesh.count = 0;
   };
 
