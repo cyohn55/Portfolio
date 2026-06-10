@@ -117,7 +117,7 @@ export function MultiplayerScreen() {
             </button>
           </div>
 
-          <button className="mp-back" onClick={backToMenu}>← Back</button>
+          <button className="mp-back" data-gamepad-back onClick={backToMenu}>← Back</button>
         </div>
       </div>
     );
@@ -144,7 +144,7 @@ export function MultiplayerScreen() {
             <p className="mp-waiting">Connecting to the room…</p>
           )}
           <div className="mp-spinner" aria-hidden="true" />
-          <button className="mp-back" onClick={backToMenu}>Cancel</button>
+          <button className="mp-back" data-gamepad-back onClick={backToMenu}>Cancel</button>
         </div>
       </div>
     );
@@ -206,7 +206,7 @@ export function MultiplayerScreen() {
                   ? 'READY UP'
                   : `PICK ${MAX_PICKS - localAnimals.length} MORE`}
           </button>
-          <button className="mp-back" onClick={backToMenu}>Leave</button>
+          <button className="mp-back" data-gamepad-back onClick={backToMenu}>Leave</button>
         </div>
       </div>
     </div>

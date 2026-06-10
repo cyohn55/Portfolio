@@ -91,7 +91,7 @@ export function ConquestLobby() {
   return (
     <div className="conquest-lobby">
       <div className="conquest-lobby-header">
-        <button className="conquest-back-button" onClick={() => transitionToScreen('menu')}>
+        <button className="conquest-back-button" data-gamepad-back onClick={() => transitionToScreen('menu')}>
           ← BACK
         </button>
         <h1 className="conquest-lobby-title">Conquest</h1>

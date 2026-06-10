@@ -183,7 +183,7 @@ export function AnimalSelectionLobby() {
   return (
     <div className="animal-lobby">
       <div className="lobby-header">
-        <button className="back-button" onClick={() => transitionToScreen('menu')}>
+        <button className="back-button" data-gamepad-back onClick={() => transitionToScreen('menu')}>
           ← BACK
         </button>
         <h1>Choose Your Team</h1>
@@ -203,6 +203,10 @@ export function AnimalSelectionLobby() {
               <div
                 key={animal}
                 className={`animal-card ${isSelected ? 'selected' : ''}`}
+                role="button"
+                tabIndex={0}
+                data-gamepad-focusable
+                aria-pressed={isSelected}
                 onClick={() => handleAnimalClick(animal)}
                 onMouseEnter={() => setHoveredAnimal(animal)}
                 onMouseLeave={() => setHoveredAnimal(null)}

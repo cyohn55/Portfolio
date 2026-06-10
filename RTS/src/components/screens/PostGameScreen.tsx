@@ -188,7 +188,7 @@ export function PostGameScreen() {
   const submitDisabled = submittedEntryKey !== null || submitting;
 
   return (
-    <div className="postgame-overlay">
+    <div className="postgame-overlay" data-gamepad-modal>
       <div className="postgame-container">
         {/* Victory/Defeat Banner. Icons flank the text on the left and right
             (vertically centered) rather than stacking above it — keeps the
@@ -342,7 +342,7 @@ export function PostGameScreen() {
           <button className="postgame-button primary" onClick={handlePlayAgain}>
             PLAY AGAIN
           </button>
-          <button className="postgame-button secondary" onClick={handleBackToMenu}>
+          <button className="postgame-button secondary" data-gamepad-back onClick={handleBackToMenu}>
             MAIN MENU
           </button>
         </div>

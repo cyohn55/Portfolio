@@ -95,7 +95,7 @@ export function Settings({ onBack }: SettingsProps) {
   };
 
   return (
-    <div style={{
+    <div data-gamepad-modal style={{
       position: 'fixed',
       top: 0,
       left: 0,
@@ -477,6 +477,7 @@ export function Settings({ onBack }: SettingsProps) {
         }}>
           <button
             onClick={handleBack}
+            data-gamepad-back
             style={{
               flex: 1,
               padding: '14px 28px',

@@ -155,7 +155,7 @@ export const InstructionsPopup: React.FC<InstructionsPopupProps> = ({ onClose })
   }, []);
 
   return (
-    <div className="instructions-overlay">
+    <div className="instructions-overlay" data-gamepad-modal>
       <div className="instructions-popup">
         <h2>Battle Instructions</h2>
 

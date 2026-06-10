@@ -36,7 +36,7 @@ export function PauseMenu({ onClose }: PauseMenuProps) {
   }
 
   return (
-    <div style={{
+    <div data-gamepad-modal style={{
       position: 'fixed',
       top: 0,
       left: 0,
@@ -75,6 +75,7 @@ export function PauseMenu({ onClose }: PauseMenuProps) {
         }}>
           <button
             onClick={handleResume}
+            data-gamepad-back
             style={{
               padding: '16px 32px',
               fontSize: '18px',

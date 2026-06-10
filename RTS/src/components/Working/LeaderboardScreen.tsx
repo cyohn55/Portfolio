@@ -97,7 +97,7 @@ export function LeaderboardScreen() {
         </ol>
 
         <div className="leaderboard-screen-actions">
-          <button className="menu-button primary" onClick={handleBack}>
+          <button className="menu-button primary" data-gamepad-back onClick={handleBack}>
             BACK
           </button>
         </div>

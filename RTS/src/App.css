@@ -102,3 +102,13 @@ html, body {
     touch-action: none;
   }
 }
+
+/* Controller focus ring: applied by UINavigationController to the element the
+   gamepad has focused, so a controller user always sees where they are even
+   where a screen suppresses the native :focus outline. */
+.gamepad-focused {
+  outline: 3px solid #ffd34d !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 3px rgba(255, 211, 77, 0.35), 0 0 18px 4px rgba(255, 211, 77, 0.55) !important;
+  border-radius: 6px;
+}
