@@ -54,7 +54,7 @@ import {
   type FrogTongueAnchors,
 } from '../utils/ModelPreloader';
 import * as THREE from 'three';
-import { createOutlineMaterial, OUTLINE_OWN_COLOR, OUTLINE_ENEMY_COLOR } from '../utils/outlineMaterial';
+import { createOutlineMaterial, ensureSmoothOutlineNormals, OUTLINE_OWN_COLOR, OUTLINE_ENEMY_COLOR } from '../utils/outlineMaterial';
 
 // Maximum instances drawn for a single animal variant. Sized to comfortably
 // hold hundreds of units per team even if they all share one animal.
@@ -1219,6 +1219,10 @@ function InstancedUnits() {
       outlineMeshRefs.current.set(variantKey, meshes);
     }
     meshes[partIndex] = mesh;
+    // Weld a continuous smooth-normal attribute onto the shared geometry so the
+    // inverted-hull shell extrudes as one envelope (continuous rim) rather than
+    // tearing apart along the model's hard/split normals.
+    ensureSmoothOutlineNormals(mesh.geometry);
     mesh.frustumCulled = false;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.castShadow = false;

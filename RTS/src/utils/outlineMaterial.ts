@@ -15,10 +15,88 @@ import * as THREE from 'three';
 // (1-2% was invisibly thin). Tune via thickness.
 const DEFAULT_OUTLINE_THICKNESS = 0.06;
 
+// Name of the welded smooth-normal vertex attribute the outline shader extrudes
+// along. See ensureSmoothOutlineNormals for why the model's own normals can't be
+// used directly.
+const SMOOTH_NORMAL_ATTRIBUTE = 'aSmoothNormal';
+
 // Bright, slightly glowing team colors (tone mapping is left off so they stay
 // saturated against the scene rather than being crushed by the AgX grade).
 export const OUTLINE_OWN_COLOR = 0x3b9dff;   // player / friendly = blue
 export const OUTLINE_ENEMY_COLOR = 0xff3b46; // enemy = red
+
+/**
+ * Add a welded smooth-normal attribute (`aSmoothNormal`) to a geometry so the
+ * inverted-hull outline shell stays continuous.
+ *
+ * The models bake with HARD normals: at every hard edge / UV seam the same point
+ * in space carries several vertices, each with a different face normal. Extruding
+ * along those raw, split normals tears the shell apart — neighbouring faces push
+ * in different directions and separate, so the rim reads as disconnected facets
+ * (a "segmented" outline) and the diverging faces can fold in FRONT of the body,
+ * painting the outline onto the animal instead of around it.
+ *
+ * The fix is to extrude every coincident vertex along ONE shared direction: the
+ * average of all face normals meeting at that point. That keeps the expanded
+ * shell welded — a single smooth envelope that hugs the true silhouette — so the
+ * rim is continuous and stays behind the body except at the silhouette edge.
+ *
+ * Idempotent and cheap: the attribute is computed once per geometry and cached on
+ * it. Safe to call on geometry shared with the lit body mesh — the body's shader
+ * never references this extra attribute.
+ */
+export function ensureSmoothOutlineNormals(geometry: THREE.BufferGeometry): void {
+  if (geometry.getAttribute(SMOOTH_NORMAL_ATTRIBUTE)) return;
+
+  if (!geometry.getAttribute('normal')) {
+    geometry.computeVertexNormals();
+  }
+  const position = geometry.getAttribute('position');
+  const normal = geometry.getAttribute('normal');
+  const vertexCount = position.count;
+
+  // Accumulate every vertex's normal into a bucket keyed by its (quantized)
+  // position, so all coincident-but-split vertices share one summed direction.
+  const summedNormalByPosition = new Map<string, THREE.Vector3>();
+  const positionKey = (index: number): string => {
+    // Round to ~0.1mm on the ~1-unit-tall baked models: tight enough to keep
+    // genuinely distinct vertices apart, loose enough to weld the float-identical
+    // duplicates the exporter emits at hard edges.
+    const x = Math.round(position.getX(index) * 1e4);
+    const y = Math.round(position.getY(index) * 1e4);
+    const z = Math.round(position.getZ(index) * 1e4);
+    return `${x},${y},${z}`;
+  };
+
+  for (let vertexIndex = 0; vertexIndex < vertexCount; vertexIndex++) {
+    const key = positionKey(vertexIndex);
+    let summed = summedNormalByPosition.get(key);
+    if (!summed) {
+      summed = new THREE.Vector3();
+      summedNormalByPosition.set(key, summed);
+    }
+    summed.x += normal.getX(vertexIndex);
+    summed.y += normal.getY(vertexIndex);
+    summed.z += normal.getZ(vertexIndex);
+  }
+
+  const smoothNormals = new Float32Array(vertexCount * 3);
+  const welded = new THREE.Vector3();
+  for (let vertexIndex = 0; vertexIndex < vertexCount; vertexIndex++) {
+    welded.copy(summedNormalByPosition.get(positionKey(vertexIndex))!);
+    if (welded.lengthSq() === 0) {
+      // Opposing normals cancelled out (a paper-thin shell): fall back to this
+      // vertex's own normal so the push still has a direction.
+      welded.set(normal.getX(vertexIndex), normal.getY(vertexIndex), normal.getZ(vertexIndex));
+    }
+    welded.normalize();
+    smoothNormals[vertexIndex * 3] = welded.x;
+    smoothNormals[vertexIndex * 3 + 1] = welded.y;
+    smoothNormals[vertexIndex * 3 + 2] = welded.z;
+  }
+
+  geometry.setAttribute(SMOOTH_NORMAL_ATTRIBUTE, new THREE.BufferAttribute(smoothNormals, 3));
+}
 
 /**
  * Build a MeshBasicMaterial that renders an inverted-hull outline. Reuse a single
@@ -27,6 +105,10 @@ export const OUTLINE_ENEMY_COLOR = 0xff3b46; // enemy = red
  * non-instanced meshes. The same material works in both cases because the normal
  * push is injected through three's standard vertex pipeline (so instancing,
  * instance color, and morph/skin all keep working).
+ *
+ * Every geometry drawn with this material MUST first be passed through
+ * {@link ensureSmoothOutlineNormals}; the shader extrudes along that welded
+ * attribute, not the model's own normals.
  */
 export function createOutlineMaterial(options?: {
   color?: THREE.ColorRepresentation;
@@ -41,21 +123,17 @@ export function createOutlineMaterial(options?: {
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uOutlineThickness = { value: thickness };
-    // three only emits <beginnormal_vertex> (which defines `objectNormal`) for the
-    // basic material when USE_ENVMAP or USE_SKINNING is set. This outline material
-    // uses neither, so without this guard `objectNormal` is undefined: the push
-    // below silently fails to compile, the back-face shell renders exactly on the
-    // body's silhouette, and the rim is invisible at ANY thickness. Define the
-    // object-space normal ourselves whenever three didn't, then expand along it.
+    // Extrude along the welded smooth normal (ensureSmoothOutlineNormals), NOT the
+    // model's split face normals: a fixed thickness along one shared direction per
+    // point keeps the back-face shell continuous, so the rim reads as a single
+    // glowing edge instead of separated facets.
     shader.vertexShader =
       'uniform float uOutlineThickness;\n' +
+      `attribute vec3 ${SMOOTH_NORMAL_ATTRIBUTE};\n` +
       shader.vertexShader.replace(
         '#include <begin_vertex>',
-        '#if ! ( defined( USE_ENVMAP ) || defined( USE_SKINNING ) )\n' +
-          '  #include <beginnormal_vertex>\n' +
-          '#endif\n' +
-          '#include <begin_vertex>\n' +
-          '  transformed += normalize( objectNormal ) * uOutlineThickness;',
+        '#include <begin_vertex>\n' +
+          `  transformed += normalize( ${SMOOTH_NORMAL_ATTRIBUTE} ) * uOutlineThickness;`,
       );
   };
 

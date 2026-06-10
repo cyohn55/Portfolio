@@ -30,7 +30,7 @@ import * as THREE from 'three';
 import type { AnimalId, MovementType, UnitBehavior } from '../../../game/types';
 import { ANIMAL_MOVEMENT_TYPES } from '../../../game/types';
 import { ANIMAL_FILE_MAP, OWL_WING_MODELS } from '../../../utils/ModelPreloader';
-import { createOutlineMaterial, OUTLINE_OWN_COLOR, OUTLINE_ENEMY_COLOR } from '../../../utils/outlineMaterial';
+import { createOutlineMaterial, ensureSmoothOutlineNormals, OUTLINE_OWN_COLOR, OUTLINE_ENEMY_COLOR } from '../../../utils/outlineMaterial';
 import { useGameStore } from '../../../game/state';
 import {
   keyboardEventToToken,
@@ -2695,7 +2695,12 @@ export function ConquestField() {
                     renderOrder={-1}
                     visible={false}
                     raycast={() => {}}
-                    ref={(element) => { unit.outlineMeshes[variantIndex][partIndex] = element; }}
+                    ref={(element) => {
+                      // Weld a continuous smooth-normal attribute so the shell
+                      // extrudes as one envelope, not torn split-normal facets.
+                      if (element) ensureSmoothOutlineNormals(element.geometry);
+                      unit.outlineMeshes[variantIndex][partIndex] = element;
+                    }}
                   />
                 </Fragment>
               ))}
