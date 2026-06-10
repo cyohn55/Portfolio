@@ -32,7 +32,7 @@ import {
   type BakedPart,
 } from '../../../utils/ModelPreloader';
 
-export { selectPoseIndex, airLiftFactor } from './conquestPose';
+export { selectPoseIndex, airLiftFactor, walkTiltPitch, hopLiftFactor } from './conquestPose';
 
 export interface PoseVariant {
   key: string;

@@ -154,6 +154,8 @@ import {
   buildOwlWingVariants,
   selectPoseIndex,
   airLiftFactor,
+  walkTiltPitch,
+  hopLiftFactor,
   type PoseVariant,
 } from './conquestAnimation';
 import type { GoldbergWorld } from './goldbergWorld';
@@ -179,6 +181,8 @@ const RING_LIFT = 0.001; // sit just above the tile face to avoid z-fighting
 // the face plane via seatRadiusOnTile, so this only guards against curvature/seams).
 const GROUND_CLEARANCE = 0.0004;
 const RING_FORWARD = new THREE.Vector3(0, 0, 1); // RingGeometry/CircleGeometry default normal
+// A unit's local x-axis (the basis `right`), about which a walking Bear rocks.
+const LOCAL_X_AXIS = new THREE.Vector3(1, 0, 0);
 
 // King/Queen aura discs: a soft, color-coded field showing each monarch's support
 // radius (gold = King's damage buff, green = Queen's heal). They pulse brighter
@@ -1404,6 +1408,7 @@ export function ConquestField() {
     candidateDir: new THREE.Vector3(),
     basis: new THREE.Matrix4(),
     quat: new THREE.Quaternion(),
+    tiltQuat: new THREE.Quaternion(),
     ringQuat: new THREE.Quaternion(),
     renderPos: new THREE.Vector3(),
     camDesired: new THREE.Vector3(),
@@ -1709,7 +1714,7 @@ export function ConquestField() {
     const delta = Math.min(rawDelta, 0.05); // clamp hitches
     const elapsedMs = state.clock.elapsedTime * 1000;
     const {
-      up, step, candidateDir, basis, quat, ringQuat, renderPos, camDesired, camBack,
+      up, step, candidateDir, basis, quat, tiltQuat, ringQuat, renderPos, camDesired, camBack,
     } = scratch.current;
 
     const conquest = useConquestStore.getState();
@@ -2289,13 +2294,21 @@ export function ConquestField() {
 
       // Stand on the surface (air units hover above it), facing `facing`, up along
       // the surface normal. A flying/abducting owl (or its dangling catch) adds its
-      // radial flight lift on top of the baseline hover.
+      // radial flight lift on top of the baseline hover; a moving Bunny adds a hop arch.
+      const hopLift = hopLiftFactor(unit.animal, isMoving, elapsedMs) * unit.scale;
       up.copy(unit.position).normalize();
-      renderPos.copy(unit.position).addScaledVector(up, GROUND_CLEARANCE + unit.airLift + unit.flightLift);
+      renderPos.copy(unit.position).addScaledVector(up, GROUND_CLEARANCE + unit.airLift + unit.flightLift + hopLift);
       scratch.current.right.crossVectors(up, unit.facing).normalize();
       scratch.current.forward.crossVectors(scratch.current.right, up).normalize();
       basis.makeBasis(scratch.current.right, up, scratch.current.forward);
       quat.setFromRotationMatrix(basis);
+      // A walking Bear rocks on its local x-axis (the basis `right`); applied after the
+      // surface orientation so it pitches relative to the ground it stands on.
+      const tiltPitch = walkTiltPitch(unit.animal, isMoving, elapsedMs);
+      if (tiltPitch !== 0) {
+        tiltQuat.setFromAxisAngle(LOCAL_X_AXIS, tiltPitch);
+        quat.multiply(tiltQuat);
+      }
       unit.group.position.copy(renderPos);
       unit.group.quaternion.copy(quat);
 

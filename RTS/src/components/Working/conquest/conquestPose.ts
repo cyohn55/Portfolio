@@ -76,3 +76,39 @@ export function airLiftFactor(animal: AnimalId): number {
   if (animal === 'Owl') return 2.0;
   return 0;
 }
+
+// Bear walk rock: a moving Bear sways on its local x-axis, peaking at ±10° with one
+// full sway every 700ms (350ms each way) — mirroring UnitsLayer's bearTiltPitch. The
+// Bear ships a single body model, so this procedural tilt is its only walk motion.
+const BEAR_TILT_RAD = (10 * Math.PI) / 180;
+const BEAR_TILT_PERIOD_MS = 700;
+
+// Bunny hop: a moving Bunny rises and falls along a sine arch, ~3.7 hops/sec (Quick
+// Play drives the Bunny's hop at moveSpeed/5 ≈ 3.7Hz for its speed), peaking at 0.25×
+// its own size — the same hop-height ratio Quick Play uses (1.5 world units on a
+// 6-unit-tall bunny). Like the Bear, the Bunny is single-pose, so the bob is its walk.
+const BUNNY_HOP_PERIOD_MS = 270;
+const BUNNY_HOP_LIFT_FACTOR = 0.25;
+
+/**
+ * Local-x pitch (radians) for a walking animal's body rock this frame. Only the Bear
+ * rocks; every other animal (and any idle Bear) stays level (returns 0). Mirrors the
+ * main game so a Conquest bear reads the same as a Quick-Play one.
+ */
+export function walkTiltPitch(animal: AnimalId, isMoving: boolean, elapsedMs: number): number {
+  if (animal !== 'Bear' || !isMoving) return 0;
+  const phase = (elapsedMs / BEAR_TILT_PERIOD_MS) * Math.PI * 2;
+  return Math.sin(phase) * BEAR_TILT_RAD;
+}
+
+/**
+ * Vertical hop lift for a moving animal this frame, as a multiple of the unit's model
+ * scale (so it scales with the unit like `airLiftFactor`). Only the Bunny hops; every
+ * other animal (and any idle Bunny) returns 0. The arch is always non-negative — the
+ * unit springs up and lands rather than dipping below the ground.
+ */
+export function hopLiftFactor(animal: AnimalId, isMoving: boolean, elapsedMs: number): number {
+  if (animal !== 'Bunny' || !isMoving) return 0;
+  const phase = (elapsedMs % BUNNY_HOP_PERIOD_MS) / BUNNY_HOP_PERIOD_MS;
+  return Math.sin(phase * Math.PI) * BUNNY_HOP_LIFT_FACTOR;
+}
