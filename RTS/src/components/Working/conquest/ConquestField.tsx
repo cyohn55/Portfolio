@@ -1031,13 +1031,17 @@ export function ConquestField() {
     Object.assign(selectionBox.style, {
       position: 'fixed', border: '1px solid #ffffff',
       backgroundColor: 'rgba(255,255,255,0.12)', pointerEvents: 'none',
-      display: 'none', zIndex: '1000',
+      // Above .conquest-screen (z-index:1500) so the rubber-band box isn't buried by it.
+      display: 'none', zIndex: '1600',
     } as CSSStyleDeclaration);
     document.body.appendChild(selectionBox);
 
     // A gold dotted line previewing a Queen's patrol route during a right-button hold
-    // on her (committed on release), reusing Quick Play's shared indicator helper.
+    // on her (committed on release), reusing Quick Play's shared indicator helper. The
+    // helper defaults to z-index 1001 (fine over Quick Play's canvas); lift it above the
+    // opaque .conquest-screen container (z-index 1500) so the route preview stays visible.
     const patrolArrow = createDottedArrow(PATROL_ARROW_COLOR);
+    patrolArrow.style.zIndex = '1600';
     document.body.appendChild(patrolArrow);
 
     let leftDown = false;
@@ -1328,7 +1332,9 @@ export function ConquestField() {
       // Inner+outer dark rings give the white edge contrast on light terrain; the cyan
       // outer glow lifts it off the dark space/ocean background.
       boxShadow: '0 0 0 1px rgba(0,0,0,0.85), 0 0 0 3px rgba(0,0,0,0.45), 0 0 9px 2px rgba(64,200,255,0.9)',
-      pointerEvents: 'none', display: 'none', zIndex: '1000',
+      // Above .conquest-screen (position:fixed; z-index:1500; opaque #05070f bg): this
+      // body-appended overlay must out-stack that full-screen container or it is buried.
+      pointerEvents: 'none', display: 'none', zIndex: '1600',
     } as CSSStyleDeclaration);
     // A bright center dot marks the exact aim point (the ring alone reads as empty space).
     const reticleDot = document.createElement('div');
