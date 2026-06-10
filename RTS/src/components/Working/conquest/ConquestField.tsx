@@ -30,6 +30,7 @@ import * as THREE from 'three';
 import type { AnimalId, MovementType, UnitBehavior } from '../../../game/types';
 import { ANIMAL_MOVEMENT_TYPES } from '../../../game/types';
 import { ANIMAL_FILE_MAP, OWL_WING_MODELS } from '../../../utils/ModelPreloader';
+import { getRadialGlowTexture } from '../../../utils/glowTexture';
 import { useGameStore } from '../../../game/state';
 import {
   keyboardEventToToken,
@@ -198,6 +199,17 @@ const AURA_LIFT = 0.0008; // just under the allegiance ring
 // A King's buff ring counts as "active" while a buffed unit fought this recently.
 const RECENT_COMBAT_MS = 2000;
 
+// Team-colored aura outline: a soft, camera-facing glow behind each unit so animals
+// read against the dark planet/space (blue = the player's units, red = everyone
+// else). Mirrors Quick Play's outline; toggleable from Video settings. Radii are
+// globe units, a touch larger than the allegiance ring so the halo escapes the
+// silhouette; the lift centers it on the body.
+const AURA_OUTLINE_OWN_COLOR = 0x4fa3ff;
+const AURA_OUTLINE_ENEMY_COLOR = 0xff4d5e;
+const AURA_OUTLINE_UNIT_RADIUS = 0.013;
+const AURA_OUTLINE_MONARCH_RADIUS = 0.02;
+const AURA_OUTLINE_LIFT = 0.007;
+
 // Piloting feel. Speeds are in globe-radius units per second (the planet has
 // radius 1, so a full lap at MOVE_SPEED takes ~2π / MOVE_SPEED seconds). Tuned so
 // crossing one acre-sized tile takes a couple of seconds, not a blink. Per-role
@@ -353,6 +365,8 @@ interface LiveUnit {
   group: THREE.Group | null;
   ring: THREE.Mesh | null;
   ringColor: number; // last hex applied to the ring, so we only recolor on change
+  auraOutlineMesh: THREE.Mesh | null; // team-colored glow behind every unit
+  auraOutlineColor: number; // last hex applied to the aura, so we only recolor on change
   auraMesh: THREE.Mesh | null; // monarchs only
   tongueMesh: THREE.Mesh | null; // frogs only: the grab beam
   selectionRing: THREE.Mesh | null; // shown while the unit is selected
@@ -431,6 +445,8 @@ function buildLiveUnit(args: {
     group: null,
     ring: null,
     ringColor: -1,
+    auraOutlineMesh: null,
+    auraOutlineColor: -1,
     auraMesh: null,
     tongueMesh: null,
     selectionRing: null,
@@ -482,7 +498,7 @@ const RETICLE_SPEED_PX_PER_SEC = 900;
 // Matched to CAM_BACK_FACTOR so the cursor's max reach lands near the camera's natural
 // framing ahead of the monarch (rather than off-screen at full lateral deflection).
 const PILOT_CURSOR_LEASH_FACTOR = 7;   // max surface reach = monarch.scale × this × zoom
-const PILOT_CURSOR_SWEEP_RATE = 2.6;   // full leash sweeps in ~1/this seconds at full deflection
+const PILOT_CURSOR_SWEEP_RATE = 3.25;  // full leash sweeps in ~1/this seconds at full deflection (25% faster than the original 2.6)
 // The cursor visual: a flat ring on the crust plus a 4-sided pyramid hovering above,
 // apex aimed down at the ring center and spinning — mirroring Quick Play's cursor. Sizes
 // are globe units (a monarch ring is 0.011), tinted the reticle's high-contrast cyan.
@@ -625,6 +641,10 @@ export function ConquestField() {
   // scales and tints its own material instance. Disposed when the field unmounts.
   const ringGeometry = useMemo(() => new THREE.RingGeometry(0.6, 1.0, 24), []);
   const auraGeometry = useMemo(() => new THREE.CircleGeometry(1.0, 36), []);
+  // A 2x2 quad (radius 1 before per-unit scaling) for the team-colored aura
+  // outline — a camera-facing glow behind each unit, masked by the shared radial
+  // glow sprite so only a soft halo bleeds around the model silhouette.
+  const auraOutlineGeometry = useMemo(() => new THREE.PlaneGeometry(2, 2), []);
   // Egg projectile sphere and tongue beam cylinder (unit-sized; each instance scales
   // itself). The cylinder is built along +Y, centered, so a midpoint placement plus a
   // (0,1,0)->beam rotation orients it; its Y scale becomes the beam length.
@@ -634,9 +654,9 @@ export function ConquestField() {
   const cursorConeGeometry = useMemo(
     () => new THREE.ConeGeometry(CURSOR_CONE_RADIUS, CURSOR_CONE_HEIGHT, 4), []);
   useEffect(() => () => {
-    ringGeometry.dispose(); auraGeometry.dispose();
+    ringGeometry.dispose(); auraGeometry.dispose(); auraOutlineGeometry.dispose();
     eggGeometry.dispose(); tongueGeometry.dispose(); cursorConeGeometry.dispose();
-  }, [ringGeometry, auraGeometry, eggGeometry, tongueGeometry, cursorConeGeometry]);
+  }, [ringGeometry, auraGeometry, auraOutlineGeometry, eggGeometry, tongueGeometry, cursorConeGeometry]);
 
   // Whether this match fields any Frog army, so the tongue beam meshes are only
   // mounted when a frog can actually fire one (most matches have none).
@@ -2121,6 +2141,7 @@ export function ConquestField() {
               unit.dead = true;
               if (unit.group) unit.group.visible = false;
               if (unit.ring) unit.ring.visible = false;
+              if (unit.auraOutlineMesh) unit.auraOutlineMesh.visible = false;
             }
             unit.swarmTargetId = null;
           } else {
@@ -2269,6 +2290,7 @@ export function ConquestField() {
         unit.dead = true;
         if (unit.group) unit.group.visible = false;
         if (unit.ring) unit.ring.visible = false;
+        if (unit.auraOutlineMesh) unit.auraOutlineMesh.visible = false;
         continue;
       }
       unit.downed = true;
@@ -2434,6 +2456,7 @@ export function ConquestField() {
     // 9) Push every living unit's transform + animation pose + allegiance ring, and
     //    each monarch's aura disc.
     const auraPulse = (Math.sin(elapsedMs * 0.001 * AURA_PULSE_HZ * Math.PI * 2) + 1) * 0.5;
+    const aurasEnabled = useGameStore.getState().unitAurasEnabled;
     for (const unit of liveUnits) {
       if (unit.dead || !unit.group) continue;
 
@@ -2482,6 +2505,22 @@ export function ConquestField() {
       }
       unit.group.position.copy(renderPos);
       unit.group.quaternion.copy(quat);
+
+      // Team-colored aura outline: a camera-facing glow centered on the body,
+      // recolored by friend/foe so the player's units glow blue and the rest red.
+      if (unit.auraOutlineMesh) {
+        unit.auraOutlineMesh.visible = aurasEnabled;
+        if (aurasEnabled) {
+          unit.auraOutlineMesh.position.copy(unit.position).addScaledVector(up, AURA_OUTLINE_LIFT);
+          unit.auraOutlineMesh.quaternion.copy(camera.quaternion);
+          const friendly = humanId !== null && unit.controllerId === humanId;
+          const auraColor = friendly ? AURA_OUTLINE_OWN_COLOR : AURA_OUTLINE_ENEMY_COLOR;
+          if (auraColor !== unit.auraOutlineColor) {
+            (unit.auraOutlineMesh.material as THREE.MeshBasicMaterial).color.setHex(auraColor);
+            unit.auraOutlineColor = auraColor;
+          }
+        }
+      }
 
       // Allegiance ring: lie flat on the surface, recolored when the controller
       // changes (so a captured army flips to its new owner's color instantly).
@@ -2651,6 +2690,31 @@ export function ConquestField() {
             </group>
           ))}
         </group>
+      ))}
+
+      {/* Team-colored aura outline — a camera-facing glow behind each unit (blue =
+          the player's units, red = everyone else) so animals read against the dark
+          planet/space. Lives outside the scaled unit groups (fixed globe size); the
+          sim positions, billboards, recolors, and toggles it. */}
+      {liveUnits.map((unit) => (
+        <mesh
+          key={`${unit.id}-aura-outline`}
+          ref={(element) => { unit.auraOutlineMesh = element; }}
+          geometry={auraOutlineGeometry}
+          scale={unit.isMonarch ? AURA_OUTLINE_MONARCH_RADIUS : AURA_OUTLINE_UNIT_RADIUS}
+          visible={false}
+          renderOrder={0}
+        >
+          <meshBasicMaterial
+            map={getRadialGlowTexture()}
+            color={AURA_OUTLINE_ENEMY_COLOR}
+            transparent
+            opacity={0.85}
+            depthWrite={false}
+            toneMapped={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </mesh>
       ))}
 
       {/* Allegiance rings live outside the scaled unit groups so their size stays

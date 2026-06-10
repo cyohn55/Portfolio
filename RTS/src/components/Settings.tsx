@@ -15,6 +15,8 @@ export function Settings({ onBack }: SettingsProps) {
   const setShadowsEnabled = useGameStore((s) => s.setShadowsEnabled);
   const healthBarsEnabled = useGameStore((s) => s.healthBarsEnabled);
   const setHealthBarsEnabled = useGameStore((s) => s.setHealthBarsEnabled);
+  const unitAurasEnabled = useGameStore((s) => s.unitAurasEnabled);
+  const setUnitAurasEnabled = useGameStore((s) => s.setUnitAurasEnabled);
 
   // Local state for settings (synced with store)
   const [sunBrightness, setSunBrightness] = useState(lightingSettings.sunBrightness);
@@ -263,6 +265,60 @@ export function Settings({ onBack }: SettingsProps) {
                   position: 'absolute',
                   top: '3px',
                   left: healthBarsEnabled ? '27px' : '3px',
+                  width: '22px',
+                  height: '22px',
+                  borderRadius: '50%',
+                  background: '#fff',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                  transition: 'left 0.3s ease'
+                }} />
+              </button>
+            </div>
+
+            {/* Unit aura outline toggle */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '16px',
+              padding: '16px 20px',
+              background: 'rgba(88,120,255,0.08)',
+              border: '1px solid rgba(88,120,255,0.25)',
+              borderRadius: '8px'
+            }}>
+              <div>
+                <div style={{ color: '#fff', fontSize: '16px', fontWeight: 600 }}>
+                  Unit Auras
+                </div>
+                <div style={{ color: '#64748b', fontSize: '12px', marginTop: '2px' }}>
+                  Team-colored glow around each animal (blue for your team, red for enemies)
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={unitAurasEnabled}
+                aria-label="Toggle unit auras"
+                onClick={() => setUnitAurasEnabled(!unitAurasEnabled)}
+                style={{
+                  position: 'relative',
+                  flexShrink: 0,
+                  width: '52px',
+                  height: '28px',
+                  borderRadius: '14px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  background: unitAurasEnabled
+                    ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                    : 'rgba(148,163,184,0.3)',
+                  transition: 'background 0.3s ease'
+                }}
+              >
+                <span style={{
+                  position: 'absolute',
+                  top: '3px',
+                  left: unitAurasEnabled ? '27px' : '3px',
                   width: '22px',
                   height: '22px',
                   borderRadius: '50%',

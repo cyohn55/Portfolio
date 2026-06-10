@@ -377,30 +377,26 @@ function applyPilotSelectionToDraft(draft: PilotMutableState, ownerId: string, u
 }
 
 /**
- * Toggle a monarch rally for one owner: if that owner's same-animal army is
- * already trailing this monarch, drop the follow; otherwise make every living
- * same-animal Unit follow it. Pure simulation state (followMonarchId) — selection
- * is handled optimistically by the caller, so this never touches it and is safe
- * to replay identically on both peers. A monarch of the wrong owner is ignored.
+ * Rally a monarch's army for one owner: make every living same-animal Unit follow
+ * it. Idempotent — repeating the rally re-pins the same followers rather than
+ * toggling the follow back off, so a second press of the rally/select input never
+ * drops the army (that is what the dedicated Deselect input is for). Following is
+ * still released the moment a unit receives its own move/attack order (see the
+ * follow-break in moveCommand) or the monarch dies. Pure simulation state
+ * (followMonarchId) — selection is handled optimistically by the caller, so this
+ * never touches it and is safe to replay identically on both peers. A monarch of
+ * the wrong owner is ignored.
  */
-function applyRallyToggleToDraft(draft: PilotMutableState, ownerId: string, monarchId: string): void {
+function applyRallyToDraft(draft: PilotMutableState, ownerId: string, monarchId: string): void {
   const monarch = draft.units.find((u) => u.id === monarchId);
   if (!monarch || monarch.ownerId !== ownerId) return;
 
   const isFollower = (u: Unit) =>
     u.ownerId === ownerId && u.kind === 'Unit' && u.animal === monarch.animal;
 
-  const alreadyRallying = draft.units.some(
-    (u) => isFollower(u) && u.followMonarchId === monarch.id
-  );
-
   for (const unit of draft.units) {
     if (!isFollower(unit)) continue;
-    if (alreadyRallying) {
-      delete unit.followMonarchId;
-    } else {
-      unit.followMonarchId = monarch.id;
-    }
+    unit.followMonarchId = monarch.id;
   }
 }
 
@@ -727,6 +723,10 @@ type Store = GameState & {
   // Floating unit health bars (shown only while a unit is taking damage or healing)
   healthBarsEnabled: boolean;
   setHealthBarsEnabled: (enabled: boolean) => void;
+  // Team-colored aura outline around each unit (blue = own, red = enemy) so units
+  // read clearly against the terrain; persisted across sessions
+  unitAurasEnabled: boolean;
+  setUnitAurasEnabled: (enabled: boolean) => void;
   // Background music on/off (persisted across sessions)
   musicEnabled: boolean;
   setMusicEnabled: (enabled: boolean) => void;
@@ -783,6 +783,21 @@ const HEALTH_BARS_STORAGE_KEY = 'rts-health-bars-enabled';
 const loadHealthBarsEnabled = (): boolean => {
   try {
     const raw = localStorage.getItem(HEALTH_BARS_STORAGE_KEY);
+    if (raw === null) return true; // default on
+    return raw === 'true';
+  } catch {
+    return true;
+  }
+};
+
+// Persisted unit-aura toggle. Defaults ON so the team-colored outline helps units
+// stand out against the terrain; the video settings tab flips it and the choice
+// survives page reloads. Stored as a string so the absence of the key (first
+// visit) resolves to the default rather than a forced "off".
+const UNIT_AURAS_STORAGE_KEY = 'rts-unit-auras-enabled';
+const loadUnitAurasEnabled = (): boolean => {
+  try {
+    const raw = localStorage.getItem(UNIT_AURAS_STORAGE_KEY);
     if (raw === null) return true; // default on
     return raw === 'true';
   } catch {
@@ -914,6 +929,15 @@ export const useGameStore = create<Store>((set, get) => ({
       /* localStorage unavailable; setting still applies for the session */
     }
     set({ healthBarsEnabled: enabled });
+  },
+  unitAurasEnabled: loadUnitAurasEnabled(),
+  setUnitAurasEnabled: (enabled) => {
+    try {
+      localStorage.setItem(UNIT_AURAS_STORAGE_KEY, String(enabled));
+    } catch {
+      /* localStorage unavailable; setting still applies for the session */
+    }
+    set({ unitAurasEnabled: enabled });
   },
   musicEnabled: loadMusicEnabled(),
   setMusicEnabled: (enabled) => {
@@ -2868,12 +2892,14 @@ export const useGameStore = create<Store>((set, get) => ({
     beginLocalPilot(sibling.id);
   },
 
-  // Toggle "rally" on the piloted monarch (Space) and select that animal's army.
-  // When rally is on, every living army Unit of the same animal and owner trails
-  // the monarch (the tick keeps their move order pinned to its position);
-  // pressing again clears the rally. Either way the army is left selected so the
-  // player can immediately redirect it with a right-click — and issuing that
-  // move order breaks the unit off the monarch (see moveCommand).
+  // "Rally" the piloted monarch (Space / controller) and select that animal's army.
+  // Every living army Unit of the same animal and owner trails the monarch (the
+  // tick keeps their move order pinned to its position). The rally is idempotent —
+  // pressing again simply re-rallies and never drops the army or the selection, so
+  // the input can't accidentally deselect (clearing is the dedicated Deselect
+  // input's job). The army is left selected so the player can immediately redirect
+  // it with a right-click — and issuing that move order breaks the unit off the
+  // monarch (see moveCommand).
   rallyToMonarch: () => {
     const prev = get();
     const localPlayerId = prev.localPlayerId;
@@ -2892,11 +2918,11 @@ export const useGameStore = create<Store>((set, get) => ({
       .map((u) => u.id);
     set({ selectedUnitIds: [monarch.id, ...followerIds] });
 
-    // The follow toggle itself is simulation state: routed in multiplayer,
-    // immediate in single-player. Both peers resolve the on/off the same way at
+    // The follow state itself is simulation state: routed in multiplayer,
+    // immediate in single-player. Both peers resolve the rally the same way at
     // apply time from the synced followMonarchId state.
     if (routeCommand({ type: 'rallyMonarch', payload: { monarchId: monarch.id } })) return;
-    set((s) => produce(s, (draft) => applyRallyToggleToDraft(draft, localPlayerId, monarch.id)));
+    set((s) => produce(s, (draft) => applyRallyToDraft(draft, localPlayerId, monarch.id)));
   },
 
   // Designate one more follower for a placement order while the rally key is held
@@ -2992,7 +3018,7 @@ export const useGameStore = create<Store>((set, get) => ({
   },
 
   applyRallyMonarch: (ownerId, monarchId) =>
-    set((prev) => produce(prev, (draft) => applyRallyToggleToDraft(draft, ownerId, monarchId))),
+    set((prev) => produce(prev, (draft) => applyRallyToDraft(draft, ownerId, monarchId))),
 
   applyPlaceRallied: (ownerId, monarchId, count, target) =>
     set((prev) => produce(prev, (draft) => applyPlaceRalliedToDraft(draft, ownerId, monarchId, count, target))),

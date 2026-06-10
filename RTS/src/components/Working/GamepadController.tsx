@@ -76,7 +76,7 @@ const CURSOR_SPIN_SPEED = 2.2;    // radians/second
 // When piloting a monarch the cursor extends out from it on a leash of this many
 // world units, mapped from full right-stick deflection at this speed.
 const PILOT_CURSOR_MAX_DISTANCE = 50;
-const PILOT_CURSOR_SPEED = 45;    // world units/second at full deflection
+const PILOT_CURSOR_SPEED = 56.25; // world units/second at full deflection (25% faster than the original 45)
 
 // Command-trigger color feedback: while the command trigger is held the cursor
 // (and its leash line) turn neon green over open ground or red while aimed at an

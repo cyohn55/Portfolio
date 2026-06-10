@@ -54,6 +54,7 @@ import {
   type FrogTongueAnchors,
 } from '../utils/ModelPreloader';
 import * as THREE from 'three';
+import { getRadialGlowTexture } from '../utils/glowTexture';
 
 // Maximum instances drawn for a single animal variant. Sized to comfortably
 // hold hundreds of units per team even if they all share one animal.
@@ -182,6 +183,36 @@ const HEALTH_BAR_FILL_MAT = new THREE.MeshBasicMaterial({
 // flicker against each other. They still depth-test against terrain/units.
 const OWN_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#4169E1', depthWrite: false });
 const ENEMY_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#DC143C', depthWrite: false });
+
+// Team-colored aura outline: a soft, camera-facing glow quad behind each unit.
+// The opaque model occludes the glow's center (depthTest on, depthWrite off) so
+// only a halo bleeds around the silhouette, helping units read against the terrain.
+// Blue for the local player, red for the enemy — matching the owner-ring colors so
+// friend/foe stays consistent. Additive blending makes the glow lift off the scene.
+const AURA_OUTLINE_OWN_COLOR = '#4fa3ff';   // brighter blue than the ground ring so the glow pops
+const AURA_OUTLINE_ENEMY_COLOR = '#ff4d5e'; // brighter red, ditto
+// Base half-size (world radius) of the glow quad for a regular unit, plus the
+// height it is centered above the unit's feet. Both are scaled per unit by how
+// much bigger that unit's model is than a regular unit's, so larger Kings/Queens
+// get a proportionally larger halo (mirroring royalRingScale for the rings).
+const AURA_OUTLINE_RADIUS = 2.4;
+const AURA_OUTLINE_LIFT = 1.6;
+const AURA_OUTLINE_CAPACITY = RING_CAPACITY;
+// One shared 2x2 quad (radius 1 before per-instance scaling), masked by the radial
+// glow sprite. Built lazily so the canvas texture is only created on the client.
+const auraOutlineGeometry = new THREE.PlaneGeometry(2, 2);
+const makeAuraOutlineMaterial = (color: string) =>
+  new THREE.MeshBasicMaterial({
+    color,
+    map: getRadialGlowTexture(),
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+  });
+const AURA_OUTLINE_OWN_MAT = makeAuraOutlineMaterial(AURA_OUTLINE_OWN_COLOR);
+const AURA_OUTLINE_ENEMY_MAT = makeAuraOutlineMaterial(AURA_OUTLINE_ENEMY_COLOR);
 const SELECTION_OUTER_MAT = new THREE.MeshStandardMaterial({
   color: '#000080',
   transparent: true,
@@ -689,6 +720,8 @@ function InstancedUnits() {
   const meshRefs = useRef<Map<string, THREE.InstancedMesh[]>>(new Map());
   const ownRingRef = useRef<THREE.InstancedMesh>(null);
   const enemyRingRef = useRef<THREE.InstancedMesh>(null);
+  const auraOutlineOwnRef = useRef<THREE.InstancedMesh>(null);
+  const auraOutlineEnemyRef = useRef<THREE.InstancedMesh>(null);
   const royalOwnerRingRef = useRef<THREE.InstancedMesh>(null);
   const selectionOuterRef = useRef<THREE.InstancedMesh>(null);
   const selectionInnerRef = useRef<THREE.InstancedMesh>(null);
@@ -723,7 +756,7 @@ function InstancedUnits() {
 
   // Mark ring instance buffers as dynamic (updated every frame) for the GPU.
   useEffect(() => {
-    [ownRingRef, enemyRingRef, royalOwnerRingRef, selectionOuterRef, selectionInnerRef, royalSelectionOuterRef, royalSelectionInnerRef, auraActiveRef, auraUnitGlowRef, healthBarBgRef, healthBarFillRef].forEach((ref) => {
+    [ownRingRef, enemyRingRef, auraOutlineOwnRef, auraOutlineEnemyRef, royalOwnerRingRef, selectionOuterRef, selectionInnerRef, royalSelectionOuterRef, royalSelectionInnerRef, auraActiveRef, auraUnitGlowRef, healthBarBgRef, healthBarFillRef].forEach((ref) => {
       ref.current?.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     });
   }, []);
@@ -759,6 +792,7 @@ function InstancedUnits() {
     const queenAuraRadius = s.config.regenRadius;
     const kingAuraRadius = s.config.kingAuraRadius;
     const healthBarsEnabled = s.healthBarsEnabled;
+    const aurasEnabled = s.unitAurasEnabled;
 
     const { position, quaternion, tiltQuaternion, identityQuaternion, scale, one, matrix, projScreen, frustum, cameraRight, color } = scratch.current;
 
@@ -803,6 +837,8 @@ function InstancedUnits() {
     }
     let ownRingCount = 0;
     let enemyRingCount = 0;
+    let auraOutlineOwnCount = 0;
+    let auraOutlineEnemyCount = 0;
     let royalOwnerRingCount = 0;
     let selectionOuterCount = 0;
     let selectionInnerCount = 0;
@@ -903,6 +939,27 @@ function InstancedUnits() {
             ringMesh.setMatrixAt(ringIndex, matrix);
             if (isOwnUnit) ownRingCount++;
             else enemyRingCount++;
+          }
+        }
+      }
+
+      // Team-colored aura outline: a camera-facing glow quad centered on the unit's
+      // body, sized to how much bigger this unit's model is than a regular unit so
+      // royals get a proportionally larger halo. Toggleable from Video settings.
+      if (aurasEnabled) {
+        const auraMesh = isOwnUnit ? auraOutlineOwnRef.current : auraOutlineEnemyRef.current;
+        if (auraMesh) {
+          const auraIndex = isOwnUnit ? auraOutlineOwnCount : auraOutlineEnemyCount;
+          if (auraIndex < AURA_OUTLINE_CAPACITY) {
+            const unitScale = getKindTargetScale(unit.animal, 'Unit');
+            const sizeRatio = unitScale > 0 ? target / unitScale : 1;
+            const half = AURA_OUTLINE_RADIUS * sizeRatio;
+            position.set(unit.position.x, renderY + AURA_OUTLINE_LIFT * sizeRatio, unit.position.z);
+            scale.set(half, half, half);
+            matrix.compose(position, camera.quaternion, scale);
+            auraMesh.setMatrixAt(auraIndex, matrix);
+            if (isOwnUnit) auraOutlineOwnCount++;
+            else auraOutlineEnemyCount++;
           }
         }
       }
@@ -1112,6 +1169,8 @@ function InstancedUnits() {
     };
     flush(ownRingRef.current, ownRingCount);
     flush(enemyRingRef.current, enemyRingCount);
+    flush(auraOutlineOwnRef.current, auraOutlineOwnCount);
+    flush(auraOutlineEnemyRef.current, auraOutlineEnemyCount);
     flush(royalOwnerRingRef.current, royalOwnerRingCount);
     flush(selectionOuterRef.current, selectionOuterCount);
     flush(selectionInnerRef.current, selectionInnerCount);
@@ -1186,6 +1245,22 @@ function InstancedUnits() {
         ref={enemyRingRef}
         args={[ownerRingGeometry, ENEMY_OWNER_RING_MAT, RING_CAPACITY]}
         frustumCulled={false}
+      />
+
+      {/* Team-colored aura outline — a soft camera-facing glow behind each unit
+          (blue = own, red = enemy) so animals read against the terrain. Toggleable
+          from Video settings; renderOrder 0 keeps it under the rings/health bars. */}
+      <instancedMesh
+        ref={auraOutlineOwnRef}
+        args={[auraOutlineGeometry, AURA_OUTLINE_OWN_MAT, AURA_OUTLINE_CAPACITY]}
+        frustumCulled={false}
+        renderOrder={0}
+      />
+      <instancedMesh
+        ref={auraOutlineEnemyRef}
+        args={[auraOutlineGeometry, AURA_OUTLINE_ENEMY_MAT, AURA_OUTLINE_CAPACITY]}
+        frustumCulled={false}
+        renderOrder={0}
       />
       {/* Local player's King/Queen owner ring — gold, scaled per royal. */}
       <instancedMesh
