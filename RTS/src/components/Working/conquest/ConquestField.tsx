@@ -137,6 +137,8 @@ import {
   createDottedArrow,
   positionDottedArrow,
   hideDottedArrow,
+  createSegmentedLine,
+  positionSegmentedLine,
   PATROL_ARROW_COLOR,
 } from '../dottedArrow';
 import {
@@ -467,8 +469,32 @@ const CONTROLLER_GESTURE_ACTIONS: readonly ControlActionId[] = [
 
 // Right-stick reticle travel speed across the screen, in pixels per second at full
 // deflection. Mirrors GamepadController.RETICLE_SPEED_PX_PER_SEC so the controller
-// cursor sweeps the globe at the same pace in both modes.
+// cursor sweeps the globe at the same pace in both modes. Used only in the rare
+// no-piloted-monarch fallback (defeat); while piloting the cursor is leashed instead.
 const RETICLE_SPEED_PX_PER_SEC = 900;
+
+// --- Monarch-tethered controller cursor (Conquest port of GamepadController's leash) ---
+// While piloting, the right stick extends a 3D targeting cursor out from the monarch
+// ALONG THE SURFACE on a leash, tucking back under her (hidden) at rest — the globe
+// analogue of Quick Play's flat-map leash. The reach and sweep speed are expressed as
+// multiples of the monarch's model scale (× live zoom) so the cursor always maps to
+// roughly the visible frame no matter how small the animal or how far the camera.
+// Matched to CAM_BACK_FACTOR so the cursor's max reach lands near the camera's natural
+// framing ahead of the monarch (rather than off-screen at full lateral deflection).
+const PILOT_CURSOR_LEASH_FACTOR = 7;   // max surface reach = monarch.scale × this × zoom
+const PILOT_CURSOR_SWEEP_RATE = 2.6;   // full leash sweeps in ~1/this seconds at full deflection
+// The cursor visual: a flat ring on the crust plus a 4-sided pyramid hovering above,
+// apex aimed down at the ring center and spinning — mirroring Quick Play's cursor. Sizes
+// are globe units (a monarch ring is 0.011), tinted the reticle's high-contrast cyan.
+const CURSOR_RING_SCALE = 0.014;       // outer radius (ringGeometry outer is 1.0)
+const CURSOR_RING_LIFT = 0.0016;       // above the surface, clear of the unit/selection rings
+const CURSOR_CONE_RADIUS = 0.006;
+const CURSOR_CONE_HEIGHT = 0.011;
+const CURSOR_CONE_HOVER = 0.013;       // pyramid center height above the surface point
+const CURSOR_SPIN_SPEED = 2.2;         // radians/sec
+const CURSOR_COLOR = 0x40c8ff;         // cyan, matching the DOM reticle's glow
+const CURSOR_LEASH_COLOR = '#40c8ff';
+const CURSOR_LEASH_SEGMENTS = 10;      // dashes in the monarch→cursor leash line
 
 /**
  * A camera-drive / zoom binding is only usable as a held key when it is a single
@@ -604,10 +630,13 @@ export function ConquestField() {
   // (0,1,0)->beam rotation orients it; its Y scale becomes the beam length.
   const eggGeometry = useMemo(() => new THREE.SphereGeometry(EGG_RENDER_RADIUS, 8, 8), []);
   const tongueGeometry = useMemo(() => new THREE.CylinderGeometry(1, 1, 1, 6), []);
+  // The tethered cursor's spinning pyramid (4-sided cone, apex aimed down at the ring).
+  const cursorConeGeometry = useMemo(
+    () => new THREE.ConeGeometry(CURSOR_CONE_RADIUS, CURSOR_CONE_HEIGHT, 4), []);
   useEffect(() => () => {
     ringGeometry.dispose(); auraGeometry.dispose();
-    eggGeometry.dispose(); tongueGeometry.dispose();
-  }, [ringGeometry, auraGeometry, eggGeometry, tongueGeometry]);
+    eggGeometry.dispose(); tongueGeometry.dispose(); cursorConeGeometry.dispose();
+  }, [ringGeometry, auraGeometry, eggGeometry, tongueGeometry, cursorConeGeometry]);
 
   // Whether this match fields any Frog army, so the tongue beam meshes are only
   // mounted when a frog can actually fire one (most matches have none).
@@ -1248,6 +1277,35 @@ export function ConquestField() {
   // reticle is only shown while a pad is connected and the posture radial isn't aiming.
   const reticlePos = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   const reticleElRef = useRef<HTMLDivElement | null>(null);
+
+  // --- Monarch-tethered cursor state (the 3D ring + pyramid that leashes to the piloted
+  // monarch on the globe). The cursor group lives in the scene; the leash is a DOM line. ---
+  const cursorGroupRef = useRef<THREE.Group | null>(null);   // ring + pyramid, on the surface
+  const cursorSpinRef = useRef<THREE.Group | null>(null);    // pyramid pivot (spins about the normal)
+  const cursorLeashRef = useRef<HTMLDivElement | null>(null); // segmented monarch→cursor line
+  // The persistent tangent leash offset from the monarch (re-tangentized + clamped each
+  // frame), the running pyramid spin angle, and per-frame scratch to stay allocation-free.
+  const cursorOffset = useRef(new THREE.Vector3());
+  const cursorSpin = useRef(0);
+  const cursorScratch = useRef({
+    up: new THREE.Vector3(), targetUp: new THREE.Vector3(), target: new THREE.Vector3(),
+    viewDir: new THREE.Vector3(), camForward: new THREE.Vector3(), camRight: new THREE.Vector3(),
+    quat: new THREE.Quaternion(),
+  });
+
+  // The local player's currently piloted monarch (the cursor's anchor), or null. Mirrors
+  // resolvePilotedMonarch inside commandHandlers but at component scope so the reticle poll
+  // shares one source of truth; reads live units / store so it never holds a stale closure.
+  const resolvePilotedMonarch = useCallback((): LiveUnit | null => {
+    const monarchId = useConquestStore.getState().selectedMonarchId;
+    const selected = unitsRef.current.find((unit) => unit.id === monarchId) ?? null;
+    if (selected && !selected.dead && !selected.downed) return selected;
+    if (!selected) return null;
+    const armyController = useConquestStore.getState().armyController;
+    return unitsRef.current.find((unit) =>
+      unit.isMonarch && !unit.dead && !unit.downed
+      && effectiveController(armyController, unit.armyId) === humanId) ?? null;
+  }, [humanId]);
   // True while the posture radial is open (mirrored from ConquestBehaviorRadial). While
   // open the radial owns the right stick + RT/B, so the field suppresses its reticle
   // aim and its order/clear on those inputs — mirroring GamepadController's deferral.
@@ -1347,6 +1405,13 @@ export function ConquestField() {
     document.body.appendChild(reticle);
     reticleElRef.current = reticle;
 
+    // The monarch→cursor leash: a segmented cyan line (same helper Quick Play uses),
+    // lifted above .conquest-screen (z-index 1500) like the other Conquest overlays.
+    const leash = createSegmentedLine();
+    leash.style.zIndex = '1600';
+    document.body.appendChild(leash);
+    cursorLeashRef.current = leash;
+
     const onRadialOpen = () => { radialOpenRef.current = true; };
     const onRadialClose = () => { radialOpenRef.current = false; };
     window.addEventListener('rts:conquest-radial-open', onRadialOpen);
@@ -1356,6 +1421,8 @@ export function ConquestField() {
       window.removeEventListener('rts:conquest-radial-close', onRadialClose);
       if (reticleElRef.current) document.body.removeChild(reticleElRef.current);
       reticleElRef.current = null;
+      if (cursorLeashRef.current) document.body.removeChild(cursorLeashRef.current);
+      cursorLeashRef.current = null;
     };
   }, []);
 
@@ -1366,30 +1433,114 @@ export function ConquestField() {
   useFrame((_, delta) => {
     const gamepad = activeConquestGamepad();
     const reticle = reticleElRef.current;
+    // Tuck the 3D cursor + leash away whenever the cursor isn't actively shown (no pad,
+    // radial open, at rest under the monarch). Defined here so every exit path hides them.
+    const hideTetheredCursor = () => {
+      if (cursorGroupRef.current) cursorGroupRef.current.visible = false;
+      hideDottedArrow(cursorLeashRef.current);
+    };
     if (!gamepad) {
       controllerPrevActive.current = {};
       controllerDispatchRef.current.resolvers.forEach((resolver) => resolver.reset());
       if (reticle) reticle.style.display = 'none';
+      hideTetheredCursor();
       return;
     }
 
     const radialOpen = radialOpenRef.current;
     const layout = controllerBindingsRef.current;
 
-    // Aim the reticle with the right stick (suppressed while the radial owns it).
-    if (!radialOpen) {
+    // Aim the cursor with the right stick (suppressed while the radial owns it). While a
+    // monarch is piloted the cursor is LEASHED to her on the globe surface (the Quick Play
+    // port); with no monarch (defeat) it falls back to the free-roam DOM crosshair.
+    const monarch = radialOpen ? null : resolvePilotedMonarch();
+    if (monarch) {
+      const scr = cursorScratch.current;
       const dx = axisWithDeadzone(gamepad, 2);
       const dy = axisWithDeadzone(gamepad, 3);
-      if (dx !== 0 || dy !== 0) {
-        const stepPx = RETICLE_SPEED_PX_PER_SEC * delta;
-        reticlePos.current.x = THREE.MathUtils.clamp(reticlePos.current.x + dx * stepPx, 0, window.innerWidth);
-        reticlePos.current.y = THREE.MathUtils.clamp(reticlePos.current.y + dy * stepPx, 0, window.innerHeight);
+      const stickActive = dx !== 0 || dy !== 0;
+
+      // Camera-relative tangent basis at the monarch, so "right"/"up" on the stick push the
+      // cursor right/away on screen regardless of the chase camera's heading. camForward is
+      // the view direction flattened onto the surface; camRight completes the basis.
+      scr.up.copy(monarch.position).normalize();
+      camera.getWorldDirection(scr.viewDir);
+      scr.camForward.copy(scr.viewDir).addScaledVector(scr.up, -scr.viewDir.dot(scr.up));
+      if (scr.camForward.lengthSq() < 1e-8) scr.camForward.copy(monarch.facing); // looking straight down
+      scr.camForward.normalize();
+      scr.camRight.crossVectors(scr.camForward, scr.up).normalize();
+
+      // Reach scales with the monarch's on-screen size (× zoom) so it maps to the frame.
+      const maxLeash = monarch.scale * PILOT_CURSOR_LEASH_FACTOR * zoom.current;
+      if (stickActive) {
+        const step = maxLeash * PILOT_CURSOR_SWEEP_RATE * delta;
+        cursorOffset.current
+          .addScaledVector(scr.camRight, dx * step)
+          .addScaledVector(scr.camForward, -dy * step); // stick up (dy<0) pushes away
+        // Keep the offset on the tangent plane, then clamp it to the leash length.
+        cursorOffset.current.addScaledVector(scr.up, -cursorOffset.current.dot(scr.up));
+        if (cursorOffset.current.length() > maxLeash) cursorOffset.current.setLength(maxLeash);
+      } else {
+        cursorOffset.current.set(0, 0, 0); // tuck back under the monarch at rest
       }
-    }
-    if (reticle) {
-      reticle.style.display = radialOpen ? 'none' : 'block';
-      reticle.style.left = `${reticlePos.current.x}px`;
-      reticle.style.top = `${reticlePos.current.y}px`;
+
+      // Project the tangent offset down onto the sphere and seat it on the tile it lands on
+      // (the same projection the drive/order code uses), giving the cursor's surface point.
+      scr.targetUp.copy(monarch.position).add(cursorOffset.current).normalize();
+      const tileId = world ? nearestTileId(scr.targetUp, world) : 0;
+      const seat = world ? seatRadiusOnTile(scr.targetUp, tileId, world, biomes[tileId]) : monarch.position.length();
+      scr.target.copy(scr.targetUp).multiplyScalar(seat);
+
+      // Drive the existing screen-space pick/order handlers from the cursor's projection so
+      // a select / move / attack targets exactly where the ring sits.
+      const screen = pointer.projectToClient(scr.target);
+      reticlePos.current.x = screen.x;
+      reticlePos.current.y = screen.y;
+
+      const cursorVisible = stickActive && !screen.behind;
+      if (reticle) reticle.style.display = 'none'; // the 3D ring is the indicator while piloting
+      if (cursorGroupRef.current) {
+        cursorGroupRef.current.visible = cursorVisible;
+        if (cursorVisible) {
+          cursorGroupRef.current.position.copy(scr.target);
+          // Lay the ring flat on the crust: map its +Z normal to the surface normal there.
+          scr.quat.setFromUnitVectors(RING_FORWARD, scr.targetUp);
+          cursorGroupRef.current.quaternion.copy(scr.quat);
+          cursorSpin.current += CURSOR_SPIN_SPEED * delta;
+          if (cursorSpinRef.current) cursorSpinRef.current.rotation.z = cursorSpin.current;
+        }
+      }
+      // Segmented leash from the monarch to the cursor while it's extended.
+      if (cursorVisible) {
+        const from = pointer.projectToClient(monarch.position);
+        if (!from.behind) {
+          positionSegmentedLine(
+            cursorLeashRef.current, { x: from.x, y: from.y }, { x: screen.x, y: screen.y },
+            CURSOR_LEASH_SEGMENTS, CURSOR_LEASH_COLOR,
+          );
+        } else {
+          hideDottedArrow(cursorLeashRef.current);
+        }
+      } else {
+        hideDottedArrow(cursorLeashRef.current);
+      }
+    } else {
+      // No piloted monarch (or radial open): free-roam DOM crosshair, the original behavior.
+      hideTetheredCursor();
+      if (!radialOpen) {
+        const dx = axisWithDeadzone(gamepad, 2);
+        const dy = axisWithDeadzone(gamepad, 3);
+        if (dx !== 0 || dy !== 0) {
+          const stepPx = RETICLE_SPEED_PX_PER_SEC * delta;
+          reticlePos.current.x = THREE.MathUtils.clamp(reticlePos.current.x + dx * stepPx, 0, window.innerWidth);
+          reticlePos.current.y = THREE.MathUtils.clamp(reticlePos.current.y + dy * stepPx, 0, window.innerHeight);
+        }
+      }
+      if (reticle) {
+        reticle.style.display = radialOpen ? 'none' : 'block';
+        reticle.style.left = `${reticlePos.current.x}px`;
+        reticle.style.top = `${reticlePos.current.y}px`;
+      }
     }
 
     // While the radial is open it owns the order/clear inputs (RT/B); skip those tokens
@@ -2455,6 +2606,31 @@ export function ConquestField() {
 
   return (
     <group>
+      {/* Monarch-tethered controller cursor: a flat ring on the crust plus a 4-sided
+          pyramid hovering above it, apex aimed down at the ring center and spinning.
+          The group's +Z is laid onto the surface normal each frame (so the ring lies
+          flat), and the spinner pivots the pyramid about that normal. Hidden until the
+          reticle poll extends it from the piloted monarch on a right-stick deflection.
+          Unlit (meshBasic, toneMapped off) so the cyan stays vivid over any biome. */}
+      <group ref={cursorGroupRef} visible={false} renderOrder={3}>
+        <mesh geometry={ringGeometry} scale={CURSOR_RING_SCALE} position={[0, 0, CURSOR_RING_LIFT]}>
+          <meshBasicMaterial
+            color={CURSOR_COLOR}
+            transparent
+            opacity={0.95}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </mesh>
+        <group ref={cursorSpinRef} position={[0, 0, CURSOR_CONE_HOVER]}>
+          {/* Cone built along +Y; rotated so its apex points back down the surface normal. */}
+          <mesh geometry={cursorConeGeometry} rotation={[-Math.PI / 2, 0, 0]}>
+            <meshBasicMaterial color={CURSOR_COLOR} depthWrite={false} toneMapped={false} />
+          </mesh>
+        </group>
+      </group>
+
       {liveUnits.map((unit) => (
         <group
           key={unit.id}
