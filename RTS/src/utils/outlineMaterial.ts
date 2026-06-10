@@ -41,11 +41,21 @@ export function createOutlineMaterial(options?: {
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uOutlineThickness = { value: thickness };
+    // three only emits <beginnormal_vertex> (which defines `objectNormal`) for the
+    // basic material when USE_ENVMAP or USE_SKINNING is set. This outline material
+    // uses neither, so without this guard `objectNormal` is undefined: the push
+    // below silently fails to compile, the back-face shell renders exactly on the
+    // body's silhouette, and the rim is invisible at ANY thickness. Define the
+    // object-space normal ourselves whenever three didn't, then expand along it.
     shader.vertexShader =
       'uniform float uOutlineThickness;\n' +
       shader.vertexShader.replace(
         '#include <begin_vertex>',
-        '#include <begin_vertex>\n  transformed += normalize( objectNormal ) * uOutlineThickness;',
+        '#if ! ( defined( USE_ENVMAP ) || defined( USE_SKINNING ) )\n' +
+          '  #include <beginnormal_vertex>\n' +
+          '#endif\n' +
+          '#include <begin_vertex>\n' +
+          '  transformed += normalize( objectNormal ) * uOutlineThickness;',
       );
   };
 
