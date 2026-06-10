@@ -29,7 +29,7 @@ import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import type { AnimalId, MovementType, UnitBehavior } from '../../../game/types';
 import { ANIMAL_MOVEMENT_TYPES } from '../../../game/types';
-import { ANIMAL_FILE_MAP } from '../../../utils/ModelPreloader';
+import { ANIMAL_FILE_MAP, OWL_WING_MODELS } from '../../../utils/ModelPreloader';
 import { useGameStore } from '../../../game/state';
 import {
   keyboardEventToToken,
@@ -151,6 +151,7 @@ import {
 } from './conquestGrowth';
 import {
   buildPoseVariants,
+  buildOwlWingVariants,
   selectPoseIndex,
   airLiftFactor,
   type PoseVariant,
@@ -583,6 +584,12 @@ export function ConquestField() {
     return Array.from(set);
   }, [unitSpawns]);
   const gltfs = useGLTF(inPlayAnimals.map(modelPath)) as any[];
+  // The Owl flies by swapping between its separate wing-flap GLBs (same as Quick
+  // Play), not by posing one base model. Load them so an in-play owl can flap; the
+  // models are tiny and module-preloaded, so loading them unconditionally is cheap.
+  const owlWingGltfs = useGLTF(
+    OWL_WING_MODELS.map((filename) => `${import.meta.env.BASE_URL}models/${filename}`),
+  ) as any[];
 
   // Shared geometry: one ring (allegiance) and one disc (monarch aura). Each unit
   // scales and tints its own material instance. Disposed when the field unmounts.
@@ -613,11 +620,16 @@ export function ConquestField() {
   const posesByAnimal = useMemo(() => {
     const map = new Map<AnimalId, PoseVariant[]>();
     inPlayAnimals.forEach((animal, index) => {
+      // The Owl animates from its dedicated wing-flap GLBs rather than its base model.
+      if (animal === 'Owl') {
+        map.set('Owl', buildOwlWingVariants(owlWingGltfs));
+        return;
+      }
       const gltf = gltfs[index];
       if (gltf) map.set(animal, buildPoseVariants(animal, gltf));
     });
     return map;
-  }, [inPlayAnimals, gltfs]);
+  }, [inPlayAnimals, gltfs, owlWingGltfs]);
 
   // The match's STARTING armies. Positions/facings/HP here are mutated every frame by
   // the sim; React never re-renders for movement or combat. Deliberately does NOT

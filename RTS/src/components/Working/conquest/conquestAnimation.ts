@@ -19,6 +19,9 @@ import {
   getBakedBeeFrameParts,
   getBakedFrogFrameParts,
   getBakedChickenFrameParts,
+  getBakedOwlWingParts,
+  owlWingVariantKey,
+  OWL_WING_MODELS,
   TURTLE_FRAME_COUNT,
   FOX_FRAME_COUNT,
   YETI_FRAME_COUNT,
@@ -73,4 +76,23 @@ export function buildPoseVariants(animal: AnimalId, gltf: any): PoseVariant[] {
     return variants;
   }
   return [{ key: `${animal}-base`, parts: getBakedAnimalParts(gltf, animal) }];
+}
+
+/** Number of authored Owl wing-flap frames (the separate Owl_Wings_* GLBs). */
+export const OWL_WING_FRAME_COUNT = OWL_WING_MODELS.length;
+
+/**
+ * Bake the Owl's wing-flap frames from the separate wing GLBs — the exact models
+ * Quick Play swaps between in flight — so a Conquest owl flaps instead of holding a
+ * static base pose. Frame i is wing pose i, matching `selectPoseIndex`'s Owl cycle.
+ * Returns only the frames whose GLB has loaded (empty until the wing models arrive).
+ */
+export function buildOwlWingVariants(wingGltfs: any[]): PoseVariant[] {
+  const variants: PoseVariant[] = [];
+  for (let frame = 0; frame < OWL_WING_MODELS.length; frame++) {
+    const gltf = wingGltfs[frame];
+    if (!gltf) continue;
+    variants.push({ key: owlWingVariantKey(frame), parts: getBakedOwlWingParts(gltf, frame) });
+  }
+  return variants;
 }

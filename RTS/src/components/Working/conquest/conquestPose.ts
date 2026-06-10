@@ -25,6 +25,11 @@ const BEE_FLAP_MS = 50;
 const FROG_HOP_MS = 150;
 const CHICKEN_WALK_MS = 100;
 
+// Owl flight: 4 wing-flap frames (the separate Owl_Wings_* GLBs) cycled at 4 full
+// flaps/sec, mirroring Quick Play's OWL_WING_FLAP_PER_SEC so the swoop reads the same.
+const OWL_FRAMES = 4;
+const OWL_FLAP_MS = 1000 / (OWL_FRAMES * 4); // 62.5ms per frame -> 4 flaps/sec
+
 /**
  * Choose which pose frame index to display for an animal. Index meanings match
  * the order `buildPoseVariants` bakes (index i = authored frame i). Single-pose
@@ -47,6 +52,9 @@ export function selectPoseIndex(animal: AnimalId, isMoving: boolean, elapsedMs: 
     case 'Bee':
       // Always airborne: flap continuously, moving or not.
       return Math.floor(elapsedMs / BEE_FLAP_MS) % BEE_FRAMES; // F0,F1
+    case 'Owl':
+      // Always airborne: cycle the four wing-flap frames continuously.
+      return Math.floor(elapsedMs / OWL_FLAP_MS) % OWL_FRAMES;
     case 'Frog':
       if (!isMoving) return 0; // grounded crouch
       return Math.floor(elapsedMs / FROG_HOP_MS) % 2; // F0 (grounded) <-> F1 (leap)
