@@ -54,7 +54,7 @@ import {
   type FrogTongueAnchors,
 } from '../utils/ModelPreloader';
 import * as THREE from 'three';
-import { getRadialGlowTexture } from '../utils/glowTexture';
+import { createOutlineMaterial, OUTLINE_OWN_COLOR, OUTLINE_ENEMY_COLOR } from '../utils/outlineMaterial';
 
 // Maximum instances drawn for a single animal variant. Sized to comfortably
 // hold hundreds of units per team even if they all share one animal.
@@ -184,35 +184,17 @@ const HEALTH_BAR_FILL_MAT = new THREE.MeshBasicMaterial({
 const OWN_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#4169E1', depthWrite: false });
 const ENEMY_OWNER_RING_MAT = new THREE.MeshBasicMaterial({ color: '#DC143C', depthWrite: false });
 
-// Team-colored aura outline: a soft, camera-facing glow quad behind each unit.
-// The opaque model occludes the glow's center (depthTest on, depthWrite off) so
-// only a halo bleeds around the silhouette, helping units read against the terrain.
-// Blue for the local player, red for the enemy — matching the owner-ring colors so
-// friend/foe stays consistent. Additive blending makes the glow lift off the scene.
-const AURA_OUTLINE_OWN_COLOR = '#4fa3ff';   // brighter blue than the ground ring so the glow pops
-const AURA_OUTLINE_ENEMY_COLOR = '#ff4d5e'; // brighter red, ditto
-// Base half-size (world radius) of the glow quad for a regular unit, plus the
-// height it is centered above the unit's feet. Both are scaled per unit by how
-// much bigger that unit's model is than a regular unit's, so larger Kings/Queens
-// get a proportionally larger halo (mirroring royalRingScale for the rings).
-const AURA_OUTLINE_RADIUS = 2.4;
-const AURA_OUTLINE_LIFT = 1.6;
-const AURA_OUTLINE_CAPACITY = RING_CAPACITY;
-// One shared 2x2 quad (radius 1 before per-instance scaling), masked by the radial
-// glow sprite. Built lazily so the canvas texture is only created on the client.
-const auraOutlineGeometry = new THREE.PlaneGeometry(2, 2);
-const makeAuraOutlineMaterial = (color: string) =>
-  new THREE.MeshBasicMaterial({
-    color,
-    map: getRadialGlowTexture(),
-    transparent: true,
-    opacity: 0.85,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    toneMapped: false,
-  });
-const AURA_OUTLINE_OWN_MAT = makeAuraOutlineMaterial(AURA_OUTLINE_OWN_COLOR);
-const AURA_OUTLINE_ENEMY_MAT = makeAuraOutlineMaterial(AURA_OUTLINE_ENEMY_COLOR);
+// Team-colored silhouette outline: each unit's geometry is drawn a second time as
+// an inverted hull (back faces, vertices pushed out along their normals) so a thin
+// rim hugs the model's shape. One shared material drives the color per instance via
+// the InstancedMesh's instance color (white base × instance color), so a single
+// program outlines every animal — blue for own units, red for the enemy. Drawn
+// before the bodies (renderOrder -1) and opaque, so the real model covers all but
+// the rim.
+const OUTLINE_MAT = createOutlineMaterial(); // white base; tinted per instance
+// Reusable scratch colors for the per-instance team tint (no per-frame alloc).
+const OUTLINE_OWN_COLOR3 = new THREE.Color(OUTLINE_OWN_COLOR);
+const OUTLINE_ENEMY_COLOR3 = new THREE.Color(OUTLINE_ENEMY_COLOR);
 const SELECTION_OUTER_MAT = new THREE.MeshStandardMaterial({
   color: '#000080',
   transparent: true,
@@ -718,10 +700,11 @@ function InstancedUnits() {
   // Imperative handles, populated by ref callbacks. Not React state — updated
   // directly each frame to avoid re-rendering the component tree.
   const meshRefs = useRef<Map<string, THREE.InstancedMesh[]>>(new Map());
+  // Parallel to meshRefs: the inverted-hull outline instances for each variant part,
+  // keyed the same way and fed the same per-instance matrices as the body.
+  const outlineMeshRefs = useRef<Map<string, THREE.InstancedMesh[]>>(new Map());
   const ownRingRef = useRef<THREE.InstancedMesh>(null);
   const enemyRingRef = useRef<THREE.InstancedMesh>(null);
-  const auraOutlineOwnRef = useRef<THREE.InstancedMesh>(null);
-  const auraOutlineEnemyRef = useRef<THREE.InstancedMesh>(null);
   const royalOwnerRingRef = useRef<THREE.InstancedMesh>(null);
   const selectionOuterRef = useRef<THREE.InstancedMesh>(null);
   const selectionInnerRef = useRef<THREE.InstancedMesh>(null);
@@ -756,7 +739,7 @@ function InstancedUnits() {
 
   // Mark ring instance buffers as dynamic (updated every frame) for the GPU.
   useEffect(() => {
-    [ownRingRef, enemyRingRef, auraOutlineOwnRef, auraOutlineEnemyRef, royalOwnerRingRef, selectionOuterRef, selectionInnerRef, royalSelectionOuterRef, royalSelectionInnerRef, auraActiveRef, auraUnitGlowRef, healthBarBgRef, healthBarFillRef].forEach((ref) => {
+    [ownRingRef, enemyRingRef, royalOwnerRingRef, selectionOuterRef, selectionInnerRef, royalSelectionOuterRef, royalSelectionInnerRef, auraActiveRef, auraUnitGlowRef, healthBarBgRef, healthBarFillRef].forEach((ref) => {
       ref.current?.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     });
   }, []);
@@ -837,8 +820,6 @@ function InstancedUnits() {
     }
     let ownRingCount = 0;
     let enemyRingCount = 0;
-    let auraOutlineOwnCount = 0;
-    let auraOutlineEnemyCount = 0;
     let royalOwnerRingCount = 0;
     let selectionOuterCount = 0;
     let selectionInnerCount = 0;
@@ -897,6 +878,22 @@ function InstancedUnits() {
       const isOwnUnit = unit.ownerId === localPlayerId;
       const isRoyal = unit.kind === 'King' || unit.kind === 'Queen';
 
+      // Team-colored silhouette outline: feed the inverted-hull instances the SAME
+      // transform as the body (the shell expands along normals in the shader) and
+      // tint per instance — blue for own units, red for the enemy. Toggleable.
+      if (aurasEnabled) {
+        const outlineMeshes = outlineMeshRefs.current.get(key);
+        if (outlineMeshes) {
+          const tint = isOwnUnit ? OUTLINE_OWN_COLOR3 : OUTLINE_ENEMY_COLOR3;
+          for (let p = 0; p < outlineMeshes.length; p++) {
+            const outlineMesh = outlineMeshes[p];
+            if (!outlineMesh) continue;
+            outlineMesh.setMatrixAt(variantCount, matrix);
+            outlineMesh.setColorAt(variantCount, tint);
+          }
+        }
+      }
+
       // Royal head accessory (crown/tiara). The accessory is baked in the same
       // normalized frame as the body, so reusing the body's just-composed matrix
       // (position + yaw/tilt + kind scale) drops it onto the unit's head. Blue for
@@ -939,27 +936,6 @@ function InstancedUnits() {
             ringMesh.setMatrixAt(ringIndex, matrix);
             if (isOwnUnit) ownRingCount++;
             else enemyRingCount++;
-          }
-        }
-      }
-
-      // Team-colored aura outline: a camera-facing glow quad centered on the unit's
-      // body, sized to how much bigger this unit's model is than a regular unit so
-      // royals get a proportionally larger halo. Toggleable from Video settings.
-      if (aurasEnabled) {
-        const auraMesh = isOwnUnit ? auraOutlineOwnRef.current : auraOutlineEnemyRef.current;
-        if (auraMesh) {
-          const auraIndex = isOwnUnit ? auraOutlineOwnCount : auraOutlineEnemyCount;
-          if (auraIndex < AURA_OUTLINE_CAPACITY) {
-            const unitScale = getKindTargetScale(unit.animal, 'Unit');
-            const sizeRatio = unitScale > 0 ? target / unitScale : 1;
-            const half = AURA_OUTLINE_RADIUS * sizeRatio;
-            position.set(unit.position.x, renderY + AURA_OUTLINE_LIFT * sizeRatio, unit.position.z);
-            scale.set(half, half, half);
-            matrix.compose(position, camera.quaternion, scale);
-            auraMesh.setMatrixAt(auraIndex, matrix);
-            if (isOwnUnit) auraOutlineOwnCount++;
-            else auraOutlineEnemyCount++;
           }
         }
       }
@@ -1151,15 +1127,28 @@ function InstancedUnits() {
       counts.set(FROG_TONGUE_VARIANT_KEY, tongueCount);
     }
 
-    // Flush instance counts + matrix updates to the GPU.
+    // Flush instance counts + matrix updates to the GPU. The outline instances
+    // share each variant's body count (or 0 when auras are off, so they vanish).
     for (const variant of variants) {
       const meshes = meshRefs.current.get(variant.key);
-      if (!meshes) continue;
       const count = counts.get(variant.key)!;
-      for (let p = 0; p < meshes.length; p++) {
-        if (!meshes[p]) continue;
-        meshes[p].count = count;
-        meshes[p].instanceMatrix.needsUpdate = true;
+      if (meshes) {
+        for (let p = 0; p < meshes.length; p++) {
+          if (!meshes[p]) continue;
+          meshes[p].count = count;
+          meshes[p].instanceMatrix.needsUpdate = true;
+        }
+      }
+      const outlineMeshes = outlineMeshRefs.current.get(variant.key);
+      if (outlineMeshes) {
+        const outlineCount = aurasEnabled ? count : 0;
+        for (let p = 0; p < outlineMeshes.length; p++) {
+          const outlineMesh = outlineMeshes[p];
+          if (!outlineMesh) continue;
+          outlineMesh.count = outlineCount;
+          outlineMesh.instanceMatrix.needsUpdate = true;
+          if (outlineMesh.instanceColor) outlineMesh.instanceColor.needsUpdate = true;
+        }
       }
     }
     const flush = (mesh: THREE.InstancedMesh | null, count: number) => {
@@ -1169,8 +1158,6 @@ function InstancedUnits() {
     };
     flush(ownRingRef.current, ownRingCount);
     flush(enemyRingRef.current, enemyRingCount);
-    flush(auraOutlineOwnRef.current, auraOutlineOwnCount);
-    flush(auraOutlineEnemyRef.current, auraOutlineEnemyCount);
     flush(royalOwnerRingRef.current, royalOwnerRingCount);
     flush(selectionOuterRef.current, selectionOuterCount);
     flush(selectionInnerRef.current, selectionInnerCount);
@@ -1222,6 +1209,23 @@ function InstancedUnits() {
     mesh.count = 0;
   };
 
+  // The outline-shell twin of registerPartRef: same geometry, the shared outline
+  // material, per-instance color, and no shadow casting (a back-face hull).
+  const registerOutlinePartRef = (variantKey: string, partIndex: number) => (mesh: THREE.InstancedMesh | null) => {
+    if (!mesh) return;
+    let meshes = outlineMeshRefs.current.get(variantKey);
+    if (!meshes) {
+      meshes = [];
+      outlineMeshRefs.current.set(variantKey, meshes);
+    }
+    meshes[partIndex] = mesh;
+    mesh.frustumCulled = false;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    mesh.count = 0;
+  };
+
   return (
     <group>
       {variants.map((variant) =>
@@ -1231,6 +1235,21 @@ function InstancedUnits() {
             ref={registerPartRef(variant.key, partIndex)}
             args={[part.geometry, part.material, variant.capacity ?? MAX_INSTANCES_PER_VARIANT]}
             onPointerDown={(e) => handlePointerDown(variant.key, e)}
+          />
+        ))
+      )}
+
+      {/* Team-colored silhouette outlines — an inverted-hull twin of each body part,
+          fed the same instance transforms and tinted blue (own) / red (enemy) per
+          instance. renderOrder -1 draws them before the bodies; toggleable from
+          Video settings (count drops to 0 when off). */}
+      {variants.map((variant) =>
+        variant.parts.map((part, partIndex) => (
+          <instancedMesh
+            key={`outline-${variant.key}-${partIndex}`}
+            ref={registerOutlinePartRef(variant.key, partIndex)}
+            args={[part.geometry, OUTLINE_MAT, variant.capacity ?? MAX_INSTANCES_PER_VARIANT]}
+            renderOrder={-1}
           />
         ))
       )}
@@ -1247,21 +1266,6 @@ function InstancedUnits() {
         frustumCulled={false}
       />
 
-      {/* Team-colored aura outline — a soft camera-facing glow behind each unit
-          (blue = own, red = enemy) so animals read against the terrain. Toggleable
-          from Video settings; renderOrder 0 keeps it under the rings/health bars. */}
-      <instancedMesh
-        ref={auraOutlineOwnRef}
-        args={[auraOutlineGeometry, AURA_OUTLINE_OWN_MAT, AURA_OUTLINE_CAPACITY]}
-        frustumCulled={false}
-        renderOrder={0}
-      />
-      <instancedMesh
-        ref={auraOutlineEnemyRef}
-        args={[auraOutlineGeometry, AURA_OUTLINE_ENEMY_MAT, AURA_OUTLINE_CAPACITY]}
-        frustumCulled={false}
-        renderOrder={0}
-      />
       {/* Local player's King/Queen owner ring — gold, scaled per royal. */}
       <instancedMesh
         ref={royalOwnerRingRef}

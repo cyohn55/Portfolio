@@ -23,14 +23,14 @@
 // store is read for the static spawn set, current army control, and the selected
 // monarch; control changes flow back through the store's `conquerArmy` action.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import type { AnimalId, MovementType, UnitBehavior } from '../../../game/types';
 import { ANIMAL_MOVEMENT_TYPES } from '../../../game/types';
 import { ANIMAL_FILE_MAP, OWL_WING_MODELS } from '../../../utils/ModelPreloader';
-import { getRadialGlowTexture } from '../../../utils/glowTexture';
+import { createOutlineMaterial, OUTLINE_OWN_COLOR, OUTLINE_ENEMY_COLOR } from '../../../utils/outlineMaterial';
 import { useGameStore } from '../../../game/state';
 import {
   keyboardEventToToken,
@@ -199,16 +199,17 @@ const AURA_LIFT = 0.0008; // just under the allegiance ring
 // A King's buff ring counts as "active" while a buffed unit fought this recently.
 const RECENT_COMBAT_MS = 2000;
 
-// Team-colored aura outline: a soft, camera-facing glow behind each unit so animals
-// read against the dark planet/space (blue = the player's units, red = everyone
-// else). Mirrors Quick Play's outline; toggleable from Video settings. Radii are
-// globe units, a touch larger than the allegiance ring so the halo escapes the
-// silhouette; the lift centers it on the body.
-const AURA_OUTLINE_OWN_COLOR = 0x4fa3ff;
-const AURA_OUTLINE_ENEMY_COLOR = 0xff4d5e;
-const AURA_OUTLINE_UNIT_RADIUS = 0.013;
-const AURA_OUTLINE_MONARCH_RADIUS = 0.02;
-const AURA_OUTLINE_LIFT = 0.007;
+// Team-colored silhouette outline: each unit's geometry is drawn again as an
+// inverted hull (back faces, vertices pushed out along their normals) so a thin
+// rim hugs the model — blue for the player's units, red for everyone else — helping
+// animals read against the dark planet/space. Conquest bakes the SAME ~1-unit
+// normalized geometry as Quick Play (the tiny globe size comes from the group's
+// per-unit scale, applied equally to body and outline), so the default outline
+// thickness matches Quick Play's. Two shared materials (one per team) keep it to a
+// single compiled program; each unit's outline meshes point at the matching one and
+// are recolored on capture. Toggleable from Video settings.
+const OUTLINE_OWN_MAT = createOutlineMaterial({ color: OUTLINE_OWN_COLOR });
+const OUTLINE_ENEMY_MAT = createOutlineMaterial({ color: OUTLINE_ENEMY_COLOR });
 
 // Piloting feel. Speeds are in globe-radius units per second (the planet has
 // radius 1, so a full lap at MOVE_SPEED takes ~2π / MOVE_SPEED seconds). Tuned so
@@ -365,8 +366,10 @@ interface LiveUnit {
   group: THREE.Group | null;
   ring: THREE.Mesh | null;
   ringColor: number; // last hex applied to the ring, so we only recolor on change
-  auraOutlineMesh: THREE.Mesh | null; // team-colored glow behind every unit
-  auraOutlineColor: number; // last hex applied to the aura, so we only recolor on change
+  // Inverted-hull silhouette outline meshes, one per body part per pose frame
+  // ([poseIndex][partIndex]); the sim swaps them to the team material and toggles them.
+  outlineMeshes: (THREE.Mesh | null)[][];
+  outlineFriendly: boolean | null; // last team applied, so we only swap material on change
   auraMesh: THREE.Mesh | null; // monarchs only
   tongueMesh: THREE.Mesh | null; // frogs only: the grab beam
   selectionRing: THREE.Mesh | null; // shown while the unit is selected
@@ -445,8 +448,8 @@ function buildLiveUnit(args: {
     group: null,
     ring: null,
     ringColor: -1,
-    auraOutlineMesh: null,
-    auraOutlineColor: -1,
+    outlineMeshes: args.poseVariants.map(() => []),
+    outlineFriendly: null,
     auraMesh: null,
     tongueMesh: null,
     selectionRing: null,
@@ -641,10 +644,6 @@ export function ConquestField() {
   // scales and tints its own material instance. Disposed when the field unmounts.
   const ringGeometry = useMemo(() => new THREE.RingGeometry(0.6, 1.0, 24), []);
   const auraGeometry = useMemo(() => new THREE.CircleGeometry(1.0, 36), []);
-  // A 2x2 quad (radius 1 before per-unit scaling) for the team-colored aura
-  // outline — a camera-facing glow behind each unit, masked by the shared radial
-  // glow sprite so only a soft halo bleeds around the model silhouette.
-  const auraOutlineGeometry = useMemo(() => new THREE.PlaneGeometry(2, 2), []);
   // Egg projectile sphere and tongue beam cylinder (unit-sized; each instance scales
   // itself). The cylinder is built along +Y, centered, so a midpoint placement plus a
   // (0,1,0)->beam rotation orients it; its Y scale becomes the beam length.
@@ -654,9 +653,9 @@ export function ConquestField() {
   const cursorConeGeometry = useMemo(
     () => new THREE.ConeGeometry(CURSOR_CONE_RADIUS, CURSOR_CONE_HEIGHT, 4), []);
   useEffect(() => () => {
-    ringGeometry.dispose(); auraGeometry.dispose(); auraOutlineGeometry.dispose();
+    ringGeometry.dispose(); auraGeometry.dispose();
     eggGeometry.dispose(); tongueGeometry.dispose(); cursorConeGeometry.dispose();
-  }, [ringGeometry, auraGeometry, auraOutlineGeometry, eggGeometry, tongueGeometry, cursorConeGeometry]);
+  }, [ringGeometry, auraGeometry, eggGeometry, tongueGeometry, cursorConeGeometry]);
 
   // Whether this match fields any Frog army, so the tongue beam meshes are only
   // mounted when a frog can actually fire one (most matches have none).
@@ -2141,7 +2140,6 @@ export function ConquestField() {
               unit.dead = true;
               if (unit.group) unit.group.visible = false;
               if (unit.ring) unit.ring.visible = false;
-              if (unit.auraOutlineMesh) unit.auraOutlineMesh.visible = false;
             }
             unit.swarmTargetId = null;
           } else {
@@ -2290,7 +2288,6 @@ export function ConquestField() {
         unit.dead = true;
         if (unit.group) unit.group.visible = false;
         if (unit.ring) unit.ring.visible = false;
-        if (unit.auraOutlineMesh) unit.auraOutlineMesh.visible = false;
         continue;
       }
       unit.downed = true;
@@ -2506,20 +2503,21 @@ export function ConquestField() {
       unit.group.position.copy(renderPos);
       unit.group.quaternion.copy(quat);
 
-      // Team-colored aura outline: a camera-facing glow centered on the body,
-      // recolored by friend/foe so the player's units glow blue and the rest red.
-      if (unit.auraOutlineMesh) {
-        unit.auraOutlineMesh.visible = aurasEnabled;
-        if (aurasEnabled) {
-          unit.auraOutlineMesh.position.copy(unit.position).addScaledVector(up, AURA_OUTLINE_LIFT);
-          unit.auraOutlineMesh.quaternion.copy(camera.quaternion);
-          const friendly = humanId !== null && unit.controllerId === humanId;
-          const auraColor = friendly ? AURA_OUTLINE_OWN_COLOR : AURA_OUTLINE_ENEMY_COLOR;
-          if (auraColor !== unit.auraOutlineColor) {
-            (unit.auraOutlineMesh.material as THREE.MeshBasicMaterial).color.setHex(auraColor);
-            unit.auraOutlineColor = auraColor;
+      // Team-colored silhouette outline: show/hide the inverted-hull twins and point
+      // them at the friend/foe material (blue for the player, red for the rest),
+      // swapping only when the controller changes (e.g. a captured army flips teams).
+      {
+        const friendly = humanId !== null && unit.controllerId === humanId;
+        const teamChanged = unit.outlineFriendly !== friendly;
+        const outlineMat = friendly ? OUTLINE_OWN_MAT : OUTLINE_ENEMY_MAT;
+        for (const posePartMeshes of unit.outlineMeshes) {
+          for (const outlineMesh of posePartMeshes) {
+            if (!outlineMesh) continue;
+            outlineMesh.visible = aurasEnabled;
+            if (teamChanged) outlineMesh.material = outlineMat;
           }
         }
+        unit.outlineFriendly = friendly;
       }
 
       // Allegiance ring: lie flat on the surface, recolored when the controller
@@ -2685,36 +2683,24 @@ export function ConquestField() {
               visible={variantIndex === 0}
             >
               {variant.parts.map((part, partIndex) => (
-                <mesh key={partIndex} geometry={part.geometry} material={part.material} castShadow />
+                <Fragment key={partIndex}>
+                  <mesh geometry={part.geometry} material={part.material} castShadow />
+                  {/* Inverted-hull silhouette outline twin: same geometry, the team
+                      material (swapped by the sim), drawn first. Hidden until the sim
+                      enables it, and it inherits the pose group's visibility so it
+                      only shows for the active pose. */}
+                  <mesh
+                    geometry={part.geometry}
+                    material={OUTLINE_ENEMY_MAT}
+                    renderOrder={-1}
+                    visible={false}
+                    ref={(element) => { unit.outlineMeshes[variantIndex][partIndex] = element; }}
+                  />
+                </Fragment>
               ))}
             </group>
           ))}
         </group>
-      ))}
-
-      {/* Team-colored aura outline — a camera-facing glow behind each unit (blue =
-          the player's units, red = everyone else) so animals read against the dark
-          planet/space. Lives outside the scaled unit groups (fixed globe size); the
-          sim positions, billboards, recolors, and toggles it. */}
-      {liveUnits.map((unit) => (
-        <mesh
-          key={`${unit.id}-aura-outline`}
-          ref={(element) => { unit.auraOutlineMesh = element; }}
-          geometry={auraOutlineGeometry}
-          scale={unit.isMonarch ? AURA_OUTLINE_MONARCH_RADIUS : AURA_OUTLINE_UNIT_RADIUS}
-          visible={false}
-          renderOrder={0}
-        >
-          <meshBasicMaterial
-            map={getRadialGlowTexture()}
-            color={AURA_OUTLINE_ENEMY_COLOR}
-            transparent
-            opacity={0.85}
-            depthWrite={false}
-            toneMapped={false}
-            blending={THREE.AdditiveBlending}
-          />
-        </mesh>
       ))}
 
       {/* Allegiance rings live outside the scaled unit groups so their size stays
