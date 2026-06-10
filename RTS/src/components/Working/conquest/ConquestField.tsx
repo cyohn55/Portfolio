@@ -170,8 +170,8 @@ const MONARCH_SCALE = 0.007;
 // units. A monarch's ring is larger so leaders are easy to pick out, and the color
 // tracks the unit's current controller so a captured army visibly flips to the
 // conqueror's color the instant it changes hands.
-const UNIT_RING_RADIUS = 0.011;
-const MONARCH_RING_RADIUS = 0.018;
+const UNIT_RING_RADIUS = 0.007;
+const MONARCH_RING_RADIUS = 0.011;
 const RING_LIFT = 0.001; // sit just above the tile face to avoid z-fighting
 // Tiny radial lift applied to every unit model so it rests a hair above the flat
 // tile face rather than z-fighting it (the position itself is already seated on
@@ -247,8 +247,8 @@ const CLICK_PICK_RADIUS_PX = 28;
 // Right-button hold (ms) on a controlled Queen before the gesture commits a patrol
 // route instead of a normal move/attack order — matching Quick Play's PATROL_HOLD_MS.
 const PATROL_HOLD_MS = 750;
-const SELECTION_RING_RADIUS = 0.015;
-const MONARCH_SELECTION_RING_RADIUS = 0.022;
+const SELECTION_RING_RADIUS = 0.0095;
+const MONARCH_SELECTION_RING_RADIUS = 0.014;
 const SELECTION_RING_LIFT = 0.0014; // just above the allegiance ring
 const SELECTION_RING_COLOR = 0xffffff;
 // The approximate globe radius a pointer ray is intersected against to place a move
