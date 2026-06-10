@@ -1316,14 +1316,28 @@ export function ConquestField() {
 
   // Mount the reticle crosshair once and track the posture radial's open state. The
   // crosshair is a DOM overlay (like the selection box), hidden until the poll shows it.
+  // Unlike Quick Play (bright battle map), Conquest renders over a dark nebula sky and
+  // deep-blue oceans, so the reticle is drawn in HIGH CONTRAST — a white ring wrapped in
+  // a dark outline plus a cyan glow, with a bright center dot — so it stays visible on
+  // both lit terrain and the surrounding space instead of vanishing into the dark.
   useEffect(() => {
     const reticle = document.createElement('div');
     Object.assign(reticle.style, {
       position: 'fixed', width: '26px', height: '26px', marginLeft: '-13px', marginTop: '-13px',
-      border: '2px solid #000080', borderRadius: '50%',
-      boxShadow: '0 0 6px rgba(0,0,128,0.9), inset 0 0 4px rgba(0,0,128,0.7)',
+      border: '2px solid #ffffff', borderRadius: '50%',
+      // Inner+outer dark rings give the white edge contrast on light terrain; the cyan
+      // outer glow lifts it off the dark space/ocean background.
+      boxShadow: '0 0 0 1px rgba(0,0,0,0.85), 0 0 0 3px rgba(0,0,0,0.45), 0 0 9px 2px rgba(64,200,255,0.9)',
       pointerEvents: 'none', display: 'none', zIndex: '1000',
     } as CSSStyleDeclaration);
+    // A bright center dot marks the exact aim point (the ring alone reads as empty space).
+    const reticleDot = document.createElement('div');
+    Object.assign(reticleDot.style, {
+      position: 'absolute', top: '50%', left: '50%', width: '4px', height: '4px',
+      marginLeft: '-2px', marginTop: '-2px', borderRadius: '50%', background: '#ffffff',
+      boxShadow: '0 0 0 1px rgba(0,0,0,0.85), 0 0 4px rgba(64,200,255,0.95)',
+    } as CSSStyleDeclaration);
+    reticle.appendChild(reticleDot);
     document.body.appendChild(reticle);
     reticleElRef.current = reticle;
 
