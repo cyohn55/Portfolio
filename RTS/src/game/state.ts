@@ -1722,6 +1722,19 @@ export const useGameStore = create<Store>((set, get) => ({
           if (inputMagnitude > 0.0001) {
             if (draft.unitOrders[unit.id]) delete draft.unitOrders[unit.id];
             applyPilotDriveStep(unit, move, inputMagnitude, dtSec, draft.units, movementPriorityIds, playerControlledOwnerIds, draft.unitOrders, draft.spatialGrid);
+
+            // Re-home the stance anchor onto the ground the squad is being driven
+            // across, every frame it moves. Driving a fire team is the player
+            // re-issuing its destination live, so wherever the player stops the
+            // team becomes its new "home" — exactly as moveCommand/placeRallied
+            // re-anchor on an explicit order. Without this the anchor still points
+            // at the original deploy spot, and the instant the player releases the
+            // keys a returns-to-anchor stance (Defensive/Skirmish/Guard) would
+            // march the whole team back there. Updating it only while actually
+            // driving leaves the leash intact once stopped: the team holds (and
+            // returns to) the spot it was last driven to, not the deploy point.
+            unit.anchor = { x: unit.position.x, y: 0, z: unit.position.z };
+
             unit.unitState = 'idle';
             continue;
           }
