@@ -58,6 +58,7 @@ export type ControlActionId =
   | 'pilotMonarch2'
   | 'pilotMonarch3'
   | 'pilotToggleMonarch'
+  | 'cycleFireTeam'
   | 'pause';
 
 export type InputDevice = 'keyboard' | 'controller';
@@ -130,6 +131,7 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
   { id: 'pilotMonarch2', label: 'Pilot Monarch 2', category: 'Pilot', description: 'Directly pilot the King of your second animal. Drive it with the Move keys/stick.' },
   { id: 'pilotMonarch3', label: 'Pilot Monarch 3', category: 'Pilot', description: 'Directly pilot the King of your third animal. Drive it with the Move keys/stick.' },
   { id: 'pilotToggleMonarch', label: 'Toggle King / Queen', category: 'Pilot', description: 'While piloting, switch between the King and the Queen of the same animal.' },
+  { id: 'cycleFireTeam', label: 'Cycle Fire Team', category: 'Pilot', description: 'Cycle drive control through the fire teams you have deployed (each batch dropped by a Deploy hold forms a team), then back to none. While a team is selected, drive all of its units at once with the Move keys/stick — letting a monarch steer a deployed squad from across the map.' },
   { id: 'pause', label: 'Pause Game', category: 'System', description: 'Toggle the pause menu.' },
 ] as const;
 
@@ -181,6 +183,8 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   pilotMonarch2: '',
   pilotMonarch3: '',
   pilotToggleMonarch: 'g',
+  // T cycles drive control through your deployed fire teams (Team).
+  cycleFireTeam: 't',
   pause: 'p',
 };
 
@@ -233,6 +237,7 @@ export const DEFAULT_CONTROLLER_BINDINGS: ControlBindings = {
   pilotMonarch2: '',
   pilotMonarch3: '',
   pilotToggleMonarch: 'button:3', // Y — Switch King / Queen
+  cycleFireTeam: 'button:8', // Back/View — cycle drive control through deployed fire teams
   pause: 'button:9', // Start — Pause / Settings
 };
 
@@ -280,6 +285,7 @@ export const DEFAULT_BINDING_MODES: ControlBindingModes = {
   pilotMonarch2: 'tap',
   pilotMonarch3: 'tap',
   pilotToggleMonarch: 'tap',
+  cycleFireTeam: 'tap',
   pause: 'tap',
 };
 

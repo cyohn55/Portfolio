@@ -21,6 +21,9 @@ import {
   clampPlacementCount,
   findMonarch,
   followGapClearance,
+  listFireTeamIds,
+  nextFireTeamInCycle,
+  nextPlacementStep,
   otherMonarchKind,
   pilotInput,
   selectFollowersForPlacement,
@@ -317,6 +320,8 @@ type PilotMutableState = Pick<
   | 'pilotMoveByOwner'
   | 'unitPlacementCount'
   | 'unitPlacementCursor'
+  | 'pilotedFireTeamId'
+  | 'pilotedFireTeamByOwner'
   | 'selectedUnitIds'
 >;
 
@@ -330,9 +335,11 @@ type PilotMutableState = Pick<
  */
 function stopOwnerPilot(draft: PilotMutableState, ownerId: string): void {
   draft.pilotedUnitIdByOwner[ownerId] = null;
+  draft.pilotedFireTeamByOwner[ownerId] = null;
   draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
   if (ownerId === draft.localPlayerId) {
     draft.pilotedUnitId = null;
+    draft.pilotedFireTeamId = null;
     draft.unitPlacementCount = 0;
     draft.unitPlacementCursor = null;
     pilotInput.reset();
@@ -367,11 +374,48 @@ function releaseOwnerControl(draft: PilotMutableState, ownerId: string): void {
 function applyPilotSelectionToDraft(draft: PilotMutableState, ownerId: string, unitId: string | null): void {
   draft.pilotedUnitIdByOwner[ownerId] = unitId;
   draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
+  // Driving a monarch and driving a fire team are mutually exclusive — one drive
+  // vector, one target — so grabbing a monarch releases any team this owner was
+  // steering (and vice versa in applyPilotFireTeamToDraft).
+  if (unitId !== null) draft.pilotedFireTeamByOwner[ownerId] = null;
   if (ownerId === draft.localPlayerId) {
     draft.pilotedUnitId = unitId;
+    if (unitId !== null) draft.pilotedFireTeamId = null;
     if (unitId === null) {
       draft.unitPlacementCount = 0;
       draft.unitPlacementCursor = null;
+    }
+  }
+}
+
+/**
+ * Hand an owner's drive control onto a deployed fire team (or release it when
+ * teamId is null). The owner's pilot vector now steers every member of that team
+ * at once; grabbing a team releases any monarch this owner was piloting (the
+ * inverse of applyPilotSelectionToDraft) so there is always a single drive target.
+ * For the local player it also mirrors the choice into the UI fields and selects
+ * the team's members so the player sees who they are about to drive. Shared by the
+ * single-player gesture path and the lockstep apply path so both peers steer the
+ * same squad deterministically from the synced pilotMove vector.
+ */
+function applyPilotFireTeamToDraft(draft: PilotMutableState, ownerId: string, teamId: string | null): void {
+  draft.pilotedFireTeamByOwner[ownerId] = teamId;
+  draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
+  // One drive target: taking a team releases this owner's piloted monarch.
+  if (teamId !== null) draft.pilotedUnitIdByOwner[ownerId] = null;
+
+  if (ownerId === draft.localPlayerId) {
+    draft.pilotedFireTeamId = teamId;
+    if (teamId !== null) {
+      draft.pilotedUnitId = null;
+      draft.unitPlacementCount = 0;
+      draft.unitPlacementCursor = null;
+      pilotInput.reset();
+      // Highlight the squad about to be driven so the player can also right-click
+      // order it; an empty team (already wiped) just clears the selection.
+      draft.selectedUnitIds = draft.units
+        .filter((unit) => unit.ownerId === ownerId && unit.fireTeamId === teamId && unit.hp > 0)
+        .map((unit) => unit.id);
     }
   }
 }
@@ -397,7 +441,15 @@ function applyRallyToDraft(draft: PilotMutableState, ownerId: string, monarchId:
   for (const unit of draft.units) {
     if (!isFollower(unit)) continue;
     unit.followMonarchId = monarch.id;
+    // Rally recalls deployed squads: a unit re-pinned to the monarch leaves its
+    // fire team, so the teams it absorbs dissolve back into the marching army.
+    delete unit.fireTeamId;
   }
+
+  // Any team this owner was driving has just been recalled into the army, so stop
+  // steering it; the rally itself now carries those units back to the monarch.
+  draft.pilotedFireTeamByOwner[ownerId] = null;
+  if (ownerId === draft.localPlayerId) draft.pilotedFireTeamId = null;
 }
 
 /**
@@ -434,9 +486,15 @@ function applyPlaceRalliedToDraft(
     : { x: monarch.position.x, y: 0, z: monarch.position.z };
   const chosen = selectFollowersForPlacement(followers, monarch.position, count);
 
+  // Every unit dropped in this one deploy forms a fire team under a shared id. The
+  // id is minted from the deterministic entity sequence so both lockstep peers
+  // label the same squad identically (placeRallied is a routed command).
+  const fireTeamId = chosen.length > 0 ? nextEntityId('FT') : null;
+
   for (const unit of chosen) {
     // Break off the rally and pin an explicit destination at the monarch.
     delete unit.followMonarchId;
+    if (fireTeamId !== null) unit.fireTeamId = fireTeamId;
     draft.unitOrders[unit.id] = destination;
     unit.unitState = 'moving_to_order';
     delete unit.arrivedAtDestinationMs;
@@ -469,6 +527,53 @@ function applyPlaceRalliedToDraft(
     const placedIds = new Set(chosen.map((unit) => unit.id));
     draft.selectedUnitIds = draft.selectedUnitIds.filter((id) => !placedIds.has(id));
   }
+}
+
+/**
+ * Advance one unit by a normalized pilot drive vector for a single tick: face the
+ * heading, step at moveSpeed scaled by the (clamped) analog magnitude, tick the
+ * locomotion animation, and resolve the step against terrain and other units.
+ * Shared by the monarch-pilot branch (one King/Queen) and the fire-team drive
+ * branch (every member of a remotely driven squad) so both move with identical
+ * physics from one place. The caller guarantees `inputMagnitude` > 0 and owns
+ * clearing any stale order/patrol before calling.
+ */
+function applyPilotDriveStep(
+  unit: Unit,
+  move: { x: number; z: number },
+  inputMagnitude: number,
+  dtSec: number,
+  units: Unit[],
+  movementPriorityIds: ReadonlySet<string>,
+  playerControlledOwnerIds: ReadonlySet<string>,
+  unitOrders: Record<string, Position3D>,
+  spatialGrid: SpatialGrid | null
+): void {
+  // Normalize the steering direction but let an analog stick scale speed (clamped
+  // so a digital key press, which reports magnitude 1, is full speed).
+  const dirX = move.x / inputMagnitude;
+  const dirZ = move.z / inputMagnitude;
+  const moveDistance = unit.moveSpeed * dtSec * Math.min(inputMagnitude, 1);
+  unit.rotation = Math.atan2(dirX, dirZ);
+
+  // Locomotion animation flags, matching the rest of the movement code.
+  if (unit.animal === 'Frog' || unit.animal === 'Bunny') {
+    unit.isHopping = true;
+    const hopSpeed = unit.moveSpeed / 5;
+    unit.hopPhase = ((unit.hopPhase || 0) + hopSpeed * dtSec) % 1;
+  }
+  if (unit.animal === 'Owl') {
+    unit.isFlying = true;
+    const flapSpeed = 3;
+    unit.wingPhase = ((unit.wingPhase || 0) + flapSpeed * dtSec) % 1;
+  }
+
+  const newPosition: Position3D = {
+    x: unit.position.x + dirX * moveDistance,
+    y: unit.position.y,
+    z: unit.position.z + dirZ * moveDistance,
+  };
+  unit.position = checkCollision(newPosition, unit, units, 2.5, movementPriorityIds, playerControlledOwnerIds, unitOrders, spatialGrid);
 }
 
 /**
@@ -602,6 +707,11 @@ type Store = GameState & {
   pilotCycleMonarch: () => void;
   togglePilotMonarchKind: () => void;
   rallyToMonarch: () => void;
+  // Cycle the local player's drive control through their deployed fire teams
+  // (squads dropped by the Deploy hold), then back to no team. While a team is
+  // driven the ESDF/stick vector steers every member at once. See monarchPilot.ts
+  // (listFireTeamIds / nextFireTeamInCycle) and the fire-team block in tick().
+  cycleFireTeam: () => void;
   // Hold-to-place: while the rally key is held over a piloted monarch, the input
   // layer calls incrementUnitPlacement once per UNIT_PLACEMENT_INTERVAL_MS to
   // designate one more follower; on release placeRalliedUnits peels that many
@@ -626,6 +736,7 @@ type Store = GameState & {
   applyRallyMonarch: (ownerId: string, monarchId: string) => void;
   applyPlaceRallied: (ownerId: string, monarchId: string, count: number, target?: { x: number; z: number }) => void;
   applyReleaseControl: (ownerId: string) => void;
+  applyPilotFireTeam: (ownerId: string, teamId: string | null) => void;
   toggleTurtleShell: (unitIds: string[]) => void;
   throwEggs: (cmd: CommandThrowEggs) => void;
   fireTongues: (cmd: CommandFireTongues) => void;
@@ -840,6 +951,8 @@ export const useGameStore = create<Store>((set, get) => ({
   pilotedUnitId: null,
   pilotedUnitIdByOwner: { p0: null, p1: null },
   pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } },
+  pilotedFireTeamId: null,
+  pilotedFireTeamByOwner: { p0: null, p1: null },
   movementHeldUnitId: null,
   unitPlacementCount: 0,
   unitPlacementCursor: null,
@@ -998,7 +1111,7 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, pilotedUnitIdByOwner: { p0: null, p1: null }, pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } }, movementHeldUnitId: null, unitPlacementCount: 0, unitPlacementCursor: null, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, pilotedUnitIdByOwner: { p0: null, p1: null }, pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } }, pilotedFireTeamId: null, pilotedFireTeamByOwner: { p0: null, p1: null }, movementHeldUnitId: null, unitPlacementCount: 0, unitPlacementCursor: null, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
@@ -1070,6 +1183,8 @@ export const useGameStore = create<Store>((set, get) => ({
       pilotedUnitId: null,
       pilotedUnitIdByOwner: { p0: null, p1: null },
       pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } },
+      pilotedFireTeamId: null,
+      pilotedFireTeamByOwner: { p0: null, p1: null },
       movementHeldUnitId: null,
       unitPlacementCount: 0,
       unitPlacementCursor: null,
@@ -1531,31 +1646,7 @@ export const useGameStore = create<Store>((set, get) => ({
               // would snap back to the route the moment the drive key is released.
               if (draft.queenPatrols[unit.id]) delete draft.queenPatrols[unit.id];
 
-              // Normalize the steering direction but let an analog stick scale speed
-              // (clamped so a digital key press, which reports magnitude 1, is full speed).
-              const dirX = move.x / inputMagnitude;
-              const dirZ = move.z / inputMagnitude;
-              const moveDistance = unit.moveSpeed * dtSec * Math.min(inputMagnitude, 1);
-              unit.rotation = Math.atan2(dirX, dirZ);
-
-              // Locomotion animation flags, matching the rest of the movement code.
-              if (unit.animal === 'Frog' || unit.animal === 'Bunny') {
-                unit.isHopping = true;
-                const hopSpeed = unit.moveSpeed / 5;
-                unit.hopPhase = ((unit.hopPhase || 0) + hopSpeed * dtSec) % 1;
-              }
-              if (unit.animal === 'Owl') {
-                unit.isFlying = true;
-                const flapSpeed = 3;
-                unit.wingPhase = ((unit.wingPhase || 0) + flapSpeed * dtSec) % 1;
-              }
-
-              const newPosition = {
-                x: unit.position.x + dirX * moveDistance,
-                y: unit.position.y,
-                z: unit.position.z + dirZ * moveDistance,
-              };
-              unit.position = checkCollision(newPosition, unit, draft.units, 2.5, movementPriorityIds, playerControlledOwnerIds, draft.unitOrders, draft.spatialGrid);
+              applyPilotDriveStep(unit, move, inputMagnitude, dtSec, draft.units, movementPriorityIds, playerControlledOwnerIds, draft.unitOrders, draft.spatialGrid);
             } else {
               // No input this frame: hold position and drop the moving animations.
               if (unit.animal === 'Frog' || unit.animal === 'Bunny') unit.isHopping = false;
@@ -1567,6 +1658,28 @@ export const useGameStore = create<Store>((set, get) => ({
           }
           // else: piloted Queen with a live patrol and no drive input — fall through
           // so the patrol branch below keeps her walking the route.
+        }
+
+        // Fire-team driving: the player has handed this owner's drive control onto a
+        // deployed fire team, so every member moves by the shared pilot vector at
+        // once — the squad drives as one. Only overrides movement while there is
+        // actual drive input this frame; with the keys released the members fall
+        // through to their normal AI and defend the ground they hold. Keyed on the
+        // synced per-owner map so a multiplayer peer steers both players' teams
+        // identically. (A piloted monarch never carries a fireTeamId, so this and the
+        // monarch branch above are mutually exclusive.)
+        if (
+          unit.fireTeamId !== undefined &&
+          draft.pilotedFireTeamByOwner[unit.ownerId] === unit.fireTeamId
+        ) {
+          const move = draft.pilotMoveByOwner[unit.ownerId] ?? { x: 0, z: 0 };
+          const inputMagnitude = Math.hypot(move.x, move.z);
+          if (inputMagnitude > 0.0001) {
+            if (draft.unitOrders[unit.id]) delete draft.unitOrders[unit.id];
+            applyPilotDriveStep(unit, move, inputMagnitude, dtSec, draft.units, movementPriorityIds, playerControlledOwnerIds, draft.unitOrders, draft.spatialGrid);
+            unit.unitState = 'idle';
+            continue;
+          }
         }
 
         // Patrol-draw hold: while the player holds the secondary button to draw a
@@ -2401,6 +2514,22 @@ export const useGameStore = create<Store>((set, get) => ({
           }
         }
 
+        // Release a driven fire team once its last living member is gone, so the
+        // drive vector stops steering a ghost squad. Deterministic: team membership
+        // and deaths are identical on both peers.
+        for (const ownerId in draft.pilotedFireTeamByOwner) {
+          const teamId = draft.pilotedFireTeamByOwner[ownerId];
+          if (
+            teamId &&
+            !draft.units.some(
+              (u) => u.ownerId === ownerId && u.fireTeamId === teamId && u.hp > 0 && !deadSet.has(u.id)
+            )
+          ) {
+            draft.pilotedFireTeamByOwner[ownerId] = null;
+            if (ownerId === draft.localPlayerId) draft.pilotedFireTeamId = null;
+          }
+        }
+
         // Clear dead units from the target cache in one pass.
         for (const cacheKey in draft.targetCache) {
           if (deadSet.has(draft.targetCache[cacheKey])) {
@@ -2925,6 +3054,27 @@ export const useGameStore = create<Store>((set, get) => ({
     set((s) => produce(s, (draft) => applyRallyToDraft(draft, localPlayerId, monarch.id)));
   },
 
+  // Cycle the local player's drive control through their deployed fire teams, then
+  // off again. The next team is chosen locally from the player's own view, then the
+  // concrete team id is routed so both lockstep peers steer the same squad from the
+  // synced pilotMove vector (deterministic like setPilot). A no-op with no teams.
+  cycleFireTeam: () => {
+    const prev = get();
+    const localPlayerId = prev.localPlayerId;
+    if (!localPlayerId) return;
+
+    const teamIds = listFireTeamIds(prev.units, localPlayerId);
+    if (teamIds.length === 0) return;
+    const nextTeamId = nextFireTeamInCycle(teamIds, prev.pilotedFireTeamId);
+
+    // Switching drive targets ends any in-progress placement hold; reset it so a
+    // stale teardrop never lingers from the monarch the player just stepped off.
+    pilotInput.reset();
+
+    if (routeCommand({ type: 'setPilotFireTeam', payload: { teamId: nextTeamId } })) return;
+    set((s) => produce(s, (draft) => applyPilotFireTeamToDraft(draft, localPlayerId, nextTeamId)));
+  },
+
   // Designate one more follower for a placement order while the rally key is held
   // (called once per UNIT_PLACEMENT_INTERVAL_MS by the input layer). The count is
   // capped at the number of followers currently trailing the piloted monarch, so
@@ -2951,7 +3101,10 @@ export const useGameStore = create<Store>((set, get) => ({
       0
     );
 
-    const next = clampPlacementCount(prev.unitPlacementCount + 1, followerCount);
+    // Climb the deployment ladder (1, 5, 10, 15, 25, …) rather than one unit per
+    // interval, so a held Deploy designates a meaningful batch quickly. Always
+    // clamped to the followers actually trailing the monarch.
+    const next = clampPlacementCount(nextPlacementStep(prev.unitPlacementCount), followerCount);
     if (next !== prev.unitPlacementCount) set({ unitPlacementCount: next });
     return next;
   },
@@ -3025,6 +3178,9 @@ export const useGameStore = create<Store>((set, get) => ({
 
   applyReleaseControl: (ownerId) =>
     set((prev) => produce(prev, (draft) => releaseOwnerControl(draft, ownerId))),
+
+  applyPilotFireTeam: (ownerId, teamId) =>
+    set((prev) => produce(prev, (draft) => applyPilotFireTeamToDraft(draft, ownerId, teamId))),
 
   // Toggle the "shell" lock on the local player's Turtle units in the given
   // selection. Shelling pins the unit in place (see checkCollision) and the
@@ -3377,6 +3533,7 @@ export function applyNetCommand(playerId: string, command: NetCommand): void {
       case 'pilotMove': store.applyPilotMove(playerId, command.payload); break;
       case 'rallyMonarch': store.applyRallyMonarch(playerId, command.payload.monarchId); break;
       case 'placeRallied': store.applyPlaceRallied(playerId, command.payload.monarchId, command.payload.count, command.payload.target); break;
+      case 'setPilotFireTeam': store.applyPilotFireTeam(playerId, command.payload.teamId); break;
       case 'releaseControl': store.applyReleaseControl(playerId); break;
     }
   } finally {

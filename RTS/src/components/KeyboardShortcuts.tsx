@@ -22,6 +22,7 @@ const KEYBOARD_GESTURE_ACTIONS: readonly string[] = [
   'deselect',
   'pilotCycleMonarch',
   'pilotToggleMonarch',
+  'cycleFireTeam',
   'pause',
   'rally',
   'selectAllUnits',
@@ -82,6 +83,7 @@ export function KeyboardShortcuts() {
         case 'deselect': state.clearSelection(); break;
         case 'pilotCycleMonarch': state.pilotCycleMonarch(); break;
         case 'pilotToggleMonarch': state.togglePilotMonarchKind(); break;
+        case 'cycleFireTeam': state.cycleFireTeam(); break;
         case 'rally':
           // Only meaningful while piloting; rallyToMonarch no-ops otherwise.
           if (state.pilotedUnitId) state.rallyToMonarch();

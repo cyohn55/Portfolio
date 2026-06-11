@@ -446,8 +446,13 @@ export function CameraController({
     // forces a React re-render.
     const store = useGameStore.getState();
     const pilotedId = store.pilotedUnitId;
+    // The same ESDF/stick drive steers a deployed fire team when the player has
+    // handed control onto one (mutually exclusive with piloting a monarch). The
+    // camera follows the squad's centroid instead of a single monarch.
+    const pilotedFireTeamId = store.pilotedFireTeamId;
+    const isDriving = pilotedId !== null || pilotedFireTeamId !== null;
 
-    if (pilotedId) {
+    if (isDriving) {
       // The drive vector is camera-relative; clamp its length to 1 so an analog
       // stick scales speed while digital keys (length 1) mean full speed.
       const drive = keyboardDrive.add(gamepadMove);
@@ -458,25 +463,39 @@ export function CameraController({
       }
       pilotInput.setMove(drive.x, drive.z);
 
-      // No edge-pan while piloting, so no edge chevrons should be lit.
+      // No edge-pan while driving, so no edge chevrons should be lit.
       edgePanIndicator.reset();
 
-      // Ease the camera focus onto the piloted unit. Selection auto-follow stays
-      // off while piloting so the two follow behaviours don't fight.
+      // Ease the camera focus onto whatever is being driven — the piloted monarch,
+      // or the centroid of the driven fire team's living members. Selection
+      // auto-follow stays off so the two follow behaviours don't fight.
       followEnabled.current = false;
+      let focusX = 0;
+      let focusZ = 0;
+      let focusCount = 0;
       for (const unit of store.units) {
-        if (unit.id === pilotedId) {
-          // Bias the look-at point ahead of the monarch so it rides in the
-          // lower portion of the screen, closer to the camera — but a touch
-          // higher than a plain selection.
-          const followBias = currentDistance.current * MONARCH_SCREEN_BIAS;
-          const desiredX = unit.position.x + forward.current.x * followBias;
-          const desiredZ = unit.position.z + forward.current.z * followBias;
-          const easing = 1 - Math.exp(-followSpeed * delta);
-          target.current.x += (desiredX - target.current.x) * easing;
-          target.current.z += (desiredZ - target.current.z) * easing;
-          break;
+        if (pilotedId !== null) {
+          if (unit.id === pilotedId) {
+            focusX = unit.position.x;
+            focusZ = unit.position.z;
+            focusCount = 1;
+            break;
+          }
+        } else if (unit.fireTeamId === pilotedFireTeamId && unit.hp > 0) {
+          focusX += unit.position.x;
+          focusZ += unit.position.z;
+          focusCount++;
         }
+      }
+      if (focusCount > 0) {
+        // Bias the look-at point ahead of the target so it rides in the lower
+        // portion of the screen, closer to the camera.
+        const followBias = currentDistance.current * MONARCH_SCREEN_BIAS;
+        const desiredX = focusX / focusCount + forward.current.x * followBias;
+        const desiredZ = focusZ / focusCount + forward.current.z * followBias;
+        const easing = 1 - Math.exp(-followSpeed * delta);
+        target.current.x += (desiredX - target.current.x) * easing;
+        target.current.z += (desiredZ - target.current.z) * easing;
       }
     } else {
       // Camera panning: controller stick plus screen-edge scroll. (Middle-drag

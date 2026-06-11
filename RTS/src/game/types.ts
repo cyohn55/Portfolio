@@ -182,6 +182,14 @@ export interface Unit {
   // unit's move order to the monarch's position while it is farther than the follow stop
   // band. Cleared when the player toggles the rally off or when the monarch dies.
   followMonarchId?: string;
+  // Fire-team membership. Set on an army Unit the moment it is deployed off a
+  // monarch's rally (the Deploy hold), grouping every unit dropped in that one
+  // deploy under a shared, deterministically-minted id. The player can then cycle
+  // a piloted monarch's drive control onto a whole fire team and steer all of its
+  // members at once (see pilotedFireTeamByOwner and the fire-team drive block in
+  // tick()). Cleared when the unit is rallied back under a monarch. Undefined for
+  // units that are still trailing a monarch or have never been deployed.
+  fireTeamId?: string;
 }
 
 // Per-Owl state for the "Pickup" ability while it animates. The Owl dives at a claimed target
@@ -372,6 +380,19 @@ export interface GameState {
   // instead of the monarch. Null for the default deploy-at-monarch gesture and
   // whenever no placement hold is in progress. Local UI only.
   unitPlacementCursor: Position3D | null;
+  // Id of the fire team the LOCAL player is currently driving remotely (or null
+  // when driving a monarch or nothing). A piloted monarch can hand its ESDF/stick
+  // drive over to a deployed fire team so the player steers that whole squad from
+  // afar; cycling teams updates this. UI-only mirror (camera follow, selection
+  // highlight); the deterministic simulation drives teams from
+  // pilotedFireTeamByOwner instead. See monarchPilot.ts.
+  pilotedFireTeamId: string | null;
+  // Per-owner driven fire-team id (or null), keyed by player id ('p0'/'p1'). The
+  // tick steers every member of this team from the owner's pilotMoveByOwner
+  // vector — never from the local-only pilotedFireTeamId — so a multiplayer peer
+  // simulates BOTH players' fire-team driving identically. Mutually exclusive with
+  // pilotedUnitIdByOwner: grabbing a monarch clears the team and vice versa.
+  pilotedFireTeamByOwner: Record<string, string | null>;
 }
 
 export interface CommandMoveUnits {

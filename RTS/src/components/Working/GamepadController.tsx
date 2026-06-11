@@ -147,7 +147,7 @@ const GAMEPAD_GESTURE_ACTIONS: readonly ControlActionId[] = [
   'primaryAction', 'secondaryAction', 'useAbility', 'monarchMeleeAttack',
   'selectMonarchAnimal', 'selectGroup1', 'selectGroup2', 'selectGroup3', 'deselect',
   'rally', 'selectAllUnits', 'deployUnits', 'toggleBehaviorRadial',
-  'pilotCycleMonarch', 'pilotMonarch1', 'pilotMonarch2', 'pilotMonarch3', 'pilotToggleMonarch', 'pause',
+  'pilotCycleMonarch', 'pilotMonarch1', 'pilotMonarch2', 'pilotMonarch3', 'pilotToggleMonarch', 'cycleFireTeam', 'pause',
 ];
 
 function getActiveGamepad(): GamepadLike | null {
@@ -768,6 +768,9 @@ export function GamepadController() {
         break;
       case 'pilotToggleMonarch':
         state.togglePilotMonarchKind();
+        break;
+      case 'cycleFireTeam':
+        state.cycleFireTeam();
         break;
       default:
         break;

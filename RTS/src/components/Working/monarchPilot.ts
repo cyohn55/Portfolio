@@ -50,6 +50,33 @@ export const UNIT_PLACEMENT_INTERVAL_MS = 750;
 export const UNIT_PLACEMENT_REPEAT_INTERVAL_MS = 500;
 
 /**
+ * The deployment ladder: the sequence of designated-unit counts the Deploy hold
+ * steps through as it is held (instead of climbing one unit at a time). Each
+ * placement interval advances to the next rung, so the teardrop reads 1, 5, 10,
+ * 15, 25 — designating a meaningful batch quickly while still letting a quick hold
+ * peel just a few. The final rung's stride (here 10) continues the ladder past 25
+ * (35, 45, …) so an oversized rally can still be claimed in full. Always clamped to
+ * the followers actually available (see clampPlacementCount).
+ */
+export const PLACEMENT_LADDER: readonly number[] = [1, 5, 10, 15, 25];
+
+/**
+ * Given the count designated so far, the next rung the Deploy hold should climb
+ * to. Returns the smallest ladder value strictly greater than `current`; past the
+ * top rung it keeps climbing by the final stride so very large rallies still ramp.
+ * Pure and monotonic (always > current) so the hold cannot stall mid-climb.
+ */
+export function nextPlacementStep(current: number): number {
+  for (const rung of PLACEMENT_LADDER) {
+    if (rung > current) return rung;
+  }
+  const top = PLACEMENT_LADDER[PLACEMENT_LADDER.length - 1];
+  const finalStride = top - PLACEMENT_LADDER[PLACEMENT_LADDER.length - 2];
+  const stepsPastTop = Math.floor((current - top) / finalStride) + 1;
+  return top + stepsPastTop * finalStride;
+}
+
+/**
  * Two presses of the Select All / Rally input within this window count as a
  * "double tap" that escalates from rallying one animal's army to selecting every
  * unit. Shared by both input layers (keyboard Space and the controller's bound
@@ -229,4 +256,52 @@ export function selectFollowersForPlacement(
         squaredDistanceXZ(second.position, destination)
     )
     .slice(0, count);
+}
+
+// --- Fire teams --------------------------------------------------------------
+// A "fire team" is the group of units dropped in a single Deploy. Each deploy
+// mints one shared fireTeamId on the units it places, and the player can hand a
+// piloted monarch's drive control onto a whole team to steer all of its members
+// at once from across the map. These pure helpers resolve the team list and the
+// cycle order; the store owns the live driven-team state and the tick the steering.
+
+/**
+ * Parse the trailing integer of a deterministically-minted fire-team id (e.g.
+ * "FT-7" -> 7) so teams cycle in creation order regardless of how the units array
+ * is currently ordered. Ids without a numeric suffix sort first (order 0).
+ */
+function fireTeamCreationOrder(fireTeamId: string): number {
+  const match = /(\d+)$/.exec(fireTeamId);
+  return match ? Number.parseInt(match[1], 10) : 0;
+}
+
+/**
+ * The distinct fire-team ids an owner currently fields, in creation order. Only
+ * teams with at least one living member are listed, so a wiped-out team drops out
+ * of the cycle automatically. Pure so the cycle order is testable without the store.
+ */
+export function listFireTeamIds(units: readonly Unit[], ownerId: string): string[] {
+  const teamIds = new Set<string>();
+  for (const unit of units) {
+    if (unit.ownerId === ownerId && unit.fireTeamId !== undefined && unit.hp > 0) {
+      teamIds.add(unit.fireTeamId);
+    }
+  }
+  return [...teamIds].sort((first, second) => fireTeamCreationOrder(first) - fireTeamCreationOrder(second));
+}
+
+/**
+ * The next team the cycle key should drive, given the ordered team list and the
+ * team being driven now (or null when none). Advances to the next team, and from
+ * the last team wraps back to null (release) so the key toggles fire-team driving
+ * off after the final team. Returns null when there are no teams. Pure selection;
+ * the caller issues the (routed) drive-switch.
+ */
+export function nextFireTeamInCycle(teamIds: readonly string[], current: string | null): string | null {
+  if (teamIds.length === 0) return null;
+  if (current === null) return teamIds[0];
+  const currentIndex = teamIds.indexOf(current);
+  if (currentIndex === -1) return teamIds[0];
+  // Past the last team, fall back to "no team" so the cycle key releases control.
+  return currentIndex + 1 < teamIds.length ? teamIds[currentIndex + 1] : null;
 }
