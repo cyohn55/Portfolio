@@ -332,7 +332,7 @@ function MonarchAccessoryModel({ kind }: { kind: 'King' | 'Queen' }) {
     const size = new THREE.Vector3();
     box.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const scale = 15.0 / maxDim;
+    const scale = 7.5 / maxDim;
 
     // Recenter the node so the geometry's bounding-box center sits at the wrapper
     // origin, then scale the whole wrapper to fit the button.
