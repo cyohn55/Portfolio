@@ -13,7 +13,6 @@ import {
   RING_RADIUS,
   PANEL_SIZE,
   uniform,
-  labelForStance,
   BEHAVIOR_RADIAL_STYLE,
 } from './behaviorRadialModel';
 
@@ -155,23 +154,9 @@ export function BehaviorRadial() {
     <>
       <style>{BEHAVIOR_RADIAL_STYLE}</style>
 
-      {/* Collapsed trigger: shown only when there is a commandable selection. */}
-      {!isOpen && commandable.length > 0 && (
-        <button
-          className="rts-stance-trigger"
-          onClick={() => setIsOpen(true)}
-          title={`Set combat posture for the selection${triggerKeyLabel ? ` (${triggerKeyLabel})` : ''}`}
-        >
-          <span className="rts-stance-trigger-icon">
-            {STANCE_OPTIONS.find((o) => o.stance === currentStance)?.icon ?? '⚔️'}
-          </span>
-          <span>
-            Stance: {currentStance ? labelForStance(currentStance) : 'Mixed'}
-            {triggerKeyLabel && <span className="rts-stance-trigger-key"> · {triggerKeyLabel}</span>}
-          </span>
-        </button>
-      )}
-
+      {/* The collapsed trigger now lives as the 4th button in AnimalSelectionButtons
+          (dispatches `rts:toggle-stance-radial`), so the radial only renders the
+          expanded panel here. */}
       {isOpen && commandable.length > 0 && (
         // Backdrop closes the radial on an outside click.
         <div className="rts-stance-backdrop" onClick={() => setIsOpen(false)}>

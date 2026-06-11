@@ -4,7 +4,7 @@ import { useLoader } from '@react-three/fiber';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { useGameStore } from '../game/state';
-import type { AnimalId } from '../game/types';
+import type { AnimalId, Unit } from '../game/types';
 import * as THREE from 'three';
 
 // Model file mapping
@@ -42,6 +42,16 @@ const ANIMAL_COLORS: Record<AnimalId, string> = {
 function getModelPath(animal: AnimalId) {
   return `${import.meta.env.BASE_URL}models/${ANIMAL_FILE_MAP[animal]}`;
 }
+
+// The crown / tiara shown on the King / Queen selection buttons is the 3D prop
+// baked into the Bear model. The local player is the Blue ("own") team, so the
+// buttons use the blue-team accessory nodes (mirrors royalAccessoryNodeFor in
+// ModelPreloader). A King wears the crown; a Queen wears the tiara.
+const MONARCH_MODEL_PATH = `${import.meta.env.BASE_URL}models/Bear.glb`;
+const MONARCH_ACCESSORY_NODE: Record<'King' | 'Queen', string> = {
+  King: 'Blue_Crown',
+  Queen: 'Blue_Tiara',
+};
 
 // Pose-frame animals pack several pose objects (e.g. Fox_F0..Fox_F2) into one
 // glb. A button should show a single representative pose, so map each such
@@ -285,6 +295,168 @@ function AnimalButton({ animal, selectedCount, totalCount, onClick }: AnimalButt
   );
 }
 
+// Renders just the Bear model's crown or tiara prop, isolated and recentered so
+// it fills a monarch button (the King button shows the crown, the Queen the
+// tiara). Every other node in the Bear scene is stripped so only the accessory
+// is drawn.
+function MonarchAccessoryModel({ kind }: { kind: 'King' | 'Queen' }) {
+  const gltf = useLoader(GLTFLoader, MONARCH_MODEL_PATH, (loader: GLTFLoader) => {
+    const draco = new DRACOLoader();
+    draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+    loader.setDRACOLoader(draco);
+  });
+
+  const accessoryScene = useMemo(() => {
+    if (!gltf?.scene) return null;
+    const accessory = gltf.scene.getObjectByName(MONARCH_ACCESSORY_NODE[kind]);
+    if (!accessory) return null;
+
+    const model = accessory.clone(true);
+    model.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh) {
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+      }
+    });
+
+    // The accessory lives at the Bear's head in model space, so center and scale
+    // it to the button on its own bounds rather than the Bear's.
+    const box = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const scale = 3.0 / maxDim;
+    model.scale.setScalar(scale);
+
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    model.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+
+    return model;
+  }, [gltf, kind]);
+
+  if (!accessoryScene) {
+    return (
+      <mesh>
+        <sphereGeometry args={[1.0, 12, 12]} />
+        <meshStandardMaterial color={kind === 'King' ? '#FFD700' : '#E6C9F0'} />
+      </mesh>
+    );
+  }
+
+  return <primitive object={accessoryScene} />;
+}
+
+interface MonarchButtonProps {
+  kind: 'King' | 'Queen';
+  monarch?: Unit;
+  isSelected: boolean;
+  onClick: () => void;
+}
+
+// One of the two small (quarter-size) monarch selection buttons that sit above
+// an animal button: the left selects that animal's King, the right its Queen.
+// Disabled (dimmed) when the monarch is no longer alive.
+function MonarchButton({ kind, monarch, isSelected, onClick }: MonarchButtonProps) {
+  const exists = Boolean(monarch);
+  const accentColor = kind === 'King' ? '#FFD700' : '#E6A8E6';
+
+  return (
+    <button
+      onClick={exists ? onClick : undefined}
+      disabled={!exists}
+      title={`Select ${kind} (${kind === 'King' ? 'Crown' : 'Tiara'})`}
+      style={{
+        position: 'relative',
+        flex: 1,
+        height: '38px',
+        backgroundColor: 'rgba(20, 26, 42, 0.85)',
+        border: isSelected ? `2px solid ${accentColor}` : '1px solid rgba(255, 255, 255, 0.35)',
+        borderRadius: '8px',
+        cursor: exists ? 'pointer' : 'default',
+        opacity: exists ? 1 : 0.4,
+        padding: 0,
+        overflow: 'hidden',
+        transition: 'all 0.2s ease',
+        boxShadow: isSelected ? `0 0 12px ${accentColor}` : '0 2px 4px rgba(0, 0, 0, 0.3)',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+        }}
+      >
+        <Canvas
+          camera={{ fov: 45, position: [0, 0, 5] }}
+          style={{ width: '100%', height: '100%', background: 'transparent' }}
+          gl={{ alpha: true, antialias: false, powerPreference: 'high-performance' }}
+        >
+          <ambientLight intensity={1.2} />
+          <directionalLight position={[2, 3, 3]} intensity={1.5} />
+          <directionalLight position={[-2, 2, 2]} intensity={0.8} />
+          <pointLight position={[0, 0, 4]} intensity={1.0} color="#ffffff" />
+          <Suspense fallback={null}>
+            <MonarchAccessoryModel kind={kind} />
+          </Suspense>
+        </Canvas>
+      </div>
+    </button>
+  );
+}
+
+interface StanceToggleButtonProps {
+  enabled: boolean;
+  onClick: () => void;
+}
+
+// The 4th button to the right of the animal buttons. It reveals/hides the combat
+// posture UI (BehaviorRadial) for the current selection via the shared toggle
+// event; disabled when the selection has no commandable units.
+function StanceToggleButton({ enabled, onClick }: StanceToggleButtonProps) {
+  return (
+    <button
+      onClick={enabled ? onClick : undefined}
+      disabled={!enabled}
+      title="Show/hide combat posture for the selection"
+      style={{
+        position: 'relative',
+        width: '80px',
+        height: '80px',
+        backgroundColor: 'rgba(28, 38, 64, 0.9)',
+        border: '2px solid rgba(129, 160, 255, 0.7)',
+        borderRadius: '12px',
+        cursor: enabled ? 'pointer' : 'default',
+        opacity: enabled ? 1 : 0.5,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '6px',
+        transition: 'all 0.2s ease',
+        boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+      }}
+      onMouseEnter={(e) => {
+        if (!enabled) return;
+        e.currentTarget.style.borderColor = 'rgba(129, 160, 255, 0.95)';
+        e.currentTarget.style.boxShadow = '0 0 18px rgba(129, 160, 255, 0.6), 0 6px 16px rgba(0, 0, 0, 0.4)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = 'rgba(129, 160, 255, 0.7)';
+        e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.3)';
+      }}
+    >
+      <span style={{ fontSize: '30px', lineHeight: 1 }}>⚔️</span>
+      <span style={{ fontSize: '11px', fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap' }}>
+        Posture
+      </span>
+    </button>
+  );
+}
+
 export function AnimalSelectionButtons() {
   const matchStarted = useGameStore((s) => s.matchStarted);
   const localPlayerId = useGameStore((s) => s.localPlayerId);
@@ -297,6 +469,28 @@ export function AnimalSelectionButtons() {
   const playerUnits = useMemo(() => {
     return units.filter(u => u.ownerId === localPlayerId && u.kind === 'Unit');
   }, [units, localPlayerId]);
+
+  // The player's living monarchs keyed by animal, so each animal button can show
+  // its King and Queen selection buttons (absent => that monarch is dead).
+  const monarchsByAnimal = useMemo(() => {
+    const map = {} as Record<AnimalId, { King?: Unit; Queen?: Unit }>;
+    for (const animal of selectedAnimalPool) map[animal] = {};
+    for (const unit of units) {
+      if (unit.ownerId !== localPlayerId) continue;
+      if (unit.kind !== 'King' && unit.kind !== 'Queen') continue;
+      const entry = map[unit.animal];
+      if (entry) entry[unit.kind] = unit;
+    }
+    return map;
+  }, [units, localPlayerId, selectedAnimalPool]);
+
+  // Whether the current selection holds any commandable own unit (non-Base), used
+  // to enable the combat-posture toggle just like the radial's own gating.
+  const hasCommandableSelection = useMemo(() => {
+    return units.some(
+      (u) => selectedUnitIds.includes(u.id) && u.ownerId === localPlayerId && u.kind !== 'Base',
+    );
+  }, [units, selectedUnitIds, localPlayerId]);
 
   // Calculate counts and selections per animal
   const animalData = useMemo(() => {
@@ -322,6 +516,17 @@ export function AnimalSelectionButtons() {
     selectUnits(unitIds);
   };
 
+  const handleMonarchButtonClick = (monarch?: Unit) => {
+    if (monarch) selectUnits([monarch.id]);
+  };
+
+  // Toggle the combat-posture radial via the shared event the BehaviorRadial (and
+  // controller/keyboard bindings) already listen for, so this button is just
+  // another trigger for the same UI.
+  const handleStanceToggle = () => {
+    window.dispatchEvent(new CustomEvent('rts:toggle-stance-radial'));
+  };
+
   if (!matchStarted || selectedAnimalPool.length === 0) {
     return null;
   }
@@ -334,20 +539,48 @@ export function AnimalSelectionButtons() {
         left: '50%',
         transform: 'translateX(-50%)',
         display: 'flex',
+        alignItems: 'flex-end',
         gap: '16px',
         zIndex: 1000,
         pointerEvents: 'auto',
       }}
     >
-      {selectedAnimalPool.map((animal) => (
-        <AnimalButton
-          key={animal}
-          animal={animal}
-          selectedCount={animalData[animal]?.selected || 0}
-          totalCount={animalData[animal]?.total || 0}
-          onClick={() => handleAnimalButtonClick(animal)}
-        />
-      ))}
+      {selectedAnimalPool.map((animal) => {
+        const monarchs = monarchsByAnimal[animal] ?? {};
+        return (
+          <div
+            key={animal}
+            style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '80px' }}
+          >
+            {/* Two quarter-size monarch buttons above the animal button: King
+                (crown) on the left, Queen (tiara) on the right. */}
+            <div style={{ display: 'flex', gap: '4px', width: '80px' }}>
+              <MonarchButton
+                kind="King"
+                monarch={monarchs.King}
+                isSelected={monarchs.King ? selectedUnitIds.includes(monarchs.King.id) : false}
+                onClick={() => handleMonarchButtonClick(monarchs.King)}
+              />
+              <MonarchButton
+                kind="Queen"
+                monarch={monarchs.Queen}
+                isSelected={monarchs.Queen ? selectedUnitIds.includes(monarchs.Queen.id) : false}
+                onClick={() => handleMonarchButtonClick(monarchs.Queen)}
+              />
+            </div>
+
+            <AnimalButton
+              animal={animal}
+              selectedCount={animalData[animal]?.selected || 0}
+              totalCount={animalData[animal]?.total || 0}
+              onClick={() => handleAnimalButtonClick(animal)}
+            />
+          </div>
+        );
+      })}
+
+      {/* 4th button: reveals/hides the combat-posture UI for the selection. */}
+      <StanceToggleButton enabled={hasCommandableSelection} onClick={handleStanceToggle} />
     </div>
   );
 }
