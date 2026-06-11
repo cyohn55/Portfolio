@@ -320,20 +320,28 @@ function MonarchAccessoryModel({ kind }: { kind: 'King' | 'Queen' }) {
       }
     });
 
-    // The accessory lives at the Bear's head in model space, so center and scale
-    // it to the button on its own bounds rather than the Bear's.
-    const box = new THREE.Box3().setFromObject(model);
+    // The accessory node carries its own baked transform that places it on the
+    // animal's head, so it cannot be measured-then-overwritten in place. Wrap it
+    // in a group and scale/recenter the GROUP, leaving the node's own transform
+    // intact, so the prop fills the button centered vertically and horizontally.
+    const wrapper = new THREE.Group();
+    wrapper.add(model);
+    wrapper.updateWorldMatrix(true, true);
+
+    const box = new THREE.Box3().setFromObject(wrapper);
     const size = new THREE.Vector3();
     box.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
     const scale = 15.0 / maxDim;
-    model.scale.setScalar(scale);
 
+    // Recenter the node so the geometry's bounding-box center sits at the wrapper
+    // origin, then scale the whole wrapper to fit the button.
     const center = new THREE.Vector3();
     box.getCenter(center);
-    model.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+    model.position.sub(center);
+    wrapper.scale.setScalar(scale);
 
-    return model;
+    return wrapper;
   }, [gltf, kind]);
 
   if (!accessoryScene) {
