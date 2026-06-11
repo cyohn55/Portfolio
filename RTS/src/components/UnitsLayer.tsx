@@ -195,6 +195,12 @@ const OUTLINE_MAT = createOutlineMaterial(); // white base; tinted per instance
 // Reusable scratch colors for the per-instance team tint (no per-frame alloc).
 const OUTLINE_OWN_COLOR3 = new THREE.Color(OUTLINE_OWN_COLOR);
 const OUTLINE_ENEMY_COLOR3 = new THREE.Color(OUTLINE_ENEMY_COLOR);
+// A zero-scale instance transform used to hide a single outline instance without
+// disturbing the 1:1 body↔outline indexing. The outline shell is pushed out in
+// OBJECT space (before this matrix), so scaling the instance to zero collapses
+// every expanded vertex onto one point — the rim renders nothing, yet the
+// instance count still matches the body so neighbours keep their correct slots.
+const OUTLINE_HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 const SELECTION_OUTER_MAT = new THREE.MeshStandardMaterial({
   color: '#000080',
   transparent: true,
@@ -772,6 +778,10 @@ function InstancedUnits() {
     const localPlayerId = s.localPlayerId;
     const selected = s.selectedUnitIds;
     const selectedSet = selected.length > 0 ? new Set(selected) : null;
+    // The monarch the local player is actively piloting (null when none). Used to
+    // gate the own-unit outline: a rallied follower only counts as "actively
+    // selected" while the monarch it trails is the one being driven.
+    const pilotedMonarchId = s.pilotedUnitId;
     const queenAuraRadius = s.config.regenRadius;
     const kingAuraRadius = s.config.kingAuraRadius;
     const healthBarsEnabled = s.healthBarsEnabled;
@@ -884,11 +894,26 @@ function InstancedUnits() {
       if (aurasEnabled) {
         const outlineMeshes = outlineMeshRefs.current.get(key);
         if (outlineMeshes) {
+          // The player's own animals only wear the outline while they are part of
+          // the CURRENT active selection: units the player is driving (a piloted
+          // monarch and the army actively rallied to it, or a driven fire team) or
+          // picked directly (drag-box / select-all). A follower still rallied to a
+          // monarch the player is NOT piloting is not "actively selected", so it
+          // stays bare — selection alone isn't enough, the trailed monarch must be
+          // the one being driven. Enemy animals always outline (red) so friend/foe
+          // reads at a glance. Hidden own outlines collapse to a zero-scale shell
+          // rather than dropping out of the instance buffer, keeping body↔outline
+          // indices aligned.
+          const showOutline =
+            !isOwnUnit ||
+            (!!selectedSet &&
+              selectedSet.has(unit.id) &&
+              (unit.followMonarchId === undefined || unit.followMonarchId === pilotedMonarchId));
           const tint = isOwnUnit ? OUTLINE_OWN_COLOR3 : OUTLINE_ENEMY_COLOR3;
           for (let p = 0; p < outlineMeshes.length; p++) {
             const outlineMesh = outlineMeshes[p];
             if (!outlineMesh) continue;
-            outlineMesh.setMatrixAt(variantCount, matrix);
+            outlineMesh.setMatrixAt(variantCount, showOutline ? matrix : OUTLINE_HIDDEN_MATRIX);
             outlineMesh.setColorAt(variantCount, tint);
           }
         }
