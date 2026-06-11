@@ -44,10 +44,10 @@ function getModelPath(animal: AnimalId) {
 }
 
 // The crown / tiara shown on the King / Queen selection buttons is the 3D prop
-// baked into the Bear model. The local player is the Blue ("own") team, so the
+// baked into the Bee model. The local player is the Blue ("own") team, so the
 // buttons use the blue-team accessory nodes (mirrors royalAccessoryNodeFor in
 // ModelPreloader). A King wears the crown; a Queen wears the tiara.
-const MONARCH_MODEL_PATH = `${import.meta.env.BASE_URL}models/Bear.glb`;
+const MONARCH_MODEL_PATH = `${import.meta.env.BASE_URL}models/Bee.glb`;
 const MONARCH_ACCESSORY_NODE: Record<'King' | 'Queen', string> = {
   King: 'Blue_Crown',
   Queen: 'Blue_Tiara',
