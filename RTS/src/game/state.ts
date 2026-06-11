@@ -1713,10 +1713,23 @@ export const useGameStore = create<Store>((set, get) => ({
           if (!monarch || monarch.hp <= 0) {
             delete unit.followMonarchId;
             delete draft.unitOrders[unit.id];
-          } else if (shouldChaseMonarch(distance3D(unit.position, monarch.position), MONARCH_FOLLOW_STOP_DISTANCE)) {
-            draft.unitOrders[unit.id] = { x: monarch.position.x, y: 0, z: monarch.position.z };
-          } else if (draft.unitOrders[unit.id]) {
-            delete draft.unitOrders[unit.id];
+          } else {
+            // A rallied unit's "home" is its monarch, not wherever a prior move
+            // order last anchored it (moveCommand stamps the anchor on every
+            // order). Re-home the stance anchor onto the monarch each tick: once
+            // the follower settles inside the stop band the order is cleared
+            // below, and the idle/return-to-anchor fallback (Priority 2/3) would
+            // otherwise march it back to that stale previous-order destination —
+            // the snap-back the player saw the instant they switched to piloting
+            // a different King/Queen and this now-stationary band dropped into its
+            // idle band. Pinning the anchor keeps return-to-anchor pointed at the
+            // monarch instead, so the army holds with its King.
+            unit.anchor = { x: monarch.position.x, y: 0, z: monarch.position.z };
+            if (shouldChaseMonarch(distance3D(unit.position, monarch.position), MONARCH_FOLLOW_STOP_DISTANCE)) {
+              draft.unitOrders[unit.id] = { x: monarch.position.x, y: 0, z: monarch.position.z };
+            } else if (draft.unitOrders[unit.id]) {
+              delete draft.unitOrders[unit.id];
+            }
           }
         }
 
