@@ -334,6 +334,10 @@ type PilotMutableState = Pick<
  * whether or not the owner was actually piloting.
  */
 function stopOwnerPilot(draft: PilotMutableState, ownerId: string): void {
+  // Pin a still-living released monarch where it stands so it holds instead of
+  // marching back to a stale anchor (helper defined below; a dead monarch no-ops).
+  const previouslyPiloted = draft.pilotedUnitIdByOwner[ownerId];
+  if (previouslyPiloted) holdReleasedMonarch(draft, ownerId, previouslyPiloted);
   draft.pilotedUnitIdByOwner[ownerId] = null;
   draft.pilotedFireTeamByOwner[ownerId] = null;
   draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
@@ -365,6 +369,26 @@ function releaseOwnerControl(draft: PilotMutableState, ownerId: string): void {
 }
 
 /**
+ * Re-home a just-released monarch's stance anchor onto where it currently stands
+ * and drop any pending order, so it HOLDS that ground instead of being yanked
+ * back to a stale anchor the instant it stops being piloted. While piloting, the
+ * tick block drives the monarch with the stick/keys but never updates its anchor,
+ * so the anchor still points at the destination of whatever move order preceded
+ * piloting. A returns-to-anchor stance (Defensive/Skirmish/Guard) would then
+ * leash the monarch straight back there the moment the player switches to another
+ * King/Queen — the same stale-anchor snap-back already fixed for rallied
+ * followers and deployed fire teams. Pure position-derived write, so both peers
+ * apply it identically. No-op when the id doesn't resolve to one of this owner's
+ * living units.
+ */
+function holdReleasedMonarch(draft: PilotMutableState, ownerId: string, monarchId: string): void {
+  const monarch = draft.units.find((u) => u.id === monarchId);
+  if (!monarch || monarch.ownerId !== ownerId || monarch.hp <= 0) return;
+  monarch.anchor = { x: monarch.position.x, y: 0, z: monarch.position.z };
+  delete draft.unitOrders[monarch.id];
+}
+
+/**
  * Set (or clear, when unitId is null) which monarch an owner is piloting in the
  * deterministic per-owner state, resetting that owner's drive vector so a freshly
  * grabbed monarch starts stationary. Mirrors the choice into the local UI fields
@@ -372,6 +396,13 @@ function releaseOwnerControl(draft: PilotMutableState, ownerId: string): void {
  * and the lockstep apply path so both produce identical simulation state.
  */
 function applyPilotSelectionToDraft(draft: PilotMutableState, ownerId: string, unitId: string | null): void {
+  // Switching (or stopping) piloting releases the monarch we were driving: pin it
+  // where it stands so it doesn't march back to a stale anchor (see helper above).
+  const previouslyPiloted = draft.pilotedUnitIdByOwner[ownerId];
+  if (previouslyPiloted && previouslyPiloted !== unitId) {
+    holdReleasedMonarch(draft, ownerId, previouslyPiloted);
+  }
+
   draft.pilotedUnitIdByOwner[ownerId] = unitId;
   draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
   // Driving a monarch and driving a fire team are mutually exclusive — one drive
@@ -401,8 +432,14 @@ function applyPilotSelectionToDraft(draft: PilotMutableState, ownerId: string, u
 function applyPilotFireTeamToDraft(draft: PilotMutableState, ownerId: string, teamId: string | null): void {
   draft.pilotedFireTeamByOwner[ownerId] = teamId;
   draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
-  // One drive target: taking a team releases this owner's piloted monarch.
-  if (teamId !== null) draft.pilotedUnitIdByOwner[ownerId] = null;
+  // One drive target: taking a team releases this owner's piloted monarch. Pin
+  // that released monarch where it stands so it holds instead of marching back to
+  // a stale anchor (same fix as applyPilotSelectionToDraft).
+  if (teamId !== null) {
+    const previouslyPiloted = draft.pilotedUnitIdByOwner[ownerId];
+    if (previouslyPiloted) holdReleasedMonarch(draft, ownerId, previouslyPiloted);
+    draft.pilotedUnitIdByOwner[ownerId] = null;
+  }
 
   if (ownerId === draft.localPlayerId) {
     draft.pilotedFireTeamId = teamId;
