@@ -334,7 +334,7 @@ function MonarchAccessoryModel({ kind }: { kind: 'King' | 'Queen' }) {
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
     // The crown reads slightly large next to the tiara, so the King fits a touch
     // smaller than the Queen.
-    const fitSize = kind === 'King' ? 3.5 : 3.75;
+    const fitSize = kind === 'King' ? 3.25 : 3.75;
     const scale = fitSize / maxDim;
 
     // Recenter the node so the geometry's bounding-box center sits at the wrapper
@@ -475,6 +475,7 @@ export function AnimalSelectionButtons() {
   const units = useGameStore((s) => s.units);
   const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
   const selectUnits = useGameStore((s) => s.selectUnits);
+  const pilotMonarchById = useGameStore((s) => s.pilotMonarchById);
 
   // Get player's units
   const playerUnits = useMemo(() => {
@@ -527,8 +528,10 @@ export function AnimalSelectionButtons() {
     selectUnits(unitIds);
   };
 
+  // Selecting a King/Queen button immediately hands the player pilot control of
+  // that monarch (the gold ring + drive controls), not just a selection.
   const handleMonarchButtonClick = (monarch?: Unit) => {
-    if (monarch) selectUnits([monarch.id]);
+    if (monarch) pilotMonarchById(monarch.id);
   };
 
   // Toggle the combat-posture radial via the shared event the BehaviorRadial (and

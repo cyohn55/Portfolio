@@ -749,6 +749,10 @@ type Store = GameState & {
   // Direct monarch piloting (A cycles monarchs, G toggles King/Queen, Space
   // rallies). See monarchPilot.ts and the pilot-movement block in tick().
   pilotMonarchBySlot: (slotIndex: number) => void;
+  // Pilot a specific monarch by unit id (the on-screen King/Queen buttons).
+  // Pressing the same monarch's button again unpilots it. Validates the unit is
+  // one of the local player's living monarchs before grabbing control.
+  pilotMonarchById: (unitId: string) => void;
   pilotCycleMonarch: () => void;
   togglePilotMonarchKind: () => void;
   rallyToMonarch: () => void;
@@ -3033,6 +3037,31 @@ export const useGameStore = create<Store>((set, get) => ({
       findMonarch(prev.units, prev.localPlayerId, animal, 'King') ??
       findMonarch(prev.units, prev.localPlayerId, animal, 'Queen');
     if (!monarch) return;
+
+    beginLocalPilot(monarch.id);
+  },
+
+  // Pilot the monarch identified by `unitId` (the on-screen King/Queen selection
+  // buttons). Re-pressing the monarch already being piloted releases it, matching
+  // pilotMonarchBySlot's toggle. Ignores units that are not one of the local
+  // player's living King/Queen so a stale button id can't grab a bad target.
+  pilotMonarchById: (unitId) => {
+    const prev = get();
+    if (!prev.localPlayerId) return;
+
+    if (prev.pilotedUnitId === unitId) {
+      beginLocalPilot(null);
+      return;
+    }
+
+    const monarch = prev.units.find((u) => u.id === unitId);
+    if (
+      !monarch ||
+      monarch.ownerId !== prev.localPlayerId ||
+      (monarch.kind !== 'King' && monarch.kind !== 'Queen')
+    ) {
+      return;
+    }
 
     beginLocalPilot(monarch.id);
   },
