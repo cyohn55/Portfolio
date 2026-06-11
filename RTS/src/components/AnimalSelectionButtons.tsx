@@ -326,7 +326,7 @@ function MonarchAccessoryModel({ kind }: { kind: 'King' | 'Queen' }) {
     const size = new THREE.Vector3();
     box.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const scale = 3.0 / maxDim;
+    const scale = 15.0 / maxDim;
     model.scale.setScalar(scale);
 
     const center = new THREE.Vector3();
@@ -371,7 +371,7 @@ function MonarchButton({ kind, monarch, isSelected, onClick }: MonarchButtonProp
         position: 'relative',
         flex: 1,
         height: '38px',
-        backgroundColor: 'rgba(20, 26, 42, 0.85)',
+        backgroundColor: '#4169E1',
         border: isSelected ? `2px solid ${accentColor}` : '1px solid rgba(255, 255, 255, 0.35)',
         borderRadius: '8px',
         cursor: exists ? 'pointer' : 'default',
