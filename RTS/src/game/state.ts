@@ -499,6 +499,14 @@ function applyPlaceRalliedToDraft(
     unit.unitState = 'moving_to_order';
     delete unit.arrivedAtDestinationMs;
 
+    // Re-home the stance anchor to the deploy point (as moveCommand does for a
+    // move order): a deployed fire team's "home" is the ground it was sent to, so
+    // a returns-to-anchor stance (Defensive/Skirmish/Guard) leashes and holds
+    // there instead of wandering back to a stale anchor — e.g. the monarch's
+    // position from when these units were still rallied to it. HoldGround already
+    // ignores the anchor; this keeps every other posture honoring the deploy spot.
+    unit.anchor = { x: destination.x, y: 0, z: destination.z };
+
     // Clear combat, blocking and landing carry-over so the new order wins.
     delete unit.lastCombatTargetId;
     delete unit.lastCombatEngagementMs;
@@ -1713,23 +1721,22 @@ export const useGameStore = create<Store>((set, get) => ({
           if (!monarch || monarch.hp <= 0) {
             delete unit.followMonarchId;
             delete draft.unitOrders[unit.id];
+          } else if (shouldChaseMonarch(distance3D(unit.position, monarch.position), MONARCH_FOLLOW_STOP_DISTANCE)) {
+            draft.unitOrders[unit.id] = { x: monarch.position.x, y: 0, z: monarch.position.z };
           } else {
-            // A rallied unit's "home" is its monarch, not wherever a prior move
-            // order last anchored it (moveCommand stamps the anchor on every
-            // order). Re-home the stance anchor onto the monarch each tick: once
-            // the follower settles inside the stop band the order is cleared
-            // below, and the idle/return-to-anchor fallback (Priority 2/3) would
-            // otherwise march it back to that stale previous-order destination —
-            // the snap-back the player saw the instant they switched to piloting
-            // a different King/Queen and this now-stationary band dropped into its
-            // idle band. Pinning the anchor keeps return-to-anchor pointed at the
-            // monarch instead, so the army holds with its King.
-            unit.anchor = { x: monarch.position.x, y: 0, z: monarch.position.z };
-            if (shouldChaseMonarch(distance3D(unit.position, monarch.position), MONARCH_FOLLOW_STOP_DISTANCE)) {
-              draft.unitOrders[unit.id] = { x: monarch.position.x, y: 0, z: monarch.position.z };
-            } else if (draft.unitOrders[unit.id]) {
-              delete draft.unitOrders[unit.id];
-            }
+            // Settled inside the stop band: drop the chase order so the follower
+            // idles here rather than jittering against the monarch. Re-home its
+            // stance anchor onto where it now stands so the idle/return-to-anchor
+            // fallback (Priority 2/3) holds it in place — NOT back at the monarch,
+            // and NOT at the destination of a prior move order (the stale anchor
+            // moveCommand stamps on every order). That stale-anchor snap-back was
+            // what yanked a rallied band away the instant the player switched to
+            // piloting another King/Queen and this now-stationary army dropped
+            // into its idle band. Holding in place lets the band simply keep doing
+            // what it was — sitting where it ended up — and resume trailing only
+            // if its monarch actually moves off again.
+            if (draft.unitOrders[unit.id]) delete draft.unitOrders[unit.id];
+            unit.anchor = { x: unit.position.x, y: 0, z: unit.position.z };
           }
         }
 
