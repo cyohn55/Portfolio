@@ -13,6 +13,7 @@ setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import { pathfinder } from '../components/Working/pathfinder';
 import { BLOCKER_LOOKAHEAD, deflectAroundBlockers, type SteerBlocker } from '../components/Working/movementSteering';
+import { slideAlongObstacle } from '../components/Working/terrainSlide';
 import { clampToArena } from '../components/Working/arenaBoundary';
 import {
   type MonarchKind,
@@ -4024,18 +4025,16 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
   if (ANIMAL_MOVEMENT_TYPES[currentUnit.animal] === 'ground' &&
       !terrainValidator.canAnimalMoveTo(currentUnit.animal, adjustedPosition)) {
     // The resolved step lands on forbidden water — usually because a friendly push shoved
-    // the unit diagonally off a bridge deck. Rather than dead-stall (which jams crowds at
-    // the chokepoint, with units pinned against the water's edge), slide along whichever
-    // single axis stays on walkable ground, so the unit keeps flowing down the deck.
-    const slideAlongX = { x: adjustedPosition.x, y: currentUnit.position.y, z: currentUnit.position.z };
-    if (terrainValidator.canAnimalMoveTo(currentUnit.animal, slideAlongX)) {
-      return slideAlongX;
-    }
-    const slideAlongZ = { x: currentUnit.position.x, y: currentUnit.position.y, z: adjustedPosition.z };
-    if (terrainValidator.canAnimalMoveTo(currentUnit.animal, slideAlongZ)) {
-      return slideAlongZ;
-    }
-    return currentUnit.position; // boxed in on all sides this frame — hold
+    // the unit toward the bank, or it met the diagonally-running shoreline head-on. Rather
+    // than dead-stall (which jams crowds at the chokepoint, with units pinned against the
+    // water's edge), slide along the bank: deflect the step by the smallest angle that keeps
+    // the unit on walkable ground so it keeps flowing even where the shore runs at an angle.
+    // Returns the unit's current position when boxed in on every probed heading (hold).
+    return slideAlongObstacle(
+      currentUnit.position,
+      adjustedPosition,
+      (candidate) => terrainValidator.canAnimalMoveTo(currentUnit.animal, candidate),
+    );
   }
 
   return adjustedPosition;
@@ -4119,16 +4118,16 @@ function clearPathForSelectedRoyals(draft: Store, priorityUnitIds: ReadonlySet<s
 
       if (ANIMAL_MOVEMENT_TYPES[other.animal] === 'ground' &&
           !terrainValidator.canAnimalMoveTo(other.animal, resolved)) {
-        const slideAlongX = { x: resolved.x, y: other.position.y, z: other.position.z };
-        if (terrainValidator.canAnimalMoveTo(other.animal, slideAlongX)) {
-          other.position.x = slideAlongX.x;
-        } else {
-          const slideAlongZ = { x: other.position.x, y: other.position.y, z: resolved.z };
-          if (terrainValidator.canAnimalMoveTo(other.animal, slideAlongZ)) {
-            other.position.z = slideAlongZ.z;
-          }
-        }
-        continue; // boxed against water — shove what we can this tick
+        // Shoved toward water — slide the shove along the bank instead of forcing the unit
+        // in. Holds in place (no move) when boxed in on every probed heading.
+        const slid = slideAlongObstacle(
+          other.position,
+          resolved,
+          (candidate) => terrainValidator.canAnimalMoveTo(other.animal, candidate),
+        );
+        other.position.x = slid.x;
+        other.position.z = slid.z;
+        continue;
       }
 
       other.position.x = resolved.x;
@@ -4160,16 +4159,16 @@ function enforceMonarchFollowGap(draft: Store, unitById: Map<string, Unit>): voi
 
     if (ANIMAL_MOVEMENT_TYPES[follower.animal] === 'ground' &&
         !terrainValidator.canAnimalMoveTo(follower.animal, target)) {
-      const slideAlongX = { x: target.x, y: follower.position.y, z: follower.position.z };
-      if (terrainValidator.canAnimalMoveTo(follower.animal, slideAlongX)) {
-        follower.position.x = slideAlongX.x;
-      } else {
-        const slideAlongZ = { x: follower.position.x, y: follower.position.y, z: target.z };
-        if (terrainValidator.canAnimalMoveTo(follower.animal, slideAlongZ)) {
-          follower.position.z = slideAlongZ.z;
-        }
-      }
-      continue; // boxed against water — push what we can this tick
+      // Follow-gap push would land on water — slide it along the bank so a follower kept
+      // off its monarch near the shore traces the coastline instead of freezing against it.
+      const slid = slideAlongObstacle(
+        follower.position,
+        target,
+        (candidate) => terrainValidator.canAnimalMoveTo(follower.animal, candidate),
+      );
+      follower.position.x = slid.x;
+      follower.position.z = slid.z;
+      continue;
     }
 
     follower.position.x = target.x;
@@ -4267,16 +4266,17 @@ function separateOverlappingUnits(draft: Store, priorityUnitIds: ReadonlySet<str
     clampToArena(resolved);
     if (ANIMAL_MOVEMENT_TYPES[unit.animal] === 'ground' &&
         !terrainValidator.canAnimalMoveTo(unit.animal, resolved)) {
-      const slideAlongX = { x: resolved.x, y: unit.position.y, z: unit.position.z };
-      if (terrainValidator.canAnimalMoveTo(unit.animal, slideAlongX)) {
-        unit.position.x = slideAlongX.x;
-      } else {
-        const slideAlongZ = { x: unit.position.x, y: unit.position.y, z: resolved.z };
-        if (terrainValidator.canAnimalMoveTo(unit.animal, slideAlongZ)) {
-          unit.position.z = slideAlongZ.z;
-        }
-      }
-      continue; // boxed in this tick (or only one axis free, handled above) — hold the rest
+      // Separation nudge would land on water — slide it along the bank so a unit relaxing
+      // out of a pile near the shore follows the coastline instead of freezing against it.
+      // Holds in place when boxed in on every probed heading.
+      const slid = slideAlongObstacle(
+        unit.position,
+        resolved,
+        (candidate) => terrainValidator.canAnimalMoveTo(unit.animal, candidate),
+      );
+      unit.position.x = slid.x;
+      unit.position.z = slid.z;
+      continue;
     }
 
     unit.position.x = resolved.x;
