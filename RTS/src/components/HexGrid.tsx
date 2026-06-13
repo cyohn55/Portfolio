@@ -8,6 +8,7 @@ import { computeArenaBoundary } from './Working/arenaBoundaryScene';
 import { UnitsLayer } from './UnitsLayer';
 import { MapInteraction } from './HexInteraction';
 import { Skybox } from './Working/Skybox';
+import { LavaEruption } from './Working/LavaEruption';
 import { buildOptimizedBattleMap } from './Working/mergeBattleMap';
 import { bridgeNavigator } from './Working/bridgeNavigator';
 import { pathfinder } from './Working/pathfinder';
@@ -105,10 +106,35 @@ function registerArenaBoundaryFromScene(scene: THREE.Object3D): void {
   );
 }
 
+// Named empty locator nodes in the Battle_Map marking the volcano vents the
+// victory lava eruption bursts from. They carry no mesh, so their names survive
+// only in the raw (pre-merge) gltf scene.
+const ERUPTION_VENT_NODE_NAMES = ['Center_Eruption', 'Left_Eruption', 'Right_Eruption'];
+
+// Resolve the eruption vent world positions from the raw (pre-merge) gltf scene.
+// The merge pass drops these mesh-less locators, so this is the only place their
+// transforms are available.
+function resolveEruptionVents(scene: THREE.Object3D): THREE.Vector3[] {
+  const vents: THREE.Vector3[] = [];
+  for (const name of ERUPTION_VENT_NODE_NAMES) {
+    const node = scene.getObjectByName(name);
+    if (!node) continue;
+    node.updateWorldMatrix(true, false);
+    vents.push(new THREE.Vector3().setFromMatrixPosition(node.matrixWorld));
+  }
+  return vents;
+}
+
 export function BattleMap() {
   const tick = useGameStore((s) => s.tick);
   const bridgeState = useGameStore((s) => s.bridgeState);
+  // The win that triggers the eruption. Both single-player and multiplayer set
+  // gameOver, so the victory finale plays in either mode.
+  const gameOver = useGameStore((s) => s.gameOver);
   const { scene } = useGLTF(`${import.meta.env.BASE_URL}models/Battle_Map_compressed.glb?v=7`);
+
+  // Vent world positions for the victory eruption, resolved once per loaded map.
+  const eruptionVents = useMemo(() => (scene ? resolveEruptionVents(scene) : []), [scene]);
 
   // Bridge refs for storing references to bridge objects
   const rightBridgeRefs = useRef<Record<string, THREE.Object3D | null>>({
@@ -385,6 +411,10 @@ export function BattleMap() {
 
       {/* Nebula Skybox - GLTF model */}
       <Skybox />
+
+      {/* Victory lava eruption — bursts from the map's volcano vents on a win,
+          before the post-game screen is revealed. */}
+      {eruptionVents.length > 0 && <LavaEruption origins={eruptionVents} active={gameOver} />}
     </group>
   );
 }

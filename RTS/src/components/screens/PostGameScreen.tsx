@@ -8,6 +8,7 @@ import {
   type LeaderboardEntry,
 } from '../Working/leaderboard';
 import { fetchLeaderboard, submitScore, type LeaderboardSource } from '../Working/leaderboardRemote';
+import { ERUPTION_REVEAL_DELAY_MS } from '../Working/lavaEruptionSim';
 import './PostGameScreen.css';
 
 export function PostGameScreen() {
@@ -37,6 +38,19 @@ export function PostGameScreen() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(() => getLeaderboard());
   const [source, setSource] = useState<LeaderboardSource>('cache');
   const [submitting, setSubmitting] = useState(false);
+
+  // Hold the Winner screen back until the on-map victory eruption has played, so
+  // the player sees the lava burst before the overlay covers the field. Resets
+  // when the match ends (rematch / menu) so the next win delays again.
+  const [eruptionRevealed, setEruptionRevealed] = useState(false);
+  useEffect(() => {
+    if (!gameOver || !winner) {
+      setEruptionRevealed(false);
+      return;
+    }
+    const revealTimer = setTimeout(() => setEruptionRevealed(true), ERUPTION_REVEAL_DELAY_MS);
+    return () => clearTimeout(revealTimer);
+  }, [gameOver, winner]);
 
   // Pull the live global board once the match has actually ended. Gated on
   // gameOver/winner because this component is mounted (rendering null) during
@@ -92,8 +106,9 @@ export function PostGameScreen() {
     matchDurationMs:        matchStats.matchDurationMs,
   });
 
-  // Only render when game is actually over AND we have a winner
-  if (!gameOver || !winner) return null;
+  // Only render when game is actually over, we have a winner, AND the victory
+  // eruption has finished playing (see eruptionRevealed above).
+  if (!gameOver || !winner || !eruptionRevealed) return null;
 
   const winnerPlayer = players.find(p => p.id === winner);
   const isLocalWinner = winner === localPlayerId;
