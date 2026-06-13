@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Position3D, AnimalId, MovementType } from '../game/types';
 import { ANIMAL_MOVEMENT_TYPES } from '../game/types';
+import { nearestWalkableCell } from '../components/Working/terrainSlide';
 
 // Water color in the battle map: #4A99FFFF
 const WATER_COLOR = new THREE.Color(0x4A99FF);
@@ -753,6 +754,37 @@ export class TerrainValidator {
     }
 
     return true;
+  }
+
+  /**
+   * Find the walkable cell center nearest `position` for a ground animal, used to rescue
+   * a unit that has been shoved off the traversable map onto forbidden water. Searches the
+   * grid in expanding square rings (Chebyshev radius) and, in the first ring that contains
+   * any walkable cell, returns the candidate with the smallest true (Euclidean) distance —
+   * so the unit is pulled toward the closest shore rather than a corner of the ring.
+   *
+   * Deterministic by construction (fixed ring/scan order, no RNG, no wall-clock; the
+   * underlying terrain query is memoized per cell), so it is safe on the multiplayer
+   * lockstep tick path. Returns null when no walkable cell lies within `maxRingRadius`
+   * cells — the caller then leaves the unit where it is rather than guessing.
+   *
+   * @param animal        The stranded unit's animal (only ground animals can be blocked).
+   * @param position      The unit's current (forbidden) position.
+   * @param maxRingRadius How many cells outward to search before giving up.
+   */
+  public nearestTraversable(animal: AnimalId, position: Position3D, maxRingRadius: number): Position3D | null {
+    // Air/water animals are never blocked, so they are never stranded — nothing to rescue.
+    if (ANIMAL_MOVEMENT_TYPES[animal] !== 'ground') {
+      return { x: position.x, y: position.y, z: position.z };
+    }
+    // Delegate the grid search to the pure helper, supplying this validator's per-cell
+    // (raycast-backed, memoized) ground-traversability query as the walkability predicate.
+    return nearestWalkableCell(
+      position,
+      (candidate) => this.isGroundTraversable(candidate),
+      maxRingRadius,
+      TERRAIN_CELL_SIZE,
+    );
   }
 }
 

@@ -80,3 +80,66 @@ export function slideAlongObstacle(
 
   return { x: from.x, y: from.y, z: from.z }; // boxed in on every probed heading — hold
 }
+
+/**
+ * Find the walkable cell center nearest `position`, used to rescue a ground unit that a
+ * chain of crowd/knockback shoves (or a bridge raised out from under it) has stranded on
+ * forbidden terrain — where the slide above can free nothing, because every heading from a
+ * water origin is itself water, so the unit freezes and ignores orders.
+ *
+ * Searches the cell grid in expanding square rings (Chebyshev radius) and, in the first ring
+ * that contains any walkable cell, returns the candidate with the smallest true (Euclidean)
+ * distance — pulling the unit toward the closest shore rather than an arbitrary ring corner.
+ * Cells nearer than the current ring were already covered by a smaller ring, so each cell is
+ * probed once.
+ *
+ * Like {@link slideAlongObstacle} it is free of THREE and the game store: the caller supplies
+ * the `isWalkable` predicate and the grid `cellSize`. Fixed iteration order and no RNG/clock
+ * make it deterministic — safe on the multiplayer lockstep tick path.
+ *
+ * @param position      The stranded unit's current (blocked) position.
+ * @param isWalkable    Predicate deciding whether a candidate cell center is walkable.
+ * @param maxRingRadius How many cells outward to search before giving up.
+ * @param cellSize      Side length of a grid cell (defaults to 1).
+ * @returns The nearest walkable cell center, or null when none lies within `maxRingRadius`.
+ */
+export function nearestWalkableCell(
+  position: Position3D,
+  isWalkable: WalkableProbe,
+  maxRingRadius: number,
+  cellSize: number = 1,
+): Position3D | null {
+  const originCellX = Math.floor(position.x / cellSize);
+  const originCellZ = Math.floor(position.z / cellSize);
+
+  for (let ring = 1; ring <= maxRingRadius; ring++) {
+    let best: Position3D | null = null;
+    let bestDistanceSquared = Infinity;
+
+    for (let offsetX = -ring; offsetX <= ring; offsetX++) {
+      for (let offsetZ = -ring; offsetZ <= ring; offsetZ++) {
+        // Only the perimeter cells of this ring are new; interior cells belong to a smaller ring.
+        if (Math.abs(offsetX) !== ring && Math.abs(offsetZ) !== ring) continue;
+
+        const candidate: Position3D = {
+          x: (originCellX + offsetX + 0.5) * cellSize,
+          y: position.y,
+          z: (originCellZ + offsetZ + 0.5) * cellSize,
+        };
+        if (!isWalkable(candidate)) continue;
+
+        const dx = candidate.x - position.x;
+        const dz = candidate.z - position.z;
+        const distanceSquared = dx * dx + dz * dz;
+        if (distanceSquared < bestDistanceSquared) {
+          bestDistanceSquared = distanceSquared;
+          best = candidate;
+        }
+      }
+    }
+
+    if (best !== null) return best; // closest walkable cell in the nearest occupied ring
+  }
+
+  return null; // no walkable ground within the search radius
+}

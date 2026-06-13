@@ -2551,6 +2551,11 @@ export const useGameStore = create<Store>((set, get) => ({
       // without this pass their models would stack and clip on a single point.
       separateOverlappingUnits(draft, movementPriorityIds);
 
+      // Final positional word: pull any ground unit a chain of shoves stranded on forbidden
+      // water back toward the nearest shore so it self-recovers instead of freezing offshore
+      // and ignoring orders. Runs after every push pass so nothing can re-strand it this tick.
+      rescueStrandedGroundUnits(draft);
+
       // Immediate dead unit removal to prevent regeneration of dead units
       if (draft.deadUnitsToRemove.length > 0) {
         // Set-based membership test turns the cleanup from O(dead * units) into
@@ -3800,6 +3805,16 @@ function findClosestEnemy(unit: Unit, grid: SpatialGrid | null, all: Unit[]): Un
 // it is allowed to pass through friendly units to free itself. At 60 Hz this is ~1s.
 const UNWEDGE_STUCK_TICKS = 60;
 
+// Stranded-unit rescue (rescueStrandedGroundUnits). Crowd shoves and ability knockback resolve
+// each ground unit's step against terrain, but a chain of pushes in a single tick — or a bridge
+// raised out from under a unit — can still leave one standing on forbidden water, where every
+// move it tries is rejected (slideAlongObstacle finds no walkable heading from a water origin)
+// and it sits frozen ignoring orders. This is the user-visible "shoved off the map and can't
+// move" bug. Each tick we detect any ground unit on non-walkable terrain and march it back
+// toward the nearest dry cell so it self-recovers within ~1s instead of stalling forever.
+const RESCUE_SEARCH_RADIUS_CELLS = 32; // how far (in 1-unit cells) to scan outward for dry land
+const RESCUE_STEP_DISTANCE = 1.5;      // world units pulled toward shore per tick while stranded
+
 // Minimum XZ distance enforced between any two units so massed crowds spread out instead of
 // bunching on a point. Shared by the moving-unit collision push (checkCollision) and the
 // idle separation pass (separateOverlappingUnits) so a unit's personal space is the same
@@ -4281,6 +4296,55 @@ function separateOverlappingUnits(draft: Store, priorityUnitIds: ReadonlySet<str
 
     unit.position.x = resolved.x;
     unit.position.z = resolved.z;
+  }
+}
+
+// Rescue any ground unit that has ended up on forbidden water (shoved off the bank by a chain
+// of crowd/knockback pushes, or left behind when a bridge raised). Such a unit is otherwise
+// frozen: every step it attempts is rejected because slideAlongObstacle can find no walkable
+// heading when its own origin is already in the water, so it ignores move orders indefinitely.
+// Each tick we march it RESCUE_STEP_DISTANCE toward the nearest walkable cell — snapping on
+// once within a step — and clear its stale path so it re-routes from solid ground toward its
+// order. Runs last, after every push pass has settled, so it has the final say on position.
+//
+// Determinism: no RNG, no wall-clock, and a deterministic nearest-cell search, so the two
+// lockstep peers rescue identically. Mirrors the air/carry skips used by the spacing passes so
+// it never fights a unit some other system is positioning.
+function rescueStrandedGroundUnits(draft: Store): void {
+  for (const unit of draft.units) {
+    if (unit.kind === 'Base') continue;
+    if (ANIMAL_MOVEMENT_TYPES[unit.animal] !== 'ground') continue; // only ground units can be water-blocked
+    // Positioned by their own systems — not ours to relocate (matches separateOverlappingUnits).
+    if (unit.carriedByOwlId !== undefined) continue;
+    if (unit.isFlying || (unit.flightLift ?? 0) > 0 || unit.owlPickup !== undefined) continue;
+
+    // On walkable ground already — nothing to rescue.
+    if (terrainValidator.canAnimalMoveTo(unit.animal, unit.position)) continue;
+
+    const shore = terrainValidator.nearestTraversable(unit.animal, unit.position, RESCUE_SEARCH_RADIUS_CELLS);
+    if (shore === null) continue; // no dry land within range — leave it rather than guess
+
+    const dx = shore.x - unit.position.x;
+    const dz = shore.z - unit.position.z;
+    const distance = Math.sqrt(dx * dx + dz * dz);
+
+    if (distance <= RESCUE_STEP_DISTANCE || distance < 0.001) {
+      // Close enough to finish the rescue this tick — land squarely on the walkable cell.
+      unit.position.x = shore.x;
+      unit.position.z = shore.z;
+    } else {
+      // Still out over the water — step toward the shore; subsequent ticks continue the march.
+      const invDistance = 1 / distance;
+      unit.position.x += dx * invDistance * RESCUE_STEP_DISTANCE;
+      unit.position.z += dz * invDistance * RESCUE_STEP_DISTANCE;
+    }
+
+    // The unit has been relocated, so any cached A* route and stuck/collision bookkeeping no
+    // longer match where it stands — clear them so it re-paths cleanly toward its order.
+    unit.pathWaypoints = undefined;
+    unit.pathStuckTicks = 0;
+    unit.collisionAttempts = 0;
+    unit.movementPausedUntilMs = 0;
   }
 }
 
