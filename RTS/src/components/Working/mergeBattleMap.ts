@@ -31,6 +31,9 @@ export interface OptimizedBattleMap {
   root: THREE.Group;
   rightBridge: BridgeFrameMeshes;
   leftBridge: BridgeFrameMeshes;
+  /** Bridge capture flags, kept separate so the renderer can recolor + raise them. */
+  rightFlag: THREE.Object3D | null;
+  leftFlag: THREE.Object3D | null;
   stats: {
     sourceMeshes: number;
     mergedDrawCalls: number;
@@ -177,6 +180,30 @@ export function buildOptimizedBattleMap(gltfScene: THREE.Object3D): OptimizedBat
     leftBridge[frame] = extractFrame('Left', frame);
   }
 
+  // 1b) Extract the two bridge capture flags the same way. They aren't bridge-named,
+  //     so the merge pass below would otherwise fold them into the static map and the
+  //     renderer could neither recolor (team capture) nor raise them. Their materials
+  //     are cloned so recoloring one flag never bleeds into the other or the map.
+  const extractFlag = (name: string): THREE.Object3D | null => {
+    const node = source.getObjectByName(name);
+    if (!node) return null;
+    node.matrixWorld.decompose(node.position, node.quaternion, node.scale);
+    node.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.material = Array.isArray(mesh.material)
+        ? mesh.material.map((material) => material.clone())
+        : mesh.material.clone();
+      preservedMeshes++;
+    });
+    root.add(node); // re-parents out of `source`, so the merge pass below skips it
+    return node;
+  };
+  const rightFlag = extractFlag('Right_Flag');
+  const leftFlag = extractFlag('Left_Flag');
+
   // 2) Merge everything that remains (bridges already removed) by material.
   source.traverse((object) => {
     const mesh = object as THREE.Mesh;
@@ -256,6 +283,8 @@ export function buildOptimizedBattleMap(gltfScene: THREE.Object3D): OptimizedBat
     root,
     rightBridge,
     leftBridge,
+    rightFlag,
+    leftFlag,
     stats: { sourceMeshes, mergedDrawCalls, preservedMeshes },
   };
 }

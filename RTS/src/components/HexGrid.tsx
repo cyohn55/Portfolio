@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
-import { useGameStore } from '../game/state';
+import { useGameStore, computeBridgeOccupancy } from '../game/state';
 import { getActiveNetEngine } from './Working/net/netMatch';
 import { registerArenaBoundary, confineBoundaryToPoints } from './Working/arenaBoundary';
 import { computeArenaBoundary } from './Working/arenaBoundaryScene';
@@ -32,6 +32,21 @@ const PATH_GRID_MARGIN = 20;
 const PATH_GRID_STEP = 2;
 const PATH_PLAY_HALF_X = 180;
 const PATH_PLAY_HALF_Z = 290;
+
+// Bridge capture flags. When a King/Queen holds a bridge trigger, that side's flag rises to
+// the top of its pole (this many world units) and takes the holder's team color; when the
+// trigger empties it eases back down to its neutral resting state.
+const FLAG_RAISE_UNITS = 1;
+// Exponential approach rate (per second) for both the rise/fall and the color fade. ~1.2 gives
+// a deliberately slow ease that settles over a couple of seconds, in step with the bridge anim.
+const FLAG_EASE_RATE = 1.2;
+
+// Flag team colors, taken straight from the Battle_Map's materials as linear baseColorFactors
+// (the space GLTFLoader assigns to material.color), so a recolored flag matches those materials
+// exactly: neutral = Material.014, own/blue = Material.22015, enemy/red = Material.22027.
+const FLAG_COLOR_NEUTRAL = new THREE.Color().setRGB(0.9093, 1.0, 0.9484, THREE.LinearSRGBColorSpace);
+const FLAG_COLOR_FRIENDLY = new THREE.Color().setRGB(0.0694, 0.1358, 0.4076, THREE.LinearSRGBColorSpace);
+const FLAG_COLOR_ENEMY = new THREE.Color().setRGB(0.5583, 0.011, 0.0144, THREE.LinearSRGBColorSpace);
 
 // Distance the playable boundary is pulled in from the Arena slab's true edge, so a unit's
 // body (collision radius 2.5) rests fully on the slab instead of hanging over the rim.
@@ -109,6 +124,11 @@ export function BattleMap() {
     Fully_Down: null
   });
 
+  // Bridge capture flags + their neutral resting Y (the height to ease back down to).
+  const rightFlagRef = useRef<THREE.Object3D | null>(null);
+  const leftFlagRef = useRef<THREE.Object3D | null>(null);
+  const flagBaseY = useRef<{ right: number; left: number }>({ right: 0, left: 0 });
+
   // Process the battle map: merge its ~3250 solid-color meshes by material into a
   // handful of draw calls (see buildOptimizedBattleMap). Bridge frame meshes are
   // kept separate so their raise/lower visibility animation still works, and water
@@ -124,6 +144,14 @@ export function BattleMap() {
     // Wire the preserved bridge frame meshes to the refs the animation uses.
     rightBridgeRefs.current = optimized.rightBridge;
     leftBridgeRefs.current = optimized.leftBridge;
+
+    // Wire the capture flags and record their resting heights for the raise/lower ease.
+    rightFlagRef.current = optimized.rightFlag;
+    leftFlagRef.current = optimized.leftFlag;
+    flagBaseY.current = {
+      right: optimized.rightFlag?.position.y ?? 0,
+      left: optimized.leftFlag?.position.y ?? 0,
+    };
 
     console.log(
       `🗺️ Battle map optimized: ${optimized.stats.sourceMeshes} source meshes -> ` +
@@ -227,6 +255,9 @@ export function BattleMap() {
     // Update bridge visibility based on game state
     updateBridgeVisibility();
 
+    // Ease the capture flags toward their team color + raised/lowered height.
+    updateFlagVisuals(delta);
+
     // Rendering can now exceed game logic frequency for smoother visuals
 
     const gameLogicTime = performance.now() - gameLogicStart;
@@ -246,6 +277,52 @@ export function BattleMap() {
       Render Time: ${renderTime.toFixed(2)}ms`);
     }
   });
+
+  // Ease each capture flag toward the team color of whoever holds its bridge trigger
+  // (own = blue, enemy = red, nobody = neutral) and raise it up the pole while held.
+  // Occupancy is recomputed locally from live unit positions, so it stays out of the
+  // deterministic sim state (friend/foe is viewer-relative in multiplayer).
+  const updateFlagVisuals = (delta: number) => {
+    const right = rightFlagRef.current;
+    const left = leftFlagRef.current;
+    if (!right && !left) return;
+
+    const { units, localPlayerId } = useGameStore.getState();
+    const occupancy = computeBridgeOccupancy(units, localPlayerId);
+    const ease = Math.min(1, delta * FLAG_EASE_RATE);
+
+    const applyFlag = (
+      flag: THREE.Object3D | null,
+      baseY: number,
+      hasFriendly: boolean,
+      hasEnemy: boolean,
+    ) => {
+      if (!flag) return;
+      const isHeld = hasFriendly || hasEnemy;
+      // Friendly wins a contested trigger (both teams' K/Qs present) so the local
+      // player always sees their own color when they're contributing.
+      const targetColor = hasFriendly
+        ? FLAG_COLOR_FRIENDLY
+        : hasEnemy
+        ? FLAG_COLOR_ENEMY
+        : FLAG_COLOR_NEUTRAL;
+      const targetY = baseY + (isHeld ? FLAG_RAISE_UNITS : 0);
+
+      flag.position.y += (targetY - flag.position.y) * ease;
+      flag.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.material) return;
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const material of materials) {
+          const colored = material as THREE.MeshStandardMaterial;
+          if (colored.color) colored.color.lerp(targetColor, ease);
+        }
+      });
+    };
+
+    applyFlag(right, flagBaseY.current.right, occupancy.rightFriendly, occupancy.rightEnemy);
+    applyFlag(left, flagBaseY.current.left, occupancy.leftFriendly, occupancy.leftEnemy);
+  };
 
   // Function to update bridge visibility based on game state
   const updateBridgeVisibility = () => {

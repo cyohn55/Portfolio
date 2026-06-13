@@ -4867,47 +4867,81 @@ interface BridgeZonePresence {
   enemyInLeftZone: boolean;
 }
 
+/**
+ * Bridge trigger zones (center-right and center-left of the map) and the capture
+ * radius around each. A King/Queen within this radius of a zone holds that bridge
+ * down. Exported so the renderer can reflect occupation (flag color/height) from the
+ * same geometry the sim uses, rather than duplicating the coordinates.
+ */
+export const RIGHT_TRIGGER_ZONE = { x: 15, z: 0 } as const;
+export const LEFT_TRIGGER_ZONE = { x: -15, z: 0 } as const;
+export const TRIGGER_RADIUS = 10; // world units; a K/Q within this of a zone holds the bridge
+
+/**
+ * Whether a unit of the given owner is inside a trigger zone. Pure helper shared by
+ * the sim (presence/scoring) and the renderer (flag visuals). `radiusSq` is the
+ * squared {@link TRIGGER_RADIUS} so the hot path avoids a sqrt.
+ */
+function kqHoldsZone(
+  units: ReadonlyArray<Unit>,
+  zone: { x: number; z: number },
+  ownerMatches: (unit: Unit) => boolean,
+): boolean {
+  const radiusSq = TRIGGER_RADIUS * TRIGGER_RADIUS;
+  for (const unit of units) {
+    if (unit.kind !== 'King' && unit.kind !== 'Queen') continue;
+    if (!ownerMatches(unit)) continue;
+    const dx = unit.position.x - zone.x;
+    const dz = unit.position.z - zone.z;
+    if (dx * dx + dz * dz <= radiusSq) return true;
+  }
+  return false;
+}
+
+/** Per-side trigger-zone occupancy split by friend/foe from the local viewer's seat. */
+export interface BridgeOccupancy {
+  rightFriendly: boolean;
+  rightEnemy: boolean;
+  leftFriendly: boolean;
+  leftEnemy: boolean;
+}
+
+/**
+ * Which team holds each bridge trigger, from the perspective of `localPlayerId`.
+ * Drives the purely-visual bridge flags (team color + raised height) in the renderer.
+ * Kept out of the sim/`bridgeState` because "friendly vs enemy" is viewer-relative —
+ * each peer maps its own owner id to the blue (own) team — so it must not enter the
+ * deterministic, shared simulation state.
+ */
+export function computeBridgeOccupancy(
+  units: ReadonlyArray<Unit>,
+  localPlayerId: string | null,
+): BridgeOccupancy {
+  const isFriendly = (unit: Unit) => unit.ownerId === localPlayerId;
+  const isEnemy = (unit: Unit) => unit.ownerId !== localPlayerId;
+  return {
+    rightFriendly: kqHoldsZone(units, RIGHT_TRIGGER_ZONE, isFriendly),
+    rightEnemy:    kqHoldsZone(units, RIGHT_TRIGGER_ZONE, isEnemy),
+    leftFriendly:  kqHoldsZone(units, LEFT_TRIGGER_ZONE,  isFriendly),
+    leftEnemy:     kqHoldsZone(units, LEFT_TRIGGER_ZONE,  isEnemy),
+  };
+}
+
 // Bridge animation system
 function updateBridgeAnimations(
   draft: GameState & { bridgeState: BridgeState },
   nowMs: number,
 ): BridgeZonePresence {
-  // Define bridge trigger zones (center-right and center-left of map)
-  const RIGHT_TRIGGER_ZONE = { x: 15, z: 0 }; // Center-right of map
-  const LEFT_TRIGGER_ZONE = { x: -15, z: 0 }; // Center-left of map
-  const TRIGGER_RADIUS = 10; // Units within 10 units of trigger zone
-
-  // Find every King/Queen on the field, partitioned by side. Both sides can
-  // capture a bridge by putting a K/Q in the trigger zone; the bridge stays
-  // down as long as anyone holds it.
-  const playerKQs: typeof draft.units = [];
-  const enemyKQs: typeof draft.units = [];
-  for (const unit of draft.units) {
-    if (unit.kind !== 'King' && unit.kind !== 'Queen') continue;
-    if (unit.ownerId === draft.localPlayerId) {
-      playerKQs.push(unit);
-    } else {
-      enemyKQs.push(unit);
-    }
-  }
-
-  const inZone = (
-    units: typeof draft.units,
-    zone: { x: number; z: number },
-  ): boolean => {
-    for (const unit of units) {
-      const dx = unit.position.x - zone.x;
-      const dz = unit.position.z - zone.z;
-      if (dx * dx + dz * dz <= TRIGGER_RADIUS * TRIGGER_RADIUS) return true;
-    }
-    return false;
-  };
+  // Either side captures a bridge by putting a K/Q in its trigger zone; the bridge
+  // stays down as long as anyone holds it. "player" = the local player here.
+  const isPlayer = (unit: Unit) => unit.ownerId === draft.localPlayerId;
+  const isEnemy = (unit: Unit) => unit.ownerId !== draft.localPlayerId;
 
   const presence: BridgeZonePresence = {
-    playerInRightZone: inZone(playerKQs, RIGHT_TRIGGER_ZONE),
-    playerInLeftZone:  inZone(playerKQs, LEFT_TRIGGER_ZONE),
-    enemyInRightZone:  inZone(enemyKQs,  RIGHT_TRIGGER_ZONE),
-    enemyInLeftZone:   inZone(enemyKQs,  LEFT_TRIGGER_ZONE),
+    playerInRightZone: kqHoldsZone(draft.units, RIGHT_TRIGGER_ZONE, isPlayer),
+    playerInLeftZone:  kqHoldsZone(draft.units, LEFT_TRIGGER_ZONE,  isPlayer),
+    enemyInRightZone:  kqHoldsZone(draft.units, RIGHT_TRIGGER_ZONE, isEnemy),
+    enemyInLeftZone:   kqHoldsZone(draft.units, LEFT_TRIGGER_ZONE,  isEnemy),
   };
 
   // The bridge animation only needs to know whether anyone is in the zone —
