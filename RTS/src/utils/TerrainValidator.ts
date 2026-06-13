@@ -186,6 +186,17 @@ export class TerrainValidator {
             : side === 'left' ? this.leftBridgeMeshes
             : this.centerBridgeMeshes;
           bucket.push(child);
+          // Make the deck detectable by the downward raycasts in deckAt/bridgeAt
+          // regardless of triangle winding. The Center_Bridge deck (and potentially
+          // other frames) is a flat quad whose top face is wound so a FrontSide
+          // material culls a top-down ray — the raycaster then misses the deck, the
+          // bridge's water cells are never classified as walkable deck, and the
+          // landmass it serves (e.g. the center island) becomes an isolated component
+          // in the A* grid. Units routed to/from it get no path, beeline into the
+          // moat, and freeze at the bank. Forcing DoubleSide here costs nothing
+          // visually (the deck underside sits at water level, out of view) and makes
+          // every terrain raycast see the deck from above. Done once at load.
+          this.forceDoubleSided(child);
         } else {
           console.warn(
             `⚠️ TerrainValidator: ignoring bridge-named "${child.name}" — ` +
@@ -390,6 +401,19 @@ export class TerrainValidator {
       else if (CENTER_NAME_PATTERN.test(name)) side = 'center';
     }
     return isBridge ? side : null;
+  }
+
+  /**
+   * Force a mesh's material(s) to render/raycast as double-sided. Terrain raycasts
+   * (deckAt, bridgeAt) cast straight down and rely on hitting the deck's top face;
+   * a deck quad wound so its front face points away from the ray would be culled by
+   * the default FrontSide material, hiding the deck from detection. Idempotent.
+   */
+  private forceDoubleSided(mesh: THREE.Mesh): void {
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const material of materials) {
+      if (material) material.side = THREE.DoubleSide;
+    }
   }
 
   /**
