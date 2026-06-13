@@ -36,7 +36,7 @@ const PATH_PLAY_HALF_Z = 290;
 // Bridge capture flags. When a King/Queen holds a bridge trigger, that side's flag rises to
 // the top of its pole (this many world units) and takes the holder's team color; when the
 // trigger empties it eases back down to its neutral resting state.
-const FLAG_RAISE_UNITS = 8;
+const FLAG_RAISE_UNITS = 5;
 // Exponential approach rate (per second) for both the rise/fall and the color fade. ~1.2 gives
 // a deliberately slow ease that settles over a couple of seconds, in step with the bridge anim.
 const FLAG_EASE_RATE = 1.2;
