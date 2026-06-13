@@ -93,7 +93,7 @@ function registerArenaBoundaryFromScene(scene: THREE.Object3D): void {
 export function BattleMap() {
   const tick = useGameStore((s) => s.tick);
   const bridgeState = useGameStore((s) => s.bridgeState);
-  const { scene } = useGLTF(`${import.meta.env.BASE_URL}models/Battle_Map_compressed.glb?v=6`);
+  const { scene } = useGLTF(`${import.meta.env.BASE_URL}models/Battle_Map_compressed.glb?v=7`);
 
   // Bridge refs for storing references to bridge objects
   const rightBridgeRefs = useRef<Record<string, THREE.Object3D | null>>({
@@ -313,6 +313,6 @@ export function BattleMap() {
 }
 
 // Preload the model
-useGLTF.preload(`${import.meta.env.BASE_URL}models/Battle_Map_compressed.glb?v=6`);
+useGLTF.preload(`${import.meta.env.BASE_URL}models/Battle_Map_compressed.glb?v=7`);
 
 
