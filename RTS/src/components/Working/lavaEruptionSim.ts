@@ -79,14 +79,16 @@ const FADE_IN_FRACTION = 0.08;
 const FADE_OUT_FRACTION = 0.35;
 
 /**
- * Lava color ramp by normalized life t in [0, 1]: bright yellow-white at birth,
- * cooling through orange to a dark ember. Each stop is [t, r, g, b].
+ * Lava color ramp by normalized life t in [0, 1]: a hot orange core that quickly
+ * deepens into fiery red-orange and cools to a dark red ember. The green channel
+ * stays low throughout so the plume reads as red/orange lava rather than yellow
+ * fire. Each stop is [t, r, g, b].
  */
 const COLOR_STOPS: ReadonlyArray<readonly [number, number, number, number]> = [
-  [0.0, 1.0, 0.96, 0.7],
-  [0.22, 1.0, 0.62, 0.18],
-  [0.55, 0.96, 0.26, 0.05],
-  [1.0, 0.32, 0.04, 0.02],
+  [0.0, 1.0, 0.55, 0.12], // hot orange core
+  [0.18, 1.0, 0.34, 0.05], // deep orange
+  [0.5, 1.0, 0.16, 0.02], // fiery red-orange
+  [1.0, 0.45, 0.03, 0.01], // dark red ember
 ];
 
 export type Vec3Tuple = readonly [number, number, number];

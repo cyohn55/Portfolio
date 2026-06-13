@@ -138,21 +138,30 @@ test('gravity decelerates a rising particle by the expected amount each step', (
   expect(vyAfter).toBeLessThan(vyBefore);
 });
 
-test('lava color cools from bright yellow-white at birth to a dark ember', () => {
+test('lava reads as hot red/orange at birth and cools to a dark red ember', () => {
   const birth = new Float32Array(3);
+  const mid = new Float32Array(3);
   const death = new Float32Array(3);
   writeLavaColor(0, birth, 0);
+  writeLavaColor(0.5, mid, 0);
   writeLavaColor(1, death, 0);
 
-  // Birth is hot and bright: high red and green channels.
+  // Birth is a hot orange core: red is maxed, but green stays well below red so
+  // it reads orange/red rather than yellow-white, and blue is minimal.
   expect(birth[0]).toBeGreaterThan(0.9);
-  expect(birth[1]).toBeGreaterThan(0.8);
+  expect(birth[1]).toBeLessThan(birth[0] * 0.7); // distinctly orange, not yellow
+  expect(birth[2]).toBeLessThan(0.3);
 
-  // Death is a dark ember: every channel has dimmed, and overall it is darker.
+  // Mid-life is dominated by red with little green — fiery red-orange.
+  expect(mid[0]).toBeGreaterThan(0.8);
+  expect(mid[1]).toBeLessThan(0.3);
+
+  // Death is a dark red ember: every channel has dimmed and green cools most.
   const birthLuma = birth[0] + birth[1] + birth[2];
   const deathLuma = death[0] + death[1] + death[2];
   expect(deathLuma).toBeLessThan(birthLuma);
-  expect(death[1]).toBeLessThan(birth[1]); // green cools the most (yellow -> red)
+  expect(death[0]).toBeLessThan(birth[0]); // red dims as it cools
+  expect(death[1]).toBeLessThan(birth[1]); // green cools most
 });
 
 test('opacity fades in from zero, peaks mid-life, and fades back to zero', () => {

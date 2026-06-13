@@ -63,7 +63,7 @@ const FRAGMENT_SHADER = /* glsl */ `
 
 // Maps the simulation's world-space blob radius to screen pixels (with the
 // 1/depth perspective term applied in the vertex shader).
-const SIZE_SCALE = 1500;
+const SIZE_SCALE = 2500;
 
 export function LavaEruption({ origins, active }: LavaEruptionProps) {
   // Stable plain-number origins so the sim/geometry only rebuild when the vents
