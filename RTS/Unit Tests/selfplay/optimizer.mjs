@@ -32,10 +32,17 @@ function mutate(genome, sigma, rng) {
 }
 
 /**
- * Maximize `evaluate` over genomes in [0, 1]^dimension.
+ * Maximize fitness over genomes in [0, 1]^dimension. Async because a whole
+ * generation's genomes are evaluated in ONE batch — `evaluatePopulation` lets the
+ * caller score that batch in parallel (e.g. across worker threads). Genomes for a
+ * generation are always generated (consuming `rng`) BEFORE evaluation, so the rng
+ * draw order — and therefore the run — is identical whether the batch is scored
+ * serially or in parallel.
  *
  * @param {object} options
- * @param {(genome: number[]) => number} options.evaluate  fitness (higher better).
+ * @param {(genome: number[]) => number} [options.evaluate]  per-genome fitness (higher better).
+ * @param {(genomes: number[][]) => (number[] | Promise<number[]>)} [options.evaluatePopulation]
+ *        batch fitness, results aligned to input order. Preferred; falls back to mapping `evaluate`.
  * @param {number} options.dimension
  * @param {() => number} options.rng                       seeded uniform in [0, 1).
  * @param {number} [options.populationSize]                lambda.
@@ -45,10 +52,11 @@ function mutate(genome, sigma, rng) {
  * @param {number} [options.sigmaEnd]                      final mutation scale (linear decay).
  * @param {number[][]} [options.seedGenomes]               genomes to inject into gen 0 (e.g. defaults).
  * @param {(info: object) => void} [options.onGeneration]  progress callback.
- * @returns {{ genome: number[], fitness: number, history: Array<{generation:number,bestFitness:number,meanFitness:number}> }}
+ * @returns {Promise<{ genome: number[], fitness: number, history: Array<{generation:number,bestFitness:number,meanFitness:number}> }>}
  */
-export function optimize({
+export async function optimize({
   evaluate,
+  evaluatePopulation,
   dimension,
   rng,
   populationSize = 8,
@@ -59,19 +67,23 @@ export function optimize({
   seedGenomes = [],
   onGeneration,
 }) {
+  if (!evaluatePopulation && !evaluate) {
+    throw new Error('optimize requires evaluate or evaluatePopulation');
+  }
+  // One batch evaluator regardless of which the caller supplied.
+  const scoreBatch = evaluatePopulation
+    ? (genomes) => evaluatePopulation(genomes)
+    : (genomes) => genomes.map(evaluate);
+
   const eliteCount = Math.max(1, Math.round(populationSize * eliteFraction));
 
   // Generation 0: the seed genomes (capped at the population), then random fill.
-  let population = [];
-  for (const genome of seedGenomes.slice(0, populationSize)) {
-    population.push({ genome: genome.map(clamp01) });
-  }
-  while (population.length < populationSize) {
-    population.push({ genome: randomGenome(dimension, rng) });
-  }
-  for (const individual of population) {
-    individual.fitness = evaluate(individual.genome);
-  }
+  const initialGenomes = [];
+  for (const genome of seedGenomes.slice(0, populationSize)) initialGenomes.push(genome.map(clamp01));
+  while (initialGenomes.length < populationSize) initialGenomes.push(randomGenome(dimension, rng));
+
+  const initialFitness = await scoreBatch(initialGenomes);
+  let population = initialGenomes.map((genome, index) => ({ genome, fitness: initialFitness[index] }));
 
   const history = [];
   for (let generation = 0; generation < generations; generation++) {
@@ -89,14 +101,17 @@ export function optimize({
     const sigma = sigmaStart + (sigmaEnd - sigmaStart) * (generation / (generations - 1));
 
     // (mu + lambda): keep the elites (with their scores — deterministic, no re-eval),
-    // breed the rest by mutating a randomly chosen elite parent.
+    // breed the rest by mutating a randomly chosen elite parent. Generate every
+    // offspring genome first (this is the only rng-consuming step), then score the
+    // whole batch at once so a parallel evaluator can fan it across workers.
     const elites = population.slice(0, eliteCount);
-    const offspring = [];
-    while (elites.length + offspring.length < populationSize) {
+    const offspringGenomes = [];
+    while (elites.length + offspringGenomes.length < populationSize) {
       const parent = elites[Math.floor(rng() * elites.length)];
-      const genome = mutate(parent.genome, sigma, rng);
-      offspring.push({ genome, fitness: evaluate(genome) });
+      offspringGenomes.push(mutate(parent.genome, sigma, rng));
     }
+    const offspringFitness = await scoreBatch(offspringGenomes);
+    const offspring = offspringGenomes.map((genome, index) => ({ genome, fitness: offspringFitness[index] }));
     population = [...elites, ...offspring];
   }
 

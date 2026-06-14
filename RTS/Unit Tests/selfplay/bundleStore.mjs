@@ -46,15 +46,16 @@ const COMBINED_ENTRY = `
 `;
 
 /**
- * Bundle the simulation and import it once. Returns the module namespace
- * (`useGameStore`, `applyNetCommand`, `ANIMALS`, `SeededRng`, …).
+ * Bundle the simulation to a file and return its absolute path WITHOUT importing
+ * it. Split out so the work can be built once in a parent process and the path
+ * handed to many worker threads, each of which imports it to get its OWN isolated
+ * sim instance (separate module registry per worker → independent singletons that
+ * can run matches in parallel). The esbuild step (~0.5s) then happens once, not
+ * once per worker.
  *
- * One instance serves every match: the simulation fully resets its per-match
- * state on each startMatch, so matches are independent and a shared instance is
- * both reproducible and fast. Re-importing per match was rejected — it re-parses
- * the whole bundle (~0.5s) and leaks module instances across thousands of matches.
+ * @returns {Promise<string>} absolute path to the bundled `sim.mjs`.
  */
-export async function loadSimulationApi() {
+export async function buildSimulationBundle() {
   const outfile = resolve(mkdtempSync(resolve(tmpdir(), 'selfplay-')), 'sim.mjs');
   await build({
     stdin: { contents: COMBINED_ENTRY, resolveDir: SRC_ROOT, loader: 'ts' },
@@ -66,5 +67,19 @@ export async function loadSimulationApi() {
     plugins: [stubLeaderboard],
     logLevel: 'silent',
   });
-  return import(outfile);
+  return outfile;
+}
+
+/**
+ * Bundle the simulation and import it once. Returns the module namespace
+ * (`useGameStore`, `applyNetCommand`, `ANIMALS`, `SeededRng`, …).
+ *
+ * One instance serves every match in a process: the simulation fully resets its
+ * per-match state on each startMatch, so matches are independent and a shared
+ * instance is both reproducible and fast. Re-importing per match was rejected — it
+ * re-parses the whole bundle (~0.5s) and leaks module instances across thousands
+ * of matches. (For cross-process parallelism, see `buildSimulationBundle`.)
+ */
+export async function loadSimulationApi() {
+  return import(await buildSimulationBundle());
 }
