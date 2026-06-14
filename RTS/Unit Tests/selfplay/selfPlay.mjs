@@ -71,6 +71,25 @@ function makeObservation(useGameStore) {
     // This side's Queens (the unit factories) — needed to rally fresh spawns.
     ownQueens: (role) =>
       livingUnits().filter((unit) => unit.ownerId === role && unit.kind === 'Queen'),
+    // This side's Kings (each projects a stationary damage aura) — the monarch
+    // pilot drives one forward to carry that aura to the front line.
+    ownKings: (role) =>
+      livingUnits().filter((unit) => unit.ownerId === role && unit.kind === 'King'),
+    // The enemy animal (any kind except the immovable Base) nearest a position —
+    // the aim point for the abilities, none of which affect Bases.
+    nearestEnemyAnimal: (role, fromPosition) => {
+      let nearest = null;
+      let nearestDistanceSquared = Infinity;
+      for (const unit of livingUnits()) {
+        if (unit.ownerId === role || unit.kind === 'Base') continue;
+        const candidateDistance = distanceSquared(fromPosition, unit.position);
+        if (candidateDistance < nearestDistanceSquared) {
+          nearestDistanceSquared = candidateDistance;
+          nearest = unit;
+        }
+      }
+      return nearest;
+    },
     // Everything that, while alive, keeps the ENEMY in the game (the attack targets).
     enemyObjectives: (role) =>
       livingUnits().filter((unit) => unit.ownerId !== role && OBJECTIVE_KINDS.has(unit.kind)),

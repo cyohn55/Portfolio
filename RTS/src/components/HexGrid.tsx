@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { useGameStore, computeBridgeOccupancy } from '../game/state';
 import { getActiveNetEngine } from './Working/net/netMatch';
+import { runAiCommanders } from './Working/ai/aiCommander';
 import { registerArenaBoundary, confineBoundaryToPoints } from './Working/arenaBoundary';
 import { computeArenaBoundary } from './Working/arenaBoundaryScene';
 import { UnitsLayer } from './UnitsLayer';
@@ -290,6 +291,11 @@ export function BattleMap() {
       accumulator.current = 0;
     } else {
       while (accumulator.current >= FIXED_TIMESTEP) {
+        // Drive the AI opponent's commander for the tick about to run, applying its
+        // orders through the deterministic command bus BEFORE the tick — the same
+        // ordering the self-play harness trained against. No-ops outside
+        // single-player (lockstep has no AI).
+        runAiCommanders();
         tick(FIXED_TIMESTEP / 1000, now);
         accumulator.current -= FIXED_TIMESTEP;
       }

@@ -35,6 +35,17 @@ export const GENE_SPEC = Object.freeze([
   { key: 'rallyReinforcements', type: 'bool' },
   { key: 'attackerStance', type: 'enum', options: STANCES },
   { key: 'reserveStance', type: 'enum', options: STANCES },
+
+  // Abilities: whether and how eagerly to spend the animals' special moves.
+  { key: 'useAbilities', type: 'bool' },
+  { key: 'abilityIntervalTicks', type: 'int', min: 10, max: 60 },
+  { key: 'abilityEngageRange', type: 'float', min: 6, max: 30 },
+  { key: 'useSacrificialSwarm', type: 'bool' },
+
+  // Monarch piloting: whether to carry a King's aura forward, and how far / how safely.
+  { key: 'pilotKing', type: 'bool' },
+  { key: 'pilotRetreatHpFraction', type: 'float', min: 0, max: 0.9 },
+  { key: 'pilotTrailDepth', type: 'float', min: 0.3, max: 1 },
 ]);
 
 /** Number of genes — the dimensionality the optimizer searches. */

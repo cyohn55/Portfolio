@@ -31,11 +31,14 @@ const TRAIN_SEEDS = buildSeeds(TRAIN_SEED_COUNT, 0);
 const VALIDATION_SEEDS = buildSeeds(VAL_SEED_COUNT, 0x55555555);
 
 // The opponent pool a candidate must do well against. Each entry is a factory so
-// a fresh opponent is built per match. Add a self-mirror here to push the
-// commander to beat a competent opponent, not just passive/rush.
+// a fresh opponent is built per match. The self-mirror (the current trained
+// commander) is the key entry: it forces a candidate to beat a competent macro
+// opponent — not just passive/rush — which is what justifies the riskier levers
+// (King piloting, the sacrificial Bee dive) that a weak pool leaves switched off.
 const OPPONENT_POOL = [
   { name: 'passive', make: () => makePassivePolicy() },
   { name: 'rush', make: () => makeRushPolicy() },
+  { name: 'mirror', make: () => makeCommanderPolicy() },
 ];
 
 /**

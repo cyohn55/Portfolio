@@ -47,12 +47,27 @@ against one map. A seeded (μ+λ) evolution strategy (`optimizer.mjs`) searches 
 normalized knob space (`commanderGenome.mjs`), seeded from the current defaults,
 then the evolved best is reported on **disjoint validation seeds**.
 
-The shipped `COMMANDER_DEFAULTS` are the output of one such run. It evolved
-"mass a large force (`minAttackForce: 16`), then commit fully and aggressively at
-the nearest objective" — which beats both passive and rush out of sample (and on
-the demo's third, independent seed set). To push further: add a self-mirror to
-`OPPONENT_POOL` so it must beat a competent commander, raise `OPT_GENS`/`OPT_POP`,
-and widen the seed sets.
+The shipped `COMMANDER_DEFAULTS` are the output of one such run over the full
+16-knob space (8 generations, pop 14). It evolved "mass a large force
+(`minAttackForce: 16`), stage near home, commit almost fully at the nearest
+objective, and spend abilities the moment contact joins" — beating the prior
+hand-set default out of sample (validation fitness **50.5 vs 39.0**; the rush
+matchup flipped from −4.4 to +20.2). The optimizer kept abilities ON (a fast
+15-tick cast cadence) but left the sacrificial Bee dive and King piloting OFF:
+neither earned its risk.
+
+`OPPONENT_POOL` now also includes a **self-mirror** (the current trained
+commander) so a candidate must beat a competent macro opponent, not just
+passive/rush. A finding from that: training against the 3-opponent pool produced
+a candidate that beat the mirror head-to-head (mirror score 9 → 34) but
+sacrificed its dominance over rush (74 → 31), a **net aggregate regression**
+(validation 48.0 vs the shipped default's 58.1) — so the shipped defaults were
+**kept**. Equal-weighting a near-symmetric mirror (whose best achievable score is
+~0) against weak opponents rewards that trade; `train.mjs` prints the
+`improvement` delta precisely so such a regression is caught before adoption. The
+mirror also did **not** flip piloting/swarm on. To push further: weight the pool
+(or score on win-rate) so the mirror doesn't dominate the objective, raise
+`OPT_GENS`/`OPT_POP`, and widen the seed sets.
 
 ## How an optimizer plugs in
 
@@ -92,15 +107,25 @@ runtime ML dependency and adds no determinism risk.
   its army at a staging point, commits a focused attack on a chosen objective,
   rallies Queen spawns to the front, and (optionally) retreats to re-mass — all via
   the same command bus a human uses (`applyNetCommand` → the `case` dispatch in
-  `state.ts`). Its knobs (`COMMANDER_DEFAULTS`: `minAttackForce`, `aggression`,
-  `targetPriority`, `stageDepth`, `retreatForceRatio`, stances, …) span a wide
-  outcome range — e.g. `targetPriority: 'value'` chases Queens deep and loses
+  `state.ts`). It runs a **macro layer** (re-plan on `decisionIntervalTicks`) and a
+  faster **tactical layer** (`abilityIntervalTicks`):
+  - *Abilities* (`decideAbilities`): once an enemy animal is within
+    `abilityEngageRange` of the army, it casts `throwEggs`/`fireTongues`/`hiss`
+    over the whole army — the engine self-filters to the eligible Chickens/Frogs/
+    Cats off cooldown — plus the sacrificial Bee `swarm` when `useSacrificialSwarm`
+    is opted in.
+  - *Monarch piloting* (`makeMonarchPilot`): when `pilotKing` is on, it drives one
+    King just behind the advancing army (`pilotTrailDepth`) so its damage aura buffs
+    the front, then retreats and releases it once its HP drops below
+    `pilotRetreatHpFraction`.
+
+  Its knobs (`COMMANDER_DEFAULTS`: `minAttackForce`, `aggression`, `targetPriority`,
+  `stageDepth`, `retreatForceRatio`, stances, the ability/pilot knobs, …) span a
+  wide outcome range — e.g. `targetPriority: 'value'` chases Queens deep and loses
   badly, while `'nearest'` wins — so an optimizer has real headroom. Its shipped
-  defaults are **optimizer-trained** (see Training below) and beat both the passive
-  baseline and the naive rush out of sample. Extend `decide` with abilities
-  (`throwEggs`/`hiss`/`swarm`/…) and monarch piloting next. For an AI in real
-  multiplayer, run the commander **host-only and broadcast its commands**, or it
-  will desync.
+  defaults are **optimizer-trained** over all 16 knobs (see Training above). For an
+  AI in real multiplayer, run the commander **host-only and broadcast its
+  commands**, or it will desync.
 
 ## Determinism contract for this harness
 
