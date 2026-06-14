@@ -1241,6 +1241,17 @@ export const useGameStore = create<Store>((set, get) => ({
       unitOrders: {},
       queenRallyTargets: {},
       lastSpawnAtMsByQueenId: {},
+      // These per-entity maps are keyed by entity id, and ids restart from the
+      // same sequence every match (resetDeterministicState zeroes entitySeq), so
+      // an entry left from a previous match in the same process silently applies
+      // to a different unit/queen this match. lastRegenAtMsByUnitId in particular
+      // suppresses a unit's first regen tick (its stale "last healed" timestamp
+      // makes the 1s interval look unelapsed), so the same seed can produce a
+      // different outcome run to run. initializeGame already clears both; clear
+      // them here too so startMatch (single-player rematch and multiplayer) is
+      // equally match-local. See also the self-play reproducibility harness.
+      lastRegenAtMsByUnitId: {},
+      queenPatrols: {},
       unitCountCache: {},
       spatialGrid: null,
       lastRegenCheckMs: 0,
