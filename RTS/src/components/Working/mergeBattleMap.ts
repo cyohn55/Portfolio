@@ -123,6 +123,14 @@ function isHiddenName(name: string): boolean {
   return /sketchfab/i.test(name);
 }
 
+// Build a predicate matching any node whose name is in `names` (exact match).
+// Used to drop named scenery (e.g. the volcanoes + their eruption locators) from
+// the merged map in multiplayer, where the victory eruption finale isn't played.
+function makeNameSetMatcher(names: readonly string[]): (name: string) => boolean {
+  const nameSet = new Set(names);
+  return (name: string) => nameSet.has(name);
+}
+
 // Walk up the ancestor chain testing each node's name.
 function ancestorNameMatches(object: THREE.Object3D, test: (name: string) => boolean): boolean {
   let current: THREE.Object3D | null = object;
@@ -135,10 +143,20 @@ function ancestorNameMatches(object: THREE.Object3D, test: (name: string) => boo
 
 /**
  * Build a draw-call-optimized version of the Battle_Map scene.
+ *
+ * `hiddenNodeNames` lists scenery nodes to drop entirely (matched by exact node
+ * name, anywhere in the ancestor chain). Multiplayer passes the volcano +
+ * eruption-locator names so those don't appear, since the victory lava finale is
+ * single-player only.
  */
-export function buildOptimizedBattleMap(gltfScene: THREE.Object3D): OptimizedBattleMap {
+export function buildOptimizedBattleMap(
+  gltfScene: THREE.Object3D,
+  hiddenNodeNames: readonly string[] = [],
+): OptimizedBattleMap {
   const source = gltfScene.clone(true);
   source.updateMatrixWorld(true);
+
+  const isHiddenNodeName = makeNameSetMatcher(hiddenNodeNames);
 
   const root = new THREE.Group();
   root.name = 'BattleMap_Optimized';
@@ -212,6 +230,9 @@ export function buildOptimizedBattleMap(gltfScene: THREE.Object3D): OptimizedBat
 
     // Sketchfab helper geometry was hidden in the original — drop it.
     if (ancestorNameMatches(mesh, isHiddenName)) return;
+
+    // Scenery the caller asked to hide (e.g. multiplayer volcanoes) — drop it.
+    if (hiddenNodeNames.length > 0 && ancestorNameMatches(mesh, isHiddenNodeName)) return;
 
     // Any stray bridge-related mesh that isn't one of the 8 toggled frames stays
     // separate (always visible, as before) rather than being merged away.

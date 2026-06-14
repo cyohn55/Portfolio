@@ -111,6 +111,16 @@ function registerArenaBoundaryFromScene(scene: THREE.Object3D): void {
 // only in the raw (pre-merge) gltf scene.
 const ERUPTION_VENT_NODE_NAMES = ['Center_Eruption', 'Left_Eruption', 'Right_Eruption'];
 
+// Scenery hidden in multiplayer: the three volcanoes and their eruption locators.
+// The victory lava finale is single-player only, so multiplayer drops both the
+// volcano meshes (from the merged map) and the eruption effect.
+const MULTIPLAYER_HIDDEN_NODE_NAMES = [
+  'Center_Mountain',
+  'Left_Mountain',
+  'Right_Mountain',
+  ...ERUPTION_VENT_NODE_NAMES,
+];
+
 // Resolve the eruption vent world positions from the raw (pre-merge) gltf scene.
 // The merge pass drops these mesh-less locators, so this is the only place their
 // transforms are available.
@@ -128,13 +138,18 @@ function resolveEruptionVents(scene: THREE.Object3D): THREE.Vector3[] {
 export function BattleMap() {
   const tick = useGameStore((s) => s.tick);
   const bridgeState = useGameStore((s) => s.bridgeState);
-  // The win that triggers the eruption. Both single-player and multiplayer set
-  // gameOver, so the victory finale plays in either mode.
+  // The win that triggers the eruption.
   const gameOver = useGameStore((s) => s.gameOver);
+  // Multiplayer hides the volcanoes and skips the victory lava finale.
+  const isMultiplayer = useGameStore((s) => s.netMode !== 'single');
   const { scene } = useGLTF(`${import.meta.env.BASE_URL}models/Battle_Map_compressed.glb?v=7`);
 
   // Vent world positions for the victory eruption, resolved once per loaded map.
-  const eruptionVents = useMemo(() => (scene ? resolveEruptionVents(scene) : []), [scene]);
+  // Multiplayer hides the volcanoes, so the eruption has no vents and never plays.
+  const eruptionVents = useMemo(
+    () => (scene && !isMultiplayer ? resolveEruptionVents(scene) : []),
+    [scene, isMultiplayer],
+  );
 
   // Bridge refs for storing references to bridge objects
   const rightBridgeRefs = useRef<Record<string, THREE.Object3D | null>>({
@@ -165,7 +180,10 @@ export function BattleMap() {
       return null;
     }
 
-    const optimized = buildOptimizedBattleMap(scene);
+    const optimized = buildOptimizedBattleMap(
+      scene,
+      isMultiplayer ? MULTIPLAYER_HIDDEN_NODE_NAMES : [],
+    );
 
     // Wire the preserved bridge frame meshes to the refs the animation uses.
     rightBridgeRefs.current = optimized.rightBridge;
@@ -186,7 +204,7 @@ export function BattleMap() {
     );
 
     return optimized.root;
-  }, [scene]);
+  }, [scene, isMultiplayer]);
 
   // Initialize terrain validator when battle map scene is ready
   useEffect(() => {
