@@ -93,6 +93,13 @@ function makeObservation(useGameStore) {
     // Everything that, while alive, keeps the ENEMY in the game (the attack targets).
     enemyObjectives: (role) =>
       livingUnits().filter((unit) => unit.ownerId !== role && OBJECTIVE_KINDS.has(unit.kind)),
+    // The enemy's mobile army (spawned Units) — the force the home-defense peel reacts to.
+    enemyMobileUnits: (role) =>
+      livingUnits().filter((unit) => unit.ownerId !== role && unit.kind === 'Unit'),
+    // Every enemy animal (anything but the immovable Base) — focus-fire candidates,
+    // so a low-HP exposed Queen/King can be sniped, not just mobile units.
+    enemyAnimals: (role) =>
+      livingUnits().filter((unit) => unit.ownerId !== role && unit.kind !== 'Base'),
     // Centroid of this side's own objectives — its defensive "home".
     ownObjectivesCentroid: (role) =>
       centroid(livingUnits().filter((unit) => unit.ownerId === role && OBJECTIVE_KINDS.has(unit.kind))),
@@ -195,6 +202,51 @@ export function scoreOutcome(outcome, role, weights = SCORE_DEFAULTS) {
   return score;
 }
 
+// Win-rate scorer tuning. The decisive ±1 tiers dominate; a timed-out game maps its
+// surviving-force margin through tanh into (−cap, +cap) so a near-win still ranks
+// above a near-loss WITHOUT ever reaching a clean win/loss. A small speed preference
+// rides on top of a win only (it can never lift a non-win into the win tier), so
+// faster wins rank higher. This bounded shape is the point: unlike the margin scorer,
+// no opponent can be "farmed" for an unbounded score, so a worst-case aggregation
+// across the pool selects for genuine robustness rather than blowout-vs-one-opponent.
+export const WIN_RATE_TIMEOUT_SCALE = 150; // surviving-force margin that maps to ~tanh(1)
+export const WIN_RATE_TIMEOUT_CAP = 0.9;   // ceiling/floor on a timed-out game's score
+export const WIN_RATE_SPEED_PREF = 0.1;    // max bonus added to a win for finishing fast
+export const WIN_RATE_SPEED_REF_TICKS = 18000; // ticks past which the speed bonus is 0
+
+/**
+ * Reduce one match outcome to a BOUNDED scalar in [-1, 1 + speedPref] for `role`:
+ * +1 win (plus a small speed bonus), -1 loss, and a squashed surviving-force margin
+ * for a timeout. Averaged over seeds this is essentially a win-rate, and because it
+ * cannot blow up it is safe to aggregate across opponents by worst-case.
+ */
+export function scoreOutcomeWinRate(outcome, role) {
+  const enemyRole = ROLES.find((candidate) => candidate !== role);
+  if (outcome.gameOver && outcome.winner === role) {
+    const speedBonus =
+      WIN_RATE_SPEED_PREF * Math.max(0, 1 - outcome.ticks / WIN_RATE_SPEED_REF_TICKS);
+    return 1 + speedBonus;
+  }
+  if (outcome.gameOver && outcome.winner === enemyRole) return -1;
+
+  const objectiveAdvantage = outcome.forces[role].objectives - outcome.forces[enemyRole].objectives;
+  const armyAdvantage = outcome.forces[role].army - outcome.forces[enemyRole].army;
+  const margin = SCORE_DEFAULTS.royalWeight * objectiveAdvantage + SCORE_DEFAULTS.armyWeight * armyAdvantage;
+  return WIN_RATE_TIMEOUT_CAP * Math.tanh(margin / WIN_RATE_TIMEOUT_SCALE);
+}
+
+// Named scorers so a worker (which can't be handed a function across the thread
+// boundary) can select one by name. 'margin' is the original unbounded scorer;
+// 'winRate' is the bounded, worst-case-safe scorer above.
+const SCORERS = Object.freeze({ margin: scoreOutcome, winRate: scoreOutcomeWinRate });
+
+/** Resolve a scoring-mode name to its scorer function; throws on an unknown name. */
+export function resolveScorer(name) {
+  const scorer = SCORERS[name];
+  if (!scorer) throw new Error(`Unknown scoring mode: ${name}`);
+  return scorer;
+}
+
 /**
  * Pick `count` distinct animals for a side using a seeded shuffle of the live
  * roster, so lineups are reproducible from the seed and never hard-coded.
@@ -244,6 +296,7 @@ export function evaluate({
   seeds,
   maxTicks,
   weights = SCORE_DEFAULTS,
+  scorer = scoreOutcome,
   animalsPerSide = 3,
 }) {
   const perSeed = [];
@@ -261,7 +314,7 @@ export function evaluate({
       opponentPolicy: makeOpponent(),
       maxTicks,
     });
-    const score = scoreOutcome(outcome, 'p0', weights);
+    const score = scorer(outcome, 'p0', weights);
     perSeed.push({ seed, score, outcome });
 
     if (outcome.winner === 'p0') wins += 1;

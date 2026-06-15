@@ -114,50 +114,50 @@ const OBJECTIVE_VALUE_BY_KIND = Object.freeze({ Queen: 3, King: 2, Base: 1 });
 
 /**
  * Default knobs for the macro commander. Every field is a lever the optimizer can
- * perturb. These values are the OUTPUT of a training run (train.mjs: 8 generations,
- * pop 14, over the full 16-knob space vs a passive+rush pool, validated on held-out
- * seeds) — the evolved strategy is "mass a large force, stage near home, then
- * commit it almost fully at the nearest objective while spending abilities the
- * moment contact joins; retreat fairly early to re-mass". It beats the prior
- * hand-set default out of sample (validation fitness 50.5 vs 39.0; the rush
- * matchup flipped from −4.4 to +20.2). Re-run train.mjs to evolve a fresh set.
+ * perturb. These values are the OUTPUT of a ROBUST training run (train.mjs: pop 24,
+ * 14 generations, 28 workers, 9000-tick matches, bounded win-rate scorer aggregated
+ * WORST-CASE over an 8-opponent league — passive/rush/self-mirror + 3 scripted
+ * archetypes + 2 evolved champions). Adopted because it beats the prior hand-set
+ * default on a DISJOINT held-out gauntlet's worst case (+0.089 vs −0.144; gauntlet
+ * improvement +0.233) and has NO losing matchup across all 10 distinct opponents —
+ * i.e. it is robust against varied, competent play (the proxy for "strong vs humans").
+ * It fixed the prior default's exploitable hole (losing to a patient turtle/boomer).
  *
- * Notably the optimizer kept abilities ON (a fast 15-tick cast cadence is a real
- * gain) but left BOTH the sacrificial Bee dive and King piloting OFF — against this
- * pool, trading bees on a coin flip and risking the King's auto-attack/safety did
- * not pay. Those remain tunable levers; a competent (self-mirror) opponent may yet
- * justify switching them on. Units: ticks at 60/s, counts of units, fractions in [0, 1].
+ * The evolved strategy is "mass, commit ~70% (keep a reserve), play controlled
+ * (defensive/holdGround), peel a large home-defense force against counterattacks,
+ * focus-fire the weakest nearby enemy, and pilot the King's aura to the front".
+ * Notably the optimizer turned ABILITIES OFF (useAbilities:false → egg/tongue/hiss
+ * unused; useSacrificialSwarm is then inert) — it was more robust relying on
+ * positioning, focus-fire, home defense, and the King aura than on ability micro.
+ * Re-run train.mjs to evolve a fresh set. Units: ticks at 60/s, counts, fractions.
  */
 export const COMMANDER_DEFAULTS = Object.freeze({
-  decisionIntervalTicks: 148,   // re-plan cadence (~2.5s); keeps the command stream sparse
+  decisionIntervalTicks: 90,    // re-plan cadence (~1.5s)
   minAttackForce: 16,           // mass a large force before committing (beats piecemeal feeding)
-  aggression: 0.9213423751635212, // fraction of the mobile army sent on the attack
+  aggression: 0.6945005618829754, // fraction of the mobile army sent on the attack (keeps a reserve)
   targetPriority: 'nearest',    // 'nearest' | 'value' | 'weakest' — which objective to kill
-                                // ('nearest' avoids marching the army deep past the enemy line)
-  stageDepth: 0.1,              // staging point: fraction from own home toward the enemy (stage near home)
-  retreatForceRatio: 0.32416440044338585, // pull back if force falls below this × peak (0 = never retreat)
-  rallyReinforcements: true,    // rally Queen spawns to the staging point so they join the front
-  attackerStance: 'aggressive', // stance for committed units (chase far, engage en route)
-  reserveStance: 'defensive',   // stance for the home reserve (holds ground, doesn't over-extend)
+  stageDepth: 0.1654629908431992, // staging point: fraction from own home toward the enemy
+  retreatForceRatio: 0.3939323195832534, // pull back if force falls below this × peak
+  rallyReinforcements: false,   // (evolved off) do not force-rally Queen spawns to the staging point
+  attackerStance: 'defensive',  // committed units engage within a leash, don't over-chase
+  reserveStance: 'holdGround',  // home reserve holds, attacks only what comes to it
 
   // --- Abilities (animal-specific special moves) ---------------------------
-  // The engine filters every ability command down to the eligible animals that are
-  // off cooldown, so the commander may issue them over its whole army and let the
-  // sim drop the rest. These knobs only govern WHEN to spend them.
-  useAbilities: true,           // master switch: cast egg-throw / tongue-grab / hiss while engaged
-  abilityIntervalTicks: 15,     // cast cadence (~0.25s); fast enough to use short ability cooldowns
-  abilityEngageRange: 15.117344208562205, // only cast when an enemy animal is within this of the army centroid
-                                // (keeps cooldowns available for when contact actually matters)
-  useSacrificialSwarm: false,   // opt in to the Bee dive — a coin-flip that trades the bee for a kill;
-                                // only ever spent while actively attacking (optimizer left this OFF)
+  useAbilities: false,          // (evolved OFF) more robust without egg/tongue/hiss micro
+  abilityIntervalTicks: 60,     // (inert while useAbilities is false)
+  abilityEngageRange: 20.398192749735674, // (inert while useAbilities is false)
+  useSacrificialSwarm: true,    // (inert: gated behind useAbilities, which is off)
 
   // --- Monarch piloting (carry the King's damage aura to the front) --------
-  // Off by default: piloting disables the King's auto-attack and risks a
-  // win-condition piece, so the optimizer must earn the right to switch it on
-  // (it declined to, against the passive+rush pool).
-  pilotKing: false,             // drive one King behind the attack so its aura buffs the front line
-  pilotRetreatHpFraction: 0.5538331261148441, // pull that King home (then release) once its HP falls below this fraction
-  pilotTrailDepth: 0.3964942713463351, // King's hold point as a fraction from home toward the army centroid
+  pilotKing: true,              // (evolved ON) drive one King behind the attack so its aura buffs the front
+  pilotRetreatHpFraction: 0.5171171501089611, // pull that King home (then release) once its HP falls below this
+  pilotTrailDepth: 0.5799570437419825, // King's hold point as a fraction from home toward the army centroid
+
+  // --- Tactical depth (raise the ceiling vs reactive/competent play) -------
+  focusFireWeakest: true,       // (evolved ON) attackers clear the weakest enemy animal in range, then push
+  focusFireRange: 26.086897654919923, // how close that weak enemy must be to the army centroid to be focused
+  defenseResponseRatio: 0.4477148059362968, // peel ~45% of the army home to intercept a base threat
+  defenseTriggerRange: 25.168284994699356, // an enemy unit within this of our objectives counts as a threat
 });
 
 // The commander's coarse phase. Massing concentrates force at the staging point;
@@ -207,6 +207,17 @@ function nearestUnitTo(units, position, read) {
       bestDistance = distance;
       best = unit;
     }
+  }
+  return best;
+}
+
+/** The lowest-HP unit in `units` within `range` of `position`; null if none. Ties break on id. */
+function weakestWithin(units, position, range, read) {
+  const rangeSquared = range * range;
+  let best = null;
+  for (const unit of units) {
+    if (read.distanceSquared(position, unit.position) > rangeSquared) continue;
+    if (best === null || unit.hp < best.hp || (unit.hp === best.hp && unit.id < best.id)) best = unit;
   }
   return best;
 }
@@ -417,25 +428,69 @@ export function makeCommanderPolicy(overrides = {}) {
 
     // --- Phase actions -------------------------------------------------------
     if (phase === PHASE.ATTACKING) {
-      const objective = chooseObjective(objectives, read.centroid(army), params.targetPriority, read);
-      const committedCount = Math.max(1, Math.round(army.length * params.aggression));
-      const committed = army
-        .slice()
-        .sort(
-          (a, b) =>
-            read.distanceSquared(a.position, objective.position) -
-            read.distanceSquared(b.position, objective.position),
-        )
-        .slice(0, committedCount);
-      const committedIds = committed.map((unit) => unit.id);
-      const committedSet = new Set(committedIds);
-      const reserveIds = armyIds.filter((id) => !committedSet.has(id));
+      // (1) Reactive home defense: if an enemy force is pressuring our objectives,
+      // peel the units nearest home back to intercept it instead of racing bases.
+      let defenderIds = [];
+      if (params.defenseResponseRatio > 0) {
+        const threatRangeSquared = params.defenseTriggerRange * params.defenseTriggerRange;
+        const threats = read
+          .enemyMobileUnits(role)
+          .filter((enemy) => read.distanceSquared(enemy.position, home) <= threatRangeSquared);
+        if (threats.length > 0) {
+          const defenderCount = Math.min(
+            army.length,
+            Math.max(1, Math.round(army.length * params.defenseResponseRatio)),
+          );
+          const defenders = army
+            .slice()
+            .sort((a, b) => read.distanceSquared(a.position, home) - read.distanceSquared(b.position, home))
+            .slice(0, defenderCount);
+          defenderIds = defenders.map((unit) => unit.id);
+          const threatTarget = nearestUnitTo(threats, home, read);
+          commands.push({ type: 'setBehavior', payload: { unitIds: defenderIds, behavior: { stance: 'aggressive' } } });
+          commands.push({ type: 'attackTarget', payload: { unitIds: defenderIds, targetId: threatTarget.id } });
+        }
+      }
 
-      commands.push({ type: 'setBehavior', payload: { unitIds: committedIds, behavior: { stance: params.attackerStance } } });
-      commands.push({ type: 'attackTarget', payload: { unitIds: committedIds, targetId: objective.id } });
-      if (reserveIds.length > 0) {
-        commands.push({ type: 'setBehavior', payload: { unitIds: reserveIds, behavior: { stance: params.reserveStance } } });
-        commands.push({ type: 'moveUnits', payload: { unitIds: reserveIds, target: { ...stagingPoint } } });
+      // The attacking force is whatever is not pinned defending home.
+      const defenderSet = new Set(defenderIds);
+      const attackers = army.filter((unit) => !defenderSet.has(unit.id));
+
+      if (attackers.length > 0) {
+        const attackerCentroid = read.centroid(attackers);
+        const objective = chooseObjective(objectives, attackerCentroid, params.targetPriority, read);
+
+        // (2) Focus-fire: prefer clearing the weakest enemy animal near the attackers
+        // (snipe a low-HP unit or exposed Queen/King) before sieging the objective.
+        let targetId = objective.id;
+        let aimPosition = objective.position;
+        if (params.focusFireWeakest) {
+          const weak = weakestWithin(read.enemyAnimals(role), attackerCentroid, params.focusFireRange, read);
+          if (weak) {
+            targetId = weak.id;
+            aimPosition = weak.position;
+          }
+        }
+
+        const committedCount = Math.max(1, Math.round(attackers.length * params.aggression));
+        const committed = attackers
+          .slice()
+          .sort(
+            (a, b) =>
+              read.distanceSquared(a.position, aimPosition) -
+              read.distanceSquared(b.position, aimPosition),
+          )
+          .slice(0, committedCount);
+        const committedIds = committed.map((unit) => unit.id);
+        const committedSet = new Set(committedIds);
+        const reserveIds = attackers.filter((unit) => !committedSet.has(unit.id)).map((unit) => unit.id);
+
+        commands.push({ type: 'setBehavior', payload: { unitIds: committedIds, behavior: { stance: params.attackerStance } } });
+        commands.push({ type: 'attackTarget', payload: { unitIds: committedIds, targetId } });
+        if (reserveIds.length > 0) {
+          commands.push({ type: 'setBehavior', payload: { unitIds: reserveIds, behavior: { stance: params.reserveStance } } });
+          commands.push({ type: 'moveUnits', payload: { unitIds: reserveIds, target: { ...stagingPoint } } });
+        }
       }
     } else {
       // Massing or retreating: gather the whole army at the staging point under

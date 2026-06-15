@@ -18,15 +18,46 @@ small number of matches per evaluation is enough to compare two policies.
 |---|---|
 | `bundleStore.mjs` | Bundle `state.ts` (+ `SeededRng`) for Node. `buildSimulationBundle` builds it to a file (shared by worker threads); `loadSimulationApi` builds and imports it once. |
 | `policies.mjs` | Commander policies: `makePassivePolicy` (shipping baseline — no commands), `makeRushPolicy` (naive: send everyone at the nearest objective), and `makeCommanderPolicy` (Layer B commander — mass → focused attack → rally → optional retreat, plus abilities + opt-in King piloting, with tunable knobs). **Grow Layer B here.** |
-| `selfPlay.mjs` | `runMatch` (one game), `scoreOutcome` (game → scalar), `buildLineups`, and `evaluate` (the averaged `score(params)`). |
-| `opponents.mjs` | The shared `OPPONENT_POOL` (passive + rush + self-mirror) and `makeOpponentByName` — one source of truth for both the serial trainer and the parallel workers. |
+| `selfPlay.mjs` | `runMatch` (one game), the scorers `scoreOutcome` (margin) + `scoreOutcomeWinRate` (bounded) + `resolveScorer`, `buildLineups`, and `evaluate`. |
+| `opponents.mjs` | `TRAINING_POOL` (passive + rush + self-mirror + scripted archetypes + champion league) and a disjoint held-out `GAUNTLET_POOL`, plus `makeOpponentByName` — one source of truth for the serial trainer and the parallel workers. |
+| `champions.json` + `league.mjs` | The champion league: strong, distinct evolved param sets the trainer must all beat; `loadChampions`/`appendChampion` grow it over time. |
 | `runSelfPlay.mjs` | Runnable demo: passive vs. rush vs. (trained) commander. |
 | `commanderGenome.mjs` | Declarative `GENE_SPEC` mapping the commander knobs to a `[0,1]^d` search space; `decodeGenome`/`encodeParams`/`defaultGenome`. |
 | `optimizer.mjs` | Generic, dependency-free (μ+λ) evolution strategy over `[0,1]^d`. Async: evaluates a whole generation in one batch (so it can be scored in parallel). Seeded → reproducible; knows nothing about the game. |
 | `evalWorker.mjs` | Worker-thread entry: imports the pre-built sim once (its own isolated instance) and scores `(genome, opponent, seeds)` tasks. |
 | `workerPool.mjs` | Fixed-size pool of warm `evalWorker` threads; streams a task batch across idle workers, results aligned to input order. |
-| `train.mjs` | Evolves the commander knobs against the opponent pool over training seeds (in parallel across workers), validates on held-out seeds, prints the tuned params. |
+| `train.mjs` | Evolves the commander knobs against the training pool (worst-case `winRate`, in parallel across workers), reports tuned vs default worst-case on the held-out gauntlet, and gates adoption on it. |
+| `replay.mjs` | Ingest recorded human games: `makeReplayPolicy` (a recorded side as a drop-in opponent), `resimulateReplay` (lossless re-sim check). |
 | `reproducibility.harness.mjs` | Asserts `score(params)` is deterministic. Run after any `state.ts` tick-path change. |
+
+## Robust fitness (why the AI doesn't just farm one opponent)
+
+Earlier runs with an unbounded margin scorer + equal-weighted pool average produced a
+commander that won the *average* by blowing out the naive `rush` (score → 210) while
+*regressing* against competent play — useless against humans. Two changes fix that:
+
+- **Bounded `winRate` scorer** (`OPT_SCORING=winRate`, default): +1 win / −1 loss, a
+  `tanh`-squashed surviving-force margin for timeouts, plus a tiny speed bonus on wins.
+  No opponent can be farmed for an unbounded score.
+- **Worst-case aggregation**: a candidate's fitness is the **minimum** mean score
+  across the pool — "be good against your hardest matchup". Combined with a *diverse*
+  pool + champion **league**, this selects for robustness, which is the proxy for
+  "strong vs a competent, varied human". Adoption is gated on the **held-out gauntlet**
+  worst-case (`train.mjs` prints `ADOPT? YES/NO`), so a pool-overfit can't sneak in.
+
+## Human replays (record real games, re-simulate, harden)
+
+The sim is deterministic lockstep, so a single-player game is fully captured by
+`(seed, lineups, per-tick command stream)`. In the browser dev console:
+`__rtsReplay.start()`, play a single-player match, and the game auto-exports a
+`rts-replay-*.json` at the end (local-only; nothing is uploaded). Feed it to the
+harness via `replay.mjs`: `resimulateReplay` replays BOTH sides and asserts the
+recorded outcome reproduces exactly; `makeReplayPolicy` turns a recorded human into a
+drop-in opponent for a "human gauntlet". **Caveat — open loop:** a replayed human
+emits their *original* commands, which against a different AI are no longer live
+reactions; so this measures resilience to human strategy/timing/aggression, not
+closed-loop human reactions. Mine replays into archetype/champion opponents to harden
+the league; true closed-loop measurement is online only.
 
 ## Run
 

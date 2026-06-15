@@ -41,25 +41,40 @@ interface CommanderParams {
   pilotKing: boolean;
   pilotRetreatHpFraction: number;
   pilotTrailDepth: number;
+  focusFireWeakest: boolean;
+  focusFireRange: number;
+  defenseResponseRatio: number;
+  defenseTriggerRange: number;
 }
 
+// Robust trained defaults (mirror of policies.mjs COMMANDER_DEFAULTS). Output of a
+// pop24/gen14 worst-case win-rate run over an 8-opponent league; adopted because it
+// beats the prior default on a held-out gauntlet (+0.233 worst-case) with NO losing
+// matchup across 10 distinct opponents. Plays controlled: keeps a reserve, peels a
+// large home-defense force vs counterattacks, focus-fires the weakest nearby enemy,
+// and pilots the King's aura forward. Abilities evolved OFF (useAbilities:false →
+// egg/tongue/hiss unused; useSacrificialSwarm inert). Keep in sync with policies.mjs.
 export const COMMANDER_DEFAULTS: Readonly<CommanderParams> = Object.freeze({
-  decisionIntervalTicks: 148,
+  decisionIntervalTicks: 90,
   minAttackForce: 16,
-  aggression: 0.9213423751635212,
+  aggression: 0.6945005618829754,
   targetPriority: 'nearest',
-  stageDepth: 0.1,
-  retreatForceRatio: 0.32416440044338585,
-  rallyReinforcements: true,
-  attackerStance: 'aggressive',
-  reserveStance: 'defensive',
-  useAbilities: true,
-  abilityIntervalTicks: 15,
-  abilityEngageRange: 15.117344208562205,
-  useSacrificialSwarm: false,
-  pilotKing: false,
-  pilotRetreatHpFraction: 0.5538331261148441,
-  pilotTrailDepth: 0.3964942713463351,
+  stageDepth: 0.1654629908431992,
+  retreatForceRatio: 0.3939323195832534,
+  rallyReinforcements: false,
+  attackerStance: 'defensive',
+  reserveStance: 'holdGround',
+  useAbilities: false,
+  abilityIntervalTicks: 60,
+  abilityEngageRange: 20.398192749735674,
+  useSacrificialSwarm: true,
+  pilotKing: true,
+  pilotRetreatHpFraction: 0.5171171501089611,
+  pilotTrailDepth: 0.5799570437419825,
+  focusFireWeakest: true,
+  focusFireRange: 26.086897654919923,
+  defenseResponseRatio: 0.4477148059362968,
+  defenseTriggerRange: 25.168284994699356,
 });
 
 // Strategic worth of an objective when targetPriority is 'value': Queens (the unit
@@ -132,6 +147,16 @@ class Observation {
     return this.living.filter((unit) => unit.ownerId !== role && OBJECTIVE_KINDS.has(unit.kind));
   }
 
+  // The enemy's mobile army (spawned Units) — what the home-defense peel reacts to.
+  enemyMobileUnits(role: string): Unit[] {
+    return this.living.filter((unit) => unit.ownerId !== role && unit.kind === 'Unit');
+  }
+
+  // Every enemy animal (anything but the immovable Base) — focus-fire candidates.
+  enemyAnimals(role: string): Unit[] {
+    return this.living.filter((unit) => unit.ownerId !== role && unit.kind !== 'Base');
+  }
+
   ownObjectivesCentroid(role: string): Position3D {
     return centroid(this.living.filter((unit) => unit.ownerId === role && OBJECTIVE_KINDS.has(unit.kind)));
   }
@@ -191,6 +216,17 @@ function nearestUnitTo(units: readonly Unit[], position: Position3D): Unit | nul
       bestDistance = distance;
       best = unit;
     }
+  }
+  return best;
+}
+
+/** The lowest-HP unit within `range` of `position`; null if none. Ties break on id. */
+function weakestWithin(units: readonly Unit[], position: Position3D, range: number): Unit | null {
+  const rangeSquared = range * range;
+  let best: Unit | null = null;
+  for (const unit of units) {
+    if (distanceSquared(position, unit.position) > rangeSquared) continue;
+    if (best === null || unit.hp < best.hp || (unit.hp === best.hp && unit.id < best.id)) best = unit;
   }
   return best;
 }
@@ -271,22 +307,68 @@ class AiCommander {
     const armyIds = army.map((unit) => unit.id);
 
     if (this.phase === 'attacking') {
-      const objective = chooseObjective(objectives, centroid(army), params.targetPriority);
-      if (!objective) return commands;
-      const committedCount = Math.max(1, Math.round(army.length * params.aggression));
-      const committed = army
-        .slice()
-        .sort((a, b) => distanceSquared(a.position, objective.position) - distanceSquared(b.position, objective.position))
-        .slice(0, committedCount);
-      const committedIds = committed.map((unit) => unit.id);
-      const committedSet = new Set(committedIds);
-      const reserveIds = armyIds.filter((id) => !committedSet.has(id));
+      // (1) Reactive home defense: if an enemy force is pressuring our objectives,
+      // peel the units nearest home back to intercept it instead of racing bases.
+      let defenderIds: string[] = [];
+      if (params.defenseResponseRatio > 0) {
+        const threatRangeSquared = params.defenseTriggerRange * params.defenseTriggerRange;
+        const threats = observation
+          .enemyMobileUnits(role)
+          .filter((enemy) => distanceSquared(enemy.position, home) <= threatRangeSquared);
+        if (threats.length > 0) {
+          const defenderCount = Math.min(
+            army.length,
+            Math.max(1, Math.round(army.length * params.defenseResponseRatio)),
+          );
+          const defenders = army
+            .slice()
+            .sort((a, b) => distanceSquared(a.position, home) - distanceSquared(b.position, home))
+            .slice(0, defenderCount);
+          defenderIds = defenders.map((unit) => unit.id);
+          const threatTarget = nearestUnitTo(threats, home);
+          if (threatTarget) {
+            commands.push({ type: 'setBehavior', payload: { unitIds: defenderIds, behavior: { stance: 'aggressive' } } });
+            commands.push({ type: 'attackTarget', payload: { unitIds: defenderIds, targetId: threatTarget.id } });
+          }
+        }
+      }
 
-      commands.push({ type: 'setBehavior', payload: { unitIds: committedIds, behavior: { stance: params.attackerStance } } });
-      commands.push({ type: 'attackTarget', payload: { unitIds: committedIds, targetId: objective.id } });
-      if (reserveIds.length > 0) {
-        commands.push({ type: 'setBehavior', payload: { unitIds: reserveIds, behavior: { stance: params.reserveStance } } });
-        commands.push({ type: 'moveUnits', payload: { unitIds: reserveIds, target: { ...stagingPoint } } });
+      // The attacking force is whatever is not pinned defending home.
+      const defenderSet = new Set(defenderIds);
+      const attackers = army.filter((unit) => !defenderSet.has(unit.id));
+
+      if (attackers.length > 0) {
+        const attackerCentroid = centroid(attackers);
+        const objective = chooseObjective(objectives, attackerCentroid, params.targetPriority);
+        if (!objective) return commands;
+
+        // (2) Focus-fire: prefer clearing the weakest enemy animal near the attackers
+        // (snipe a low-HP unit or exposed Queen/King) before sieging the objective.
+        let targetId = objective.id;
+        let aimPosition = objective.position;
+        if (params.focusFireWeakest) {
+          const weak = weakestWithin(observation.enemyAnimals(role), attackerCentroid, params.focusFireRange);
+          if (weak) {
+            targetId = weak.id;
+            aimPosition = weak.position;
+          }
+        }
+
+        const committedCount = Math.max(1, Math.round(attackers.length * params.aggression));
+        const committed = attackers
+          .slice()
+          .sort((a, b) => distanceSquared(a.position, aimPosition) - distanceSquared(b.position, aimPosition))
+          .slice(0, committedCount);
+        const committedIds = committed.map((unit) => unit.id);
+        const committedSet = new Set(committedIds);
+        const reserveIds = attackers.filter((unit) => !committedSet.has(unit.id)).map((unit) => unit.id);
+
+        commands.push({ type: 'setBehavior', payload: { unitIds: committedIds, behavior: { stance: params.attackerStance } } });
+        commands.push({ type: 'attackTarget', payload: { unitIds: committedIds, targetId } });
+        if (reserveIds.length > 0) {
+          commands.push({ type: 'setBehavior', payload: { unitIds: reserveIds, behavior: { stance: params.reserveStance } } });
+          commands.push({ type: 'moveUnits', payload: { unitIds: reserveIds, target: { ...stagingPoint } } });
+        }
       }
     } else {
       // Massing or retreating: gather the army at the staging point defensively.

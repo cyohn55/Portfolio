@@ -18,12 +18,21 @@
 
 import { availableParallelism } from 'node:os';
 import { buildSimulationBundle } from './bundleStore.mjs';
-import { evaluate } from './selfPlay.mjs';
+import { evaluate, resolveScorer } from './selfPlay.mjs';
 import { makeCommanderPolicy } from './policies.mjs';
-import { OPPONENT_POOL } from './opponents.mjs';
+import { TRAINING_POOL, GAUNTLET_POOL } from './opponents.mjs';
 import { optimize } from './optimizer.mjs';
 import { createWorkerPool } from './workerPool.mjs';
 import { decodeGenome, defaultGenome, GENOME_DIMENSION } from './commanderGenome.mjs';
+
+// Scoring: 'winRate' (bounded ±1; default) makes the worst-case aggregation below
+// select for ROBUSTNESS — a candidate can't win by farming one weak opponent for an
+// unbounded margin. 'margin' is the legacy unbounded scorer. A candidate's fitness
+// is the WORST (minimum) of its mean per-seed scores across the pool, i.e. "be good
+// against your hardest matchup".
+const SCORING_MODE = process.env.OPT_SCORING ?? 'winRate';
+const SCORER = resolveScorer(SCORING_MODE);
+const worstCase = (values) => values.reduce((min, value) => Math.min(min, value), Infinity);
 
 const POPULATION = Number(process.env.OPT_POP ?? 8);
 const GENERATIONS = Number(process.env.OPT_GENS ?? 5);
@@ -35,7 +44,7 @@ const OPT_SEED = Number(process.env.OPT_SEED ?? 1);
 // count (genomes × opponents) — extra workers would just sit idle. OPT_WORKERS=1
 // forces the serial in-process path.
 const REQUESTED_WORKERS = Number(process.env.OPT_WORKERS ?? availableParallelism());
-const MAX_USEFUL_WORKERS = POPULATION * OPPONENT_POOL.length;
+const MAX_USEFUL_WORKERS = POPULATION * TRAINING_POOL.length;
 const WORKER_COUNT = Math.max(1, Math.min(REQUESTED_WORKERS, MAX_USEFUL_WORKERS));
 
 // Disjoint training and validation match seeds, spread across the 32-bit space so
@@ -46,13 +55,13 @@ const TRAIN_SEEDS = buildSeeds(TRAIN_SEED_COUNT, 0);
 const VALIDATION_SEEDS = buildSeeds(VAL_SEED_COUNT, 0x55555555);
 
 /**
- * Mean score of `makeSubject` (as p0) across the opponent pool over `seeds`,
- * evaluated in-process on one sim instance. Used for the (serial) validation
- * report and the OPT_WORKERS=1 path. Returns the scalar fitness plus the
- * per-opponent breakdown for reporting.
+ * Worst-case score of `makeSubject` (as p0) across `pool` over `seeds`, evaluated
+ * in-process on one sim instance. Used for the (serial) validation/gauntlet reports
+ * and the OPT_WORKERS=1 path. Fitness = the MINIMUM per-opponent mean score (the
+ * hardest matchup); the per-opponent breakdown is returned for reporting.
  */
-function poolFitness(api, makeSubject, seeds) {
-  const perOpponent = OPPONENT_POOL.map((opponent) => ({
+function poolFitness(api, makeSubject, seeds, pool) {
+  const perOpponent = pool.map((opponent) => ({
     name: opponent.name,
     meanScore: evaluate({
       api,
@@ -60,14 +69,15 @@ function poolFitness(api, makeSubject, seeds) {
       makeOpponent: opponent.make,
       seeds,
       maxTicks: MAX_TICKS,
+      scorer: SCORER,
     }).meanScore,
   }));
-  const fitness = perOpponent.reduce((sum, entry) => sum + entry.meanScore, 0) / perOpponent.length;
+  const fitness = worstCase(perOpponent.map((entry) => entry.meanScore));
   return { fitness, perOpponent };
 }
 
 function formatBreakdown(perOpponent) {
-  return perOpponent.map((entry) => `${entry.name}=${entry.meanScore.toFixed(1)}`).join('  ');
+  return perOpponent.map((entry) => `${entry.name}=${entry.meanScore.toFixed(3)}`).join('  ');
 }
 
 /**
@@ -81,19 +91,27 @@ function makeParallelEvaluator(pool) {
   return async (genomes) => {
     const tasks = [];
     for (const genome of genomes) {
-      for (const opponent of OPPONENT_POOL) {
-        tasks.push({ genome, opponentName: opponent.name, seeds: TRAIN_SEEDS, maxTicks: MAX_TICKS });
+      for (const opponent of TRAINING_POOL) {
+        tasks.push({
+          genome,
+          opponentName: opponent.name,
+          seeds: TRAIN_SEEDS,
+          maxTicks: MAX_TICKS,
+          scoringMode: SCORING_MODE,
+        });
       }
     }
     const results = await pool.runTasks(tasks);
 
-    const opponentCount = OPPONENT_POOL.length;
+    // Worst-case fold: each genome's fitness is its hardest matchup (min over
+    // opponents). Fixed task order → deterministic, matching poolFitness's min.
+    const opponentCount = TRAINING_POOL.length;
     return genomes.map((_genome, genomeIndex) => {
-      let sum = 0;
+      const scores = [];
       for (let opponentIndex = 0; opponentIndex < opponentCount; opponentIndex++) {
-        sum += results[genomeIndex * opponentCount + opponentIndex].meanScore;
+        scores.push(results[genomeIndex * opponentCount + opponentIndex].meanScore);
       }
-      return sum / opponentCount;
+      return worstCase(scores);
     });
   };
 }
@@ -113,7 +131,8 @@ async function main() {
   console.log(
     `Training commander: pop=${POPULATION} gens=${GENERATIONS} ` +
       `train=${TRAIN_SEED_COUNT} val=${VAL_SEED_COUNT} maxTicks=${MAX_TICKS} ` +
-      `vs pool [${OPPONENT_POOL.map((o) => o.name).join(', ')}] ` +
+      `score=${SCORING_MODE}(worst-case) ` +
+      `vs pool [${TRAINING_POOL.map((o) => o.name).join(', ')}] ` +
       `${parallel ? `parallel x${WORKER_COUNT}` : 'serial'}\n`,
   );
 
@@ -125,14 +144,14 @@ async function main() {
     generations: GENERATIONS,
     seedGenomes: [defaultGenome()],
     onGeneration: ({ generation, bestFitness, meanFitness }) => {
-      console.log(`  gen ${generation}: best=${bestFitness.toFixed(1)} mean=${meanFitness.toFixed(1)}`);
+      console.log(`  gen ${generation}: best=${bestFitness.toFixed(3)} mean=${meanFitness.toFixed(3)}`);
     },
   };
   if (parallel) {
     optimizeOptions.evaluatePopulation = makeParallelEvaluator(pool);
   } else {
     optimizeOptions.evaluate = (genome) =>
-      poolFitness(api, () => makeCommanderPolicy(decodeGenome(genome)), TRAIN_SEEDS).fitness;
+      poolFitness(api, () => makeCommanderPolicy(decodeGenome(genome)), TRAIN_SEEDS, TRAINING_POOL).fitness;
   }
 
   let result;
@@ -143,18 +162,36 @@ async function main() {
   }
 
   const tunedParams = decodeGenome(result.genome);
+  const makeTuned = () => makeCommanderPolicy(tunedParams);
+  const makeDefault = () => makeCommanderPolicy();
 
-  // Out-of-sample report: tuned vs. the hand-set default, both on validation seeds.
-  const tunedVal = poolFitness(api, () => makeCommanderPolicy(tunedParams), VALIDATION_SEEDS);
-  const defaultVal = poolFitness(api, () => makeCommanderPolicy(), VALIDATION_SEEDS);
+  // Two out-of-sample reports on held-out seeds:
+  //  - TRAINING pool: in-sample opponents, out-of-sample seeds (sanity that the run
+  //    actually lifted what it optimized).
+  //  - GAUNTLET pool: strategies NEVER trained against — the generalization measure
+  //    and the adoption gate. Worst-case here is the headline "robust vs the unknown".
+  const tunedTrain = poolFitness(api, makeTuned, VALIDATION_SEEDS, TRAINING_POOL);
+  const defaultTrain = poolFitness(api, makeDefault, VALIDATION_SEEDS, TRAINING_POOL);
+  const tunedGauntlet = poolFitness(api, makeTuned, VALIDATION_SEEDS, GAUNTLET_POOL);
+  const defaultGauntlet = poolFitness(api, makeDefault, VALIDATION_SEEDS, GAUNTLET_POOL);
 
-  console.log(`\n=== Validation (held-out seeds) ===`);
-  console.log(`  default commander : fitness=${defaultVal.fitness.toFixed(1)}  [${formatBreakdown(defaultVal.perOpponent)}]`);
-  console.log(`  tuned commander   : fitness=${tunedVal.fitness.toFixed(1)}  [${formatBreakdown(tunedVal.perOpponent)}]`);
-  const delta = tunedVal.fitness - defaultVal.fitness;
-  console.log(`  improvement       : ${delta >= 0 ? '+' : ''}${delta.toFixed(1)}`);
+  console.log(`\n=== Validation (held-out seeds) — fitness = WORST-CASE ${SCORING_MODE} ===`);
+  console.log(`  [training pool — in-sample opponents]`);
+  console.log(`    default : worst-case=${defaultTrain.fitness.toFixed(3)}  [${formatBreakdown(defaultTrain.perOpponent)}]`);
+  console.log(`    tuned   : worst-case=${tunedTrain.fitness.toFixed(3)}  [${formatBreakdown(tunedTrain.perOpponent)}]`);
+  console.log(`  [GAUNTLET — held-out opponents (adoption gate)]`);
+  console.log(`    default : worst-case=${defaultGauntlet.fitness.toFixed(3)}  [${formatBreakdown(defaultGauntlet.perOpponent)}]`);
+  console.log(`    tuned   : worst-case=${tunedGauntlet.fitness.toFixed(3)}  [${formatBreakdown(tunedGauntlet.perOpponent)}]`);
 
-  console.log(`\n=== Tuned params (paste into makeCommanderPolicy) ===`);
+  const gauntletDelta = tunedGauntlet.fitness - defaultGauntlet.fitness;
+  console.log(`\n  gauntlet improvement : ${gauntletDelta >= 0 ? '+' : ''}${gauntletDelta.toFixed(3)}`);
+  console.log(
+    `  ADOPT? ${gauntletDelta > 0
+      ? 'YES — tuned beats default worst-case on HELD-OUT opponents (robustly better)'
+      : 'NO — does not beat default worst-case on held-out opponents; keep defaults'}`,
+  );
+
+  console.log(`\n=== Tuned params (paste into BOTH policies.mjs and aiCommander.ts) ===`);
   console.log(JSON.stringify(tunedParams, null, 2));
   process.exit(0);
 }

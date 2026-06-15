@@ -4,6 +4,7 @@ import { useGLTF } from '@react-three/drei';
 import { useGameStore, computeBridgeOccupancy } from '../game/state';
 import { getActiveNetEngine } from './Working/net/netMatch';
 import { runAiCommanders } from './Working/ai/aiCommander';
+import { replayRecorderTick } from './Working/ai/replayRecorder';
 import { registerArenaBoundary, confineBoundaryToPoints } from './Working/arenaBoundary';
 import { computeArenaBoundary } from './Working/arenaBoundaryScene';
 import { UnitsLayer } from './UnitsLayer';
@@ -290,6 +291,9 @@ export function BattleMap() {
       netEngine.update(frameTime);
       accumulator.current = 0;
     } else {
+      // Drive the opt-in replay recorder (begins/ends capture on match lifecycle).
+      // No-op unless recording is armed; never mutates the sim.
+      replayRecorderTick();
       while (accumulator.current >= FIXED_TIMESTEP) {
         // Drive the AI opponent's commander for the tick about to run, applying its
         // orders through the deterministic command bus BEFORE the tick — the same

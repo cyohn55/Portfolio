@@ -46,6 +46,12 @@ export const GENE_SPEC = Object.freeze([
   { key: 'pilotKing', type: 'bool' },
   { key: 'pilotRetreatHpFraction', type: 'float', min: 0, max: 0.9 },
   { key: 'pilotTrailDepth', type: 'float', min: 0.3, max: 1 },
+
+  // Tactical depth: focus-fire the weakest nearby enemy, and peel a home-defense force.
+  { key: 'focusFireWeakest', type: 'bool' },
+  { key: 'focusFireRange', type: 'float', min: 8, max: 40 },
+  { key: 'defenseResponseRatio', type: 'float', min: 0, max: 0.5 },
+  { key: 'defenseTriggerRange', type: 'float', min: 10, max: 50 },
 ]);
 
 /** Number of genes — the dimensionality the optimizer searches. */

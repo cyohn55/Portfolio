@@ -9,7 +9,7 @@
 // depends on which worker ran it or in what order.
 
 import { parentPort, workerData } from 'node:worker_threads';
-import { evaluate } from './selfPlay.mjs';
+import { evaluate, resolveScorer } from './selfPlay.mjs';
 import { makeCommanderPolicy } from './policies.mjs';
 import { makeOpponentByName } from './opponents.mjs';
 import { decodeGenome } from './commanderGenome.mjs';
@@ -27,6 +27,7 @@ parentPort.on('message', (task) => {
       makeOpponent: () => makeOpponentByName(task.opponentName),
       seeds: task.seeds,
       maxTicks: task.maxTicks,
+      scorer: resolveScorer(task.scoringMode ?? 'margin'),
     });
     parentPort.postMessage({ id: task.id, meanScore });
   } catch (error) {

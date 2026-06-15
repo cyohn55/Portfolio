@@ -255,6 +255,13 @@ function resetDeterministicState(seed: number): SeededRng {
   simClockMs = 0;
   entitySeq = 0;
   simRng = new SeededRng(seed);
+  // Clear the module-level distance memo. It rounds positions (lossy), so a cached
+  // value depends on which exact position pair first populated its rounded key — if
+  // carried over from a prior match in the same process that makes a match's outcome
+  // depend on what ran before it (a determinism leak: it desynced parallel-vs-serial
+  // training runs, and could desync a multiplayer rematch). Clearing here makes every
+  // match start from an empty memo, so the same seed always reproduces.
+  distanceCache.clear();
   return simRng;
 }
 
@@ -283,6 +290,20 @@ let commandRouter: ((command: NetCommand) => void) | null = null;
 let applyingNetCommand = false;
 let actingPlayerIdOverride: string | null = null;
 
+// Optional, observe-only recorder seam for replay capture (single-player). When
+// installed it is called with every command that mutates the simulation — local
+// human input (via routeCommand) and AI/issued commands (via applyNetCommand) —
+// tagged with the issuing owner. It never affects routing or mutation; it only
+// watches, so a full match can be re-simulated later from (seed, lineups, commands).
+let commandRecorder: ((ownerId: string, command: NetCommand) => void) | null = null;
+
+/** Install (or clear with null) the replay command recorder (single-player only). */
+export function setCommandRecorder(
+  recorder: ((ownerId: string, command: NetCommand) => void) | null,
+): void {
+  commandRecorder = recorder;
+}
+
 /** Install (or clear with null) the lockstep command sink. Set on match start/end. */
 export function setCommandRouter(router: ((command: NetCommand) => void) | null): void {
   commandRouter = router;
@@ -292,6 +313,12 @@ export function setCommandRouter(router: ((command: NetCommand) => void) | null)
 
 /** Hand a command to the router if one is installed and we are not mid-replay. */
 function routeCommand(command: NetCommand): boolean {
+  // Record genuine local input (never replayed commands re-entering through an
+  // action — those are captured at applyNetCommand instead, avoiding a double count).
+  if (commandRecorder && !applyingNetCommand) {
+    const localId = useGameStore.getState().localPlayerId;
+    if (localId) commandRecorder(localId, command);
+  }
   if (commandRouter && !applyingNetCommand) {
     commandRouter(command);
     return true;
@@ -3631,6 +3658,9 @@ export function applyNetCommand(playerId: string, command: NetCommand): void {
   applyingNetCommand = true;
   actingPlayerIdOverride = playerId;
   try {
+    // Capture issued commands (the AI, or a replay) for replay recording, tagged
+    // with their real issuer — the routeCommand tap only sees local human input.
+    if (commandRecorder) commandRecorder(playerId, command);
     switch (command.type) {
       case 'moveUnits': store.moveCommand(command.payload); break;
       case 'attackTarget': store.attackTarget(command.payload); break;

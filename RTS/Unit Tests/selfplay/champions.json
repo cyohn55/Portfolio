@@ -1,0 +1,72 @@
+[
+  {
+    "name": "champ-mirrorpool",
+    "note": "Tuned vs passive+rush+mirror (equal-weighted run). Balanced macro: slow re-plan, big mass, near-full commit, defensive reserve.",
+    "params": {
+      "decisionIntervalTicks": 148,
+      "minAttackForce": 16,
+      "aggression": 0.8589162839881532,
+      "targetPriority": "nearest",
+      "stageDepth": 0.1,
+      "retreatForceRatio": 0.38695474518953726,
+      "rallyReinforcements": true,
+      "attackerStance": "aggressive",
+      "reserveStance": "defensive",
+      "useAbilities": true,
+      "abilityIntervalTicks": 15,
+      "abilityEngageRange": 15.526200207901232,
+      "useSacrificialSwarm": false,
+      "pilotKing": false,
+      "pilotRetreatHpFraction": 0.5075160510529149,
+      "pilotTrailDepth": 0.32443893444644634
+    }
+  },
+  {
+    "name": "champ-rushfast",
+    "note": "Tuned vs the 3-opponent pool (28-core run). Hyper-aggressive: very fast re-plan (30), near-melee ability use, rush-exploiting micro.",
+    "params": {
+      "decisionIntervalTicks": 30,
+      "minAttackForce": 16,
+      "aggression": 0.8400158206235961,
+      "targetPriority": "nearest",
+      "stageDepth": 0.1,
+      "retreatForceRatio": 0.3765218320376194,
+      "rallyReinforcements": true,
+      "attackerStance": "aggressive",
+      "reserveStance": "aggressive",
+      "useAbilities": true,
+      "abilityIntervalTicks": 51,
+      "abilityEngageRange": 7.11508606290488,
+      "useSacrificialSwarm": false,
+      "pilotKing": false,
+      "pilotRetreatHpFraction": 0.27412153799650923,
+      "pilotTrailDepth": 0.8089537452328079
+    }
+  },
+  {
+    "name": "champ-robust-v1",
+    "note": "SHIPPED default as of the robust run (pop24/gen14, worst-case winRate over the 8-opponent league). No losing matchup across 10 opponents; gauntlet worst-case +0.089. Controlled play: keeps a reserve, heavy home defense, focus-fire, King-pilot; abilities off.",
+    "params": {
+      "decisionIntervalTicks": 90,
+      "minAttackForce": 16,
+      "aggression": 0.6945005618829754,
+      "targetPriority": "nearest",
+      "stageDepth": 0.1654629908431992,
+      "retreatForceRatio": 0.3939323195832534,
+      "rallyReinforcements": false,
+      "attackerStance": "defensive",
+      "reserveStance": "holdGround",
+      "useAbilities": false,
+      "abilityIntervalTicks": 60,
+      "abilityEngageRange": 20.398192749735674,
+      "useSacrificialSwarm": true,
+      "pilotKing": true,
+      "pilotRetreatHpFraction": 0.5171171501089611,
+      "pilotTrailDepth": 0.5799570437419825,
+      "focusFireWeakest": true,
+      "focusFireRange": 26.086897654919923,
+      "defenseResponseRatio": 0.4477148059362968,
+      "defenseTriggerRange": 25.168284994699356
+    }
+  }
+]
