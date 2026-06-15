@@ -113,51 +113,56 @@ export function makeRushPolicy(overrides = {}) {
 const OBJECTIVE_VALUE_BY_KIND = Object.freeze({ Queen: 3, King: 2, Base: 1 });
 
 /**
- * Default knobs for the macro commander. Every field is a lever the optimizer can
- * perturb. These values are the OUTPUT of a ROBUST training run (train.mjs: pop 24,
- * 14 generations, 28 workers, 9000-tick matches, bounded win-rate scorer aggregated
- * WORST-CASE over an 8-opponent league — passive/rush/self-mirror + 3 scripted
- * archetypes + 2 evolved champions). Adopted because it beats the prior hand-set
- * default on a DISJOINT held-out gauntlet's worst case (+0.089 vs −0.144; gauntlet
- * improvement +0.233) and has NO losing matchup across all 10 distinct opponents —
- * i.e. it is robust against varied, competent play (the proxy for "strong vs humans").
- * It fixed the prior default's exploitable hole (losing to a patient turtle/boomer).
+ * Default knobs for the macro commander (champ-robust-v2). OUTPUT of a robust run
+ * (train.mjs: pop 24, 14 generations, 28 workers, 9000-tick matches, bounded win-rate
+ * scorer aggregated WORST-CASE over the 9-opponent league incl. the prior champion).
+ * Adopted because it beats the prior default (champ-robust-v1) on the DISJOINT
+ * held-out gauntlet's worst case (+0.205 vs −0.005; improvement +0.210), beats v1
+ * head-to-head, and has NO losing matchup across all 11 opponents — robust against
+ * varied, competent play (the proxy for "strong vs humans").
  *
- * The evolved strategy is "mass, commit ~70% (keep a reserve), play controlled
- * (defensive/holdGround), peel a large home-defense force against counterattacks,
- * focus-fire the weakest nearby enemy, and pilot the King's aura to the front".
- * Notably the optimizer turned ABILITIES OFF (useAbilities:false → egg/tongue/hiss
- * unused; useSacrificialSwarm is then inert) — it was more robust relying on
- * positioning, focus-fire, home defense, and the King aura than on ability micro.
- * Re-run train.mjs to evolve a fresh set. Units: ticks at 60/s, counts, fractions.
+ * Strategy: aggressive forward-staging (stageDepth 0.9, aggression ~0.98,
+ * minAttackForce 11, target the WEAKEST objective), commit the King's aura fully into
+ * the army (pilotTrailDepth 1.0, retreat it only near death), defend home hard
+ * (defenseResponseRatio ~0.43, wide trigger), and peel with DEFENSIVE hiss when
+ * locally outnumbered (~2.2:1). Splitting hiss out of the offensive bundle is what
+ * let the optimizer finally adopt an ability. Offensive eggs/tongues STILL evolved OFF
+ * (useAbilities:false) even with focus-aimed targeting — they are weak *value* in the
+ * sim (a caster does more by just attacking); making them net-positive needs
+ * rebalancing the abilities themselves, not just the AI's use. Re-run train.mjs to
+ * evolve a fresh set. Units: ticks at 60/s, counts, fractions.
  */
 export const COMMANDER_DEFAULTS = Object.freeze({
-  decisionIntervalTicks: 90,    // re-plan cadence (~1.5s)
-  minAttackForce: 16,           // mass a large force before committing (beats piecemeal feeding)
-  aggression: 0.6945005618829754, // fraction of the mobile army sent on the attack (keeps a reserve)
-  targetPriority: 'nearest',    // 'nearest' | 'value' | 'weakest' — which objective to kill
-  stageDepth: 0.1654629908431992, // staging point: fraction from own home toward the enemy
-  retreatForceRatio: 0.3939323195832534, // pull back if force falls below this × peak
-  rallyReinforcements: false,   // (evolved off) do not force-rally Queen spawns to the staging point
-  attackerStance: 'defensive',  // committed units engage within a leash, don't over-chase
-  reserveStance: 'holdGround',  // home reserve holds, attacks only what comes to it
+  decisionIntervalTicks: 150,   // slow re-plan cadence (~2.5s)
+  minAttackForce: 11,           // commit at a moderate mass
+  aggression: 0.9844837637519124, // send nearly the whole army on the attack
+  targetPriority: 'weakest',    // 'nearest' | 'value' | 'weakest' — kill the weakest objective first
+  stageDepth: 0.9,              // stage FAR forward, near the enemy (aggressive)
+  retreatForceRatio: 0.2048337263255682, // retreat only after heavy losses
+  rallyReinforcements: false,   // do not force-rally Queen spawns to the staging point
+  attackerStance: 'aggressive', // committed units chase and engage
+  reserveStance: 'defensive',   // home reserve holds a leash
 
   // --- Abilities (animal-specific special moves) ---------------------------
-  useAbilities: false,          // (evolved OFF) more robust without egg/tongue/hiss micro
-  abilityIntervalTicks: 60,     // (inert while useAbilities is false)
-  abilityEngageRange: 20.398192749735674, // (inert while useAbilities is false)
-  useSacrificialSwarm: true,    // (inert: gated behind useAbilities, which is off)
+  // useAbilities = OFFENSIVE eggs/tongues (still evolved off — weak value). hiss is a
+  // separate DEFENSIVE knockback (evolved ON). Each independently switchable.
+  useAbilities: false,          // offensive eggs/tongues — OFF (not worth the casters' time)
+  abilityIntervalTicks: 33,     // cadence for ability casts
+  abilityEngageRange: 15.38178817954167, // sensing radius for offense + the hiss outnumber check
+  useSacrificialSwarm: false,   // Bee dive — off
+  useHissDefensively: true,     // peel attackers with hiss when locally outnumbered (ON)
+  hissOutnumberRatio: 2.210666061290999, // hiss when nearby enemies outnumber friendlies by ~2.2:1
 
   // --- Monarch piloting (carry the King's damage aura to the front) --------
-  pilotKing: true,              // (evolved ON) drive one King behind the attack so its aura buffs the front
-  pilotRetreatHpFraction: 0.5171171501089611, // pull that King home (then release) once its HP falls below this
-  pilotTrailDepth: 0.5799570437419825, // King's hold point as a fraction from home toward the army centroid
+  pilotKing: true,              // drive one King into the army so its aura buffs the front
+  pilotRetreatHpFraction: 0.15869486635345748, // commit the King hard — pull back only when nearly dead
+  pilotTrailDepth: 1,           // King rides at the army centroid (max aura coverage)
 
   // --- Tactical depth (raise the ceiling vs reactive/competent play) -------
-  focusFireWeakest: true,       // (evolved ON) attackers clear the weakest enemy animal in range, then push
-  focusFireRange: 26.086897654919923, // how close that weak enemy must be to the army centroid to be focused
-  defenseResponseRatio: 0.4477148059362968, // peel ~45% of the army home to intercept a base threat
-  defenseTriggerRange: 25.168284994699356, // an enemy unit within this of our objectives counts as a threat
+  focusFireWeakest: false,      // (this optimum) attackers push the objective rather than snipe units
+  focusFireRange: 17.21554254751271, // (inert while focusFireWeakest is false)
+  defenseResponseRatio: 0.4276908636548028, // peel ~43% of the army home to intercept a base threat
+  defenseTriggerRange: 37.63603393313922, // wide radius counting an enemy near our objectives as a threat
 });
 
 // The commander's coarse phase. Massing concentrates force at the staging point;
@@ -224,38 +229,60 @@ function weakestWithin(units, position, range, read) {
 
 /**
  * Decide which abilities to cast this tick (a pure function of the observation).
- * Eligibility — animal type and cooldown — is enforced by the engine, so this
- * issues each ability over the whole mobile army and lets the sim keep only the
- * Chickens/Frogs/Cats (and, when opted in, Bees) that can actually act. Abilities
- * are spent only when an enemy animal is within `abilityEngageRange` of the army,
- * so their short cooldowns are available for the moment contact is joined.
+ * Eligibility — animal type and cooldown — is enforced by the engine, so this issues
+ * each ability over the whole mobile army and the sim keeps only the eligible casters.
+ *
+ * Abilities are split by ROLE so a defensive one can't sabotage an attack:
+ *  - OFFENSIVE (Chicken eggs, Frog tongues): cast while an enemy is in engage range,
+ *    aimed at the focus-fire target (the weakest enemy near the army, else nearest),
+ *    so casters pile onto what the army is already killing.
+ *  - DEFENSIVE (Cat hiss, a radial knockback): cast ONLY when the army is locally
+ *    OUTNUMBERED — to peel attackers off. Hissing while winning would scatter the
+ *    enemy you are trying to kill, which is why bundling it into the attack made the
+ *    whole ability set net-negative (and the optimizer turned everything off).
+ *  - Bee swarm: sacrificial coin-flip; only while attacking and opted in.
  *
  * @returns {NetCommand[]}
  */
 function decideAbilities(params, role, read, phase) {
-  if (!params.useAbilities) return [];
-
   const army = read.ownMobileUnits(role);
   if (army.length === 0) return [];
 
+  const unitIds = army.map((unit) => unit.id);
   const armyCentroid = read.centroid(army);
-  const target = read.nearestEnemyAnimal(role, armyCentroid);
-  if (!target) return [];
-  if (read.distanceSquared(armyCentroid, target.position) > params.abilityEngageRange * params.abilityEngageRange) {
-    return [];
+  const engageRangeSquared = params.abilityEngageRange * params.abilityEngageRange;
+  const commands = [];
+
+  // Offensive eggs + tongues, aimed at the focus-fire target.
+  if (params.useAbilities) {
+    const focus =
+      weakestWithin(read.enemyAnimals(role), armyCentroid, params.focusFireRange, read) ??
+      read.nearestEnemyAnimal(role, armyCentroid);
+    if (focus && read.distanceSquared(armyCentroid, focus.position) <= engageRangeSquared) {
+      const aimPoint = { ...focus.position };
+      commands.push({ type: 'throwEggs', payload: { unitIds, target: aimPoint } });
+      commands.push({ type: 'fireTongues', payload: { unitIds, cursor: aimPoint } });
+    }
   }
 
-  const unitIds = army.map((unit) => unit.id);
-  const aimPoint = { ...target.position };
-  const commands = [
-    { type: 'throwEggs', payload: { unitIds, target: aimPoint } },  // Chickens
-    { type: 'fireTongues', payload: { unitIds, cursor: aimPoint } }, // Frogs
-    { type: 'hiss', payload: { unitIds } },                          // Cats (radial knockback)
-  ];
+  // Defensive hiss: peel attackers only when locally outnumbered near the army.
+  if (params.useHissDefensively) {
+    let enemiesNear = 0;
+    for (const enemy of read.enemyAnimals(role)) {
+      if (read.distanceSquared(enemy.position, armyCentroid) <= engageRangeSquared) enemiesNear += 1;
+    }
+    if (enemiesNear > 0) {
+      let friendsNear = 0;
+      for (const unit of army) {
+        if (read.distanceSquared(unit.position, armyCentroid) <= engageRangeSquared) friendsNear += 1;
+      }
+      if (enemiesNear >= friendsNear * params.hissOutnumberRatio) {
+        commands.push({ type: 'hiss', payload: { unitIds } });
+      }
+    }
+  }
 
-  // The Bee dive is sacrificial — a coin flip that kills both the bee and its
-  // target — so it is only ever spent while actually pressing an attack, and only
-  // when the optimizer has opted in.
+  // Sacrificial Bee dive while pressing an attack.
   if (params.useSacrificialSwarm && phase === PHASE.ATTACKING) {
     commands.push({ type: 'swarm', payload: { unitIds } });
   }

@@ -68,5 +68,33 @@
       "defenseResponseRatio": 0.4477148059362968,
       "defenseTriggerRange": 25.168284994699356
     }
+  },
+  {
+    "name": "champ-robust-v2",
+    "note": "SHIPPED default after the ability-redesign run (role-split abilities; pop24/gen14 worst-case winRate over the 9-opponent league). Beats v1 on the held-out gauntlet (+0.210) and head-to-head. Aggressive forward-staging, full King-aura commit, hard home defense, defensive hiss when outnumbered; offensive eggs/tongues still off.",
+    "params": {
+      "decisionIntervalTicks": 150,
+      "minAttackForce": 11,
+      "aggression": 0.9844837637519124,
+      "targetPriority": "weakest",
+      "stageDepth": 0.9,
+      "retreatForceRatio": 0.2048337263255682,
+      "rallyReinforcements": false,
+      "attackerStance": "aggressive",
+      "reserveStance": "defensive",
+      "useAbilities": false,
+      "abilityIntervalTicks": 33,
+      "abilityEngageRange": 15.38178817954167,
+      "useSacrificialSwarm": false,
+      "useHissDefensively": true,
+      "hissOutnumberRatio": 2.210666061290999,
+      "pilotKing": true,
+      "pilotRetreatHpFraction": 0.15869486635345748,
+      "pilotTrailDepth": 1,
+      "focusFireWeakest": false,
+      "focusFireRange": 17.21554254751271,
+      "defenseResponseRatio": 0.4276908636548028,
+      "defenseTriggerRange": 37.63603393313922
+    }
   }
 ]

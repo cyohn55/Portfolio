@@ -41,6 +41,8 @@ export const GENE_SPEC = Object.freeze([
   { key: 'abilityIntervalTicks', type: 'int', min: 10, max: 60 },
   { key: 'abilityEngageRange', type: 'float', min: 6, max: 30 },
   { key: 'useSacrificialSwarm', type: 'bool' },
+  { key: 'useHissDefensively', type: 'bool' },
+  { key: 'hissOutnumberRatio', type: 'float', min: 1, max: 3 },
 
   // Monarch piloting: whether to carry a King's aura forward, and how far / how safely.
   { key: 'pilotKing', type: 'bool' },

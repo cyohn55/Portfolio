@@ -38,6 +38,8 @@ interface CommanderParams {
   abilityIntervalTicks: number;
   abilityEngageRange: number;
   useSacrificialSwarm: boolean;
+  useHissDefensively: boolean;
+  hissOutnumberRatio: number;
   pilotKing: boolean;
   pilotRetreatHpFraction: number;
   pilotTrailDepth: number;
@@ -47,34 +49,36 @@ interface CommanderParams {
   defenseTriggerRange: number;
 }
 
-// Robust trained defaults (mirror of policies.mjs COMMANDER_DEFAULTS). Output of a
-// pop24/gen14 worst-case win-rate run over an 8-opponent league; adopted because it
-// beats the prior default on a held-out gauntlet (+0.233 worst-case) with NO losing
-// matchup across 10 distinct opponents. Plays controlled: keeps a reserve, peels a
-// large home-defense force vs counterattacks, focus-fires the weakest nearby enemy,
-// and pilots the King's aura forward. Abilities evolved OFF (useAbilities:false →
-// egg/tongue/hiss unused; useSacrificialSwarm inert). Keep in sync with policies.mjs.
+// Robust trained defaults (champ-robust-v2; mirror of policies.mjs COMMANDER_DEFAULTS).
+// Output of a pop24/gen14 worst-case win-rate run over the 9-opponent league incl. the
+// prior champion; adopted because it beats champ-robust-v1 on a held-out gauntlet
+// (+0.210 worst-case) and head-to-head, with NO losing matchup across 11 opponents.
+// Aggressive forward-staging, full King-aura commit, hard home defense, and DEFENSIVE
+// hiss when outnumbered (the one ability the role-split let the optimizer adopt;
+// offensive eggs/tongues still evolved off — weak value). Keep in sync with policies.mjs.
 export const COMMANDER_DEFAULTS: Readonly<CommanderParams> = Object.freeze({
-  decisionIntervalTicks: 90,
-  minAttackForce: 16,
-  aggression: 0.6945005618829754,
-  targetPriority: 'nearest',
-  stageDepth: 0.1654629908431992,
-  retreatForceRatio: 0.3939323195832534,
+  decisionIntervalTicks: 150,
+  minAttackForce: 11,
+  aggression: 0.9844837637519124,
+  targetPriority: 'weakest',
+  stageDepth: 0.9,
+  retreatForceRatio: 0.2048337263255682,
   rallyReinforcements: false,
-  attackerStance: 'defensive',
-  reserveStance: 'holdGround',
+  attackerStance: 'aggressive',
+  reserveStance: 'defensive',
   useAbilities: false,
-  abilityIntervalTicks: 60,
-  abilityEngageRange: 20.398192749735674,
-  useSacrificialSwarm: true,
+  abilityIntervalTicks: 33,
+  abilityEngageRange: 15.38178817954167,
+  useSacrificialSwarm: false,
+  useHissDefensively: true,
+  hissOutnumberRatio: 2.210666061290999,
   pilotKing: true,
-  pilotRetreatHpFraction: 0.5171171501089611,
-  pilotTrailDepth: 0.5799570437419825,
-  focusFireWeakest: true,
-  focusFireRange: 26.086897654919923,
-  defenseResponseRatio: 0.4477148059362968,
-  defenseTriggerRange: 25.168284994699356,
+  pilotRetreatHpFraction: 0.15869486635345748,
+  pilotTrailDepth: 1,
+  focusFireWeakest: false,
+  focusFireRange: 17.21554254751271,
+  defenseResponseRatio: 0.4276908636548028,
+  defenseTriggerRange: 37.63603393313922,
 });
 
 // Strategic worth of an objective when targetPriority is 'value': Queens (the unit
@@ -378,26 +382,51 @@ class AiCommander {
     return commands;
   }
 
-  /** Cast abilities over the whole army once an enemy is close; the sim self-filters. */
+  /**
+   * Abilities split by role (mirror of policies.mjs decideAbilities): offensive
+   * eggs/tongues aimed at the focus-fire target, defensive hiss only when locally
+   * outnumbered (a knockback that would otherwise scatter an enemy we're beating),
+   * and the sacrificial Bee swarm. The sim self-filters to eligible casters.
+   */
   private decideAbilities(role: string, observation: Observation): NetCommand[] {
     const params = this.params;
-    if (!params.useAbilities) return [];
-
     const army = observation.ownMobileUnits(role);
     if (army.length === 0) return [];
 
-    const armyCentroid = centroid(army);
-    const target = observation.nearestEnemyAnimal(role, armyCentroid);
-    if (!target) return [];
-    if (distanceSquared(armyCentroid, target.position) > params.abilityEngageRange * params.abilityEngageRange) return [];
-
     const unitIds = army.map((unit) => unit.id);
-    const aimPoint = { ...target.position };
-    const commands: NetCommand[] = [
-      { type: 'throwEggs', payload: { unitIds, target: aimPoint } },
-      { type: 'fireTongues', payload: { unitIds, cursor: aimPoint } },
-      { type: 'hiss', payload: { unitIds } },
-    ];
+    const armyCentroid = centroid(army);
+    const engageRangeSquared = params.abilityEngageRange * params.abilityEngageRange;
+    const commands: NetCommand[] = [];
+
+    // Offensive eggs + tongues, aimed at the focus-fire target.
+    if (params.useAbilities) {
+      const focus =
+        weakestWithin(observation.enemyAnimals(role), armyCentroid, params.focusFireRange) ??
+        observation.nearestEnemyAnimal(role, armyCentroid);
+      if (focus && distanceSquared(armyCentroid, focus.position) <= engageRangeSquared) {
+        const aimPoint = { ...focus.position };
+        commands.push({ type: 'throwEggs', payload: { unitIds, target: aimPoint } });
+        commands.push({ type: 'fireTongues', payload: { unitIds, cursor: aimPoint } });
+      }
+    }
+
+    // Defensive hiss: peel attackers only when locally outnumbered near the army.
+    if (params.useHissDefensively) {
+      let enemiesNear = 0;
+      for (const enemy of observation.enemyAnimals(role)) {
+        if (distanceSquared(enemy.position, armyCentroid) <= engageRangeSquared) enemiesNear += 1;
+      }
+      if (enemiesNear > 0) {
+        let friendsNear = 0;
+        for (const unit of army) {
+          if (distanceSquared(unit.position, armyCentroid) <= engageRangeSquared) friendsNear += 1;
+        }
+        if (enemiesNear >= friendsNear * params.hissOutnumberRatio) {
+          commands.push({ type: 'hiss', payload: { unitIds } });
+        }
+      }
+    }
+
     if (params.useSacrificialSwarm && this.phase === 'attacking') {
       commands.push({ type: 'swarm', payload: { unitIds } });
     }
