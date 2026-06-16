@@ -163,8 +163,9 @@ runtime ML dependency and adds no determinism risk.
     `abilityEngageRange`: `throwEggs` (Chickens), `fireTongues` (Frogs), `pickup`
     (Owls abduct + drop the weakest grabbable enemy), and `swarm` (Bees) while
     attacking. DEFENSIVE, only when locally outnumbered (`hissOutnumberRatio`):
-    `hiss` (Cats peel attackers) and `toggleTurtleShell` (a doomed, outnumbered
-    Turtle braces in place). Only the cadence/thresholds are tunable.
+    `hiss` (Cats peel attackers) and `toggleTurtleShell` (a hurt, outnumbered Turtle
+    braces to absorb most incoming damage — `SHELL_DAMAGE_TAKEN_FRACTION` in state.ts
+    — tanking for the army). Only the cadence/thresholds are tunable.
   - *Monarch piloting* (`makeMonarchPilot`): when `pilotKing` is on, it drives one
     King just behind the advancing army (`pilotTrailDepth`) so its damage aura buffs
     the front, then retreats and releases it once its HP drops below

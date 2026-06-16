@@ -116,6 +116,12 @@ export const ANIMALS: Record<AnimalId, { baseHp: number; dmg: number; speed: num
 // threats (kiting) instead of walking into their swing.
 const MELEE_RANGE = 5;
 
+// Turtle "shell" ability tuning. Shelling pins the Turtle in place (it cannot move or
+// attack and resists knockback) in exchange for absorbing most incoming damage — the
+// shell's defensive payoff. A shelled Turtle still takes this fraction of every hit, so
+// it is a tanky damage sponge that buys the army time, not an invulnerable wall.
+const SHELL_DAMAGE_TAKEN_FRACTION = 0.35; // 65% damage mitigation while shelled
+
 // Chicken egg-throw ability tuning. The chicken keeps its melee peck (the ANIMALS
 // stats above) for normal combat; the egg is a separate, player-activated ranged
 // strike fired by holding both mouse buttons while a friendly Chicken is selected.
@@ -2526,7 +2532,7 @@ export const useGameStore = create<Store>((set, get) => ({
           console.log(`COMBAT: ${attacker.animal} (${attacker.ownerId}) attacking PLAYER ${target.animal} (${target.id})`);
         }
 
-        target.hp -= damage;
+        target.hp -= mitigatedDamage(target, damage);
         if (target.hp <= 0) {
           if (tickDebug) console.log(`Unit ${target.animal} (${target.ownerId}) killed by ${attacker.animal} (${attacker.ownerId})`);
           draft.deadUnitsToRemove.push(target.id);
@@ -4449,7 +4455,7 @@ function updateProjectiles(draft: Store, dtSec: number): void {
     }
 
     if (hitTarget) {
-      hitTarget.hp -= egg.damage;
+      hitTarget.hp -= mitigatedDamage(hitTarget, egg.damage);
       if (hitTarget.hp <= 0) {
         draft.deadUnitsToRemove.push(hitTarget.id);
         creditKill(draft, egg.ownerId, hitTarget);
@@ -4522,7 +4528,7 @@ function updateFrogTongues(draft: Store, dtSec: number, nowMs: number): void {
           tongue.grabbed = true;
           if (!tongue.damageDealt) {
             tongue.damageDealt = true;
-            target!.hp -= frog.attackDamage;
+            target!.hp -= mitigatedDamage(target!, frog.attackDamage);
             frog.lastAttackAtMs = nowMs; // count the grab as a swing for combat/pose timing
             if (target!.hp <= 0) {
               draft.deadUnitsToRemove.push(target!.id);
@@ -4648,7 +4654,7 @@ function dropCarriedUnit(draft: Store, owl: Unit, carried: Unit, fallDamage: num
   delete draft.unitOrders[carried.id];
 
   if (fallDamage > 0 && carried.ownerId !== owl.ownerId) {
-    carried.hp -= fallDamage;
+    carried.hp -= mitigatedDamage(carried, fallDamage);
     if (carried.hp <= 0) {
       carried.hp = 0;
       draft.deadUnitsToRemove.push(carried.id);
@@ -4947,6 +4953,16 @@ function subtract3D(a: Position3D, b: Position3D): Position3D {
     y: a.y - b.y,
     z: a.z - b.z
   };
+}
+
+/**
+ * Incoming combat damage after the target's active defenses. A shelled Turtle hunkers
+ * down and absorbs most of every hit (see SHELL_DAMAGE_TAKEN_FRACTION); all other units
+ * take the raw amount. Centralizing this keeps every damage source — melee, eggs,
+ * tongues, owl drops — consistently subject to the shell.
+ */
+function mitigatedDamage(target: Unit, rawDamage: number): number {
+  return target.isShelled ? rawDamage * SHELL_DAMAGE_TAKEN_FRACTION : rawDamage;
 }
 
 function normalize3D(vec: Position3D): Position3D {

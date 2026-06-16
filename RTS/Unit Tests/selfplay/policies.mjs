@@ -116,10 +116,11 @@ const OBJECTIVE_VALUE_BY_KIND = Object.freeze({ Queen: 3, King: 2, Base: 1 });
 // as abduction targets (mirrors the engine's pickup eligibility check).
 const AIR_ANIMALS = new Set(['Bee', 'Owl']);
 
-// A Turtle braces in its shell only as a last stand: below this HP fraction AND
-// locally outnumbered. Shelling grants no damage reduction in the current sim, so a
-// healthy turtle is always left free to fight rather than pinned in place.
-const TURTLE_LAST_STAND_HP_FRACTION = 0.35;
+// A Turtle braces in its shell when hurt below this HP fraction AND locally
+// outnumbered — trading its offense/mobility for heavy damage mitigation
+// (SHELL_DAMAGE_TAKEN_FRACTION in state.ts) to tank for the army, then unshelling once
+// the pressure lifts. A healthy turtle is left free to fight.
+const TURTLE_SHELL_HP_FRACTION = 0.5;
 
 /**
  * Default knobs for the macro commander (champ-robust-v2). OUTPUT of a robust run
@@ -253,10 +254,9 @@ function weakestWithin(units, position, range, read) {
  *  DEFENSIVE — only when the army is locally OUTNUMBERED (a shove/brace while winning
  *  would just scatter the enemy we are killing):
  *   - Cat hiss: radial knockback to peel attackers off.
- *   - Turtle shell: a near-dead, outnumbered turtle braces in place (resisting
- *     knockback) instead of being chased down. Shelling grants no damage reduction in
- *     the current sim, so it is reserved for a doomed straggler and never pulls a
- *     healthy turtle out of an attack.
+ *   - Turtle shell: a hurt, outnumbered turtle braces to absorb most incoming damage
+ *     (and resist knockback), tanking for the army at the cost of its own offense and
+ *     mobility, then unshells once it recovers or the pressure lifts.
  *
  * @returns {NetCommand[]}
  */
@@ -317,14 +317,14 @@ function decideAbilities(params, role, read, phase) {
     commands.push({ type: 'hiss', payload: { unitIds } });
   }
 
-  // DEFENSIVE — Turtle shell last stand. Toggle only the turtles whose current shell
+  // DEFENSIVE — Turtle shell. Brace (tank) when hurt AND locally outnumbered; unshell
+  // once healthy or the pressure lifts. Toggle only the turtles whose current shell
   // state differs from the desired one, so the toggle never oscillates each tick.
   const shellToggleIds = [];
   for (const unit of army) {
     if (unit.animal !== 'Turtle') continue;
-    const doomed =
-      locallyOutnumbered && unit.hp / unit.maxHp < TURTLE_LAST_STAND_HP_FRACTION;
-    const wantShelled = doomed && phase !== PHASE.ATTACKING;
+    const wantShelled =
+      locallyOutnumbered && unit.hp / unit.maxHp < TURTLE_SHELL_HP_FRACTION;
     if (Boolean(unit.isShelled) !== wantShelled) shellToggleIds.push(unit.id);
   }
   if (shellToggleIds.length > 0) {
