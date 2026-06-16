@@ -112,6 +112,15 @@ export function makeRushPolicy(overrides = {}) {
 // they outrank Kings (a damage aura) and Bases (inert win-condition pieces).
 const OBJECTIVE_VALUE_BY_KIND = Object.freeze({ Queen: 3, King: 2, Base: 1 });
 
+// Animals that fly — an Owl cannot pluck these out of the air, so they are excluded
+// as abduction targets (mirrors the engine's pickup eligibility check).
+const AIR_ANIMALS = new Set(['Bee', 'Owl']);
+
+// A Turtle braces in its shell only as a last stand: below this HP fraction AND
+// locally outnumbered. Shelling grants no damage reduction in the current sim, so a
+// healthy turtle is always left free to fight rather than pinned in place.
+const TURTLE_LAST_STAND_HP_FRACTION = 0.35;
+
 /**
  * Default knobs for the macro commander (champ-robust-v2). OUTPUT of a robust run
  * (train.mjs: pop 24, 14 generations, 28 workers, 9000-tick matches, bounded win-rate
@@ -124,12 +133,14 @@ const OBJECTIVE_VALUE_BY_KIND = Object.freeze({ Queen: 3, King: 2, Base: 1 });
  * Strategy: aggressive forward-staging (stageDepth 0.9, aggression ~0.98,
  * minAttackForce 11, target the WEAKEST objective), commit the King's aura fully into
  * the army (pilotTrailDepth 1.0, retreat it only near death), defend home hard
- * (defenseResponseRatio ~0.43, wide trigger), and peel with DEFENSIVE hiss when
- * locally outnumbered (~2.2:1). Splitting hiss out of the offensive bundle is what
- * let the optimizer finally adopt an ability. Offensive eggs/tongues STILL evolved OFF
- * (useAbilities:false) even with focus-aimed targeting — they are weak *value* in the
- * sim (a caster does more by just attacking); making them net-positive needs
- * rebalancing the abilities themselves, not just the AI's use. Re-run train.mjs to
+ * (defenseResponseRatio ~0.43, wide trigger). ABILITIES are no longer an on/off knob:
+ * every animal special move is an always-on capability (full parity with the player),
+ * cast when its tactical trigger fires (see decideAbilities). The optimizer can only
+ * tune the cast cadence and the engage/outnumber thresholds, never disable an ability.
+ * (Historical note: offensive eggs/tongues once evolved OFF as a trained knob —
+ * weak *value* in the current balance, since a caster often does more by just
+ * attacking. They now fire by tactical rule regardless, for parity; rebalancing the
+ * abilities themselves is the lever to make them net-positive.) Re-run train.mjs to
  * evolve a fresh set. Units: ticks at 60/s, counts, fractions.
  */
 export const COMMANDER_DEFAULTS = Object.freeze({
@@ -144,13 +155,12 @@ export const COMMANDER_DEFAULTS = Object.freeze({
   reserveStance: 'defensive',   // home reserve holds a leash
 
   // --- Abilities (animal-specific special moves) ---------------------------
-  // useAbilities = OFFENSIVE eggs/tongues (still evolved off — weak value). hiss is a
-  // separate DEFENSIVE knockback (evolved ON). Each independently switchable.
-  useAbilities: false,          // offensive eggs/tongues — OFF (not worth the casters' time)
+  // Every ability is now an ALWAYS-ON capability (full parity with the player) —
+  // decideAbilities decides WHEN to cast each one tactically. Only the cast cadence
+  // and the engage/outnumber thresholds are tuned (and even these can no longer turn
+  // an ability off). See decideAbilities for each ability's trigger.
   abilityIntervalTicks: 33,     // cadence for ability casts
-  abilityEngageRange: 15.38178817954167, // sensing radius for offense + the hiss outnumber check
-  useSacrificialSwarm: false,   // Bee dive — off
-  useHissDefensively: true,     // peel attackers with hiss when locally outnumbered (ON)
+  abilityEngageRange: 15.38178817954167, // sensing radius for offense + the outnumber check
   hissOutnumberRatio: 2.210666061290999, // hiss when nearby enemies outnumber friendlies by ~2.2:1
 
   // --- Monarch piloting (carry the King's damage aura to the front) --------
@@ -229,18 +239,24 @@ function weakestWithin(units, position, range, read) {
 
 /**
  * Decide which abilities to cast this tick (a pure function of the observation).
- * Eligibility — animal type and cooldown — is enforced by the engine, so this issues
- * each ability over the whole mobile army and the sim keeps only the eligible casters.
+ * Eligibility — animal type, owner, cooldown, alive — is enforced by the engine, so
+ * this issues each ability over the whole mobile army and the sim keeps only the
+ * eligible casters. Every player ability is represented here (full parity); each is
+ * an always-on capability gated by a tactical trigger, not a trained on/off knob:
  *
- * Abilities are split by ROLE so a defensive one can't sabotage an attack:
- *  - OFFENSIVE (Chicken eggs, Frog tongues): cast while an enemy is in engage range,
- *    aimed at the focus-fire target (the weakest enemy near the army, else nearest),
- *    so casters pile onto what the army is already killing.
- *  - DEFENSIVE (Cat hiss, a radial knockback): cast ONLY when the army is locally
- *    OUTNUMBERED — to peel attackers off. Hissing while winning would scatter the
- *    enemy you are trying to kill, which is why bundling it into the attack made the
- *    whole ability set net-negative (and the optimizer turned everything off).
- *  - Bee swarm: sacrificial coin-flip; only while attacking and opted in.
+ *  OFFENSIVE — pile onto the focus target (weakest enemy near the army, else nearest):
+ *   - Chicken eggs + Frog tongues: cast while the focus target is in engage range.
+ *   - Owl abduction: snatch the weakest GRABBABLE (non-air) enemy near the army, lift
+ *     it out of the fight and drop it for fall damage — the strongest single-target
+ *     removal in the kit.
+ *   - Bee swarm: sacrificial dive while pressing an attack with a target in range.
+ *  DEFENSIVE — only when the army is locally OUTNUMBERED (a shove/brace while winning
+ *  would just scatter the enemy we are killing):
+ *   - Cat hiss: radial knockback to peel attackers off.
+ *   - Turtle shell: a near-dead, outnumbered turtle braces in place (resisting
+ *     knockback) instead of being chased down. Shelling grants no damage reduction in
+ *     the current sim, so it is reserved for a doomed straggler and never pulls a
+ *     healthy turtle out of an attack.
  *
  * @returns {NetCommand[]}
  */
@@ -251,39 +267,72 @@ function decideAbilities(params, role, read, phase) {
   const unitIds = army.map((unit) => unit.id);
   const armyCentroid = read.centroid(army);
   const engageRangeSquared = params.abilityEngageRange * params.abilityEngageRange;
+  const enemyAnimals = read.enemyAnimals(role);
   const commands = [];
 
-  // Offensive eggs + tongues, aimed at the focus-fire target.
-  if (params.useAbilities) {
-    const focus =
-      weakestWithin(read.enemyAnimals(role), armyCentroid, params.focusFireRange, read) ??
-      read.nearestEnemyAnimal(role, armyCentroid);
-    if (focus && read.distanceSquared(armyCentroid, focus.position) <= engageRangeSquared) {
-      const aimPoint = { ...focus.position };
-      commands.push({ type: 'throwEggs', payload: { unitIds, target: aimPoint } });
-      commands.push({ type: 'fireTongues', payload: { unitIds, cursor: aimPoint } });
-    }
+  // The unit the army is concentrating on: the weakest enemy near the army, else the
+  // nearest. Offensive abilities aim here so casters pile onto what we're killing.
+  const focus =
+    weakestWithin(enemyAnimals, armyCentroid, params.focusFireRange, read) ??
+    read.nearestEnemyAnimal(role, armyCentroid);
+  const focusInRange =
+    focus && read.distanceSquared(armyCentroid, focus.position) <= engageRangeSquared;
+
+  // OFFENSIVE — Chicken eggs + Frog tongues, aimed at the focus target.
+  if (focusInRange) {
+    const aimPoint = { x: focus.position.x, y: focus.position.y, z: focus.position.z };
+    commands.push({ type: 'throwEggs', payload: { unitIds, target: aimPoint } });
+    commands.push({ type: 'fireTongues', payload: { unitIds, cursor: aimPoint } });
   }
 
-  // Defensive hiss: peel attackers only when locally outnumbered near the army.
-  if (params.useHissDefensively) {
-    let enemiesNear = 0;
-    for (const enemy of read.enemyAnimals(role)) {
-      if (read.distanceSquared(enemy.position, armyCentroid) <= engageRangeSquared) enemiesNear += 1;
-    }
-    if (enemiesNear > 0) {
-      let friendsNear = 0;
-      for (const unit of army) {
-        if (read.distanceSquared(unit.position, armyCentroid) <= engageRangeSquared) friendsNear += 1;
-      }
-      if (enemiesNear >= friendsNear * params.hissOutnumberRatio) {
-        commands.push({ type: 'hiss', payload: { unitIds } });
-      }
-    }
+  // OFFENSIVE — Owl abduction. Target the weakest grabbable (non-air) enemy near the
+  // army; the engine sends each idle Owl to snatch the closest unit of that type+owner.
+  const abductTarget = weakestWithin(
+    enemyAnimals.filter((enemy) => !AIR_ANIMALS.has(enemy.animal)),
+    armyCentroid,
+    params.abilityEngageRange,
+    read,
+  );
+  if (abductTarget) {
+    commands.push({
+      type: 'pickup',
+      payload: { unitIds, targetAnimal: abductTarget.animal, targetOwnerId: abductTarget.ownerId },
+    });
   }
 
-  // Sacrificial Bee dive while pressing an attack.
-  if (params.useSacrificialSwarm && phase === PHASE.ATTACKING) {
+  // Local force balance near the army, shared by the defensive triggers below.
+  let enemiesNear = 0;
+  for (const enemy of enemyAnimals) {
+    if (read.distanceSquared(enemy.position, armyCentroid) <= engageRangeSquared) enemiesNear += 1;
+  }
+  let friendsNear = 0;
+  for (const unit of army) {
+    if (read.distanceSquared(unit.position, armyCentroid) <= engageRangeSquared) friendsNear += 1;
+  }
+  const locallyOutnumbered =
+    enemiesNear > 0 && enemiesNear >= friendsNear * params.hissOutnumberRatio;
+
+  // DEFENSIVE — Cat hiss: peel attackers off only when locally outnumbered.
+  if (locallyOutnumbered) {
+    commands.push({ type: 'hiss', payload: { unitIds } });
+  }
+
+  // DEFENSIVE — Turtle shell last stand. Toggle only the turtles whose current shell
+  // state differs from the desired one, so the toggle never oscillates each tick.
+  const shellToggleIds = [];
+  for (const unit of army) {
+    if (unit.animal !== 'Turtle') continue;
+    const doomed =
+      locallyOutnumbered && unit.hp / unit.maxHp < TURTLE_LAST_STAND_HP_FRACTION;
+    const wantShelled = doomed && phase !== PHASE.ATTACKING;
+    if (Boolean(unit.isShelled) !== wantShelled) shellToggleIds.push(unit.id);
+  }
+  if (shellToggleIds.length > 0) {
+    commands.push({ type: 'toggleTurtleShell', payload: { unitIds: shellToggleIds } });
+  }
+
+  // OFFENSIVE — Bee swarm: sacrificial dive while pressing an attack with a target near.
+  if (phase === PHASE.ATTACKING && focusInRange) {
     commands.push({ type: 'swarm', payload: { unitIds } });
   }
 

@@ -26,7 +26,7 @@ import { loadChampions } from './league.mjs';
 const TRAINING_ARCHETYPES = {
   'aggressive-timing': { minAttackForce: 6, aggression: 1, decisionIntervalTicks: 45, reserveStance: 'aggressive', retreatForceRatio: 0 },
   'defensive-turtle': { minAttackForce: 16, aggression: 0.7, attackerStance: 'defensive', reserveStance: 'holdGround', retreatForceRatio: 0.5, stageDepth: 0.08 },
-  'ability-harasser': { minAttackForce: 8, aggression: 0.9, decisionIntervalTicks: 60, abilityIntervalTicks: 12, abilityEngageRange: 26, useSacrificialSwarm: true },
+  'ability-harasser': { minAttackForce: 8, aggression: 0.9, decisionIntervalTicks: 60, abilityIntervalTicks: 12, abilityEngageRange: 26 },
 };
 
 // Held-out archetypes used ONLY for the gauntlet — distinct from the training set so
@@ -34,7 +34,7 @@ const TRAINING_ARCHETYPES = {
 // possible all-in blitz with full ability use.
 const GAUNTLET_ARCHETYPES = {
   'macro-boomer': { minAttackForce: 16, aggression: 1, decisionIntervalTicks: 150, reserveStance: 'defensive', retreatForceRatio: 0.6, stageDepth: 0.05 },
-  'all-in-blitz': { minAttackForce: 2, aggression: 1, decisionIntervalTicks: 30, reserveStance: 'aggressive', retreatForceRatio: 0, abilityIntervalTicks: 10, abilityEngageRange: 28, useSacrificialSwarm: true },
+  'all-in-blitz': { minAttackForce: 2, aggression: 1, decisionIntervalTicks: 30, reserveStance: 'aggressive', retreatForceRatio: 0, abilityIntervalTicks: 10, abilityEngageRange: 28 },
 };
 
 const commanderFactory = (params) => () => makeCommanderPolicy(params);

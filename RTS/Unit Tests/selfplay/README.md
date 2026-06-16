@@ -156,11 +156,15 @@ runtime ML dependency and adds no determinism risk.
   the same command bus a human uses (`applyNetCommand` → the `case` dispatch in
   `state.ts`). It runs a **macro layer** (re-plan on `decisionIntervalTicks`) and a
   faster **tactical layer** (`abilityIntervalTicks`):
-  - *Abilities* (`decideAbilities`): once an enemy animal is within
-    `abilityEngageRange` of the army, it casts `throwEggs`/`fireTongues`/`hiss`
-    over the whole army — the engine self-filters to the eligible Chickens/Frogs/
-    Cats off cooldown — plus the sacrificial Bee `swarm` when `useSacrificialSwarm`
-    is opted in.
+  - *Abilities* (`decideAbilities`): EVERY animal special move is an always-on
+    capability (full parity with the player) — not a trained on/off knob — cast by a
+    tactical rule and issued over the whole army (the engine self-filters to the
+    eligible casters off cooldown). OFFENSIVE, aimed at the focus target in
+    `abilityEngageRange`: `throwEggs` (Chickens), `fireTongues` (Frogs), `pickup`
+    (Owls abduct + drop the weakest grabbable enemy), and `swarm` (Bees) while
+    attacking. DEFENSIVE, only when locally outnumbered (`hissOutnumberRatio`):
+    `hiss` (Cats peel attackers) and `toggleTurtleShell` (a doomed, outnumbered
+    Turtle braces in place). Only the cadence/thresholds are tunable.
   - *Monarch piloting* (`makeMonarchPilot`): when `pilotKing` is on, it drives one
     King just behind the advancing army (`pilotTrailDepth`) so its damage aura buffs
     the front, then retreats and releases it once its HP drops below
