@@ -174,16 +174,75 @@ export const COMMANDER_DEFAULTS = Object.freeze({
   focusFireRange: 17.21554254751271, // (inert while focusFireWeakest is false)
   defenseResponseRatio: 0.4276908636548028, // peel ~43% of the army home to intercept a base threat
   defenseTriggerRange: 37.63603393313922, // wide radius counting an enemy near our objectives as a threat
+
+  // --- Turtle-wall tactic + dynamic state machine --------------------------
+  // A line of Turtles braces into a shelled, high-mitigation barricade that attacks in
+  // place. Used to HOLD a forward chokepoint (map control while the army builds) and to
+  // SCREEN our own bases when they are pressed (the `defending` phase). Hand-tuned
+  // defaults (not yet evolved): holdForce < minAttackForce so the army contests the
+  // midline before it is strong enough to commit; the wall screens bases at ~22% out
+  // from home, the hold line sits on the ~55% midline.
+  holdForce: 6,                 // army size to advance from massing to a forward chokepoint hold
+  chokepointDepth: 0.55,        // fraction home->enemy for the contested hold line
+  wallDepth: 0.22,              // fraction home->enemy for the defensive wall screening our bases
+  wallSpacing: 3,               // world-unit gap between Turtles along a wall line
+  defendOverwhelmRatio: 0.9,    // fall back to a full base defense when near-home enemies >= army * this
 });
 
 // The commander's coarse phase. Massing concentrates force at the staging point;
-// attacking commits it onto one objective; retreating pulls survivors back to
-// re-mass after a failed push.
-const PHASE = Object.freeze({ MASSING: 'massing', ATTACKING: 'attacking', RETREATING: 'retreating' });
+// holding contests a forward chokepoint with a Turtle wall for map control; attacking
+// commits the army onto one objective; retreating pulls survivors back to re-mass;
+// defending is a full fallback (preempts the others) that screens our own bases with a
+// Turtle wall when the enemy presses them in force.
+const PHASE = Object.freeze({
+  MASSING: 'massing',
+  HOLDING: 'holding',
+  ATTACKING: 'attacking',
+  RETREATING: 'retreating',
+  DEFENDING: 'defending',
+});
+
+// A Turtle within this XZ distance of its wall slot is "in position" and braces; until
+// then it stays mobile and walks to the slot (a shelled Turtle is pinned in place).
+const WALL_SLOT_ARRIVAL_DISTANCE_SQ = 3 * 3;
+// The non-Turtle support army holds at this fraction of the way from home to the wall.
+const WALL_SUPPORT_DEPTH = 0.85;
 
 /** Linear interpolate between two positions by fraction t (0 = a, 1 = b). */
 function lerpPosition(a, b, t) {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
+}
+
+/** Unit XZ heading from `from` to `to`; a stable default when the two coincide. */
+function facingAxis(from, to) {
+  const dx = to.x - from.x;
+  const dz = to.z - from.z;
+  const length = Math.hypot(dx, dz);
+  if (length < 1e-6) return { x: 0, z: 1 };
+  return { x: dx / length, z: dz / length };
+}
+
+/**
+ * Assign each Turtle a slot on a line wall centered at `center`, perpendicular to
+ * `facing`, evenly spaced by `spacing` and centered on the line. Turtles are ordered by
+ * id so the assignment is deterministic — identical across peers and stable across
+ * re-plans, so a Turtle keeps the same slot between ticks.
+ */
+function planTurtleWall(turtles, center, facing, spacing) {
+  const ordered = turtles.slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const perpendicularX = -facing.z;
+  const perpendicularZ = facing.x;
+  const lastIndex = ordered.length - 1;
+  const slots = new Map();
+  ordered.forEach((turtle, index) => {
+    const offset = (index - lastIndex / 2) * spacing;
+    slots.set(turtle.id, {
+      x: center.x + perpendicularX * offset,
+      y: center.y,
+      z: center.z + perpendicularZ * offset,
+    });
+  });
+  return slots;
 }
 
 // A piloted monarch is "home" once within this XZ distance of its objectives'
@@ -251,16 +310,17 @@ function weakestWithin(units, position, range, read) {
  *     it out of the fight and drop it for fall damage — the strongest single-target
  *     removal in the kit.
  *   - Bee swarm: sacrificial dive while pressing an attack with a target in range.
- *  DEFENSIVE — only when the army is locally OUTNUMBERED (a shove/brace while winning
- *  would just scatter the enemy we are killing):
- *   - Cat hiss: radial knockback to peel attackers off.
- *   - Turtle shell: a hurt, outnumbered turtle braces to absorb most incoming damage
- *     (and resist knockback), tanking for the army at the cost of its own offense and
- *     mobility, then unshells once it recovers or the pressure lifts.
+ *  DEFENSIVE:
+ *   - Cat hiss: radial knockback to peel attackers off — only when locally OUTNUMBERED
+ *     (a shove while winning would just scatter the enemy we are killing).
+ *   - Turtle shell: a Turtle assigned to a wall (the holding/defending macro phases,
+ *     via `wallSlotById`) braces the moment it reaches its slot and stays braced to hold
+ *     the line; any other Turtle braces only when hurt AND outnumbered, tanking for the
+ *     army at the cost of its own offense/mobility, then unshells once the pressure lifts.
  *
  * @returns {NetCommand[]}
  */
-function decideAbilities(params, role, read, phase) {
+function decideAbilities(params, role, read, phase, wallSlotById) {
   const army = read.ownMobileUnits(role);
   if (army.length === 0) return [];
 
@@ -317,14 +377,18 @@ function decideAbilities(params, role, read, phase) {
     commands.push({ type: 'hiss', payload: { unitIds } });
   }
 
-  // DEFENSIVE — Turtle shell. Brace (tank) when hurt AND locally outnumbered; unshell
-  // once healthy or the pressure lifts. Toggle only the turtles whose current shell
-  // state differs from the desired one, so the toggle never oscillates each tick.
+  // DEFENSIVE — Turtle shell. A Turtle assigned to a wall (holding/defending) braces as
+  // soon as it reaches its slot and stays braced to hold the line; every other Turtle
+  // braces only when hurt AND locally outnumbered, unshelling once it recovers or the
+  // pressure lifts. Toggle only the Turtles whose current shell state differs from the
+  // desired one, so the toggle never oscillates each tick.
   const shellToggleIds = [];
   for (const unit of army) {
     if (unit.animal !== 'Turtle') continue;
-    const wantShelled =
-      locallyOutnumbered && unit.hp / unit.maxHp < TURTLE_SHELL_HP_FRACTION;
+    const wallSlot = wallSlotById.get(unit.id);
+    const wantShelled = wallSlot
+      ? read.distanceSquared(unit.position, wallSlot) <= WALL_SLOT_ARRIVAL_DISTANCE_SQ
+      : locallyOutnumbered && unit.hp / unit.maxHp < TURTLE_SHELL_HP_FRACTION;
     if (Boolean(unit.isShelled) !== wantShelled) shellToggleIds.push(unit.id);
   }
   if (shellToggleIds.length > 0) {
@@ -456,23 +520,203 @@ export function makeCommanderPolicy(overrides = {}) {
   const params = { ...COMMANDER_DEFAULTS, ...overrides };
   let phase = PHASE.MASSING;
   let peakAttackForce = 0;
+  // Current Turtle-wall assignment (turtle id -> its slot), rebuilt each macro tick
+  // while holding/defending and read by the faster ability layer to brace each Turtle
+  // once it reaches its slot. Empty whenever no wall is being held.
+  const wallSlotById = new Map();
   const pilot = makeMonarchPilot(params);
+  // The current observation, rebound at the top of every `decide` call so the macro
+  // helpers below read live state without threading `read` through every signature.
+  let read = null;
 
-  // The macro layer's army-orchestration commands for one re-plan tick. Mutates the
-  // closure's `phase`/`peakAttackForce` as it advances the mass→attack→retreat state
-  // machine. Returns no commands when there is nothing to command (no army or the
-  // enemy has no objectives left).
-  function decideMacro(role, read) {
+  /** Enter the attacking phase, seeding the peak-force watermark used to detect a rout. */
+  function commitAttack(armySize) {
+    phase = PHASE.ATTACKING;
+    peakAttackForce = armySize;
+  }
+
+  /**
+   * Advance the massing -> holding -> attacking -> retreating cycle, with a `defending`
+   * override that preempts everything while we are overwhelmed at home. Mutates the
+   * closure's `phase`/`peakAttackForce`.
+   */
+  function advancePhase(armySize, overwhelmed) {
+    if (overwhelmed) {
+      phase = PHASE.DEFENDING;
+      return;
+    }
+    switch (phase) {
+      case PHASE.MASSING:
+        if (armySize >= params.minAttackForce) commitAttack(armySize);
+        else if (armySize >= params.holdForce) phase = PHASE.HOLDING;
+        break;
+      case PHASE.HOLDING:
+        if (armySize >= params.minAttackForce) commitAttack(armySize);
+        else if (armySize < params.holdForce) phase = PHASE.MASSING;
+        break;
+      case PHASE.ATTACKING:
+        peakAttackForce = Math.max(peakAttackForce, armySize);
+        if (armySize < peakAttackForce * params.retreatForceRatio) phase = PHASE.RETREATING;
+        break;
+      case PHASE.RETREATING:
+        if (armySize >= params.minAttackForce) commitAttack(armySize);
+        else if (armySize >= params.holdForce) phase = PHASE.HOLDING;
+        break;
+      case PHASE.DEFENDING:
+        // Threat cleared — re-enter the offensive cycle at the level our force allows.
+        if (armySize >= params.minAttackForce) commitAttack(armySize);
+        else if (armySize >= params.holdForce) phase = PHASE.HOLDING;
+        else phase = PHASE.MASSING;
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Lay `turtles` out as a line wall centered on `center`, perpendicular to `facing`,
+   * each set to holdGround so it strikes whatever enters range without leaving the line.
+   * Records each slot in `wallSlotById` so the ability layer braces (shells) the Turtle
+   * once it arrives — a shelled Turtle is pinned, so it must walk to its slot first.
+   */
+  function commandTurtleWall(turtles, center, facing) {
+    const slots = planTurtleWall(turtles, center, facing, params.wallSpacing);
+    const commands = [];
+    for (const turtle of turtles) {
+      const slot = slots.get(turtle.id);
+      if (!slot) continue;
+      wallSlotById.set(turtle.id, slot);
+      commands.push({ type: 'setBehavior', payload: { unitIds: [turtle.id], behavior: { stance: 'holdGround' } } });
+      if (!turtle.isShelled && read.distanceSquared(turtle.position, slot) > WALL_SLOT_ARRIVAL_DISTANCE_SQ) {
+        commands.push({ type: 'moveUnits', payload: { unitIds: [turtle.id], target: { ...slot } } });
+      }
+    }
+    return commands;
+  }
+
+  /**
+   * HOLDING: contest a forward chokepoint between the two homes for map control —
+   * Turtles brace into a shelled wall across the crossing while the rest of the army
+   * forms up just behind it under a defensive posture.
+   */
+  function commandHold(army, home, enemyCentroid, facing) {
+    const chokepoint = lerpPosition(home, enemyCentroid, params.chokepointDepth);
+    const turtles = army.filter((unit) => unit.animal === 'Turtle');
+    const support = army.filter((unit) => unit.animal !== 'Turtle');
+    const commands = [];
+    if (turtles.length > 0) commands.push(...commandTurtleWall(turtles, chokepoint, facing));
+    if (support.length > 0) {
+      const supportPoint = lerpPosition(home, chokepoint, WALL_SUPPORT_DEPTH);
+      const supportIds = support.map((unit) => unit.id);
+      commands.push({ type: 'setBehavior', payload: { unitIds: supportIds, behavior: { stance: params.reserveStance } } });
+      commands.push({ type: 'moveUnits', payload: { unitIds: supportIds, target: supportPoint } });
+    }
+    return commands;
+  }
+
+  /**
+   * DEFENDING: the enemy is pressing our bases in force. Brace a Turtle wall just in
+   * front of home to blunt the assault and send the rest of the army at the nearest
+   * attacker under a home-anchored defensive posture so it intercepts without chasing.
+   */
+  function commandDefense(army, home, enemyCentroid, facing, threats) {
+    const wallCenter = lerpPosition(home, enemyCentroid, params.wallDepth);
+    const turtles = army.filter((unit) => unit.animal === 'Turtle');
+    const defenders = army.filter((unit) => unit.animal !== 'Turtle');
+    const commands = [];
+    if (turtles.length > 0) commands.push(...commandTurtleWall(turtles, wallCenter, facing));
+    if (defenders.length > 0) {
+      const defenderIds = defenders.map((unit) => unit.id);
+      const threatTarget = nearestUnitTo(threats, home, read);
+      commands.push({ type: 'setBehavior', payload: { unitIds: defenderIds, behavior: { stance: 'defensive' } } });
+      if (threatTarget) commands.push({ type: 'attackTarget', payload: { unitIds: defenderIds, targetId: threatTarget.id } });
+      else commands.push({ type: 'moveUnits', payload: { unitIds: defenderIds, target: wallCenter } });
+    }
+    return commands;
+  }
+
+  /**
+   * ATTACKING: commit the army onto a chosen objective. A fraction nearest home peels
+   * to intercept any enemy pressuring our bases (a lighter response than the full
+   * `defending` fallback); the remainder pushes the objective, optionally sniping the
+   * weakest exposed enemy first, with a reserve held at the staging point.
+   */
+  function commandAttack(role, army, objectives, home, stagingPoint, homeThreats) {
+    const commands = [];
+
+    let defenderIds = [];
+    if (params.defenseResponseRatio > 0 && homeThreats.length > 0) {
+      const defenderCount = Math.min(
+        army.length,
+        Math.max(1, Math.round(army.length * params.defenseResponseRatio)),
+      );
+      const defenders = army
+        .slice()
+        .sort((a, b) => read.distanceSquared(a.position, home) - read.distanceSquared(b.position, home))
+        .slice(0, defenderCount);
+      defenderIds = defenders.map((unit) => unit.id);
+      const threatTarget = nearestUnitTo(homeThreats, home, read);
+      if (threatTarget) {
+        commands.push({ type: 'setBehavior', payload: { unitIds: defenderIds, behavior: { stance: 'aggressive' } } });
+        commands.push({ type: 'attackTarget', payload: { unitIds: defenderIds, targetId: threatTarget.id } });
+      }
+    }
+
+    const defenderSet = new Set(defenderIds);
+    const attackers = army.filter((unit) => !defenderSet.has(unit.id));
+    if (attackers.length === 0) return commands;
+
+    const attackerCentroid = read.centroid(attackers);
+    const objective = chooseObjective(objectives, attackerCentroid, params.targetPriority, read);
+    if (!objective) return commands;
+
+    let targetId = objective.id;
+    let aimPosition = objective.position;
+    if (params.focusFireWeakest) {
+      const weak = weakestWithin(read.enemyAnimals(role), attackerCentroid, params.focusFireRange, read);
+      if (weak) {
+        targetId = weak.id;
+        aimPosition = weak.position;
+      }
+    }
+
+    const committedCount = Math.max(1, Math.round(attackers.length * params.aggression));
+    const committed = attackers
+      .slice()
+      .sort(
+        (a, b) =>
+          read.distanceSquared(a.position, aimPosition) - read.distanceSquared(b.position, aimPosition),
+      )
+      .slice(0, committedCount);
+    const committedIds = committed.map((unit) => unit.id);
+    const committedSet = new Set(committedIds);
+    const reserveIds = attackers.filter((unit) => !committedSet.has(unit.id)).map((unit) => unit.id);
+
+    commands.push({ type: 'setBehavior', payload: { unitIds: committedIds, behavior: { stance: params.attackerStance } } });
+    commands.push({ type: 'attackTarget', payload: { unitIds: committedIds, targetId } });
+    if (reserveIds.length > 0) {
+      commands.push({ type: 'setBehavior', payload: { unitIds: reserveIds, behavior: { stance: params.reserveStance } } });
+      commands.push({ type: 'moveUnits', payload: { unitIds: reserveIds, target: { ...stagingPoint } } });
+    }
+    return commands;
+  }
+
+  /**
+   * Macro orchestration: advance the state machine and issue the commands for the
+   * resulting phase. Rebuilds the Turtle-wall assignment each call (cleared first), so
+   * leaving a wall phase frees the Turtles. Returns no commands when there is nothing
+   * to command (no army, or the enemy has no objectives left).
+   */
+  function decideMacro(role) {
     const army = read.ownMobileUnits(role);
     const objectives = read.enemyObjectives(role);
+    wallSlotById.clear();
     if (objectives.length === 0 || army.length === 0) return [];
 
-    // Staging point: between this side's home and the enemy's mass, governed by
-    // stageDepth. The army gathers here, and reinforcements are rallied here.
     const home = read.ownObjectivesCentroid(role);
     const enemyCentroid = read.centroid(objectives);
     const stagingPoint = lerpPosition(home, enemyCentroid, params.stageDepth);
-
+    const facing = facingAxis(home, enemyCentroid);
     const commands = [];
 
     // Keep the unit factories feeding the front rather than the base.
@@ -485,102 +729,37 @@ export function makeCommanderPolicy(overrides = {}) {
       }
     }
 
-    // --- Phase transitions ---------------------------------------------------
-    if (phase === PHASE.MASSING && army.length >= params.minAttackForce) {
-      phase = PHASE.ATTACKING;
-      peakAttackForce = army.length;
+    // Home-threat assessment: a force rivaling our whole army at home triggers the full
+    // `defending` fallback; a smaller incursion is handled by the attacking-phase peel.
+    const threatRangeSquared = params.defenseTriggerRange * params.defenseTriggerRange;
+    const homeThreats = read
+      .enemyMobileUnits(role)
+      .filter((enemy) => read.distanceSquared(enemy.position, home) <= threatRangeSquared);
+    const overwhelmed =
+      homeThreats.length > 0 && homeThreats.length >= Math.max(1, army.length * params.defendOverwhelmRatio);
+
+    advancePhase(army.length, overwhelmed);
+
+    if (phase === PHASE.DEFENDING) {
+      commands.push(...commandDefense(army, home, enemyCentroid, facing, homeThreats));
+    } else if (phase === PHASE.HOLDING) {
+      commands.push(...commandHold(army, home, enemyCentroid, facing));
     } else if (phase === PHASE.ATTACKING) {
-      peakAttackForce = Math.max(peakAttackForce, army.length);
-      if (army.length < peakAttackForce * params.retreatForceRatio) {
-        phase = PHASE.RETREATING;
-      }
-    } else if (phase === PHASE.RETREATING && army.length >= params.minAttackForce) {
-      // Re-massed after a failed push; commit again.
-      phase = PHASE.ATTACKING;
-      peakAttackForce = army.length;
-    }
-
-    const armyIds = army.map((unit) => unit.id);
-
-    // --- Phase actions -------------------------------------------------------
-    if (phase === PHASE.ATTACKING) {
-      // (1) Reactive home defense: if an enemy force is pressuring our objectives,
-      // peel the units nearest home back to intercept it instead of racing bases.
-      let defenderIds = [];
-      if (params.defenseResponseRatio > 0) {
-        const threatRangeSquared = params.defenseTriggerRange * params.defenseTriggerRange;
-        const threats = read
-          .enemyMobileUnits(role)
-          .filter((enemy) => read.distanceSquared(enemy.position, home) <= threatRangeSquared);
-        if (threats.length > 0) {
-          const defenderCount = Math.min(
-            army.length,
-            Math.max(1, Math.round(army.length * params.defenseResponseRatio)),
-          );
-          const defenders = army
-            .slice()
-            .sort((a, b) => read.distanceSquared(a.position, home) - read.distanceSquared(b.position, home))
-            .slice(0, defenderCount);
-          defenderIds = defenders.map((unit) => unit.id);
-          const threatTarget = nearestUnitTo(threats, home, read);
-          commands.push({ type: 'setBehavior', payload: { unitIds: defenderIds, behavior: { stance: 'aggressive' } } });
-          commands.push({ type: 'attackTarget', payload: { unitIds: defenderIds, targetId: threatTarget.id } });
-        }
-      }
-
-      // The attacking force is whatever is not pinned defending home.
-      const defenderSet = new Set(defenderIds);
-      const attackers = army.filter((unit) => !defenderSet.has(unit.id));
-
-      if (attackers.length > 0) {
-        const attackerCentroid = read.centroid(attackers);
-        const objective = chooseObjective(objectives, attackerCentroid, params.targetPriority, read);
-
-        // (2) Focus-fire: prefer clearing the weakest enemy animal near the attackers
-        // (snipe a low-HP unit or exposed Queen/King) before sieging the objective.
-        let targetId = objective.id;
-        let aimPosition = objective.position;
-        if (params.focusFireWeakest) {
-          const weak = weakestWithin(read.enemyAnimals(role), attackerCentroid, params.focusFireRange, read);
-          if (weak) {
-            targetId = weak.id;
-            aimPosition = weak.position;
-          }
-        }
-
-        const committedCount = Math.max(1, Math.round(attackers.length * params.aggression));
-        const committed = attackers
-          .slice()
-          .sort(
-            (a, b) =>
-              read.distanceSquared(a.position, aimPosition) -
-              read.distanceSquared(b.position, aimPosition),
-          )
-          .slice(0, committedCount);
-        const committedIds = committed.map((unit) => unit.id);
-        const committedSet = new Set(committedIds);
-        const reserveIds = attackers.filter((unit) => !committedSet.has(unit.id)).map((unit) => unit.id);
-
-        commands.push({ type: 'setBehavior', payload: { unitIds: committedIds, behavior: { stance: params.attackerStance } } });
-        commands.push({ type: 'attackTarget', payload: { unitIds: committedIds, targetId } });
-        if (reserveIds.length > 0) {
-          commands.push({ type: 'setBehavior', payload: { unitIds: reserveIds, behavior: { stance: params.reserveStance } } });
-          commands.push({ type: 'moveUnits', payload: { unitIds: reserveIds, target: { ...stagingPoint } } });
-        }
-      }
+      commands.push(...commandAttack(role, army, objectives, home, stagingPoint, homeThreats));
     } else {
-      // Massing or retreating: gather the whole army at the staging point under
-      // a defensive posture so it fights if attacked but does not over-extend.
+      // Massing or retreating: gather the whole army at the staging point defensively.
+      const armyIds = army.map((unit) => unit.id);
       commands.push({ type: 'setBehavior', payload: { unitIds: armyIds, behavior: { stance: params.reserveStance } } });
       commands.push({ type: 'moveUnits', payload: { unitIds: armyIds, target: { ...stagingPoint } } });
     }
-
     return commands;
   }
 
   return {
     name: 'commander',
-    decide: ({ role, tick, read }) => {
+    decide: (ctx) => {
+      read = ctx.read; // rebind so the macro helpers read the current observation
+      const { role, tick } = ctx;
       const onMacroTick = tick % params.decisionIntervalTicks === 0;
       const onAbilityTick = tick % params.abilityIntervalTicks === 0;
       if (!onMacroTick && !onAbilityTick) return [];
@@ -589,13 +768,13 @@ export function makeCommanderPolicy(overrides = {}) {
 
       // Macro orchestration first so the phase it sets is the one the faster
       // ability/pilot layer reacts to this same tick.
-      if (onMacroTick) commands.push(...decideMacro(role, read));
+      if (onMacroTick) commands.push(...decideMacro(role));
 
       // Abilities and monarch piloting run on their own faster cadence so the
       // commander can act inside the macro re-plan window (short ability cooldowns,
       // a King that must trail a moving front).
       if (onAbilityTick) {
-        commands.push(...decideAbilities(params, role, read, phase));
+        commands.push(...decideAbilities(params, role, read, phase, wallSlotById));
         commands.push(...pilot.decide(role, read, phase));
       }
 

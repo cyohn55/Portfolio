@@ -53,6 +53,16 @@ export const GENE_SPEC = Object.freeze([
   { key: 'focusFireRange', type: 'float', min: 8, max: 40 },
   { key: 'defenseResponseRatio', type: 'float', min: 0, max: 0.5 },
   { key: 'defenseTriggerRange', type: 'float', min: 10, max: 50 },
+
+  // Turtle-wall tactic + dynamic state machine: when to hold a forward chokepoint
+  // vs. mass, how the Turtle barricade is placed, and when to fall back to a full
+  // base defense. Appended last so older (shorter) genomes still decode (the missing
+  // genes fall back to their COMMANDER_DEFAULTS in decodeGenome).
+  { key: 'holdForce', type: 'int', min: 2, max: 14 },
+  { key: 'chokepointDepth', type: 'float', min: 0.3, max: 0.7 },
+  { key: 'wallDepth', type: 'float', min: 0.1, max: 0.4 },
+  { key: 'wallSpacing', type: 'float', min: 2, max: 5 },
+  { key: 'defendOverwhelmRatio', type: 'float', min: 0.5, max: 2 },
 ]);
 
 /** Number of genes — the dimensionality the optimizer searches. */
@@ -93,11 +103,17 @@ function encodeGene(spec, value) {
   }
 }
 
-/** Decode a full genome vector into a `makeCommanderPolicy` params object. */
+/**
+ * Decode a full genome vector into a `makeCommanderPolicy` params object. A genome
+ * shorter than the current GENE_SPEC (e.g. a champion saved before a knob was added)
+ * is forward-compatible: each missing gene falls back to its COMMANDER_DEFAULTS value,
+ * so appending genes never invalidates a stored genome.
+ */
 export function decodeGenome(genome) {
   const params = {};
   GENE_SPEC.forEach((spec, index) => {
-    params[spec.key] = decodeGene(spec, genome[index]);
+    const gene = index < genome.length ? genome[index] : encodeGene(spec, COMMANDER_DEFAULTS[spec.key]);
+    params[spec.key] = decodeGene(spec, gene);
   });
   return params;
 }
