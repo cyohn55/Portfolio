@@ -36,12 +36,11 @@ export const GENE_SPEC = Object.freeze([
   { key: 'attackerStance', type: 'enum', options: STANCES },
   { key: 'reserveStance', type: 'enum', options: STANCES },
 
-  // Abilities: whether and how eagerly to spend the animals' special moves.
-  { key: 'useAbilities', type: 'bool' },
+  // Abilities are ALWAYS-ON capabilities (full parity with the player): whether to
+  // cast each one is decided tactically in decideAbilities, not by the optimizer, so
+  // a retrain can never strip the AI's ability use. Only the pacing/thresholds tune.
   { key: 'abilityIntervalTicks', type: 'int', min: 10, max: 60 },
   { key: 'abilityEngageRange', type: 'float', min: 6, max: 30 },
-  { key: 'useSacrificialSwarm', type: 'bool' },
-  { key: 'useHissDefensively', type: 'bool' },
   { key: 'hissOutnumberRatio', type: 'float', min: 1, max: 3 },
 
   // Monarch piloting: whether to carry a King's aura forward, and how far / how safely.
