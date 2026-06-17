@@ -4,7 +4,10 @@ import type { FormationShape, Unit } from '../../game/types';
 import { formatKeyboardToken } from './controlBindings';
 import { fullRingAngleDeg, ringIndexFromVector } from './radialGeometry';
 import { BEHAVIOR_RADIAL_STYLE } from './behaviorRadialModel';
+import { PLAYBOOK_OPTIONS, type PlaybookId } from './playbook';
 import {
+  AUDIBLES,
+  FORMATION_AUDIBLE_STYLE,
   FORMATION_OPTIONS,
   FORMATION_COLOR,
   FORMATION_PANEL_SIZE,
@@ -40,6 +43,8 @@ export function FormationRadial() {
   const pilotedFireTeamId = useGameStore((s) => s.pilotedFireTeamId);
   const fireTeams = useGameStore((s) => s.fireTeams);
   const setFormation = useGameStore((s) => s.setFormation);
+  const adjustFormation = useGameStore((s) => s.adjustFormation);
+  const callPlay = useGameStore((s) => s.callPlay);
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
 
   const [isOpen, setIsOpen] = useState(false);
@@ -88,6 +93,34 @@ export function FormationRadial() {
   const apply = (shape: FormationShape) => {
     if (commandableIds.length > 0) setFormation({ unitIds: commandableIds, shape });
   };
+
+  // Whether any commandable unit is already in a formation — the audibles only act
+  // on a formed team, so the audible bar is disabled until a shape has been called.
+  const hasFormedTeam = useMemo(
+    () => commandable.some((unit) => unit.fireTeamId !== undefined && fireTeams[unit.fireTeamId] !== undefined),
+    [commandable, fireTeams]
+  );
+
+  const audible = (op: 'rotateLeft' | 'rotateRight' | 'expand' | 'contract' | 'disband') => {
+    if (commandableIds.length > 0) adjustFormation({ unitIds: commandableIds, op });
+  };
+
+  // A play re-shapes ALL of the player's formed teams (by role), independent of the
+  // current selection — so the playbook is available whenever any team is formed.
+  const hasAnyOwnFormation = useMemo(
+    () =>
+      units.some(
+        (unit) =>
+          unit.ownerId === localPlayerId &&
+          unit.kind === 'Unit' &&
+          unit.hp > 0 &&
+          unit.fireTeamId !== undefined &&
+          fireTeams[unit.fireTeamId] !== undefined
+      ),
+    [units, localPlayerId, fireTeams]
+  );
+
+  const play = (id: PlaybookId) => callPlay({ play: id });
 
   // Close automatically the moment there is nothing to form up (e.g. the selection
   // was wiped out or the player deselected / released drive control).
@@ -149,6 +182,7 @@ export function FormationRadial() {
   return (
     <>
       <style>{BEHAVIOR_RADIAL_STYLE}</style>
+      <style>{FORMATION_AUDIBLE_STYLE}</style>
 
       {isOpen && commandable.length > 0 && (
         <div className="rts-stance-backdrop" onClick={() => setIsOpen(false)}>
@@ -187,10 +221,43 @@ export function FormationRadial() {
               </div>
             </div>
 
+            {/* Audible bar: quick mid-play tweaks to the already-formed team. */}
+            <div className="rts-formation-audibles">
+              {AUDIBLES.map((item) => (
+                <button
+                  key={item.op}
+                  className="rts-formation-audible"
+                  disabled={!hasFormedTeam}
+                  onClick={() => audible(item.op)}
+                  title={item.hint}
+                >
+                  <span className="rts-formation-audible-icon">{item.icon}</span>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Playbook: one call re-shapes & re-postures every formed team by role. */}
+            <div className="rts-formation-playbook-label">Playbook · all teams</div>
+            <div className="rts-formation-audibles">
+              {PLAYBOOK_OPTIONS.map((item) => (
+                <button
+                  key={item.id}
+                  className="rts-formation-audible rts-formation-play"
+                  disabled={!hasAnyOwnFormation}
+                  onClick={() => play(item.id)}
+                  title={item.hint}
+                >
+                  <span className="rts-formation-audible-icon">{item.icon}</span>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
             <div className="rts-stance-footer">
-              Aim the right stick and press <span className="rts-stance-key">RT</span> to call it ·
-              <span className="rts-stance-key">B</span> to close · or click a shape
-              {triggerKeyLabel ? ` / press ${triggerKeyLabel}` : ''}
+              Click a shape to form up · the audibles above re-face, spread, or break it ·
+              order a move to send the formation · attack an enemy to focus-fire it
+              {triggerKeyLabel ? ` · press ${triggerKeyLabel} to close` : ''}
             </div>
           </div>
         </div>

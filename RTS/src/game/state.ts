@@ -15,7 +15,8 @@ import { pathfinder } from '../components/Working/pathfinder';
 import { BLOCKER_LOOKAHEAD, deflectAroundBlockers, type SteerBlocker } from '../components/Working/movementSteering';
 import { slideAlongObstacle } from '../components/Working/terrainSlide';
 import { clampToArena } from '../components/Working/arenaBoundary';
-import { assignSlots, centroidOf, meanHeading } from '../components/Working/formations';
+import { assignSlots, centroidOf, defaultSpacingFor, meanHeading } from '../components/Working/formations';
+import { PLAYBOOK, classifyRole, rightAxisComponent } from '../components/Working/playbook';
 import {
   type MonarchKind,
   MONARCH_FOLLOW_STOP_DISTANCE,
@@ -32,7 +33,7 @@ import {
   selectionForMonarch,
   shouldChaseMonarch,
 } from '../components/Working/monarchPilot';
-import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandSetQueenRally, CommandAttackTarget, CommandSetBehavior, CommandSetFormation, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, CommandOwlDeliver, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
+import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandSetQueenRally, CommandAttackTarget, CommandSetBehavior, CommandSetFormation, CommandAdjustFormation, CommandCallPlay, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, CommandOwlDeliver, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
 import {
   behaviorOf,
   defaultBehaviorFor,
@@ -783,6 +784,12 @@ type Store = GameState & {
   // team's heading. The King's "play call". Routed so multiplayer peers shape the
   // same squad identically. See CommandSetFormation and formations.ts.
   setFormation: (cmd: CommandSetFormation) => void;
+  // Mid-play "audible" on a formed team: pivot, expand/contract, or disband. Routed
+  // so multiplayer peers adjust the same team identically. See CommandAdjustFormation.
+  adjustFormation: (cmd: CommandAdjustFormation) => void;
+  // Call a play from the King's playbook: re-shape + re-posture all of the acting
+  // player's formed teams by their auto-classified positional role. Routed for MP.
+  callPlay: (cmd: CommandCallPlay) => void;
   selectUnits: (unitIds: string[]) => void;
   addToSelection: (unitIds: string[]) => void;
   clearSelection: () => void;
@@ -1019,6 +1026,178 @@ const loadMusicEnabled = (): boolean => {
     return true;
   }
 };
+
+// A formation member must drift more than this far from its assigned slot before
+// the maintenance pass re-issues a move order to it. Larger than typical slot
+// spacing so a unit that steps out to trade blows and returns via its stance leash
+// isn't yanked back every tick; it only re-paths when the formation has genuinely
+// relocated (or it has wandered well out of place).
+const FORMATION_REFORM_DISTANCE = 8;
+
+// Audible step sizes. Re-facing pivots the formation 30° per press; expand/contract
+// widen/tighten the slot spacing within sane bounds so a shape never collapses onto
+// itself or scatters out of cohesion.
+const FORMATION_ROTATE_STEP = Math.PI / 6;
+const FORMATION_SPACING_STEP = 2;
+const FORMATION_MIN_SPACING = 3;
+const FORMATION_MAX_SPACING = 24;
+
+// The slice of state the formation maintenance pass reads and writes. Mirrors the
+// PilotMutableState pattern so the live tick draft (typed Store) satisfies it.
+type FormationMutableState = Pick<Store, 'units' | 'unitOrders' | 'fireTeams'>;
+
+// Drop a unit's cached A* route and arrival/blocking carry-over so its next tick
+// re-paths cleanly to a freshly issued order (same fields moveCommand clears).
+function clearMovementCarryOver(unit: Unit): void {
+  delete unit.arrivedAtDestinationMs;
+  delete unit.lastCombatTargetId;
+  delete unit.lastCombatEngagementMs;
+  delete unit.priorityAttacker;
+  unit.collisionAttempts = 0;
+  delete unit.movementPausedUntilMs;
+  delete unit.firstBlockedAtMs;
+  delete unit.nearDestinationSinceMs;
+  delete unit.pathWaypoints;
+  delete unit.pathIndex;
+  delete unit.pathDestX;
+  delete unit.pathDestZ;
+  delete unit.pathVersion;
+  delete unit.pathStall;
+  delete unit.pathProgressDist;
+}
+
+// Slice of state the fire-team drive pre-pass reads/writes: it only nudges each
+// driven shaped team's anchor, leaving the member slotting to maintainFormations.
+type FireTeamDriveState = Pick<
+  Store,
+  'units' | 'fireTeams' | 'pilotedFireTeamByOwner' | 'pilotMoveByOwner'
+>;
+
+/**
+ * Drive each shaped fire team a player is steering by moving its FORMATION ANCHOR,
+ * not its individual members. Run once per tick before maintainFormations: for
+ * every owner whose driven team holds a formation, advance the team's anchor along
+ * the owner's drive vector at the squad's pace (the slowest member's speed, so no
+ * one is permanently left behind), keeping the facing fixed so the shape only
+ * translates. maintainFormations then flows the members toward the moved slots via
+ * the normal order/pathfinding path — so the squad keeps its shape (and respects
+ * walls) as it travels, instead of collapsing into a blob. Unshaped driven teams
+ * are untouched here and handled by the per-unit drive block in the movement loop.
+ * Deterministic: fixed owner-key order, drive vectors come from the synced
+ * pilotMoveByOwner, and the pace is derived from the same member set on both peers.
+ */
+function applyFireTeamDrive(draft: FireTeamDriveState, dtSec: number): void {
+  for (const ownerId of Object.keys(draft.pilotedFireTeamByOwner)) {
+    const teamId = draft.pilotedFireTeamByOwner[ownerId];
+    if (teamId === null) continue;
+    const team = draft.fireTeams[teamId];
+    if (!team) continue; // unshaped driven team — the per-unit drive block owns it
+
+    const move = draft.pilotMoveByOwner[ownerId] ?? { x: 0, z: 0 };
+    const magnitude = Math.hypot(move.x, move.z);
+    if (magnitude <= 0.0001) continue; // not actively driving this frame
+
+    // Pace the formation by its slowest living member so the shape doesn't tear.
+    let slowest = Infinity;
+    for (const unit of draft.units) {
+      if (unit.fireTeamId === teamId && unit.kind === 'Unit' && unit.hp > 0) {
+        if (unit.moveSpeed < slowest) slowest = unit.moveSpeed;
+      }
+    }
+    if (!Number.isFinite(slowest)) continue; // no living members
+
+    const clampedMagnitude = Math.min(magnitude, 1);
+    const step = (slowest * clampedMagnitude * dtSec) / magnitude; // normalizes move
+    team.anchor = {
+      x: team.anchor.x + move.x * step,
+      y: 0,
+      z: team.anchor.z + move.z * step,
+    };
+    // No dirty flag: the anchor moved, so maintainFormations' stable branch re-homes
+    // the slots and re-orders members as they drift, without a per-frame A* re-slot.
+  }
+}
+
+/**
+ * Keep every fire team in its formation. Run once per tick before the per-unit
+ * movement loop. For each team that has a formation (a GameState.fireTeams entry):
+ *   - collect its living member Units, sorted by id (lockstep-stable order),
+ *   - drop the entry entirely when none remain,
+ *   - and when the formation has changed (`dirty`) or its membership changed since
+ *     the last slotting (`memberKey`), re-slot: pin each member's anchor to its slot
+ *     and issue a move order toward it so it walks into place.
+ * Between changes nothing is touched — the anchors set at the last slotting let each
+ * member's stance leash hold the shape, and members that drift past
+ * FORMATION_REFORM_DISTANCE from their slot are nudged back. All inputs are derived
+ * deterministically (sorted ids, assignSlots sorts internally), so both lockstep
+ * peers maintain identical formations.
+ */
+function maintainFormations(draft: FormationMutableState): void {
+  const teamIds = Object.keys(draft.fireTeams);
+  if (teamIds.length === 0) return;
+
+  // Group living members by team in one pass.
+  const membersByTeam = new Map<string, Unit[]>();
+  for (const unit of draft.units) {
+    const teamId = unit.fireTeamId;
+    if (teamId === undefined || unit.kind !== 'Unit' || unit.hp <= 0) continue;
+    if (!draft.fireTeams[teamId]) continue;
+    const list = membersByTeam.get(teamId);
+    if (list) list.push(unit);
+    else membersByTeam.set(teamId, [unit]);
+  }
+
+  for (const teamId of teamIds) {
+    const team = draft.fireTeams[teamId];
+    const members = membersByTeam.get(teamId);
+
+    // A team that has lost every member is disbanded so its slot/state can't linger.
+    if (!members || members.length === 0) {
+      delete draft.fireTeams[teamId];
+      continue;
+    }
+
+    members.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const memberKey = members.map((unit) => unit.id).join(',');
+    const membershipChanged = memberKey !== team.memberKey;
+
+    // Clear a focus-fire target that has died/left so it doesn't pin stale orders.
+    if (team.focusTargetId !== undefined) {
+      const target = draft.units.find((unit) => unit.id === team.focusTargetId);
+      if (!target || target.hp <= 0) team.focusTargetId = undefined;
+    }
+
+    // Stable and unchanged: the anchors from the last slotting still hold the shape.
+    // Re-anchor only the stragglers that have wandered well out of place.
+    if (!team.dirty && !membershipChanged) {
+      const slots = assignSlots(members.map((u) => u.id), team.shape, team.anchor, team.facing, team.spacing);
+      for (const unit of members) {
+        const slot = slots[unit.id];
+        unit.anchor = { x: slot.x, y: 0, z: slot.z };
+        const drift = Math.hypot(unit.position.x - slot.x, unit.position.z - slot.z);
+        if (drift > FORMATION_REFORM_DISTANCE) {
+          draft.unitOrders[unit.id] = { x: slot.x, y: 0, z: slot.z };
+          unit.unitState = 'moving_to_order';
+          clearMovementCarryOver(unit);
+        }
+      }
+      continue;
+    }
+
+    // Changed (re-shaped / moved / re-faced / a member gained or lost): slot every
+    // member to its place and send it there.
+    const slots = assignSlots(members.map((u) => u.id), team.shape, team.anchor, team.facing, team.spacing);
+    for (const unit of members) {
+      const slot = slots[unit.id];
+      unit.anchor = { x: slot.x, y: 0, z: slot.z };
+      draft.unitOrders[unit.id] = { x: slot.x, y: 0, z: slot.z };
+      unit.unitState = 'moving_to_order';
+      clearMovementCarryOver(unit);
+    }
+    team.dirty = false;
+    team.memberKey = memberKey;
+  }
+}
 
 export const useGameStore = create<Store>((set, get) => ({
   // Screen state
@@ -1677,6 +1856,15 @@ export const useGameStore = create<Store>((set, get) => ({
         }
       }
 
+      // Drive any shaped fire team the player is steering by moving its formation
+      // anchor (keeps the shape), then keep every fire team in its formation before
+      // the movement loop runs: maintainFormations pins each member's anchor to its
+      // slot and (re)issues a march order whenever the formation has changed, moved,
+      // or lost a member, so the per-unit loop below carries each unit to its place
+      // via the normal order/movement path.
+      applyFireTeamDrive(draft, dtSec);
+      maintainFormations(draft);
+
       // Batched combat processing for better performance
       const combatPairs: Array<{attacker: Unit, target: Unit, damage: number}> = [];
 
@@ -1762,17 +1950,21 @@ export const useGameStore = create<Store>((set, get) => ({
           // so the patrol branch below keeps her walking the route.
         }
 
-        // Fire-team driving: the player has handed this owner's drive control onto a
-        // deployed fire team, so every member moves by the shared pilot vector at
-        // once — the squad drives as one. Only overrides movement while there is
-        // actual drive input this frame; with the keys released the members fall
-        // through to their normal AI and defend the ground they hold. Keyed on the
-        // synced per-owner map so a multiplayer peer steers both players' teams
-        // identically. (A piloted monarch never carries a fireTeamId, so this and the
-        // monarch branch above are mutually exclusive.)
+        // Fire-team driving (UNSHAPED squads only): the player has handed this owner's
+        // drive control onto a deployed fire team that holds no formation, so every
+        // member moves by the shared pilot vector at once — the squad drives as one.
+        // A SHAPED team is driven differently — applyFireTeamDrive moves its formation
+        // anchor before the maintenance pass, which then flows the members to the
+        // moving slots keeping the shape — so it is excluded here. Only overrides
+        // movement while there is actual drive input this frame; with the keys
+        // released the members fall through to their normal AI and defend the ground
+        // they hold. Keyed on the synced per-owner map so a multiplayer peer steers
+        // both players' teams identically. (A piloted monarch never carries a
+        // fireTeamId, so this and the monarch branch above are mutually exclusive.)
         if (
           unit.fireTeamId !== undefined &&
-          draft.pilotedFireTeamByOwner[unit.ownerId] === unit.fireTeamId
+          draft.pilotedFireTeamByOwner[unit.ownerId] === unit.fireTeamId &&
+          !draft.fireTeams[unit.fireTeamId]
         ) {
           const move = draft.pilotMoveByOwner[unit.ownerId] ?? { x: 0, z: 0 };
           const inputMagnitude = Math.hypot(move.x, move.z);
@@ -2183,7 +2375,22 @@ export const useGameStore = create<Store>((set, get) => ({
               // stance's chase radius from the anchor so it never over-extends — by
               // the unit's target priority.
               if (!target && effectiveFire === 'free' && params.engages && draft.spatialGrid) {
-                if (unit.lastCombatTargetId && unit.lastCombatEngagementMs &&
+                // FOCUS-FIRE (formation audible): a formed team can be ordered to
+                // concentrate on one enemy. While that target lives and is reachable
+                // (within detection + the stance's chase leash), every member prefers
+                // it over its normal persistence/priority pick.
+                if (unit.fireTeamId !== undefined) {
+                  const team = draft.fireTeams[unit.fireTeamId];
+                  if (team && team.focusTargetId) {
+                    const focus = unitById.get(team.focusTargetId);
+                    if (focus && focus.ownerId !== unit.ownerId && focus.hp > 0 &&
+                        distanceSquared3D(unit.position, focus.position) <= params.detectionRadius * params.detectionRadius &&
+                        withinChase(focus)) {
+                      target = focus;
+                    }
+                  }
+                }
+                if (!target && unit.lastCombatTargetId && unit.lastCombatEngagementMs &&
                     nowMs - unit.lastCombatEngagementMs < 3000) {
                   const last = unitById.get(unit.lastCombatTargetId);
                   if (last && last.ownerId !== unit.ownerId && last.hp > 0 &&
@@ -2759,9 +2966,38 @@ export const useGameStore = create<Store>((set, get) => ({
   // and the set() runs immediately. Same pattern on every routed action below.
   moveCommand: (cmd) => routeCommand({ type: 'moveUnits', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
+      const ownerId = actingOwnerId(draft);
+
+      // Formation-aware move (drag-to-direct): members of a formed fire team are
+      // redirected as ONE unit — move the team's anchor to the target and turn it to
+      // face the direction of travel — instead of scattering them with individual
+      // orders the maintenance pass would just overwrite. The members then flow to
+      // their new slots and arrive holding the shape, oriented toward the destination.
+      const formedTeamIds = new Set<string>();
       for (const id of cmd.unitIds) {
         const u = draft.units.find((x) => x.id === id);
-        if (!u || u.ownerId !== actingOwnerId(draft)) continue; // Only allow moving the acting player's units
+        if (!u || u.ownerId !== ownerId) continue;
+        if (u.fireTeamId !== undefined && draft.fireTeams[u.fireTeamId]) formedTeamIds.add(u.fireTeamId);
+      }
+      for (const teamId of formedTeamIds) {
+        const team = draft.fireTeams[teamId];
+        const dx = cmd.target.x - team.anchor.x;
+        const dz = cmd.target.z - team.anchor.z;
+        // Face the direction of travel; a negligible move keeps the current facing.
+        // (worldSlot's forward axis is (sin f, cos f), so a heading toward (dx,dz) is
+        // atan2(dx, dz).)
+        if (Math.hypot(dx, dz) > 0.01) team.facing = Math.atan2(dx, dz);
+        team.anchor = { x: cmd.target.x, y: 0, z: cmd.target.z };
+        team.dirty = true;
+      }
+
+      for (const id of cmd.unitIds) {
+        const u = draft.units.find((x) => x.id === id);
+        if (!u || u.ownerId !== ownerId) continue; // Only allow moving the acting player's units
+
+        // Formed-team members are moved via their team anchor above; skip the
+        // individual-order path so the maintenance pass keeps them in formation.
+        if (u.fireTeamId !== undefined && draft.fireTeams[u.fireTeamId]) continue;
 
         // A mouse move order takes manual control back from a piloted King/Queen: stop
         // piloting it so the order actually takes effect. The pilot tick block drives the
@@ -2960,10 +3196,37 @@ export const useGameStore = create<Store>((set, get) => ({
     produce(prev, (draft) => {
       const target = draft.units.find(u => u.id === cmd.targetId);
       if (!target) return;
+      const ownerId = actingOwnerId(draft);
+
+      // Formation-aware attack (focus-fire audible): a formed fire team concentrates
+      // its fire on the target and advances on it as ONE unit — set the team's
+      // focus-fire target, march its anchor onto the enemy, and turn it to face the
+      // enemy — rather than scattering individual attack orders the maintenance pass
+      // would overwrite. The focus-fire hook in the engage block then makes every
+      // member prefer that enemy.
+      const formedTeamIds = new Set<string>();
+      for (const id of cmd.unitIds) {
+        const u = draft.units.find(x => x.id === id);
+        if (!u || u.ownerId !== ownerId) continue;
+        if (u.fireTeamId !== undefined && draft.fireTeams[u.fireTeamId]) formedTeamIds.add(u.fireTeamId);
+      }
+      for (const teamId of formedTeamIds) {
+        const team = draft.fireTeams[teamId];
+        team.focusTargetId = cmd.targetId;
+        const dx = target.position.x - team.anchor.x;
+        const dz = target.position.z - team.anchor.z;
+        if (Math.hypot(dx, dz) > 0.01) team.facing = Math.atan2(dx, dz);
+        team.anchor = { x: target.position.x, y: 0, z: target.position.z };
+        team.dirty = true;
+      }
 
       for (const id of cmd.unitIds) {
         const unit = draft.units.find(u => u.id === id);
-        if (!unit || unit.ownerId !== actingOwnerId(draft)) continue;
+        if (!unit || unit.ownerId !== ownerId) continue;
+
+        // Formed-team members focus-fire via their team above; skip the individual
+        // attack-order path so the maintenance pass keeps them in formation.
+        if (unit.fireTeamId !== undefined && draft.fireTeams[unit.fireTeamId]) continue;
 
         // A mouse attack order takes manual control back from a piloted King/Queen (see
         // moveCommand): stop piloting it so the order isn't dropped by the pilot tick block.
@@ -3077,56 +3340,121 @@ export const useGameStore = create<Store>((set, get) => ({
         for (const unit of members) unit.fireTeamId = teamId;
       }
 
-      // The shape centers on the squad's current centroid. Heading priority: an
-      // explicit command facing, else the team's existing facing (re-shaping in
-      // place keeps its orientation), else the way the members currently look.
-      const anchor = centroidOf(members.map((unit) => unit.position));
+      // Set the PERSISTENT formation intent; the maintenance pass (maintainFormations)
+      // does the actual slotting each tick. The shape centers on the squad's current
+      // centroid. Heading priority: an explicit command facing, else the team's
+      // existing facing (re-shaping in place keeps its orientation), else the way the
+      // members currently look. `dirty` makes the next tick re-slot every member.
       const existing = draft.fireTeams[teamId];
+      const anchor = centroidOf(members.map((unit) => unit.position));
       const facing =
         cmd.facing ?? existing?.facing ?? meanHeading(members.map((unit) => unit.rotation));
 
       draft.fireTeams[teamId] = {
         shape: cmd.shape,
-        facing,
-        role: cmd.role ?? existing?.role,
-      };
-
-      const slotById = assignSlots(
-        members.map((unit) => unit.id),
-        cmd.shape,
         anchor,
-        facing
-      );
+        facing,
+        spacing: defaultSpacingFor(cmd.shape),
+        role: cmd.role ?? existing?.role,
+        focusTargetId: existing?.focusTargetId,
+        dirty: true,
+        memberKey: '',
+      };
+    })
+  ),
 
-      for (const unit of members) {
-        const slot = slotById[unit.id];
-        // Send the member to its slot and make that slot its new "home" — exactly
-        // as moveCommand/placeRallied re-anchor on an explicit order — so a
-        // returns-to-anchor stance holds the slot instead of a stale spot.
-        draft.unitOrders[unit.id] = { x: slot.x, y: 0, z: slot.z };
-        unit.anchor = { x: slot.x, y: 0, z: slot.z };
-        unit.unitState = 'moving_to_order';
-        delete unit.arrivedAtDestinationMs;
+  adjustFormation: (cmd) => routeCommand({ type: 'adjustFormation', payload: cmd }) ? undefined : set((prev) =>
+    produce(prev, (draft) => {
+      const ownerId = actingOwnerId(draft);
+      if (!ownerId) return;
 
-        // Clear combat, blocking and landing carry-over so the new order wins.
-        delete unit.lastCombatTargetId;
-        delete unit.lastCombatEngagementMs;
-        delete unit.priorityAttacker;
-        unit.collisionAttempts = 0;
-        delete unit.movementPausedUntilMs;
-        delete unit.firstBlockedAtMs;
-        delete unit.nearDestinationSinceMs;
-
-        // Drop the cached A* path so the unit re-routes to its slot rather than
-        // steering toward its previous goal (see moveCommand / the deploy block).
-        delete unit.pathWaypoints;
-        delete unit.pathIndex;
-        delete unit.pathDestX;
-        delete unit.pathDestZ;
-        delete unit.pathVersion;
-        delete unit.pathStall;
-        delete unit.pathProgressDist;
+      // The formed teams represented in the selection (deduped, owner-gated).
+      const teamIds = new Set<string>();
+      for (const id of cmd.unitIds) {
+        const unit = draft.units.find((u) => u.id === id);
+        if (!unit || unit.ownerId !== ownerId) continue;
+        if (unit.fireTeamId !== undefined && draft.fireTeams[unit.fireTeamId]) teamIds.add(unit.fireTeamId);
       }
+
+      for (const teamId of teamIds) {
+        const team = draft.fireTeams[teamId];
+        switch (cmd.op) {
+          case 'rotateLeft':
+            team.facing -= FORMATION_ROTATE_STEP;
+            team.dirty = true;
+            break;
+          case 'rotateRight':
+            team.facing += FORMATION_ROTATE_STEP;
+            team.dirty = true;
+            break;
+          case 'expand':
+            team.spacing = Math.min(FORMATION_MAX_SPACING, team.spacing + FORMATION_SPACING_STEP);
+            team.dirty = true;
+            break;
+          case 'contract':
+            team.spacing = Math.max(FORMATION_MIN_SPACING, team.spacing - FORMATION_SPACING_STEP);
+            team.dirty = true;
+            break;
+          case 'disband':
+            // Break the formation: drop the state and free its members (they keep no
+            // fireTeamId, so they revert to ordinary selectable units).
+            delete draft.fireTeams[teamId];
+            for (const unit of draft.units) {
+              if (unit.fireTeamId === teamId) delete unit.fireTeamId;
+            }
+            break;
+        }
+      }
+    })
+  ),
+
+  callPlay: (cmd) => routeCommand({ type: 'callPlay', payload: cmd }) ? undefined : set((prev) =>
+    produce(prev, (draft) => {
+      const ownerId = actingOwnerId(draft);
+      if (!ownerId) return;
+      const play = PLAYBOOK[cmd.play];
+      if (!play) return;
+
+      // The acting player's formed teams with living members, ordered by id so the
+      // centroid sum and classification are lockstep-identical.
+      const teamIds = Object.keys(draft.fireTeams)
+        .filter((teamId) =>
+          draft.units.some(
+            (unit) =>
+              unit.fireTeamId === teamId && unit.ownerId === ownerId && unit.kind === 'Unit' && unit.hp > 0
+          )
+        )
+        .sort();
+      if (teamIds.length === 0) return;
+
+      // Army centroid + a representative facing, to measure each team's sideways
+      // (right-axis) offset for role classification.
+      const armyCentroid = centroidOf(teamIds.map((teamId) => draft.fireTeams[teamId].anchor));
+      const armyFacing = meanHeading(teamIds.map((teamId) => draft.fireTeams[teamId].facing));
+      const rightOffsets = teamIds.map((teamId) => {
+        const anchor = draft.fireTeams[teamId].anchor;
+        return rightAxisComponent(anchor.x - armyCentroid.x, anchor.z - armyCentroid.z, armyFacing);
+      });
+      // Band scales with how spread the army is, with a floor so a tight cluster
+      // still resolves cleanly into a single center role rather than jittering.
+      const maxAbsRight = rightOffsets.reduce((max, value) => Math.max(max, Math.abs(value)), 0);
+      const band = Math.max(6, maxAbsRight * 0.34);
+
+      teamIds.forEach((teamId, index) => {
+        const role = classifyRole(rightOffsets[index], band);
+        const rolePlay = play[role];
+        const team = draft.fireTeams[teamId];
+        team.shape = rolePlay.shape;
+        team.spacing = defaultSpacingFor(rolePlay.shape);
+        team.role = role;
+        team.dirty = true;
+        // Posture every member of the team for the play.
+        for (const unit of draft.units) {
+          if (unit.fireTeamId === teamId && unit.ownerId === ownerId && unit.kind === 'Unit' && unit.hp > 0) {
+            unit.behavior = mergeBehavior(behaviorOf(unit), { stance: rolePlay.stance });
+          }
+        }
+      });
     })
   ),
 
@@ -3769,6 +4097,8 @@ export function applyNetCommand(playerId: string, command: NetCommand): void {
       case 'attackTarget': store.attackTarget(command.payload); break;
       case 'setBehavior': store.setBehavior(command.payload); break;
       case 'setFormation': store.setFormation(command.payload); break;
+      case 'adjustFormation': store.adjustFormation(command.payload); break;
+      case 'callPlay': store.callPlay(command.payload); break;
       case 'setPatrol': store.setPatrol(command.payload); break;
       case 'setQueenRally': store.setQueenRally(command.payload); break;
       case 'setMovementHold': store.setMovementHold(command.payload.unitId); break;

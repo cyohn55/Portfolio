@@ -24,6 +24,8 @@ import type {
   CommandAttackTarget,
   CommandSetBehavior,
   CommandSetFormation,
+  CommandAdjustFormation,
+  CommandCallPlay,
   CommandThrowEggs,
   CommandFireTongues,
   CommandHiss,
@@ -52,6 +54,8 @@ export type NetCommand =
   | { type: 'attackTarget'; payload: CommandAttackTarget }
   | { type: 'setBehavior'; payload: CommandSetBehavior }
   | { type: 'setFormation'; payload: CommandSetFormation }
+  | { type: 'adjustFormation'; payload: CommandAdjustFormation }
+  | { type: 'callPlay'; payload: CommandCallPlay }
   | { type: 'setPatrol'; payload: CommandSetPatrol }
   | { type: 'setQueenRally'; payload: CommandSetQueenRally }
   | { type: 'setMovementHold'; payload: { unitId: string | null } }

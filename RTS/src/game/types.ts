@@ -334,15 +334,37 @@ export type FireTeamRole =
   | 'center'
   | 'reserve';
 
+// The King's playbook: a named "call" that re-shapes and re-postures all of his
+// formed teams at once by their positional role (left wing / center / right wing).
+// The concrete per-role shape+stance for each play lives in
+// components/Working/playbook.ts; this id is the shared vocabulary for the
+// callPlay command (kept here so types.ts is the single source of truth).
+export type PlaybookId = 'assault' | 'hold' | 'pincer' | 'fallBack' | 'turtle';
+
 // First-class per-fire-team state. A fire team is the set of army Units sharing a
-// fireTeamId (see Unit.fireTeamId); this records the shape it currently holds, the
-// heading that shape is oriented to (radians, same convention as Unit.rotation),
-// and an optional named role the play-call layer targets it by. Keyed by
-// fireTeamId on GameState.fireTeams; absent until the team is given a formation.
+// fireTeamId (see Unit.fireTeamId). This is the PERSISTENT formation intent the
+// tick maintains every frame (see maintainFormations in state.ts): the shape, the
+// `anchor` world point it is centered on, the `facing` it is oriented to (radians,
+// same convention as Unit.rotation), and the `spacing` between slots. Moving the
+// formation = moving the anchor; re-facing = changing facing; expanding =
+// changing spacing — each just sets `dirty` and the maintenance pass re-slots the
+// members. Keyed by fireTeamId on GameState.fireTeams; absent until the team is
+// given a formation, and deleted when the team has no living members left.
 export interface FireTeamState {
   shape: FormationShape;
   facing: number;
+  anchor: Position3D;
+  spacing: number;
   role?: FireTeamRole;
+  // An optional enemy the whole team focus-fires (the focus-fire audible). When
+  // set, members prefer this target while it lives; cleared when it dies/clears.
+  focusTargetId?: string;
+  // Maintenance bookkeeping (not player-facing). `dirty` requests a re-slot on the
+  // next tick (set whenever shape/anchor/facing/spacing changes); `memberKey` is
+  // the sorted member-id list last slotted, so the pass also re-slots when the
+  // membership changes (a death, or a unit added to the team).
+  dirty: boolean;
+  memberKey: string;
 }
 
 export interface GameState {
@@ -478,6 +500,23 @@ export interface CommandSetFormation {
   shape: FormationShape;
   facing?: number;
   role?: FireTeamRole;
+}
+
+// Calls a play from the King's playbook: re-shapes and re-postures every fire team
+// the acting player owns, by each team's positional role (auto-classified from its
+// place in the army), in one command. See components/Working/playbook.ts.
+export interface CommandCallPlay {
+  play: PlaybookId;
+}
+
+// A quick mid-play tweak ("audible") to the formation(s) of the given units'
+// fire team(s), without re-issuing the whole play:
+//   rotateLeft/rotateRight — pivot the facing a step (re-face a new threat)
+//   expand/contract         — widen/tighten the slot spacing (vs. AoE / chokepoints)
+//   disband                 — break formation, freeing the units to act individually
+export interface CommandAdjustFormation {
+  unitIds: string[];
+  op: 'rotateLeft' | 'rotateRight' | 'expand' | 'contract' | 'disband';
 }
 
 export interface CommandThrowEggs {

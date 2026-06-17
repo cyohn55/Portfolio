@@ -46,3 +46,57 @@ export const FORMATION_PANEL_SIZE = 2 * (FORMATION_RING_RADIUS + FORMATION_NODE_
 export function labelForShape(shape: FormationShape): string {
   return FORMATION_OPTIONS.find((option) => option.shape === shape)?.label ?? shape;
 }
+
+// The mid-play "audibles" shown beneath the wheel — quick tweaks to an
+// already-formed team (see CommandAdjustFormation). Focus-fire is intentionally
+// absent here: it needs an enemy target, so it is triggered by attacking one with
+// a formed team selected, not by a button.
+export type FormationAudibleOp = 'rotateLeft' | 'rotateRight' | 'expand' | 'contract' | 'disband';
+
+export interface FormationAudible {
+  op: FormationAudibleOp;
+  icon: string;
+  label: string;
+  hint: string;
+}
+
+export const AUDIBLES: readonly FormationAudible[] = [
+  { op: 'rotateLeft', icon: '↺', label: 'Rotate L', hint: 'Pivot the formation a step counter-clockwise' },
+  { op: 'rotateRight', icon: '↻', label: 'Rotate R', hint: 'Pivot the formation a step clockwise' },
+  { op: 'expand', icon: '⤡', label: 'Expand', hint: 'Widen the spacing (disperse vs. area attacks)' },
+  { op: 'contract', icon: '⤢', label: 'Contract', hint: 'Tighten the spacing (fit a chokepoint)' },
+  { op: 'disband', icon: '✕', label: 'Disband', hint: 'Break formation; free the units' },
+];
+
+// Styling for the audible bar (rts-formation-* to avoid the global-CSS class
+// collisions Vite's concatenated sheet is prone to). Injected alongside the reused
+// posture-radial style by FormationRadial.
+export const FORMATION_AUDIBLE_STYLE = `
+.rts-formation-audibles {
+  display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; justify-content: center;
+}
+.rts-formation-audible {
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(17,23,38,0.9); border: 1px solid rgba(14,159,110,0.7);
+  border-radius: 9px; padding: 7px 12px; color: #e2e8f0;
+  font-family: monospace; font-size: 12px; font-weight: 600; cursor: pointer;
+  backdrop-filter: blur(8px); transition: border-color 0.15s, background 0.15s, filter 0.15s;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+}
+.rts-formation-audible:hover:not(:disabled) {
+  border-color: rgba(52,211,153,0.95); background: rgba(20,40,32,0.95); filter: brightness(1.12);
+}
+.rts-formation-audible:disabled { opacity: 0.4; cursor: default; }
+.rts-formation-audible-icon { font-size: 15px; line-height: 1; }
+
+/* The playbook calls get a distinct amber accent so "team play" reads apart from
+   the green per-team audibles. */
+.rts-formation-playbook-label {
+  margin-top: 14px; font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  color: #fbbf24; text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+}
+.rts-formation-play { border-color: rgba(251,191,36,0.7); }
+.rts-formation-play:hover:not(:disabled) {
+  border-color: rgba(252,211,77,0.95); background: rgba(44,36,14,0.95);
+}
+`;
