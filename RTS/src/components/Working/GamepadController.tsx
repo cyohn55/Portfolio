@@ -146,7 +146,7 @@ const CAMERA_ACTIONS: ReadonlySet<ControlActionId> = new Set([
 const GAMEPAD_GESTURE_ACTIONS: readonly ControlActionId[] = [
   'primaryAction', 'secondaryAction', 'useAbility', 'monarchMeleeAttack',
   'selectMonarchAnimal', 'selectGroup1', 'selectGroup2', 'selectGroup3', 'deselect',
-  'rally', 'selectAllUnits', 'deployUnits', 'toggleBehaviorRadial',
+  'rally', 'selectAllUnits', 'deployUnits', 'toggleBehaviorRadial', 'toggleFormationRadial',
   'pilotCycleMonarch', 'pilotMonarch1', 'pilotMonarch2', 'pilotMonarch3', 'pilotToggleMonarch', 'cycleFireTeam', 'pause',
 ];
 
@@ -247,6 +247,11 @@ export function GamepadController() {
   const radialOpenRef = useRef(false);
   const radialSelectPrevRef = useRef(false);
   const radialClosePrevRef = useRef(false);
+  // The formation play wheel mirrors the posture radial's right-stick aim model;
+  // its own open/edge refs keep the two wheels' RT/B handling independent.
+  const formationRadialOpenRef = useRef(false);
+  const formationSelectPrevRef = useRef(false);
+  const formationClosePrevRef = useRef(false);
 
   // Stop the deploy designation interval (on release, pad disconnect, or unmount).
   const stopPlacementHold = () => {
@@ -371,9 +376,21 @@ export function GamepadController() {
     };
     window.addEventListener('rts:stance-radial-open', onOpen);
     window.addEventListener('rts:stance-radial-close', onClose);
+
+    // Same handling for the formation play wheel (independent open/edge state).
+    const onFormationOpen = () => { formationRadialOpenRef.current = true; };
+    const onFormationClose = () => {
+      formationRadialOpenRef.current = false;
+      formationSelectPrevRef.current = false;
+      formationClosePrevRef.current = false;
+    };
+    window.addEventListener('rts:formation-radial-open', onFormationOpen);
+    window.addEventListener('rts:formation-radial-close', onFormationClose);
     return () => {
       window.removeEventListener('rts:stance-radial-open', onOpen);
       window.removeEventListener('rts:stance-radial-close', onClose);
+      window.removeEventListener('rts:formation-radial-open', onFormationOpen);
+      window.removeEventListener('rts:formation-radial-close', onFormationClose);
     };
   }, []);
 
@@ -659,7 +676,7 @@ export function GamepadController() {
     // While the posture radial is open it owns RT (Move/Attack) and B (Deselect) as
     // its select/close inputs, so swallow those here too — defense against a chord
     // binding reaching this path while the dispatch loop skip handles plain presses.
-    if (radialOpenRef.current && (actionId === 'secondaryAction' || actionId === 'deselect')) return;
+    if ((radialOpenRef.current || formationRadialOpenRef.current) && (actionId === 'secondaryAction' || actionId === 'deselect')) return;
 
     switch (actionId) {
       case 'primaryAction': {
@@ -748,6 +765,12 @@ export function GamepadController() {
         // (handled in the poll loop) and a release confirms it. Same event the
         // keyboard binding fires, so BehaviorRadial has one entry point.
         window.dispatchEvent(new CustomEvent('rts:toggle-stance-radial'));
+        break;
+      case 'toggleFormationRadial':
+        // Open/close the formation play wheel; the right stick then aims a shape
+        // (handled in the poll loop) and the select button confirms it. Same event
+        // the keyboard binding fires, so FormationRadial has one entry point.
+        window.dispatchEvent(new CustomEvent('rts:toggle-formation-radial'));
         break;
       case 'deployUnits':
         // The one-shot path (tap / double-tap / chord): deploy a single unit. The
@@ -847,6 +870,10 @@ export function GamepadController() {
 
     const { controllerBindings, isPaused, matchStarted } = useGameStore.getState();
     const radialOpen = radialOpenRef.current;
+    const formationRadialOpen = formationRadialOpenRef.current;
+    // Either wheel owns the right stick while open, so the cursor block below is
+    // suppressed for both.
+    const anyRadialOpen = radialOpen || formationRadialOpen;
 
     // --- Posture radial selection (right stick + RT + B). While the radial is open
     // the right stick aims a ring/wedge instead of driving the cursor: the deflection
@@ -881,6 +908,31 @@ export function GamepadController() {
       radialClosePrevRef.current = false;
     }
 
+    // --- Formation play wheel selection (right stick + RT + B). Mirrors the posture
+    // radial above: while open the right stick aims a shape, RT calls the highlighted
+    // one (the wheel stays open), and B closes it. Mutually exclusive with the posture
+    // radial — only one wheel can be open at a time. ---
+    if (matchStarted && !isPaused && formationRadialOpen) {
+      const rx = gamepad.axes[2] ?? 0;
+      const ry = gamepad.axes[3] ?? 0;
+      window.dispatchEvent(new CustomEvent('rts:formation-radial-aim', { detail: { x: rx, y: ry } }));
+
+      const selectActive = isControllerTokenActive(gamepad, controllerBindings.secondaryAction);
+      if (selectActive && !formationSelectPrevRef.current) {
+        window.dispatchEvent(new CustomEvent('rts:formation-radial-select'));
+      }
+      formationSelectPrevRef.current = selectActive;
+
+      const closeActive = isControllerTokenActive(gamepad, controllerBindings.deselect);
+      if (closeActive && !formationClosePrevRef.current) {
+        window.dispatchEvent(new CustomEvent('rts:toggle-formation-radial'));
+      }
+      formationClosePrevRef.current = closeActive;
+    } else {
+      formationSelectPrevRef.current = false;
+      formationClosePrevRef.current = false;
+    }
+
     // --- Camera intent (analog, held). Suppressed while paused. ---
     if (matchStarted && !isPaused) {
       const right = controllerTokenMagnitude(gamepad, controllerBindings.cameraRight);
@@ -900,7 +952,7 @@ export function GamepadController() {
     // PILOT_CURSOR_MAX_DISTANCE leash; otherwise it free-roams the screen (raycast to
     // the ground each frame). Hidden entirely while paused / before match start, and
     // while the posture radial owns the right stick (above). ---
-    if (matchStarted && !isPaused && !radialOpen) {
+    if (matchStarted && !isPaused && !anyRadialOpen) {
       const rx = gamepad.axes[2] ?? 0;
       const ry = gamepad.axes[3] ?? 0;
       const dx = Math.abs(rx) > CONTROLLER_DEADZONE ? rx : 0;

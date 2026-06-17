@@ -8,6 +8,7 @@ import { GamepadController } from './components/Working/GamepadController';
 import { UnitPlacementIndicator } from './components/Working/UnitPlacementIndicator';
 import { EdgePanChevrons } from './components/Working/EdgePanChevrons';
 import { BehaviorRadial } from './components/Working/BehaviorRadial';
+import { FormationRadial } from './components/Working/FormationRadial';
 import { HUD } from './components/HUD';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { ModelPreloader } from './utils/ModelPreloader';
@@ -195,6 +196,8 @@ export default function App() {
       </div>
       {/* Selection radial for the combat-posture system (stance / fire / priority). */}
       <BehaviorRadial />
+      {/* The King's formation play wheel for the selected / driven fire team. */}
+      <FormationRadial />
       {/* Yellow edge-scroll chevrons, lit only while the cursor is in a pan-trigger band. */}
       <EdgePanChevrons />
       <Canvas

@@ -418,20 +418,23 @@ function MonarchButton({ kind, monarch, isSelected, onClick }: MonarchButtonProp
   );
 }
 
-interface StanceToggleButtonProps {
+interface CommandToggleButtonProps {
   enabled: boolean;
   onClick: () => void;
+  icon: string;
+  label: string;
+  title: string;
 }
 
-// The 4th button to the right of the animal buttons. It reveals/hides the combat
-// posture UI (BehaviorRadial) for the current selection via the shared toggle
-// event; disabled when the selection has no commandable units.
-function StanceToggleButton({ enabled, onClick }: StanceToggleButtonProps) {
+// A square trigger button to the right of the animal buttons. It reveals/hides one
+// of the selection command radials (combat posture, formation) via that radial's
+// shared toggle event; disabled when the selection has no commandable units.
+function CommandToggleButton({ enabled, onClick, icon, label, title }: CommandToggleButtonProps) {
   return (
     <button
       onClick={enabled ? onClick : undefined}
       disabled={!enabled}
-      title="Show/hide combat posture for the selection"
+      title={title}
       style={{
         position: 'relative',
         width: '80px',
@@ -460,9 +463,9 @@ function StanceToggleButton({ enabled, onClick }: StanceToggleButtonProps) {
         e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.3)';
       }}
     >
-      <span style={{ fontSize: '30px', lineHeight: 1 }}>⚔️</span>
+      <span style={{ fontSize: '30px', lineHeight: 1 }}>{icon}</span>
       <span style={{ fontSize: '11px', fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap' }}>
-        Posture
+        {label}
       </span>
     </button>
   );
@@ -541,6 +544,12 @@ export function AnimalSelectionButtons() {
     window.dispatchEvent(new CustomEvent('rts:toggle-stance-radial'));
   };
 
+  // Same pattern for the formation play wheel — another trigger for the shared
+  // toggle event FormationRadial (and the keyboard/controller bindings) listen for.
+  const handleFormationToggle = () => {
+    window.dispatchEvent(new CustomEvent('rts:toggle-formation-radial'));
+  };
+
   if (!matchStarted || selectedAnimalPool.length === 0) {
     return null;
   }
@@ -593,8 +602,21 @@ export function AnimalSelectionButtons() {
         );
       })}
 
-      {/* 4th button: reveals/hides the combat-posture UI for the selection. */}
-      <StanceToggleButton enabled={hasCommandableSelection} onClick={handleStanceToggle} />
+      {/* Command radials for the selection: combat posture, then the formation wheel. */}
+      <CommandToggleButton
+        enabled={hasCommandableSelection}
+        onClick={handleStanceToggle}
+        icon="⚔️"
+        label="Posture"
+        title="Show/hide combat posture for the selection"
+      />
+      <CommandToggleButton
+        enabled={hasCommandableSelection}
+        onClick={handleFormationToggle}
+        icon="🎖️"
+        label="Formation"
+        title="Show/hide the formation play wheel for the selection"
+      />
     </div>
   );
 }

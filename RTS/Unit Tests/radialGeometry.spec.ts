@@ -2,7 +2,9 @@ import { test, expect } from '@playwright/test';
 import {
   type RadialHover,
   FIRE_BAND,
+  fullRingAngleDeg,
   hoverFromVector,
+  ringIndexFromVector,
   semicircleAngleDeg,
 } from '../src/components/Working/radialGeometry';
 
@@ -104,3 +106,49 @@ function aimedAt(angleDeg: number): [number, number] {
   const { x, y } = aimAt(angleDeg);
   return [x, y];
 }
+
+// The formation wheel's full ring (no center action). Exercised against the same
+// aim vectors with a representative option count.
+const FORMATION_COUNT = 7;
+
+test.describe('fullRingAngleDeg', () => {
+  test('places index 0 at the top of the ring (270°/−90°)', () => {
+    // Screen convention: up is −90° ≡ 270°; sin should be negative (pointing up).
+    expect(fullRingAngleDeg(0, FORMATION_COUNT)).toBeCloseTo(-90, 6);
+    expect(Math.sin((fullRingAngleDeg(0, FORMATION_COUNT) * Math.PI) / 180)).toBeLessThan(0);
+  });
+
+  test('steps clockwise by an equal arc per option', () => {
+    const step = 360 / FORMATION_COUNT;
+    for (let i = 1; i < FORMATION_COUNT; i++) {
+      expect(fullRingAngleDeg(i, FORMATION_COUNT) - fullRingAngleDeg(i - 1, FORMATION_COUNT)).toBeCloseTo(step, 6);
+    }
+  });
+});
+
+test.describe('ringIndexFromVector', () => {
+  test('a near-rest stick addresses no option (null)', () => {
+    expect(ringIndexFromVector(0, 0, FORMATION_COUNT)).toBeNull();
+    expect(ringIndexFromVector(0, -(FIRE_BAND - 0.05), FORMATION_COUNT)).toBeNull();
+  });
+
+  test('aiming at each option angle selects that option', () => {
+    for (let i = 0; i < FORMATION_COUNT; i++) {
+      const dir = aimAt(fullRingAngleDeg(i, FORMATION_COUNT));
+      expect(ringIndexFromVector(dir.x, dir.y, FORMATION_COUNT)).toBe(i);
+    }
+  });
+
+  test('a deflected stick always resolves to a real option index', () => {
+    for (const angle of [0, 45, 90, 135, 180, 225, 315]) {
+      const index = ringIndexFromVector(...aimedAt(angle), FORMATION_COUNT);
+      expect(index).not.toBeNull();
+      expect(index).toBeGreaterThanOrEqual(0);
+      expect(index).toBeLessThan(FORMATION_COUNT);
+    }
+  });
+
+  test('returns null for an empty ring', () => {
+    expect(ringIndexFromVector(1, 0, 0)).toBeNull();
+  });
+});

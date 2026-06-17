@@ -28,6 +28,7 @@ const KEYBOARD_GESTURE_ACTIONS: readonly string[] = [
   'selectAllUnits',
   'deployUnits',
   'toggleBehaviorRadial',
+  'toggleFormationRadial',
 ];
 
 export function KeyboardShortcuts() {
@@ -105,6 +106,11 @@ export function KeyboardShortcuts() {
           // The radial lives in BehaviorRadial.tsx; toggle it via an event so this
           // layer stays free of the overlay's React state (same pattern as pause).
           window.dispatchEvent(new CustomEvent('rts:toggle-stance-radial'));
+          break;
+        case 'toggleFormationRadial':
+          // The formation play wheel lives in FormationRadial.tsx; toggle it via an
+          // event for the same reason (it owns its own overlay state).
+          window.dispatchEvent(new CustomEvent('rts:toggle-formation-radial'));
           break;
         default: break;
       }

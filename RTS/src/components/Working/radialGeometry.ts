@@ -42,6 +42,38 @@ function angleDiffDeg(a: number, b: number): number {
   return Math.abs(((a - b + 540) % 360) - 180);
 }
 
+// --- Full-ring radial (the formation play wheel) ----------------------------
+// A single FULL ring of N equal options with no center action — used by the
+// formation wheel rather than the posture radial's split top/bottom layout. Index
+// 0 sits at the top (12 o'clock) and the rest run clockwise, so the wheel reads
+// like a clock face.
+
+// Screen-degree placement (0°=right, 90°=down) of the index-th option in a full
+// ring of `count` items, starting at the top (270°/−90°) and stepping clockwise.
+export function fullRingAngleDeg(index: number, count: number): number {
+  return -90 + (360 / count) * index;
+}
+
+// Resolve a raw stick vector into the full-ring option it addresses: the option
+// whose placement angle is closest to the aim. Returns null when the stick is
+// within FIRE_BAND of rest (no option addressed) so an at-rest stick highlights
+// nothing rather than snapping to index 0, and null for an empty ring.
+export function ringIndexFromVector(x: number, y: number, count: number): number | null {
+  if (count <= 0) return null;
+  if (Math.hypot(x, y) < FIRE_BAND) return null;
+  const aimDeg = Math.atan2(y, x) * (180 / Math.PI);
+  let best = 0;
+  let bestDiff = Infinity;
+  for (let i = 0; i < count; i++) {
+    const diff = angleDiffDeg(aimDeg, fullRingAngleDeg(i, count));
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = i;
+    }
+  }
+  return best;
+}
+
 // Resolve a raw right-stick vector into the option it addresses. A near-rest stick
 // (magnitude below FIRE_BAND) addresses the center fire toggle; any larger push
 // selects the single ring option whose placement angle is closest to the aim — the

@@ -53,6 +53,7 @@ export type ControlActionId =
   | 'setQueenRally'
   | 'setPatrol'
   | 'toggleBehaviorRadial'
+  | 'toggleFormationRadial'
   | 'pilotCycleMonarch'
   | 'pilotMonarch1'
   | 'pilotMonarch2'
@@ -126,6 +127,7 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
   { id: 'setQueenRally', label: 'Set Spawn Rally Point', category: 'Commands', description: 'With a single Queen selected, press to start aiming the blue rally line, then issue Move / Attack (right-click on mouse) to drop the rally point. Units she spawns afterward march straight to it — or follow a friendly King dropped on.', gestureHint: 'Aim, then Move/Attack to drop' },
   { id: 'setPatrol', label: 'Set Patrol Route', category: 'Commands', description: 'With a single Queen selected, hold to aim a back-and-forth patrol route along the gold line, then release to commit it. Keyboard & mouse use a held right-click on the Queen instead, so this stays unbound there by default.', gestureHint: 'Hold to aim · release to set the route' },
   { id: 'toggleBehaviorRadial', label: 'Combat Posture Radial', category: 'Commands', description: 'With your units selected, open the two-ring combat-posture radial: the center toggles weapons-free / hold-fire, the inner ring sets stance (Aggressive, Skirmish, Hold Ground, Defensive, Flee), and the outer ring sets target priority (Nearest, Weakest, Threat, Ranged, Royalty). On a controller, aim with the right stick (deflection picks the ring), press RT to apply the highlighted option, and B to close.' },
+  { id: 'toggleFormationRadial', label: 'Formation Wheel', category: 'Commands', description: 'With a fire team selected or under your drive control (deploy a batch with the Deploy hold, then cycle drive onto it), open the formation play wheel: pick a shape — Line, Column, Wedge, Box, Echelon L/R, or Skirmish — and the squad snaps into it around its current position. The King’s "play call". On a controller, aim with the right stick, press RT to call the highlighted shape, and B to close.' },
   { id: 'pilotCycleMonarch', label: 'Cycle Piloted Monarch', category: 'Pilot', description: 'Tap to start piloting your first animal’s King, then cycle through your other animals’ monarchs. Drive it with the Move keys.' },
   { id: 'pilotMonarch1', label: 'Pilot Monarch 1', category: 'Pilot', description: 'Directly pilot the King of your first animal (toggle Queen with Toggle Monarch). Drive it with the Move keys/stick.' },
   { id: 'pilotMonarch2', label: 'Pilot Monarch 2', category: 'Pilot', description: 'Directly pilot the King of your second animal. Drive it with the Move keys/stick.' },
@@ -175,6 +177,8 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   setPatrol: '',
   // B opens the combat-posture radial for the current selection.
   toggleBehaviorRadial: 'b',
+  // V opens the formation play wheel for the selected / driven fire team.
+  toggleFormationRadial: 'v',
   // A cycles through the three animals' monarchs; G swaps the current King/Queen.
   // The per-slot pilot keys stay unbound on keyboard (they exist for the
   // controller's D-Pad), so the home row stays free for the cycle/toggle keys.
@@ -230,6 +234,11 @@ export const DEFAULT_CONTROLLER_BINDINGS: ControlBindings = {
   setQueenRally: DPAD_RIGHT, // arm the spawn-rally aim; Move/Attack drops it
   setPatrol: 'button:10', // L3 held arms the patrol aim; release commits
   toggleBehaviorRadial: 'button:11', // R3 opens the posture radial (aim with RS, release to confirm)
+  // The standard-gamepad face/shoulder/stick/D-Pad buttons are all assigned, so the
+  // formation wheel ships unbound on the controller; players can map it to any free
+  // button (or a chord) in Settings → Controls. When bound it aims with RS like the
+  // posture radial.
+  toggleFormationRadial: '',
   pilotCycleMonarch: 'button:4', // LB — Switch Monarch
   // The left stick pilots and LB cycles monarchs, so the old per-slot D-Pad pilots
   // are unbound to free the D-Pad for zoom / rally.
@@ -280,6 +289,7 @@ export const DEFAULT_BINDING_MODES: ControlBindingModes = {
   setQueenRally: 'tap',
   setPatrol: 'hold',
   toggleBehaviorRadial: 'tap',
+  toggleFormationRadial: 'tap',
   pilotCycleMonarch: 'tap',
   pilotMonarch1: 'tap',
   pilotMonarch2: 'tap',

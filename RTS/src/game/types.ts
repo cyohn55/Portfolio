@@ -313,6 +313,38 @@ export interface MatchStats {
   enemyLeftBridgeDownMs: number;   // AI time holding the left bridge down (ms)
 }
 
+// The geometric shapes a fire team can hold and the named roles the King's
+// play-calls address teams by. The concrete slot geometry lives in
+// components/Working/formations.ts; these are the shared vocabulary the game
+// state, the setFormation command, and that module all reference, kept here so
+// there is a single source of truth (formations.ts re-exports them).
+export type FormationShape =
+  | 'line'
+  | 'column'
+  | 'wedge'
+  | 'box'
+  | 'echelonLeft'
+  | 'echelonRight'
+  | 'skirmish';
+
+export type FireTeamRole =
+  | 'vanguard'
+  | 'leftWing'
+  | 'rightWing'
+  | 'center'
+  | 'reserve';
+
+// First-class per-fire-team state. A fire team is the set of army Units sharing a
+// fireTeamId (see Unit.fireTeamId); this records the shape it currently holds, the
+// heading that shape is oriented to (radians, same convention as Unit.rotation),
+// and an optional named role the play-call layer targets it by. Keyed by
+// fireTeamId on GameState.fireTeams; absent until the team is given a formation.
+export interface FireTeamState {
+  shape: FormationShape;
+  facing: number;
+  role?: FireTeamRole;
+}
+
 export interface GameState {
   config: GameConfig;
   players: Player[];
@@ -393,6 +425,13 @@ export interface GameState {
   // simulates BOTH players' fire-team driving identically. Mutually exclusive with
   // pilotedUnitIdByOwner: grabbing a monarch clears the team and vice versa.
   pilotedFireTeamByOwner: Record<string, string | null>;
+  // Per-fire-team formation state, keyed by fireTeamId. A team gets an entry the
+  // first time it is given a formation (setFormation) and keeps it until match
+  // reset; a team with no entry holds no formation (its members just clump). Reset
+  // to {} every startMatch — the FT ids restart from the same deterministic
+  // sequence each match, so a stale entry would otherwise re-apply to a different
+  // squad. See FireTeamState and components/Working/formations.ts.
+  fireTeams: Record<string, FireTeamState>;
 }
 
 export interface CommandMoveUnits {
@@ -424,6 +463,21 @@ export interface CommandSetBehavior {
   unitIds: string[];
   behavior: Partial<UnitBehavior>;
   guardTargetId?: string | null; // null clears an existing guard target
+}
+
+// Forms the given units into a fire team holding a formation shape. The King calls
+// this on a selection (or a squad he is driving) to shape it — the play-call layer
+// will call it per named role. The units are grouped under a single fireTeamId: an
+// existing shared one is reused, otherwise a fresh deterministic id is minted, so
+// loose units selected together become a fire team the moment they are shaped.
+// `facing` is the heading the shape orients to; when omitted the team keeps its
+// current facing if it has one, otherwise it faces the way its members currently
+// look. `role`, when present, tags the team so later play-calls address it by name.
+export interface CommandSetFormation {
+  unitIds: string[];
+  shape: FormationShape;
+  facing?: number;
+  role?: FireTeamRole;
 }
 
 export interface CommandThrowEggs {

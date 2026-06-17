@@ -15,6 +15,7 @@ import { pathfinder } from '../components/Working/pathfinder';
 import { BLOCKER_LOOKAHEAD, deflectAroundBlockers, type SteerBlocker } from '../components/Working/movementSteering';
 import { slideAlongObstacle } from '../components/Working/terrainSlide';
 import { clampToArena } from '../components/Working/arenaBoundary';
+import { assignSlots, centroidOf, meanHeading } from '../components/Working/formations';
 import {
   type MonarchKind,
   MONARCH_FOLLOW_STOP_DISTANCE,
@@ -31,7 +32,7 @@ import {
   selectionForMonarch,
   shouldChaseMonarch,
 } from '../components/Working/monarchPilot';
-import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandSetQueenRally, CommandAttackTarget, CommandSetBehavior, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, CommandOwlDeliver, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
+import type { Position3D, AnimalId, CommandMoveUnits, CommandSetPatrol, CommandSetQueenRally, CommandAttackTarget, CommandSetBehavior, CommandSetFormation, CommandThrowEggs, CommandFireTongues, CommandHiss, CommandSwarm, CommandOwlPickup, CommandOwlDeliver, GameConfig, GameState, MatchStats, Player, Unit, PatrolRoute, Projectile } from './types';
 import {
   behaviorOf,
   defaultBehaviorFor,
@@ -777,6 +778,11 @@ type Store = GameState & {
   setMovementHold: (unitId: string | null) => void;
   attackTarget: (cmd: CommandAttackTarget) => void;
   setBehavior: (cmd: CommandSetBehavior) => void;
+  // Put one of the acting owner's deployed fire teams into a formation shape: each
+  // living member is sent to its slot around the squad's centroid, oriented to the
+  // team's heading. The King's "play call". Routed so multiplayer peers shape the
+  // same squad identically. See CommandSetFormation and formations.ts.
+  setFormation: (cmd: CommandSetFormation) => void;
   selectUnits: (unitIds: string[]) => void;
   addToSelection: (unitIds: string[]) => void;
   clearSelection: () => void;
@@ -1036,6 +1042,7 @@ export const useGameStore = create<Store>((set, get) => ({
   pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } },
   pilotedFireTeamId: null,
   pilotedFireTeamByOwner: { p0: null, p1: null },
+  fireTeams: {},
   movementHeldUnitId: null,
   unitPlacementCount: 0,
   unitPlacementCursor: null,
@@ -1194,7 +1201,7 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, pilotedUnitIdByOwner: { p0: null, p1: null }, pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } }, pilotedFireTeamId: null, pilotedFireTeamByOwner: { p0: null, p1: null }, movementHeldUnitId: null, unitPlacementCount: 0, unitPlacementCursor: null, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, pilotedUnitIdByOwner: { p0: null, p1: null }, pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } }, pilotedFireTeamId: null, pilotedFireTeamByOwner: { p0: null, p1: null }, fireTeams: {}, movementHeldUnitId: null, unitPlacementCount: 0, unitPlacementCursor: null, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
@@ -1268,6 +1275,7 @@ export const useGameStore = create<Store>((set, get) => ({
       pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } },
       pilotedFireTeamId: null,
       pilotedFireTeamByOwner: { p0: null, p1: null },
+      fireTeams: {},
       movementHeldUnitId: null,
       unitPlacementCount: 0,
       unitPlacementCursor: null,
@@ -3033,6 +3041,95 @@ export const useGameStore = create<Store>((set, get) => ({
     })
   ),
 
+  setFormation: (cmd) => routeCommand({ type: 'setFormation', payload: cmd }) ? undefined : set((prev) =>
+    produce(prev, (draft) => {
+      const ownerId = actingOwnerId(draft);
+      if (!ownerId) return;
+
+      // Living movable units the acting player asked to form up, ordered by id so
+      // the team-id choice, the centroid sum, the heading average, and the slot
+      // assignment are all identical on both lockstep peers regardless of array
+      // order. Bases/monarchs are excluded — only army Units hold a formation.
+      const requested = new Set(cmd.unitIds);
+      const members = draft.units
+        .filter(
+          (unit) =>
+            requested.has(unit.id) &&
+            unit.ownerId === ownerId &&
+            unit.kind === 'Unit' &&
+            unit.hp > 0
+        )
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      if (members.length === 0) return;
+
+      // Group the members under one fire team: reuse the id if they already all
+      // share one (re-shaping an existing squad), otherwise mint a fresh
+      // deterministic id and stamp it on every member, so loose units selected
+      // together become a fire team the instant they are shaped. nextEntityId keeps
+      // both lockstep peers minting the same id (same as the deploy path).
+      const sharedTeamId =
+        members.every((unit) => unit.fireTeamId !== undefined) &&
+        members.every((unit) => unit.fireTeamId === members[0].fireTeamId)
+          ? members[0].fireTeamId!
+          : null;
+      const teamId = sharedTeamId ?? nextEntityId('FT');
+      if (sharedTeamId === null) {
+        for (const unit of members) unit.fireTeamId = teamId;
+      }
+
+      // The shape centers on the squad's current centroid. Heading priority: an
+      // explicit command facing, else the team's existing facing (re-shaping in
+      // place keeps its orientation), else the way the members currently look.
+      const anchor = centroidOf(members.map((unit) => unit.position));
+      const existing = draft.fireTeams[teamId];
+      const facing =
+        cmd.facing ?? existing?.facing ?? meanHeading(members.map((unit) => unit.rotation));
+
+      draft.fireTeams[teamId] = {
+        shape: cmd.shape,
+        facing,
+        role: cmd.role ?? existing?.role,
+      };
+
+      const slotById = assignSlots(
+        members.map((unit) => unit.id),
+        cmd.shape,
+        anchor,
+        facing
+      );
+
+      for (const unit of members) {
+        const slot = slotById[unit.id];
+        // Send the member to its slot and make that slot its new "home" — exactly
+        // as moveCommand/placeRallied re-anchor on an explicit order — so a
+        // returns-to-anchor stance holds the slot instead of a stale spot.
+        draft.unitOrders[unit.id] = { x: slot.x, y: 0, z: slot.z };
+        unit.anchor = { x: slot.x, y: 0, z: slot.z };
+        unit.unitState = 'moving_to_order';
+        delete unit.arrivedAtDestinationMs;
+
+        // Clear combat, blocking and landing carry-over so the new order wins.
+        delete unit.lastCombatTargetId;
+        delete unit.lastCombatEngagementMs;
+        delete unit.priorityAttacker;
+        unit.collisionAttempts = 0;
+        delete unit.movementPausedUntilMs;
+        delete unit.firstBlockedAtMs;
+        delete unit.nearDestinationSinceMs;
+
+        // Drop the cached A* path so the unit re-routes to its slot rather than
+        // steering toward its previous goal (see moveCommand / the deploy block).
+        delete unit.pathWaypoints;
+        delete unit.pathIndex;
+        delete unit.pathDestX;
+        delete unit.pathDestZ;
+        delete unit.pathVersion;
+        delete unit.pathStall;
+        delete unit.pathProgressDist;
+      }
+    })
+  ),
+
   selectUnits: (unitIds) => set({ selectedUnitIds: unitIds }),
 
   addToSelection: (unitIds) => set((prev) => ({
@@ -3671,6 +3768,7 @@ export function applyNetCommand(playerId: string, command: NetCommand): void {
       case 'moveUnits': store.moveCommand(command.payload); break;
       case 'attackTarget': store.attackTarget(command.payload); break;
       case 'setBehavior': store.setBehavior(command.payload); break;
+      case 'setFormation': store.setFormation(command.payload); break;
       case 'setPatrol': store.setPatrol(command.payload); break;
       case 'setQueenRally': store.setQueenRally(command.payload); break;
       case 'setMovementHold': store.setMovementHold(command.payload.unitId); break;
