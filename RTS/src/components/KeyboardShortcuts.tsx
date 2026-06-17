@@ -29,6 +29,8 @@ const KEYBOARD_GESTURE_ACTIONS: readonly string[] = [
   'deployUnits',
   'toggleBehaviorRadial',
   'toggleFormationRadial',
+  'toggleAudibleRadial',
+  'togglePlaybookRadial',
 ];
 
 export function KeyboardShortcuts() {
@@ -111,6 +113,12 @@ export function KeyboardShortcuts() {
           // The formation play wheel lives in FormationRadial.tsx; toggle it via an
           // event for the same reason (it owns its own overlay state).
           window.dispatchEvent(new CustomEvent('rts:toggle-formation-radial'));
+          break;
+        case 'toggleAudibleRadial':
+          window.dispatchEvent(new CustomEvent('rts:toggle-audible-radial'));
+          break;
+        case 'togglePlaybookRadial':
+          window.dispatchEvent(new CustomEvent('rts:toggle-playbook-radial'));
           break;
         default: break;
       }

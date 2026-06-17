@@ -9,6 +9,8 @@ import { UnitPlacementIndicator } from './components/Working/UnitPlacementIndica
 import { EdgePanChevrons } from './components/Working/EdgePanChevrons';
 import { BehaviorRadial } from './components/Working/BehaviorRadial';
 import { FormationRadial } from './components/Working/FormationRadial';
+import { AudibleRadial } from './components/Working/AudibleRadial';
+import { PlaybookRadial } from './components/Working/PlaybookRadial';
 import { HUD } from './components/HUD';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { ModelPreloader } from './utils/ModelPreloader';
@@ -196,8 +198,11 @@ export default function App() {
       </div>
       {/* Selection radial for the combat-posture system (stance / fire / priority). */}
       <BehaviorRadial />
-      {/* The King's formation play wheel for the selected / driven fire team. */}
+      {/* The King's directing wheels: formation shapes, per-team audibles, and the
+          all-teams playbook (D-Pad Up / Right / Left on a controller). */}
       <FormationRadial />
+      <AudibleRadial />
+      <PlaybookRadial />
       {/* Yellow edge-scroll chevrons, lit only while the cursor is in a pan-trigger band. */}
       <EdgePanChevrons />
       <Canvas

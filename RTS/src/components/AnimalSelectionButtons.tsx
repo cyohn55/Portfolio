@@ -544,10 +544,16 @@ export function AnimalSelectionButtons() {
     window.dispatchEvent(new CustomEvent('rts:toggle-stance-radial'));
   };
 
-  // Same pattern for the formation play wheel — another trigger for the shared
-  // toggle event FormationRadial (and the keyboard/controller bindings) listen for.
+  // Same pattern for the three formation wheels — each is another trigger for the
+  // shared toggle event its radial (and the keyboard/controller bindings) listen for.
   const handleFormationToggle = () => {
     window.dispatchEvent(new CustomEvent('rts:toggle-formation-radial'));
+  };
+  const handleAudibleToggle = () => {
+    window.dispatchEvent(new CustomEvent('rts:toggle-audible-radial'));
+  };
+  const handlePlaybookToggle = () => {
+    window.dispatchEvent(new CustomEvent('rts:toggle-playbook-radial'));
   };
 
   if (!matchStarted || selectedAnimalPool.length === 0) {
@@ -615,7 +621,21 @@ export function AnimalSelectionButtons() {
         onClick={handleFormationToggle}
         icon="🎖️"
         label="Formation"
-        title="Show/hide the formation play wheel for the selection"
+        title="Show/hide the formation shape wheel for the selection"
+      />
+      <CommandToggleButton
+        enabled={hasCommandableSelection}
+        onClick={handleAudibleToggle}
+        icon="🎚️"
+        label="Audible"
+        title="Show/hide the formation audible wheel (rotate / spread / disband)"
+      />
+      <CommandToggleButton
+        enabled={hasCommandableSelection}
+        onClick={handlePlaybookToggle}
+        icon="📋"
+        label="Playbook"
+        title="Show/hide the playbook wheel (re-shape all teams by role)"
       />
     </div>
   );

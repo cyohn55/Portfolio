@@ -141,12 +141,14 @@ const CAMERA_ACTIONS: ReadonlySet<ControlActionId> = new Set([
 // dispatch (tap / double-tap / hold / chord). primaryAction is listed before the
 // LB-chord group selects so that, when a chord like LB+A is pressed, the plain A
 // fires first and the group select fires after and wins — preserving prior feel.
-// Excluded: analog camera pan/zoom (driven by stick magnitude) and the Queen
-// rally/patrol aim gestures (their own reticle-aimed handlers below).
+// Excluded: analog camera pan/zoom (driven by stick magnitude), the Queen
+// rally/patrol aim gestures (their own reticle-aimed handlers below), and the four
+// radial wheels + rally/spawn-rally/zoom — those share the D-Pad and are owned by
+// the dedicated D-pad arbiter (tap = open the wheel, hold = the old function).
 const GAMEPAD_GESTURE_ACTIONS: readonly ControlActionId[] = [
   'primaryAction', 'secondaryAction', 'useAbility', 'monarchMeleeAttack',
   'selectMonarchAnimal', 'selectGroup1', 'selectGroup2', 'selectGroup3', 'deselect',
-  'rally', 'selectAllUnits', 'deployUnits', 'toggleBehaviorRadial', 'toggleFormationRadial',
+  'selectAllUnits', 'deployUnits',
   'pilotCycleMonarch', 'pilotMonarch1', 'pilotMonarch2', 'pilotMonarch3', 'pilotToggleMonarch', 'cycleFireTeam', 'pause',
 ];
 
@@ -240,18 +242,21 @@ export function GamepadController() {
   const rallyPrevRef = useRef(false);
   const patrolPrevRef = useRef(false);
 
-  // True while the combat-posture radial is open (mirrored from BehaviorRadial via
-  // window events). While open the right stick aims a ring/wedge instead of driving
-  // the cursor, RT applies the highlighted option, and B closes the radial. The
-  // prev-edge refs debounce RT/B to a single fire per press.
-  const radialOpenRef = useRef(false);
+  // The namespace of the currently-open selection radial (posture / formation /
+  // audible / playbook), or null. Mirrored from each radial's open/close window
+  // events. While one is open the right stick aims it, RT applies the highlight, and
+  // B closes it; the prev-edge refs debounce RT/B to a single fire per press.
+  const openRadialNsRef = useRef<string | null>(null);
   const radialSelectPrevRef = useRef(false);
   const radialClosePrevRef = useRef(false);
-  // The formation play wheel mirrors the posture radial's right-stick aim model;
-  // its own open/edge refs keep the two wheels' RT/B handling independent.
-  const formationRadialOpenRef = useRef(false);
-  const formationSelectPrevRef = useRef(false);
-  const formationClosePrevRef = useRef(false);
+
+  // D-pad arbiter state: per-direction press timestamp + whether its HOLD function
+  // has fired this press, so a quick tap opens the radial and a hold runs the old
+  // function (zoom / rally / spawn-rally). zoomHoldRef is the zoom-axis contribution
+  // the camera block reads while a zoom direction is held (-1 = in, +1 = out).
+  const dpadPressStartRef = useRef<Record<string, number | null>>({});
+  const dpadHoldFiredRef = useRef<Record<string, boolean>>({});
+  const zoomHoldRef = useRef(0);
 
   // Stop the deploy designation interval (on release, pad disconnect, or unmount).
   const stopPlacementHold = () => {
@@ -364,34 +369,27 @@ export function GamepadController() {
     if (count >= 1) useGameStore.getState().placeRalliedUnits(count);
   };
 
-  // Track the posture radial's open state so the poll loop can hand the right stick
-  // to ring selection while it is up. BehaviorRadial owns the state and broadcasts
-  // it; resetting the RT/B edge refs on close prevents a stale press from firing.
+  // Track which selection radial is open so the poll loop can hand it the right
+  // stick. Each radial broadcasts `rts:${ns}-radial-open|close`; we record the open
+  // namespace and reset the RT/B edge refs on close so a stale press can't fire.
   useEffect(() => {
-    const onOpen = () => { radialOpenRef.current = true; };
-    const onClose = () => {
-      radialOpenRef.current = false;
-      radialSelectPrevRef.current = false;
-      radialClosePrevRef.current = false;
-    };
-    window.addEventListener('rts:stance-radial-open', onOpen);
-    window.addEventListener('rts:stance-radial-close', onClose);
-
-    // Same handling for the formation play wheel (independent open/edge state).
-    const onFormationOpen = () => { formationRadialOpenRef.current = true; };
-    const onFormationClose = () => {
-      formationRadialOpenRef.current = false;
-      formationSelectPrevRef.current = false;
-      formationClosePrevRef.current = false;
-    };
-    window.addEventListener('rts:formation-radial-open', onFormationOpen);
-    window.addEventListener('rts:formation-radial-close', onFormationClose);
-    return () => {
-      window.removeEventListener('rts:stance-radial-open', onOpen);
-      window.removeEventListener('rts:stance-radial-close', onClose);
-      window.removeEventListener('rts:formation-radial-open', onFormationOpen);
-      window.removeEventListener('rts:formation-radial-close', onFormationClose);
-    };
+    const namespaces = ['stance', 'formation', 'audible', 'playbook'];
+    const cleanups: Array<() => void> = [];
+    for (const ns of namespaces) {
+      const onOpen = () => { openRadialNsRef.current = ns; };
+      const onClose = () => {
+        if (openRadialNsRef.current === ns) openRadialNsRef.current = null;
+        radialSelectPrevRef.current = false;
+        radialClosePrevRef.current = false;
+      };
+      window.addEventListener(`rts:${ns}-radial-open`, onOpen);
+      window.addEventListener(`rts:${ns}-radial-close`, onClose);
+      cleanups.push(() => {
+        window.removeEventListener(`rts:${ns}-radial-open`, onOpen);
+        window.removeEventListener(`rts:${ns}-radial-close`, onClose);
+      });
+    }
+    return () => cleanups.forEach((fn) => fn());
   }, []);
 
   // Create / tear down the Queen-gesture DOM overlays. The targeting cursor itself
@@ -611,6 +609,62 @@ export function GamepadController() {
     drawQueenGestureLines();
   };
 
+  // The D-pad arbiter: each direction opens a radial wheel on a quick TAP and runs
+  // the function it displaced on a HOLD. The radial toggle actions carry the D-pad
+  // bindings; the displaced zoom/rally/spawn-rally functions are produced here on
+  // hold (so they stay paired with whatever button their wheel is on). A press
+  // shorter than HOLD_MS is a tap (open the wheel on release); longer is a hold.
+  const DPAD_ARBITER: ReadonlyArray<{
+    id: string;
+    action: ControlActionId;
+    toggleEvent: string;
+    hold: 'zoomIn' | 'zoomOut' | 'rally' | 'spawnRally';
+  }> = [
+    { id: 'up', action: 'toggleFormationRadial', toggleEvent: 'rts:toggle-formation-radial', hold: 'zoomIn' },
+    { id: 'down', action: 'toggleBehaviorRadial', toggleEvent: 'rts:toggle-stance-radial', hold: 'zoomOut' },
+    { id: 'left', action: 'togglePlaybookRadial', toggleEvent: 'rts:toggle-playbook-radial', hold: 'rally' },
+    { id: 'right', action: 'toggleAudibleRadial', toggleEvent: 'rts:toggle-audible-radial', hold: 'spawnRally' },
+  ];
+  const DPAD_HOLD_MS = 250;
+
+  const updateDpadArbiter = (gamepad: GamepadLike, bindings: Record<ControlActionId, string>) => {
+    const now = performance.now();
+    let zoomContribution = 0;
+    for (const dir of DPAD_ARBITER) {
+      const active = isControllerTokenActive(gamepad, bindings[dir.action]);
+      const start = dpadPressStartRef.current[dir.id] ?? null;
+
+      if (active) {
+        if (start === null) {
+          dpadPressStartRef.current[dir.id] = now;
+          dpadHoldFiredRef.current[dir.id] = false;
+        } else if (now - start >= DPAD_HOLD_MS) {
+          // Hold threshold crossed: run the displaced function and mark it fired so
+          // the release is not also read as a tap.
+          if (dir.hold === 'zoomIn') zoomContribution -= 1;
+          else if (dir.hold === 'zoomOut') zoomContribution += 1;
+          else if (!dpadHoldFiredRef.current[dir.id]) {
+            if (dir.hold === 'rally') {
+              const state = useGameStore.getState();
+              if (state.pilotedUnitId) state.rallyToMonarch();
+            } else if (dir.hold === 'spawnRally') {
+              handleRallyArm();
+            }
+          }
+          dpadHoldFiredRef.current[dir.id] = true;
+        }
+      } else if (start !== null) {
+        // Released: a quick tap (no hold fired) opens the wheel.
+        if (!dpadHoldFiredRef.current[dir.id]) {
+          window.dispatchEvent(new CustomEvent(dir.toggleEvent));
+        }
+        dpadPressStartRef.current[dir.id] = null;
+        dpadHoldFiredRef.current[dir.id] = false;
+      }
+    }
+    zoomHoldRef.current = zoomContribution;
+  };
+
   // Nearest unit to the reticle (screen space) matching the owner predicate.
   const nearestUnitId = (
     ownerPredicate: (ownerId: string, localId: string | null) => boolean
@@ -676,7 +730,7 @@ export function GamepadController() {
     // While the posture radial is open it owns RT (Move/Attack) and B (Deselect) as
     // its select/close inputs, so swallow those here too — defense against a chord
     // binding reaching this path while the dispatch loop skip handles plain presses.
-    if ((radialOpenRef.current || formationRadialOpenRef.current) && (actionId === 'secondaryAction' || actionId === 'deselect')) return;
+    if (openRadialNsRef.current && (actionId === 'secondaryAction' || actionId === 'deselect')) return;
 
     switch (actionId) {
       case 'primaryAction': {
@@ -869,38 +923,43 @@ export function GamepadController() {
     }
 
     const { controllerBindings, isPaused, matchStarted } = useGameStore.getState();
-    const radialOpen = radialOpenRef.current;
-    const formationRadialOpen = formationRadialOpenRef.current;
-    // Either wheel owns the right stick while open, so the cursor block below is
-    // suppressed for both.
-    const anyRadialOpen = radialOpen || formationRadialOpen;
 
-    // --- Posture radial selection (right stick + RT + B). While the radial is open
-    // the right stick aims a ring/wedge instead of driving the cursor: the deflection
-    // magnitude picks the ring (center = fire toggle, mid = posture, full = priority)
-    // and the angle picks the wedge. RT applies the highlighted option (the radial
-    // stays open so all three axes can be set); B closes it. The cursor block below
-    // is suppressed (it hides via its else branch) so the two never fight over the
-    // stick, and the dispatch loop skips RT/B so they don't also command/deselect. ---
-    if (matchStarted && !isPaused && radialOpen) {
+    // --- D-pad arbiter (tap = open a radial, hold = the old function). Each D-Pad
+    // direction is bound to a radial toggle; tapping opens that wheel, holding runs
+    // the function it displaced (Up/Down zoom, Left rally, Right spawn-rally). Handled
+    // here, ahead of everything, because the D-pad is shared by both. ---
+    if (matchStarted && !isPaused) {
+      updateDpadArbiter(gamepad, controllerBindings);
+    } else {
+      zoomHoldRef.current = 0;
+    }
+
+    const openRadialNs = openRadialNsRef.current;
+    // A wheel owns the right stick while open, so the cursor block below is suppressed.
+    const anyRadialOpen = openRadialNs !== null;
+
+    // --- Radial selection (right stick + RT + B) for whichever wheel is open. The
+    // right stick aims it (each wheel derives its highlight from the raw vector), RT
+    // applies the highlight, and B closes it. The cursor block is suppressed (hides
+    // via its else branch) so the two never fight over the stick, and the dispatch
+    // loop skips RT/B so they don't also command/deselect. ---
+    if (matchStarted && !isPaused && openRadialNs) {
       const rx = gamepad.axes[2] ?? 0;
       const ry = gamepad.axes[3] ?? 0;
-      // Stream the raw aim vector (including near-center) so the radial can derive
-      // the ring from the deflection — at rest the center fire toggle is addressed.
-      window.dispatchEvent(new CustomEvent('rts:stance-radial-aim', { detail: { x: rx, y: ry } }));
+      window.dispatchEvent(new CustomEvent(`rts:${openRadialNs}-radial-aim`, { detail: { x: rx, y: ry } }));
 
       // RT applies the highlighted option; rising edge only so a held trigger does
       // not repeat-apply every frame.
       const selectActive = isControllerTokenActive(gamepad, controllerBindings.secondaryAction);
       if (selectActive && !radialSelectPrevRef.current) {
-        window.dispatchEvent(new CustomEvent('rts:stance-radial-select'));
+        window.dispatchEvent(new CustomEvent(`rts:${openRadialNs}-radial-select`));
       }
       radialSelectPrevRef.current = selectActive;
 
       // B closes the radial; rising edge only. Reuses the toggle event (open → closed).
       const closeActive = isControllerTokenActive(gamepad, controllerBindings.deselect);
       if (closeActive && !radialClosePrevRef.current) {
-        window.dispatchEvent(new CustomEvent('rts:toggle-stance-radial'));
+        window.dispatchEvent(new CustomEvent(`rts:toggle-${openRadialNs}-radial`));
       }
       radialClosePrevRef.current = closeActive;
     } else {
@@ -908,32 +967,8 @@ export function GamepadController() {
       radialClosePrevRef.current = false;
     }
 
-    // --- Formation play wheel selection (right stick + RT + B). Mirrors the posture
-    // radial above: while open the right stick aims a shape, RT calls the highlighted
-    // one (the wheel stays open), and B closes it. Mutually exclusive with the posture
-    // radial — only one wheel can be open at a time. ---
-    if (matchStarted && !isPaused && formationRadialOpen) {
-      const rx = gamepad.axes[2] ?? 0;
-      const ry = gamepad.axes[3] ?? 0;
-      window.dispatchEvent(new CustomEvent('rts:formation-radial-aim', { detail: { x: rx, y: ry } }));
-
-      const selectActive = isControllerTokenActive(gamepad, controllerBindings.secondaryAction);
-      if (selectActive && !formationSelectPrevRef.current) {
-        window.dispatchEvent(new CustomEvent('rts:formation-radial-select'));
-      }
-      formationSelectPrevRef.current = selectActive;
-
-      const closeActive = isControllerTokenActive(gamepad, controllerBindings.deselect);
-      if (closeActive && !formationClosePrevRef.current) {
-        window.dispatchEvent(new CustomEvent('rts:toggle-formation-radial'));
-      }
-      formationClosePrevRef.current = closeActive;
-    } else {
-      formationSelectPrevRef.current = false;
-      formationClosePrevRef.current = false;
-    }
-
-    // --- Camera intent (analog, held). Suppressed while paused. ---
+    // --- Camera intent (analog, held). Suppressed while paused. The zoom axis adds
+    // any explicitly-bound zoom tokens to the D-pad arbiter's hold contribution. ---
     if (matchStarted && !isPaused) {
       const right = controllerTokenMagnitude(gamepad, controllerBindings.cameraRight);
       const left = controllerTokenMagnitude(gamepad, controllerBindings.cameraLeft);
@@ -941,7 +976,7 @@ export function GamepadController() {
       const backward = controllerTokenMagnitude(gamepad, controllerBindings.cameraBackward);
       const zoomIn = controllerTokenMagnitude(gamepad, controllerBindings.cameraZoomIn);
       const zoomOut = controllerTokenMagnitude(gamepad, controllerBindings.cameraZoomOut);
-      gamepadInput.setCameraIntent(right - left, forward - backward, zoomOut - zoomIn);
+      gamepadInput.setCameraIntent(right - left, forward - backward, (zoomOut - zoomIn) + zoomHoldRef.current);
     } else {
       gamepadInput.reset();
     }
@@ -1121,11 +1156,11 @@ export function GamepadController() {
 
     // --- Activation-mode dispatch: feed each bound token's press/release edges to
     // its resolver (which fires tap / double-tap / hold per the player's choice).
-    // While the posture radial is open it owns RT (select) and B (close); skip those
+    // While a radial wheel is open it owns RT (select) and B (close); skip those
     // tokens so the resolver never registers a press — preventing both an in-radial
     // command and a stray release firing once the radial closes. ---
     const dispatch = dispatchRef.current;
-    const radialOwnedTokens = radialOpen
+    const radialOwnedTokens = anyRadialOpen
       ? new Set([controllerBindings.secondaryAction, controllerBindings.deselect].filter(Boolean))
       : null;
     for (const [token, resolver] of dispatch.resolvers) {

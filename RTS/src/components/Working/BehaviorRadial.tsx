@@ -101,11 +101,25 @@ export function BehaviorRadial() {
   // right stick to ring selection. Clears any stale gamepad hover on close.
   useEffect(() => {
     window.dispatchEvent(new CustomEvent(isOpen ? 'rts:stance-radial-open' : 'rts:stance-radial-close'));
-    if (!isOpen) {
+    if (isOpen) {
+      // Only one wheel on screen at a time: announce this one so the formation /
+      // audible / playbook wheels close (and vice-versa).
+      window.dispatchEvent(new CustomEvent('rts:radial-exclusive', { detail: { ns: 'stance' } }));
+    } else {
       hoverRef.current = null;
       setGamepadHover(null);
     }
   }, [isOpen]);
+
+  // Close when another wheel opens.
+  useEffect(() => {
+    const onExclusive = (event: Event) => {
+      const ns = (event as CustomEvent).detail?.ns as string | undefined;
+      if (ns && ns !== 'stance') setIsOpen(false);
+    };
+    window.addEventListener('rts:radial-exclusive', onExclusive);
+    return () => window.removeEventListener('rts:radial-exclusive', onExclusive);
+  }, []);
 
   // Controller ring selection while open: the right stick streams an aim vector
   // (highlight the addressed ring + wedge); pressing RT applies the highlighted
