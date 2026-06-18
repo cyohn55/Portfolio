@@ -320,8 +320,11 @@ export function BattleMap() {
     // Update FPS monitoring
     const currentFPS = performanceMonitor.updateFPS();
 
-    // Log performance every 2 seconds
-    if (Math.floor(now / 2000) !== Math.floor((now - frameTime) / 2000)) {
+    // Log performance every 2 seconds. Opt-in (set window.__rtsPerfDebug = true in
+    // a dev session) so the report doesn't spam the console — and cost dev FPS —
+    // on every run. Stripped from production builds regardless.
+    const perfDebug = import.meta.env.DEV && (window as any).__rtsPerfDebug === true;
+    if (perfDebug && Math.floor(now / 2000) !== Math.floor((now - frameTime) / 2000)) {
       console.log(`Performance Report:
       Current FPS: ${currentFPS.toFixed(1)}
       Average FPS: ${performanceMonitor.getAverageFPS().toFixed(1)}

@@ -7,6 +7,15 @@ interface DayNightCycleProps {
   cycleDurationSeconds?: number;
 }
 
+// Hemisphere transition endpoints, allocated once. The per-frame loop lerps
+// directly into the live light's color objects (below) so the day/night sweep
+// never allocates a Color every frame (was ~6 Color allocations per frame).
+const NIGHT_SKY_COLOR = new THREE.Color(0x1a1a2e);
+const DAY_SKY_COLOR = new THREE.Color(0x87ceeb);
+const NIGHT_GROUND_COLOR = new THREE.Color(0x0f0f1a);
+const DAY_GROUND_COLOR = new THREE.Color(0x222233);
+const FALLBACK_BACKGROUND_COLOR = new THREE.Color(0x0a0e1a);
+
 export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps) {
   const lightingSettings = useGameStore((s) => s.lightingSettings);
   const isPaused = useGameStore((s) => s.isPaused);
@@ -170,28 +179,16 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
       // Day: bright sky, night: dark sky
       const dayFactor = Math.max(0, Math.sin(angle));
 
-      // Sky color transitions from day blue to night dark blue
-      const skyColor = new THREE.Color().lerpColors(
-        new THREE.Color(0x1a1a2e), // Night sky (dark blue)
-        new THREE.Color(0x87CEEB), // Day sky (sky blue)
-        dayFactor
-      );
-
-      // Ground color transitions from dark to light
-      const groundColor = new THREE.Color().lerpColors(
-        new THREE.Color(0x0f0f1a), // Night ground (very dark)
-        new THREE.Color(0x222233), // Day ground (lighter)
-        dayFactor
-      );
-
-      hemisphereRef.current.color = skyColor;
-      hemisphereRef.current.groundColor = groundColor;
+      // Sky/ground colors transition between their day/night endpoints. Lerp in
+      // place into the light's own Color objects so no per-frame allocation occurs.
+      hemisphereRef.current.color.lerpColors(NIGHT_SKY_COLOR, DAY_SKY_COLOR, dayFactor);
+      hemisphereRef.current.groundColor.lerpColors(NIGHT_GROUND_COLOR, DAY_GROUND_COLOR, dayFactor);
       hemisphereRef.current.intensity = lightingSettings.ambientLight + (dayFactor * (lightingSettings.ambientLight * 0.75)); // Dynamic based on ambient setting
 
       // Set a subtle dark blue background instead of null
       // This provides a fallback if skybox fails to load, and works with alpha: false
       if (!scene.background) {
-        scene.background = new THREE.Color(0x0a0e1a); // Subtle dark space blue
+        scene.background = FALLBACK_BACKGROUND_COLOR; // Subtle dark space blue
       }
     }
   });
@@ -230,8 +227,8 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
           the whole battlefield (units run roughly z ∈ [-260, 260]); on mobile
           PerformanceOptimizer keeps shadowMap.enabled false, so this no-ops.
           normalBias is raised well above a typical small-scene value because the
-          static map now self-casts: over this 600-unit frustum each 4096² shadow
-          texel is ~0.15 world units, so the flat merged ground needs a large
+          static map now self-casts: over this 600-unit frustum each 2048² shadow
+          texel is ~0.29 world units, so the flat merged ground needs a large
           along-normal offset to keep its own shadow off itself (acne) as the sun
           arcs. Tune normalBias up if shimmer appears, down if shadows detach. */}
       <directionalLight
@@ -240,8 +237,8 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
         intensity={2.5}
         color={0xFFFAF0}
         castShadow={shadowsEnabled}
-        shadow-mapSize-width={4096}
-        shadow-mapSize-height={4096}
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
         shadow-camera-near={0.5}
         shadow-camera-far={1000}
         shadow-camera-left={-300}

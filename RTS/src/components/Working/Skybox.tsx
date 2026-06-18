@@ -101,9 +101,10 @@ export function Skybox() {
       // Apply Y rotation to existing quaternion (pre-multiply for world-space rotation)
       groupRef.current.quaternion.premultiply(yRotationQuat);
 
-      // Log every 2 seconds with rotation info
-      if (Math.floor(state.clock.elapsedTime) % 2 === 0 && state.clock.elapsedTime % 2 < delta) {
-        // Convert quaternion back to Euler for logging
+      // Rotation logging is opt-in debug noise (set window.__rtsPerfDebug = true).
+      // Gating it skips a per-2s Euler allocation and console spam in dev.
+      if (import.meta.env.DEV && (window as any).__rtsPerfDebug === true &&
+          Math.floor(state.clock.elapsedTime) % 2 === 0 && state.clock.elapsedTime % 2 < delta) {
         const euler = new THREE.Euler().setFromQuaternion(groupRef.current.quaternion);
         console.log('🌀 Skybox rotation:', {
           z: (euler.z * 180 / Math.PI).toFixed(1) + '°',
