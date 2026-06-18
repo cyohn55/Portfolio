@@ -28,9 +28,7 @@ const KEYBOARD_GESTURE_ACTIONS: readonly string[] = [
   'selectAllUnits',
   'deployUnits',
   'toggleBehaviorRadial',
-  'toggleFormationRadial',
-  'toggleAudibleRadial',
-  'togglePlaybookRadial',
+  'toggleDirectingRadial',
 ];
 
 export function KeyboardShortcuts() {
@@ -109,16 +107,11 @@ export function KeyboardShortcuts() {
           // layer stays free of the overlay's React state (same pattern as pause).
           window.dispatchEvent(new CustomEvent('rts:toggle-stance-radial'));
           break;
-        case 'toggleFormationRadial':
-          // The formation play wheel lives in FormationRadial.tsx; toggle it via an
-          // event for the same reason (it owns its own overlay state).
-          window.dispatchEvent(new CustomEvent('rts:toggle-formation-radial'));
-          break;
-        case 'toggleAudibleRadial':
-          window.dispatchEvent(new CustomEvent('rts:toggle-audible-radial'));
-          break;
-        case 'togglePlaybookRadial':
-          window.dispatchEvent(new CustomEvent('rts:toggle-playbook-radial'));
+        case 'toggleDirectingRadial':
+          // The paged Directing wheel (Shapes / Audibles / Plays) lives in
+          // DirectingRadial.tsx; toggle it via an event for the same reason (it owns
+          // its own overlay state). Tab flips pages while it is open.
+          window.dispatchEvent(new CustomEvent('rts:toggle-directing-radial'));
           break;
         default: break;
       }

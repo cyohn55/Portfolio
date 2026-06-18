@@ -8,9 +8,7 @@ import { GamepadController } from './components/Working/GamepadController';
 import { UnitPlacementIndicator } from './components/Working/UnitPlacementIndicator';
 import { EdgePanChevrons } from './components/Working/EdgePanChevrons';
 import { BehaviorRadial } from './components/Working/BehaviorRadial';
-import { FormationRadial } from './components/Working/FormationRadial';
-import { AudibleRadial } from './components/Working/AudibleRadial';
-import { PlaybookRadial } from './components/Working/PlaybookRadial';
+import { DirectingRadial } from './components/Working/DirectingRadial';
 import { HUD } from './components/HUD';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { ModelPreloader } from './utils/ModelPreloader';
@@ -196,13 +194,12 @@ export default function App() {
       <div className="hud">
         <HUD />
       </div>
-      {/* Selection radial for the combat-posture system (stance / fire / priority). */}
+      {/* Selection radial for the combat-posture system (stance / fire / priority);
+          D-Pad Left on a controller. */}
       <BehaviorRadial />
-      {/* The King's directing wheels: formation shapes, per-team audibles, and the
-          all-teams playbook (D-Pad Up / Right / Left on a controller). */}
-      <FormationRadial />
-      <AudibleRadial />
-      <PlaybookRadial />
+      {/* The King's directing wheel: one paged radial for formation shapes, per-team
+          audibles, and the all-teams playbook (D-Pad Right; LB/RB flip pages). */}
+      <DirectingRadial />
       {/* Yellow edge-scroll chevrons, lit only while the cursor is in a pan-trigger band. */}
       <EdgePanChevrons />
       <Canvas

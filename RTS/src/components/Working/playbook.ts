@@ -1,5 +1,5 @@
 // The King's playbook — pure, deterministic definitions for the callPlay command
-// (see state.ts) and its UI (FormationRadial).
+// (see state.ts) and its UI (the Plays page of DirectingRadial).
 //
 // A "play" is a football-style call that re-shapes and re-postures every one of the
 // King's formed fire teams at once, by each team's POSITIONAL ROLE. Roles are

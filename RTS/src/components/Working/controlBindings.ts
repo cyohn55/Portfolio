@@ -48,14 +48,11 @@ export type ControlActionId =
   | 'deselect'
   | 'primaryAction'
   | 'secondaryAction'
-  | 'monarchMeleeAttack'
   | 'useAbility'
   | 'setQueenRally'
   | 'setPatrol'
   | 'toggleBehaviorRadial'
-  | 'toggleFormationRadial'
-  | 'toggleAudibleRadial'
-  | 'togglePlaybookRadial'
+  | 'toggleDirectingRadial'
   | 'pilotCycleMonarch'
   | 'pilotMonarch1'
   | 'pilotMonarch2'
@@ -124,14 +121,11 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
   { id: 'deselect', label: 'Deselect All', category: 'Selection', description: 'Clear the current selection.' },
   { id: 'primaryAction', label: 'Select / Confirm', category: 'Commands', description: 'Select the unit under the cursor / reticle.' },
   { id: 'secondaryAction', label: 'Move / Attack', category: 'Commands', description: 'Order selected units to the cursor / reticle (press). On the controller this is RT: a press issues the move/attack at the cursor, and holding RT deploys units at the cursor.', gestureHint: 'Press = move/attack · Hold = deploy at cursor' },
-  { id: 'monarchMeleeAttack', label: 'Monarch Melee Attack', category: 'Commands', description: 'Make the King/Queen you are piloting perform a melee attack. (Not implemented yet — the binding is reserved.)' },
   { id: 'useAbility', label: 'Use Ability', category: 'Commands', description: "Trigger the selected animal's special ability (Turtle shell, Chicken eggs, Frog tongue, Cat hiss, Bee swarm, Owl pickup/deliver), aimed at the cursor/reticle. Keyboard & mouse can also fire this with a simultaneous left + right click." },
-  { id: 'setQueenRally', label: 'Set Spawn Rally Point', category: 'Commands', description: 'With a single Queen selected, press to start aiming the blue rally line, then issue Move / Attack (right-click on mouse) to drop the rally point. Units she spawns afterward march straight to it — or follow a friendly King dropped on.', gestureHint: 'Aim, then Move/Attack to drop' },
+  { id: 'setQueenRally', label: 'Set Spawn Rally Point', category: 'Commands', description: 'With a single Queen selected, press to start aiming the blue rally line, then issue Move / Attack (right-click on mouse) to drop the rally point. Units she spawns afterward march straight to it — or follow a friendly King dropped on. On the controller this is RB.', gestureHint: 'Aim, then Move/Attack to drop' },
   { id: 'setPatrol', label: 'Set Patrol Route', category: 'Commands', description: 'With a single Queen selected, hold to aim a back-and-forth patrol route along the gold line, then release to commit it. Keyboard & mouse use a held right-click on the Queen instead, so this stays unbound there by default.', gestureHint: 'Hold to aim · release to set the route' },
-  { id: 'toggleBehaviorRadial', label: 'Combat Posture Radial', category: 'Commands', description: 'With your units selected, open the two-ring combat-posture radial: the center toggles weapons-free / hold-fire, the inner ring sets stance (Aggressive, Skirmish, Hold Ground, Defensive, Flee), and the outer ring sets target priority (Nearest, Weakest, Threat, Ranged, Royalty). On a controller, aim with the right stick (deflection picks the ring), press RT to apply the highlighted option, and B to close.' },
-  { id: 'toggleFormationRadial', label: 'Formation Wheel', category: 'Commands', description: 'With your units selected, open the formation wheel: pick a shape — Line, Column, Wedge, Box, Echelon L/R, or Skirmish — and the squad forms up around its current position. On a controller this is D-Pad Up (tap); aim with the right stick, press RT to call the highlighted shape, and B to close. (Hold D-Pad Up to zoom in.)' },
-  { id: 'toggleAudibleRadial', label: 'Audible Wheel', category: 'Commands', description: 'Open the formation "audible" wheel for the selected team: a quick mid-play tweak — Rotate Left/Right, Expand, Contract, or Disband. On a controller this is D-Pad Right (tap); aim with the right stick and press RT. (Hold D-Pad Right to set a Queen’s spawn rally.)' },
-  { id: 'togglePlaybookRadial', label: 'Playbook Wheel', category: 'Commands', description: 'Open the playbook wheel: one call — Assault, Pincer, Hold, Turtle, or Fall Back — re-shapes and re-postures ALL of your formed teams at once by their position (left wing / center / right wing). On a controller this is D-Pad Left (tap); aim with the right stick and press RT. (Hold D-Pad Left to rally your army.)' },
+  { id: 'toggleBehaviorRadial', label: 'Combat Posture Radial', category: 'Commands', description: 'With your units selected, open the two-ring combat-posture radial: the center toggles weapons-free / hold-fire, the inner ring sets stance (Aggressive, Skirmish, Hold Ground, Defensive, Flee), and the outer ring sets target priority (Nearest, Weakest, Threat, Ranged, Royalty). On a controller this is D-Pad Left; aim with the right stick (deflection picks the ring), press RT to apply the highlighted option, and B to close.' },
+  { id: 'toggleDirectingRadial', label: 'Directing Wheel', category: 'Commands', description: 'With your units selected, open the paged Directing wheel. Flip between its three pages with LB / RB (or the on-screen tabs): Shapes — Line, Column, Wedge, Box, Echelon L/R, Skirmish; Audibles — a quick mid-play tweak (Rotate Left/Right, Expand, Contract, Disband) to the selected team; Plays — one call (Assault, Pincer, Hold, Turtle, Fall Back) re-shapes ALL your formed teams at once by their wing. On a controller this is D-Pad Right; aim with the right stick, press RT to apply the highlighted option, and B to close.' },
   { id: 'pilotCycleMonarch', label: 'Cycle Piloted Monarch', category: 'Pilot', description: 'Tap to start piloting your first animal’s King, then cycle through your other animals’ monarchs. Drive it with the Move keys.' },
   { id: 'pilotMonarch1', label: 'Pilot Monarch 1', category: 'Pilot', description: 'Directly pilot the King of your first animal (toggle Queen with Toggle Monarch). Drive it with the Move keys/stick.' },
   { id: 'pilotMonarch2', label: 'Pilot Monarch 2', category: 'Pilot', description: 'Directly pilot the King of your second animal. Drive it with the Move keys/stick.' },
@@ -157,8 +151,8 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   // activation modes (tap / double-tap / hold — see DEFAULT_BINDING_MODES) keep them
   // apart, reproducing the classic one-key Space gesture while staying remappable.
   rally: 'space',
-  // Select-the-piloted-monarch's-animal and the King/Queen melee are controller-
-  // first gestures (LT / RB); they stay unbound on keyboard by default.
+  // Select-the-piloted-monarch's-animal is a controller-first gesture (LT); it
+  // stays unbound on keyboard by default.
   selectMonarchAnimal: '',
   selectAllUnits: 'space',
   deployUnits: 'space',
@@ -168,8 +162,6 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   deselect: 'escape',
   primaryAction: 'mouse:left',
   secondaryAction: 'mouse:right',
-  // Monarch melee is a controller gesture (RB) and not implemented yet; unbound here.
-  monarchMeleeAttack: '',
   // Abilities fire from a simultaneous left+right click (a fixed mouse gesture in
   // HexInteraction), so the rebindable key stays unbound by default; binding a key
   // here also triggers it (HexInteraction reads the live cursor for aiming).
@@ -181,10 +173,9 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   setPatrol: '',
   // B opens the combat-posture radial for the current selection.
   toggleBehaviorRadial: 'b',
-  // V/C/X open the formation, audible, and playbook wheels.
-  toggleFormationRadial: 'v',
-  toggleAudibleRadial: 'c',
-  togglePlaybookRadial: 'x',
+  // V opens the paged Directing wheel (Shapes / Audibles / Plays); flip pages with
+  // Tab while it is open or click the on-screen tabs.
+  toggleDirectingRadial: 'v',
   // A cycles through the three animals' monarchs; G swaps the current King/Queen.
   // The per-slot pilot keys stay unbound on keyboard (they exist for the
   // controller's D-Pad), so the home row stays free for the cycle/toggle keys.
@@ -199,16 +190,18 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
 };
 
 // Controller layout (Standard Gamepad). Left stick pilots the monarch; right
-// stick drives the targeting cursor (and, while the posture radial is open,
-// selects a wedge). The face/shoulder buttons follow the player-defined scheme:
+// stick drives the targeting cursor (and, while a radial wheel is open, aims it).
+// Every input is single-purpose — there are no tap/hold overloads on the D-pad:
 //   LT  — Select Monarch's Animal (tap) / Select All Units (double-tap)
 //   RT  — Move/Attack (press) / Deploy at cursor (hold)  [via secondaryAction]
-//   LB  — Switch Monarch (cycle)        RB — Monarch Melee (reserved)
-//   R3  — open the posture radial       L3 — Set Patrol aim
-//   A   — Select / Confirm              B  — Deselect
+//   LB  — Switch Monarch (cycle)        RB — Arm Queen spawn-rally
+//   L3  — Set Patrol aim (hold)         R3 — Rally to monarch
+//   A   — Select / Confirm              B  — Deselect / close wheel
 //   X   — Use Ability                   Y  — Switch King/Queen
-//   D-Pad — Zoom In/Out (Up/Down), Rally (Left), Set Spawn Rally (Right)
+//   D-Pad — Up/Down Zoom In/Out, Left Combat wheel, Right Directing wheel
 //   Start — Pause / Settings menu
+// While the Directing wheel is open, LB/RB instead flip its pages (modal); see
+// GamepadController.
 const DPAD_UP = 'button:12';
 const DPAD_DOWN = 'button:13';
 const DPAD_LEFT = 'button:14';
@@ -218,20 +211,17 @@ export const DEFAULT_CONTROLLER_BINDINGS: ControlBindings = {
   cameraBackward: 'axis:1+',
   cameraLeft: 'axis:0-',
   cameraRight: 'axis:0+',
-  // The D-Pad now opens the four radial wheels on TAP (see the toggle* bindings
-  // below); zoom / rally / spawn-rally ride the same buttons on HOLD, supplied by
-  // the D-pad arbiter in GamepadController, so they ship unbound here to avoid
-  // double-firing. Bind them to other buttons in Settings to get a standalone press.
-  cameraZoomIn: '',
-  cameraZoomOut: '',
-  rally: '',
+  // Zoom is held on the D-Pad vertical axis (read analogically by the camera block).
+  cameraZoomIn: DPAD_UP,    // D-Pad Up
+  cameraZoomOut: DPAD_DOWN, // D-Pad Down
+  rally: 'button:11', // R3 — rally the piloted army to the monarch
   // LT: tap selects the piloted monarch's animal; double-tap selects all units.
   selectMonarchAnimal: 'button:6', // LT (tap)
   selectAllUnits: 'button:6',      // LT (double-tap)
   // Deploy-at-cursor rides the RT (secondaryAction) hold in GamepadController, so
   // the standalone deploy-at-monarch action is unbound on the controller.
   deployUnits: '',
-  // Per-animal group selects move to the keyboard; LB is now Switch Monarch, so the
+  // Per-animal group selects move to the keyboard; LB is Switch Monarch, so the
   // old LB+face chords are unbound here.
   selectGroup1: '',
   selectGroup2: '',
@@ -239,22 +229,16 @@ export const DEFAULT_CONTROLLER_BINDINGS: ControlBindings = {
   deselect: 'button:1', // B
   primaryAction: 'button:0', // A — Select / Confirm
   secondaryAction: 'button:7', // RT — Move/Attack (press) + Deploy (hold)
-  monarchMeleeAttack: 'button:5', // RB — reserved (not implemented)
   useAbility: 'button:2', // X — fires the selected animal's ability at the reticle
-  // Spawn-rally rides D-Pad Right on HOLD (supplied by the arbiter); unbound here so
-  // the bare press opens the Audible wheel instead of arming the aim.
-  setQueenRally: '',
+  setQueenRally: 'button:5', // RB — arm the Queen spawn-rally aim (committed by RT)
   setPatrol: 'button:10', // L3 held arms the patrol aim; release commits
-  // The four radial wheels live on the D-Pad (tap to open; aim with RS, RT to select,
-  // B to close). Holding a D-Pad direction instead runs its old function (Up/Down
-  // zoom, Left rally, Right spawn-rally) — see the D-pad arbiter in GamepadController.
-  toggleFormationRadial: DPAD_UP, // Up — Formation shapes
-  toggleBehaviorRadial: DPAD_DOWN, // Down — Combat posture
-  togglePlaybookRadial: DPAD_LEFT, // Left — Playbook (all teams)
-  toggleAudibleRadial: DPAD_RIGHT, // Right — Audibles (selected team)
+  // The two radial wheels live on the D-Pad horizontal axis (tap to open; aim with
+  // the right stick, RT to select, B to close).
+  toggleBehaviorRadial: DPAD_LEFT,   // Left — Combat posture
+  toggleDirectingRadial: DPAD_RIGHT, // Right — Directing (Shapes / Audibles / Plays)
   pilotCycleMonarch: 'button:4', // LB — Switch Monarch
   // The left stick pilots and LB cycles monarchs, so the old per-slot D-Pad pilots
-  // are unbound to free the D-Pad for zoom / rally.
+  // stay unbound.
   pilotMonarch1: '',
   pilotMonarch2: '',
   pilotMonarch3: '',
@@ -297,14 +281,11 @@ export const DEFAULT_BINDING_MODES: ControlBindingModes = {
   deselect: 'tap',
   primaryAction: 'tap',
   secondaryAction: 'tap',
-  monarchMeleeAttack: 'tap',
   useAbility: 'tap',
   setQueenRally: 'tap',
   setPatrol: 'hold',
   toggleBehaviorRadial: 'tap',
-  toggleFormationRadial: 'tap',
-  toggleAudibleRadial: 'tap',
-  togglePlaybookRadial: 'tap',
+  toggleDirectingRadial: 'tap',
   pilotCycleMonarch: 'tap',
   pilotMonarch1: 'tap',
   pilotMonarch2: 'tap',

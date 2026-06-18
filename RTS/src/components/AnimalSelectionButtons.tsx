@@ -544,16 +544,11 @@ export function AnimalSelectionButtons() {
     window.dispatchEvent(new CustomEvent('rts:toggle-stance-radial'));
   };
 
-  // Same pattern for the three formation wheels — each is another trigger for the
-  // shared toggle event its radial (and the keyboard/controller bindings) listen for.
-  const handleFormationToggle = () => {
-    window.dispatchEvent(new CustomEvent('rts:toggle-formation-radial'));
-  };
-  const handleAudibleToggle = () => {
-    window.dispatchEvent(new CustomEvent('rts:toggle-audible-radial'));
-  };
-  const handlePlaybookToggle = () => {
-    window.dispatchEvent(new CustomEvent('rts:toggle-playbook-radial'));
+  // Same pattern for the paged Directing wheel (Shapes / Audibles / Plays) — another
+  // trigger for the shared toggle event its radial (and the keyboard/controller
+  // bindings) listen for. Its page tabs handle switching once it is open.
+  const handleDirectingToggle = () => {
+    window.dispatchEvent(new CustomEvent('rts:toggle-directing-radial'));
   };
 
   if (!matchStarted || selectedAnimalPool.length === 0) {
@@ -608,7 +603,8 @@ export function AnimalSelectionButtons() {
         );
       })}
 
-      {/* Command radials for the selection: combat posture, then the formation wheel. */}
+      {/* Command radials for the selection: combat posture, then the paged Directing
+          wheel (formation shapes, per-team audibles, all-teams playbook). */}
       <CommandToggleButton
         enabled={hasCommandableSelection}
         onClick={handleStanceToggle}
@@ -618,24 +614,10 @@ export function AnimalSelectionButtons() {
       />
       <CommandToggleButton
         enabled={hasCommandableSelection}
-        onClick={handleFormationToggle}
+        onClick={handleDirectingToggle}
         icon="🎖️"
-        label="Formation"
-        title="Show/hide the formation shape wheel for the selection"
-      />
-      <CommandToggleButton
-        enabled={hasCommandableSelection}
-        onClick={handleAudibleToggle}
-        icon="🎚️"
-        label="Audible"
-        title="Show/hide the formation audible wheel (rotate / spread / disband)"
-      />
-      <CommandToggleButton
-        enabled={hasCommandableSelection}
-        onClick={handlePlaybookToggle}
-        icon="📋"
-        label="Playbook"
-        title="Show/hide the playbook wheel (re-shape all teams by role)"
+        label="Directing"
+        title="Show/hide the Directing wheel: formation shapes, audibles, and the playbook"
       />
     </div>
   );
