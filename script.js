@@ -887,6 +887,39 @@ document.addEventListener('DOMContentLoaded', function() {
     // fallback (see RTS src/components/Working/gamepadSource.ts). The contract is
     // just the message shape; neither side reaches into the other's DOM.
     let gamepadForwardRafId = null;
+    let gamepadPostCount = 0;
+
+    // Opt-in live diagnostic. Append `?gpdebug` (or `#gpdebug`) to the portfolio
+    // URL to show a small overlay reporting exactly where the controller chain
+    // breaks: which document has focus, which document's navigator actually sees a
+    // connected pad, and how many snapshots we've forwarded into the iframe.
+    const gamepadDebugEnabled =
+        /(^|[?#&])gpdebug(=|&|$)/.test(window.location.search + window.location.hash);
+    let gamepadDebugEl = null;
+    const ensureGamepadDebugOverlay = () => {
+        if (!gamepadDebugEnabled || gamepadDebugEl) return;
+        gamepadDebugEl = document.createElement('div');
+        gamepadDebugEl.style.cssText = [
+            'position:fixed', 'top:8px', 'left:8px', 'z-index:2147483647',
+            'background:rgba(0,0,0,0.82)', 'color:#39ff14', 'font:12px/1.45 monospace',
+            'padding:8px 10px', 'border:1px solid #39ff14', 'border-radius:6px',
+            'white-space:pre', 'pointer-events:none', 'max-width:90vw',
+        ].join(';');
+        document.body.appendChild(gamepadDebugEl);
+    };
+
+    // Count connected pads in a given navigator, returning a short label. Wrapped
+    // because reading a cross-context navigator can throw if access is ever gated.
+    const describePads = (nav) => {
+        try {
+            if (!nav || !nav.getGamepads) return 'no API';
+            const pads = Array.from(nav.getGamepads()).filter((p) => p && p.connected);
+            if (pads.length === 0) return '0 connected';
+            return pads.length + ' connected — ' + pads[0].id;
+        } catch (e) {
+            return 'read error: ' + (e && e.name);
+        }
+    };
 
     // Flatten a live Gamepad into a structured-clone-safe snapshot (postMessage
     // can't carry the native Gamepad object). Only the fields the game reads.
@@ -900,6 +933,19 @@ document.addEventListener('DOMContentLoaded', function() {
         })),
     });
 
+    // Read the connected pads from a navigator, or [] on any failure. Same-origin
+    // lets the host read BOTH its own navigator and the iframe's contentWindow
+    // navigator — whichever document Chrome actually exposed the pad to.
+    const readConnectedPads = (nav) => {
+        try {
+            if (!nav || !nav.getGamepads) return [];
+            return Array.from(nav.getGamepads());
+        } catch (_) {
+            return [];
+        }
+    };
+    const hasConnected = (pads) => pads.some((p) => p && p.connected);
+
     const forwardGamepadState = () => {
         gamepadForwardRafId = requestAnimationFrame(forwardGamepadState);
 
@@ -907,11 +953,29 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        let pads;
-        try {
-            pads = navigator.getGamepads ? navigator.getGamepads() : [];
-        } catch (_) {
-            return; // Some browsers throw if the API is gated; nothing to forward.
+        // Try this (top) document's navigator first, then the iframe's own — Chrome
+        // exposes the pad only to the focused, gamepad-activated document, and which
+        // one that is depends on where focus landed. Reading both makes the relay
+        // work regardless of focus.
+        const iframeNav = rtsIframe.contentWindow.navigator;
+        let pads = readConnectedPads(navigator);
+        if (!hasConnected(pads)) pads = readConnectedPads(iframeNav);
+
+        if (gamepadDebugEnabled) {
+            ensureGamepadDebugOverlay();
+            if (gamepadDebugEl) {
+                let activeTag = '(none)';
+                try {
+                    const ae = document.activeElement;
+                    activeTag = ae ? (ae.tagName + (ae.id ? '#' + ae.id : '')) : '(none)';
+                } catch (_) { /* ignore */ }
+                gamepadDebugEl.textContent =
+                    'GAMEPAD BRIDGE [gpdebug]\n' +
+                    'top focus:   ' + document.hasFocus() + '  active=' + activeTag + '\n' +
+                    'top pads:    ' + describePads(navigator) + '\n' +
+                    'iframe pads: ' + describePads(iframeNav) + '\n' +
+                    'forwarded:   ' + gamepadPostCount + ' snapshots';
+            }
         }
 
         // Build the snapshot, preserving slot indices (null for empty slots). Skip
@@ -930,6 +994,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!anyConnected) return;
 
         rtsIframe.contentWindow.postMessage({ type: 'rts:gamepad', pads: snapshot }, '*');
+        gamepadPostCount++;
     };
 
     // Start the forward loop once (idempotent). Safe to call before the iframe has
