@@ -13,6 +13,7 @@ import {
   scanGamepadToken,
   wheelDeltaToToken,
 } from './controlBindings';
+import { getBridgedGamepads } from './gamepadSource';
 import {
   type ActivationMode,
   ACTIVATION_MODES,
@@ -199,12 +200,12 @@ export function ControlBindingsPanel() {
   // immediately bind itself.
   useEffect(() => {
     if (listeningFor === null || device !== 'controller') return;
-    if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
 
     let rafId = 0;
     let armed = false;
     const poll = () => {
-      const pad = Array.from(navigator.getGamepads()).find((p) => p && p.connected);
+      // Bridged read so rebinding works in the portfolio embed too (gamepadSource.ts).
+      const pad = getBridgedGamepads().find((p) => p && p.connected);
       if (pad) {
         if (listeningModeRef.current === 'chord') {
           // Capture two buttons held simultaneously, e.g. LB + A.

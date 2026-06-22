@@ -869,6 +869,76 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
+    // -------------------------------------------------------------------------
+    // Controller bridge: forward the host page's gamepad state into the iframe
+    // -------------------------------------------------------------------------
+    // The embedded RTS lives in a same-origin iframe. Chrome only reports a
+    // gamepad to a document once that document has the page focused AND has
+    // received a gamepad button-press as its own user gesture. A controller-only
+    // player can't give the *iframe* that activating gesture — gamepad input is
+    // not a focus gesture, so they can't move focus from this host page into the
+    // iframe with the controller alone. This top page is the document the player
+    // actually pressed buttons in, so it is the only one Chrome exposes the pad
+    // to; the iframe's own navigator.getGamepads() stays empty and the controller
+    // looks dead in-game.
+    //
+    // Fix: poll the pad here (we *can* read it) and forward a tiny serialized
+    // snapshot into the iframe each animation frame. The game reads it as a
+    // fallback (see RTS src/components/Working/gamepadSource.ts). The contract is
+    // just the message shape; neither side reaches into the other's DOM.
+    let gamepadForwardRafId = null;
+
+    // Flatten a live Gamepad into a structured-clone-safe snapshot (postMessage
+    // can't carry the native Gamepad object). Only the fields the game reads.
+    const serializeGamepad = (pad) => ({
+        index: pad.index,
+        connected: pad.connected,
+        axes: Array.from(pad.axes),
+        buttons: Array.from(pad.buttons, (button) => ({
+            pressed: button.pressed,
+            value: button.value,
+        })),
+    });
+
+    const forwardGamepadState = () => {
+        gamepadForwardRafId = requestAnimationFrame(forwardGamepadState);
+
+        if (!rtsIframe || rtsIframe.style.display === 'none' || !rtsIframe.contentWindow) {
+            return;
+        }
+
+        let pads;
+        try {
+            pads = navigator.getGamepads ? navigator.getGamepads() : [];
+        } catch (_) {
+            return; // Some browsers throw if the API is gated; nothing to forward.
+        }
+
+        // Build the snapshot, preserving slot indices (null for empty slots). Skip
+        // the postMessage entirely when no pad is connected so we don't spam the
+        // iframe — and so its own native reading wins whenever it has a real pad.
+        let anyConnected = false;
+        const snapshot = [];
+        for (const pad of pads) {
+            if (pad && pad.connected) {
+                snapshot.push(serializeGamepad(pad));
+                anyConnected = true;
+            } else {
+                snapshot.push(null);
+            }
+        }
+        if (!anyConnected) return;
+
+        rtsIframe.contentWindow.postMessage({ type: 'rts:gamepad', pads: snapshot }, '*');
+    };
+
+    // Start the forward loop once (idempotent). Safe to call before the iframe has
+    // finished loading: the loop guards on visibility + contentWindow each frame.
+    const startGamepadForwarding = () => {
+        if (gamepadForwardRafId !== null) return;
+        gamepadForwardRafId = requestAnimationFrame(forwardGamepadState);
+    };
+
     const engageScrollLock = () => {
         // Align the 100vh game container's top with the viewport top so the
         // game fills the screen and nothing is cut off at the bottom. We
@@ -944,6 +1014,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Show iframe immediately
                 rtsIframe.style.display = 'block';
+
+                // Begin forwarding controller state into the iframe now that it's
+                // visible — a controller-only player only ever has this host page's
+                // pad reading, so the game depends on this relay (see above).
+                startGamepadForwarding();
 
                 // Show only the game and lock wheel-scrolling the moment the
                 // iframe is visible — don't wait for the game to report its

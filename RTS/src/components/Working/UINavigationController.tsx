@@ -11,6 +11,7 @@ import {
   stepRepeat,
   type NavRect,
 } from './uiGamepadNav';
+import { firstConnectedBridgedGamepad } from './gamepadSource';
 
 /**
  * UINavigationController — a render-nothing component, mounted once for the whole
@@ -104,11 +105,9 @@ function findBackTarget(): HTMLElement | null {
 }
 
 function firstConnectedGamepad(): GamepadSnapshot | null {
-  if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
-  for (const pad of navigator.getGamepads()) {
-    if (pad && pad.connected) return pad;
-  }
-  return null;
+  // Bridged read: in the portfolio embed the pad is only visible to the host page,
+  // which forwards it into this iframe (see gamepadSource.ts).
+  return firstConnectedBridgedGamepad() as unknown as GamepadSnapshot | null;
 }
 
 export function UINavigationController() {

@@ -11,17 +11,16 @@
 // controller support without dragging in that whole component.
 
 import { CONTROLLER_DEADZONE, type GamepadLike } from '../controlBindings';
+import { firstConnectedBridgedGamepad } from '../gamepadSource';
 
 /**
  * The first connected gamepad, or null. Matches GamepadController.getActiveGamepad
  * so Conquest and Quick Play resolve "the active pad" identically.
  */
 export function activeConquestGamepad(): GamepadLike | null {
-  if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
-  for (const pad of navigator.getGamepads()) {
-    if (pad && pad.connected) return pad as unknown as GamepadLike;
-  }
-  return null;
+  // Bridged read so Conquest's controller works inside the portfolio iframe, where
+  // the pad is only visible to the host page (see gamepadSource.ts).
+  return firstConnectedBridgedGamepad() as unknown as GamepadLike | null;
 }
 
 /**

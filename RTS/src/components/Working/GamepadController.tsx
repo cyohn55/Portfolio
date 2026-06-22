@@ -11,6 +11,7 @@ import {
 } from './controlBindings';
 import { type AbilityComboCursor, tryFireAbilityCombo } from './abilityCombo';
 import { gamepadInput } from './gamepadInput';
+import { firstConnectedBridgedGamepad } from './gamepadSource';
 import { clampToArena } from './arenaBoundary';
 import { UNIT_PLACEMENT_REPEAT_INTERVAL_MS } from './monarchPilot';
 import {
@@ -154,12 +155,9 @@ const GAMEPAD_GESTURE_ACTIONS: readonly ControlActionId[] = [
 ];
 
 function getActiveGamepad(): GamepadLike | null {
-  if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
-  const pads = navigator.getGamepads();
-  for (const pad of pads) {
-    if (pad && pad.connected) return pad as unknown as GamepadLike;
-  }
-  return null;
+  // Read through the bridge so the embedded iframe sees the host-forwarded pad
+  // even when only the host page can read it directly (see gamepadSource.ts).
+  return firstConnectedBridgedGamepad() as unknown as GamepadLike | null;
 }
 
 export function GamepadController() {
