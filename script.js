@@ -895,7 +895,22 @@ document.addEventListener('DOMContentLoaded', function() {
     // connected pad, and how many snapshots we've forwarded into the iframe.
     const gamepadDebugEnabled =
         /(^|[?#&])gpdebug(=|&|$)/.test(window.location.search + window.location.hash);
+
+    // The browser fires `gamepadconnected` the first time it sees a pad (after a
+    // button press while the page is focused). Whether this ever fires is the most
+    // telling signal: if it never fires, the browser/OS isn't detecting the pad at
+    // all — nothing in our code can help. Listen at the top document unconditionally
+    // (cheap) so the overlay can report it.
+    let lastGamepadEvent = 'none yet';
+    window.addEventListener('gamepadconnected', (e) => {
+        lastGamepadEvent = 'connected: ' + (e.gamepad && e.gamepad.id);
+    });
+    window.addEventListener('gamepaddisconnected', (e) => {
+        lastGamepadEvent = 'disconnected: ' + (e.gamepad && e.gamepad.id);
+    });
+
     let gamepadDebugEl = null;
+    let gamepadDebugRafId = null;
     const ensureGamepadDebugOverlay = () => {
         if (!gamepadDebugEnabled || gamepadDebugEl) return;
         gamepadDebugEl = document.createElement('div');
@@ -920,6 +935,32 @@ document.addEventListener('DOMContentLoaded', function() {
             return 'read error: ' + (e && e.name);
         }
     };
+
+    // Independent diagnostic loop: runs from page load whenever ?gpdebug is set, so
+    // the overlay is visible immediately — before (and without) loading the game.
+    // Reads the top document's navigator always, and the iframe's once it exists.
+    const renderGamepadDebug = () => {
+        gamepadDebugRafId = requestAnimationFrame(renderGamepadDebug);
+        ensureGamepadDebugOverlay();
+        if (!gamepadDebugEl) return;
+        let activeTag = '(none)';
+        try {
+            const ae = document.activeElement;
+            activeTag = ae ? (ae.tagName + (ae.id ? '#' + ae.id : '')) : '(none)';
+        } catch (_) { /* ignore */ }
+        const iframeLoaded = rtsIframe && rtsIframe.style.display !== 'none' && rtsIframe.contentWindow;
+        const iframeNav = iframeLoaded ? rtsIframe.contentWindow.navigator : null;
+        gamepadDebugEl.textContent =
+            'GAMEPAD BRIDGE [gpdebug]\n' +
+            'page focus:  ' + document.hasFocus() + '  active=' + activeTag + '\n' +
+            'gp event:    ' + lastGamepadEvent + '\n' +
+            'top pads:    ' + describePads(navigator) + '\n' +
+            'iframe pads: ' + (iframeLoaded ? describePads(iframeNav) : '(game not loaded)') + '\n' +
+            'forwarded:   ' + gamepadPostCount + ' snapshots';
+    };
+    if (gamepadDebugEnabled) {
+        gamepadDebugRafId = requestAnimationFrame(renderGamepadDebug);
+    }
 
     // Flatten a live Gamepad into a structured-clone-safe snapshot (postMessage
     // can't carry the native Gamepad object). Only the fields the game reads.
@@ -960,23 +1001,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const iframeNav = rtsIframe.contentWindow.navigator;
         let pads = readConnectedPads(navigator);
         if (!hasConnected(pads)) pads = readConnectedPads(iframeNav);
-
-        if (gamepadDebugEnabled) {
-            ensureGamepadDebugOverlay();
-            if (gamepadDebugEl) {
-                let activeTag = '(none)';
-                try {
-                    const ae = document.activeElement;
-                    activeTag = ae ? (ae.tagName + (ae.id ? '#' + ae.id : '')) : '(none)';
-                } catch (_) { /* ignore */ }
-                gamepadDebugEl.textContent =
-                    'GAMEPAD BRIDGE [gpdebug]\n' +
-                    'top focus:   ' + document.hasFocus() + '  active=' + activeTag + '\n' +
-                    'top pads:    ' + describePads(navigator) + '\n' +
-                    'iframe pads: ' + describePads(iframeNav) + '\n' +
-                    'forwarded:   ' + gamepadPostCount + ' snapshots';
-            }
-        }
 
         // Build the snapshot, preserving slot indices (null for empty slots). Skip
         // the postMessage entirely when no pad is connected so we don't spam the
