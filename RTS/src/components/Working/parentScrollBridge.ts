@@ -71,6 +71,28 @@ export function useParentScrollBridge(): void {
       }
     });
 
-    return unsubscribe;
+    // Keep input focus on the game while embedded. The Gamepad API only reports
+    // controllers to the focused document, so if the player clicks the host page
+    // (drifting focus to the parent) the controller would go dead until they click
+    // back. Re-grabbing focus on any pointer/key interaction with the game keeps
+    // the pad live. The parent (script.js) focuses the iframe on load and on screen
+    // changes; this is the in-frame counterpart that recovers from focus drift.
+    // No-op when not embedded (standalone runs already hold focus).
+    const grabFocus = () => {
+      if (!isEmbedded()) return;
+      try {
+        window.focus();
+      } catch {
+        // Focusing across an origin boundary can throw — safe to ignore.
+      }
+    };
+    window.addEventListener('pointerdown', grabFocus);
+    window.addEventListener('keydown', grabFocus);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('pointerdown', grabFocus);
+      window.removeEventListener('keydown', grabFocus);
+    };
   }, []);
 }

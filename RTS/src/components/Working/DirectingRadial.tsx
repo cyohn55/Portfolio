@@ -52,7 +52,6 @@ const PLAY_OPTIONS: readonly RingOption[] = PLAYBOOK_OPTIONS.map((item) => ({
 
 export function DirectingRadial() {
   const matchStarted = useGameStore((s) => s.matchStarted);
-  const units = useGameStore((s) => s.units);
   const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
   const localPlayerId = useGameStore((s) => s.localPlayerId);
   const pilotedFireTeamId = useGameStore((s) => s.pilotedFireTeamId);
@@ -62,18 +61,27 @@ export function DirectingRadial() {
   const callPlay = useGameStore((s) => s.callPlay);
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
 
+  // The wheel's contents change only when the selection, the piloted team, or the
+  // fire-team table changes — all of which are user-triggered and rare. We therefore
+  // do NOT subscribe to the live `units` array: it gets a fresh reference every tick
+  // (the sim publishes `units` each frame), which would re-render this component and
+  // rebuild the radial 60x/s for the whole match. Reading `units` via getState inside
+  // the memos keeps the data current at the moments that matter without that churn.
   // The units the Shapes / Audibles pages command: the player's own living movable
   // units that are selected, plus the squad whose drive control they hold.
   const commandable = useMemo<Unit[]>(() => {
     const selected = new Set(selectedUnitIds);
-    return units.filter(
+    return useGameStore.getState().units.filter(
       (unit) =>
         unit.ownerId === localPlayerId &&
         unit.kind === 'Unit' &&
         unit.hp > 0 &&
         (selected.has(unit.id) || (pilotedFireTeamId !== null && unit.fireTeamId === pilotedFireTeamId))
     );
-  }, [units, selectedUnitIds, localPlayerId, pilotedFireTeamId]);
+    // `fireTeams` is a dep so team membership/disband changes refresh the set even
+    // though it is read off the live store rather than subscribed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUnitIds, localPlayerId, pilotedFireTeamId, fireTeams]);
 
   const commandableIds = useMemo(() => commandable.map((unit) => unit.id), [commandable]);
 
@@ -97,9 +105,12 @@ export function DirectingRadial() {
   );
 
   // A play acts on every formed team the player owns, regardless of selection.
+  // Derived from the fire-team table (a play needs at least one formed team), which
+  // is the rarely-changing signal — so this stays correct without subscribing to the
+  // per-tick `units` array. (Disbanded teams are pruned from `fireTeams` each tick.)
   const hasAnyOwnFormation = useMemo(
     () =>
-      units.some(
+      useGameStore.getState().units.some(
         (unit) =>
           unit.ownerId === localPlayerId &&
           unit.kind === 'Unit' &&
@@ -107,7 +118,7 @@ export function DirectingRadial() {
           unit.fireTeamId !== undefined &&
           fireTeams[unit.fireTeamId] !== undefined
       ),
-    [units, localPlayerId, fireTeams]
+    [localPlayerId, fireTeams]
   );
 
   const triggerKeyLabel = useMemo(() => {

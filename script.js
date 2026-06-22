@@ -851,6 +851,24 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
+    // Give the RTS iframe document input focus. The Gamepad API only surfaces
+    // controllers to the *focused* document, so a controller-only player gets no
+    // input until the iframe (not the parent page) holds focus. We focus both the
+    // element and its contentWindow; preventScroll keeps the browser from yanking
+    // the page when focus lands. Wrapped in try/catch: cross-origin access would
+    // throw, but RTS/dist is same-origin in production so this normally succeeds.
+    const focusGameFrame = () => {
+        try {
+            if (rtsIframe.style.display === 'none') return; // not loaded/visible yet
+            rtsIframe.focus({ preventScroll: true });
+            if (rtsIframe.contentWindow) {
+                rtsIframe.contentWindow.focus();
+            }
+        } catch (_) {
+            // Cross-origin (shouldn't happen in production) — nothing to do.
+        }
+    };
+
     const engageScrollLock = () => {
         // Align the 100vh game container's top with the viewport top so the
         // game fills the screen and nothing is cut off at the bottom. We
@@ -944,6 +962,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 // auto-scroll the iframe to the bottom of the page.
                 rtsIframe.addEventListener('load', function() {
                     engageScrollLock();
+                    // Hand the iframe focus so the embedded game receives keyboard
+                    // AND gamepad input. The Gamepad API only reports pads to the
+                    // focused document, so without this the controller is invisible
+                    // to the RTS while it runs inside the iframe (pads would route
+                    // to this parent page instead). focus({preventScroll}) avoids
+                    // re-triggering the auto-scroll engageScrollLock just corrected.
+                    focusGameFrame();
                 });
 
                 // Add error event listener
@@ -984,6 +1009,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!data || data.type !== 'rts:screen') return;
 
             engageScrollLock();
+            // Re-assert iframe focus on every screen transition (menu → lobby →
+            // playing …) so the controller keeps reporting to the game even if the
+            // parent page stole focus in between (e.g. the player clicked the page).
+            focusGameFrame();
         });
     }
 });

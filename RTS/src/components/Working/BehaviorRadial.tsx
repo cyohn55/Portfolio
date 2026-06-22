@@ -42,11 +42,31 @@ import {
 
 export function BehaviorRadial() {
   const matchStarted = useGameStore((s) => s.matchStarted);
-  const units = useGameStore((s) => s.units);
   const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
   const localPlayerId = useGameStore((s) => s.localPlayerId);
   const setBehavior = useGameStore((s) => s.setBehavior);
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
+
+  // We must NOT subscribe to the live `units` array: the sim publishes a fresh
+  // `units` reference every tick, which would re-render this always-mounted wheel
+  // 60x/s for the whole match. Instead we derive a tiny signature of just the
+  // selected units' postures. The selector runs each tick (a cheap scan, no DOM
+  // work) but its string output is identical frame-to-frame unless a selected
+  // unit's stance/fire/priority actually changes — so React only re-renders on a
+  // real posture change (e.g. after setBehavior), keeping the open wheel's active
+  // highlights live without the per-tick churn. Membership tracks selectedUnitIds.
+  const behaviorSignature = useGameStore((s) => {
+    const selected = s.selectedUnitIds;
+    if (selected.length === 0) return '';
+    const ids = new Set(selected);
+    let signature = '';
+    for (const unit of s.units) {
+      if (!ids.has(unit.id) || unit.ownerId !== localPlayerId || unit.kind === 'Base') continue;
+      const behavior = behaviorOf(unit);
+      signature += `${unit.id}:${behavior.stance}/${behavior.fire}/${behavior.priority};`;
+    }
+    return signature;
+  });
 
   // The player's current key for the radial action, shown on the trigger so the
   // hint stays accurate after a rebind. Blank when the action is left unbound.
@@ -64,12 +84,17 @@ export function BehaviorRadial() {
   const hoverRef = useRef<RadialHover | null>(null);
 
   // The subset of the selection this player can actually command postures for:
-  // their own movable units (Bases have no behavior). Recomputed from the live
-  // `units`/`selectedUnitIds` so highlights track command results.
+  // their own movable units (Bases have no behavior). Read off the live store (not
+  // a subscription) and recomputed whenever the selection or the posture signature
+  // changes, so the active highlights still track command results without the wheel
+  // re-rendering every sim tick.
   const commandable = useMemo<Unit[]>(() => {
     const selected = new Set(selectedUnitIds);
-    return units.filter((u) => selected.has(u.id) && u.ownerId === localPlayerId && u.kind !== 'Base');
-  }, [units, selectedUnitIds, localPlayerId]);
+    return useGameStore
+      .getState()
+      .units.filter((u) => selected.has(u.id) && u.ownerId === localPlayerId && u.kind !== 'Base');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUnitIds, localPlayerId, behaviorSignature]);
 
   const commandableIds = useMemo(() => commandable.map((u) => u.id), [commandable]);
 
