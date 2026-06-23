@@ -9,7 +9,7 @@
 // Headings follow the same convention as FireTeamState.facing / formations.worldSlot:
 // the forward axis is (sin h, cos h), so a ground vector (x, z) has heading atan2(x, z).
 
-import type { FireTeamState, Position3D, Unit } from '../../game/types';
+import type { Position3D, Unit } from '../../game/types';
 
 /** A button a fire team can be bound to while the Left Bumper is held. */
 export interface ButtonSlot {
@@ -52,25 +52,46 @@ export interface FireTeamButtonAssignment {
 
 /**
  * The acting player's directable fire teams: every team id with at least one living
- * owned army Unit AND a live formation entry, sorted by id. Sorting makes the button
- * assignment stable across frames (and identical on both lockstep peers), so a team
- * keeps the same button for the whole hold and the badges never reshuffle.
+ * owned army Unit, sorted by id. A fire team exists the moment a squad is deployed
+ * (it shares a fireTeamId) — it does NOT need a formation entry, since this gesture
+ * moves the squad with the same moveCommand that works on any units. Sorting makes the
+ * button assignment stable across frames (and identical on both lockstep peers), so a
+ * team keeps the same button for the whole hold and the badges never reshuffle.
  */
-export function directableFireTeamIds(
-  units: readonly Unit[],
-  fireTeams: Record<string, FireTeamState>,
-  ownerId: string | null,
-): string[] {
+export function directableFireTeamIds(units: readonly Unit[], ownerId: string | null): string[] {
   if (!ownerId) return [];
   const ids = new Set<string>();
   for (const unit of units) {
     const teamId = unit.fireTeamId;
     if (teamId === undefined) continue;
     if (unit.ownerId !== ownerId || unit.kind !== 'Unit' || unit.hp <= 0) continue;
-    if (!fireTeams[teamId]) continue;
     ids.add(teamId);
   }
   return [...ids].sort();
+}
+
+/**
+ * The center of a fire team — the mean position of its living owned members — or null
+ * when it has none. This is the arrow's origin and the basis for its move target, so
+ * it works for an unshaped squad (no formation anchor) just as well as a formed team.
+ */
+export function fireTeamCentroid(
+  units: readonly Unit[],
+  teamId: string,
+  ownerId: string | null,
+): Position3D | null {
+  if (!ownerId) return null;
+  let sumX = 0;
+  let sumZ = 0;
+  let count = 0;
+  for (const unit of units) {
+    if (unit.fireTeamId !== teamId || unit.ownerId !== ownerId || unit.kind !== 'Unit' || unit.hp <= 0) continue;
+    sumX += unit.position.x;
+    sumZ += unit.position.z;
+    count += 1;
+  }
+  if (count === 0) return null;
+  return { x: sumX / count, y: 0, z: sumZ / count };
 }
 
 /**

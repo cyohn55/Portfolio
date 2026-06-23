@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import type { FireTeamState, Position3D, Unit } from '../src/game/types';
+import type { Position3D, Unit } from '../src/game/types';
 import {
   FIRE_TEAM_BUTTON_SLOTS,
   FIRE_TEAM_CANCEL_BUTTON,
@@ -8,6 +8,7 @@ import {
   directMoveTarget,
   directableFireTeamIds,
   directionForHeading,
+  fireTeamCentroid,
   fireTeamMemberIds,
   headingForGroundVector,
 } from '../src/components/Working/fireTeamDirecting';
@@ -38,44 +39,40 @@ function makeUnit(overrides: Partial<Unit>): Unit {
   } as unknown as Unit;
 }
 
-// A formation entry is only ever truthiness-checked by these helpers, so an empty
-// shell keyed by team id is a faithful stand-in for a live FireTeamState.
-function formationTable(...teamIds: string[]): Record<string, FireTeamState> {
-  const table: Record<string, FireTeamState> = {};
-  for (const id of teamIds) table[id] = {} as FireTeamState;
-  return table;
-}
-
 test.describe('directableFireTeamIds — which teams the gesture offers', () => {
-  test('returns each owned, living, formed team exactly once, sorted by id', () => {
+  test('returns each owned, living team exactly once, sorted by id', () => {
     const units = [
       makeUnit({ id: 'U1', fireTeamId: 'FT3' }),
       makeUnit({ id: 'U2', fireTeamId: 'FT1' }),
       makeUnit({ id: 'U3', fireTeamId: 'FT1' }), // second member of FT1 — must not duplicate
       makeUnit({ id: 'U4', fireTeamId: 'FT2' }),
     ];
-    const ids = directableFireTeamIds(units, formationTable('FT1', 'FT2', 'FT3'), 'p0');
+    const ids = directableFireTeamIds(units, 'p0');
     expect(ids).toEqual(['FT1', 'FT2', 'FT3']);
   });
 
-  test('excludes enemy-owned, dead, non-Unit, and formation-less teams', () => {
+  test('offers an unshaped squad — a fire team needs no formation entry', () => {
+    // A team exists the moment a squad is deployed (it shares a fireTeamId); it does
+    // NOT need to be shaped via the Directing wheel first. This was the bug that hid
+    // the badges, so it is pinned here.
+    const units = [makeUnit({ id: 'U1', fireTeamId: 'FT_DEPLOYED' })];
+    expect(directableFireTeamIds(units, 'p0')).toEqual(['FT_DEPLOYED']);
+  });
+
+  test('excludes enemy-owned, dead, non-Unit, and team-less units', () => {
     const units = [
       makeUnit({ id: 'U1', fireTeamId: 'FT_OWN' }),
       makeUnit({ id: 'U2', fireTeamId: 'FT_ENEMY', ownerId: 'p1' }),
       makeUnit({ id: 'U3', fireTeamId: 'FT_DEAD', hp: 0 }),
       makeUnit({ id: 'U4', fireTeamId: 'FT_QUEEN', kind: 'Queen' }),
-      makeUnit({ id: 'U5', fireTeamId: 'FT_UNFORMED' }), // no entry in the table
       makeUnit({ id: 'U6' }), // no fireTeamId at all
     ];
-    // Only FT_OWN has a living owned army Unit AND a formation entry.
-    const table = formationTable('FT_OWN', 'FT_ENEMY', 'FT_DEAD', 'FT_QUEEN');
-    const ids = directableFireTeamIds(units, table, 'p0');
-    expect(ids).toEqual(['FT_OWN']);
+    expect(directableFireTeamIds(units, 'p0')).toEqual(['FT_OWN']);
   });
 
   test('returns nothing without an acting owner', () => {
     const units = [makeUnit({ id: 'U1', fireTeamId: 'FT1' })];
-    expect(directableFireTeamIds(units, formationTable('FT1'), null)).toEqual([]);
+    expect(directableFireTeamIds(units, null)).toEqual([]);
   });
 });
 
@@ -180,5 +177,28 @@ test.describe('fireTeamMemberIds — the units the move command addresses', () =
   test('returns nothing without an acting owner', () => {
     const units = [makeUnit({ id: 'U1', fireTeamId: 'FT1' })];
     expect(fireTeamMemberIds(units, 'FT1', null)).toEqual([]);
+  });
+});
+
+test.describe('fireTeamCentroid — the arrow origin and move basis', () => {
+  test('is the mean of the team\'s living owned members, flattened to the ground', () => {
+    const units = [
+      makeUnit({ id: 'U1', fireTeamId: 'FT1', position: { x: 0, y: 1, z: 0 } }),
+      makeUnit({ id: 'U2', fireTeamId: 'FT1', position: { x: 10, y: 2, z: 4 } }),
+      makeUnit({ id: 'U3', fireTeamId: 'FT1', position: { x: 2, y: 0, z: -4 } }),
+      makeUnit({ id: 'U4', fireTeamId: 'FT1', position: { x: 99, y: 0, z: 99 }, hp: 0 }), // dead — ignored
+      makeUnit({ id: 'U5', fireTeamId: 'FT2', position: { x: 50, y: 0, z: 50 } }),        // other team
+    ];
+    const center = fireTeamCentroid(units, 'FT1', 'p0');
+    expect(center).not.toBeNull();
+    expect(center!.x).toBeCloseTo((0 + 10 + 2) / 3, 9);
+    expect(center!.z).toBeCloseTo((0 + 4 + -4) / 3, 9);
+    expect(center!.y).toBe(0); // a ground point regardless of member elevation
+  });
+
+  test('is null for a team with no living owned members', () => {
+    const units = [makeUnit({ id: 'U1', fireTeamId: 'FT1', position: { x: 0, y: 0, z: 0 }, hp: 0 })];
+    expect(fireTeamCentroid(units, 'FT1', 'p0')).toBeNull();
+    expect(fireTeamCentroid(units, 'FT1', null)).toBeNull();
   });
 });
