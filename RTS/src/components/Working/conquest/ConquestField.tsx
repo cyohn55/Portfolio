@@ -916,7 +916,9 @@ export function ConquestField() {
     };
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const factor = Math.exp(event.deltaY * 0.0012);
+      // Scale the per-notch zoom by the keyboard scroll-speed setting.
+      const scrollScale = useGameStore.getState().controlSpeeds.keyboardScroll;
+      const factor = Math.exp(event.deltaY * 0.0012 * scrollScale);
       zoom.current = THREE.MathUtils.clamp(zoom.current * factor, ZOOM_MIN, ZOOM_MAX);
     };
     // A lost focus never delivers keyup: drop held keys and abandon any pending
@@ -1468,6 +1470,9 @@ export function ConquestField() {
 
     const radialOpen = radialOpenRef.current;
     const layout = controllerBindingsRef.current;
+    // Player-tuned controller cursor-speed multiplier (1 = the tuned default), shared by the
+    // monarch-leashed cursor and the free-roam reticle so the right stick feels consistent.
+    const cursorSpeedScale = useGameStore.getState().controlSpeeds.controllerCursor;
 
     // Aim the cursor with the right stick (suppressed while the radial owns it). While a
     // monarch is piloted the cursor is LEASHED to her on the globe surface (the Quick Play
@@ -1492,7 +1497,7 @@ export function ConquestField() {
       // Reach scales with the monarch's on-screen size (× zoom) so it maps to the frame.
       const maxLeash = monarch.scale * PILOT_CURSOR_LEASH_FACTOR * zoom.current;
       if (stickActive) {
-        const step = maxLeash * PILOT_CURSOR_SWEEP_RATE * delta;
+        const step = maxLeash * PILOT_CURSOR_SWEEP_RATE * cursorSpeedScale * delta;
         cursorOffset.current
           .addScaledVector(scr.camRight, dx * step)
           .addScaledVector(scr.camForward, -dy * step); // stick up (dy<0) pushes away
@@ -1550,7 +1555,7 @@ export function ConquestField() {
         const dx = axisWithDeadzone(gamepad, 2);
         const dy = axisWithDeadzone(gamepad, 3);
         if (dx !== 0 || dy !== 0) {
-          const stepPx = RETICLE_SPEED_PX_PER_SEC * delta;
+          const stepPx = RETICLE_SPEED_PX_PER_SEC * cursorSpeedScale * delta;
           reticlePos.current.x = THREE.MathUtils.clamp(reticlePos.current.x + dx * stepPx, 0, window.innerWidth);
           reticlePos.current.y = THREE.MathUtils.clamp(reticlePos.current.y + dy * stepPx, 0, window.innerHeight);
         }
@@ -2020,9 +2025,12 @@ export function ConquestField() {
       ? controllerTokenMagnitude(gamepad, controllerLayout.cameraZoomOut)
         - controllerTokenMagnitude(gamepad, controllerLayout.cameraZoomIn)
       : 0;
-    const zoomDir = (zoomOutKey && pressed.has(zoomOutKey) ? 1 : 0)
-      - (zoomInKey && pressed.has(zoomInKey) ? 1 : 0)
-      + padZoom;
+    const keyZoom = (zoomOutKey && pressed.has(zoomOutKey) ? 1 : 0)
+      - (zoomInKey && pressed.has(zoomInKey) ? 1 : 0);
+    // Keyboard zoom keys ride the keyboard scroll-speed setting; the controller's bound
+    // zoom inputs ride the controller scroll-speed setting, so they are scaled separately.
+    const scrollSpeeds = useGameStore.getState().controlSpeeds;
+    const zoomDir = keyZoom * scrollSpeeds.keyboardScroll + padZoom * scrollSpeeds.controllerScroll;
     if (zoomDir !== 0) {
       zoom.current = THREE.MathUtils.clamp(
         zoom.current * Math.exp(zoomDir * ZOOM_KEY_SPEED * delta), ZOOM_MIN, ZOOM_MAX,

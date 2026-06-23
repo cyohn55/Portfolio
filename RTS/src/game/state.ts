@@ -937,6 +937,17 @@ type Store = GameState & {
   // Background music on/off (persisted across sessions)
   musicEnabled: boolean;
   setMusicEnabled: (enabled: boolean) => void;
+  // Per-device input speed multipliers (1 = the tuned default). "scroll" scales the
+  // camera zoom + pan rate; "cursor" scales the controller reticle (and the keyboard
+  // edge-scroll, since the OS owns the actual mouse pointer). Persisted across sessions
+  // and read each frame by CameraController and GamepadController.
+  controlSpeeds: {
+    keyboardScroll: number;
+    keyboardCursor: number;
+    controllerScroll: number;
+    controllerCursor: number;
+  };
+  updateControlSpeeds: (settings: Partial<Store['controlSpeeds']>) => void;
 };
 
 // Persisted render-quality toggle. Shadows default OFF: enabling them adds a
@@ -1024,6 +1035,29 @@ const loadMusicEnabled = (): boolean => {
     return raw === 'true';
   } catch {
     return true;
+  }
+};
+
+// Persisted per-device input speed multipliers. All default to 1.0 (the values the
+// camera/reticle were originally tuned to), so an existing player notices no change
+// until they move a slider. Stored as one JSON object and merged over the defaults so
+// a save that predates a field still resolves to a sensible 1.0 rather than NaN.
+const CONTROL_SPEEDS_STORAGE_KEY = 'rts-control-speeds';
+const DEFAULT_CONTROL_SPEEDS = {
+  keyboardScroll: 1,
+  keyboardCursor: 1,
+  controllerScroll: 1,
+  controllerCursor: 1,
+};
+type ControlSpeeds = typeof DEFAULT_CONTROL_SPEEDS;
+const loadControlSpeeds = (): ControlSpeeds => {
+  try {
+    const raw = localStorage.getItem(CONTROL_SPEEDS_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_CONTROL_SPEEDS };
+    const parsed = JSON.parse(raw) as Partial<ControlSpeeds>;
+    return { ...DEFAULT_CONTROL_SPEEDS, ...parsed };
+  } catch {
+    return { ...DEFAULT_CONTROL_SPEEDS };
   }
 };
 
@@ -1383,6 +1417,16 @@ export const useGameStore = create<Store>((set, get) => ({
     }
     set({ musicEnabled: enabled });
   },
+  controlSpeeds: loadControlSpeeds(),
+  updateControlSpeeds: (settings) => set((state) => {
+    const next = { ...state.controlSpeeds, ...settings };
+    try {
+      localStorage.setItem(CONTROL_SPEEDS_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      /* localStorage unavailable; setting still applies for the session */
+    }
+    return { controlSpeeds: next };
+  }),
   bridgeState: {
     rightBridge: {
       currentState: 'up',

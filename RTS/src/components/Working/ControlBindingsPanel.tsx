@@ -117,6 +117,46 @@ const SUB_TABS: readonly { device: InputDevice; label: string }[] = [
   { device: 'controller', label: 'Controller' },
 ];
 
+// Speed sliders run as a multiplier on the tuned default (1.0×). The bounds let a player
+// slow inputs to a quarter or speed them up to triple without ever hitting zero (which
+// would freeze the input) or a runaway rate that overshoots the map every frame.
+const SPEED_MIN = 0.25;
+const SPEED_MAX = 3;
+const SPEED_STEP = 0.05;
+
+/** One labelled speed slider showing its current value as a "1.0×" multiplier. */
+function SpeedSlider({
+  label,
+  description,
+  value,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div>
+      <label style={{ color: '#cbd5e1', fontSize: '14px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+        {label} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({value.toFixed(2)}×)</span>
+      </label>
+      <input
+        type="range"
+        min={SPEED_MIN}
+        max={SPEED_MAX}
+        step={SPEED_STEP}
+        value={value}
+        onChange={(event) => onChange(parseFloat(event.target.value))}
+        style={{ width: '100%' }}
+      />
+      <div style={{ color: '#8b97a8', fontSize: '11px', marginTop: '4px', lineHeight: 1.3 }}>
+        {description}
+      </div>
+    </div>
+  );
+}
+
 export function ControlBindingsPanel() {
   const keyboardBindings = useGameStore((s) => s.keyboardBindings);
   const controllerBindings = useGameStore((s) => s.controllerBindings);
@@ -125,6 +165,8 @@ export function ControlBindingsPanel() {
   const setBinding = useGameStore((s) => s.setBinding);
   const setBindingMode = useGameStore((s) => s.setBindingMode);
   const resetBindings = useGameStore((s) => s.resetBindings);
+  const controlSpeeds = useGameStore((s) => s.controlSpeeds);
+  const updateControlSpeeds = useGameStore((s) => s.updateControlSpeeds);
 
   const [device, setDevice] = useState<InputDevice>('keyboard');
   const [listeningFor, setListeningFor] = useState<ControlActionId | null>(null);
@@ -294,6 +336,41 @@ export function ControlBindingsPanel() {
         </div>
       )}
 
+      {/* Speed sliders. Scroll speed scales the camera zoom + pan rate; cursor speed
+          scales the controller reticle (and, on keyboard & mouse, the screen-edge scroll,
+          since the OS owns the actual mouse pointer). Changes apply live and persist. */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px',
+        marginBottom: '20px',
+        padding: '14px 16px',
+        background: 'rgba(88,120,255,0.06)',
+        border: '1px solid rgba(88,120,255,0.15)',
+        borderRadius: '8px',
+      }}>
+        <SpeedSlider
+          label="Scroll Speed"
+          description={device === 'keyboard'
+            ? 'How fast the mouse wheel zooms and a middle-mouse drag pans the map.'
+            : 'How fast the triggers zoom and the left stick pans the camera.'}
+          value={device === 'keyboard' ? controlSpeeds.keyboardScroll : controlSpeeds.controllerScroll}
+          onChange={(value) => updateControlSpeeds(
+            device === 'keyboard' ? { keyboardScroll: value } : { controllerScroll: value }
+          )}
+        />
+        <SpeedSlider
+          label="Cursor Speed"
+          description={device === 'keyboard'
+            ? 'How fast the camera scrolls when the cursor pushes against a screen edge.'
+            : 'How fast the right stick moves the on-screen targeting reticle.'}
+          value={device === 'keyboard' ? controlSpeeds.keyboardCursor : controlSpeeds.controllerCursor}
+          onChange={(value) => updateControlSpeeds(
+            device === 'keyboard' ? { keyboardCursor: value } : { controllerCursor: value }
+          )}
+        />
+      </div>
+
       <div style={{ maxHeight: '46vh', overflowY: 'auto', paddingRight: '6px' }}>
         {grouped.map((group) => (
           <div key={group.category} style={{ marginBottom: '20px' }}>
@@ -387,7 +464,15 @@ export function ControlBindingsPanel() {
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
         <button
-          onClick={() => { setListeningFor(null); resetBindings(device); }}
+          onClick={() => {
+            setListeningFor(null);
+            resetBindings(device);
+            // Also restore this device's speed sliders to the 1.0× default so "Reset to
+            // Defaults" returns the whole tab to its out-of-box feel, not just the keys.
+            updateControlSpeeds(device === 'keyboard'
+              ? { keyboardScroll: 1, keyboardCursor: 1 }
+              : { controllerScroll: 1, controllerCursor: 1 });
+          }}
           style={{
             padding: '10px 18px',
             fontSize: '13px',

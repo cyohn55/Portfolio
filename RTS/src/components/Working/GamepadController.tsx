@@ -1238,6 +1238,11 @@ export function GamepadController() {
       const dy = Math.abs(ry) > CONTROLLER_DEADZONE ? ry : 0;
       const stickActive = dx !== 0 || dy !== 0;
 
+      // Player-tuned controller cursor-speed multiplier (1 = the tuned default). Scales
+      // both the monarch-tethered leash and the free-roam reticle so the whole right
+      // stick feels consistent. Read fresh each frame so a slider change applies live.
+      const cursorSpeedScale = useGameStore.getState().controlSpeeds.controllerCursor;
+
       const monarch = pilotedMonarch();
       const deployActive = cursorDeployActiveRef.current;
       const { offset, camForward, camRight, world } = cursorScratch.current;
@@ -1251,7 +1256,7 @@ export function GamepadController() {
           camForward.y = 0;
           if (camForward.lengthSq() > 0) camForward.normalize();
           camRight.crossVectors(camForward, WORLD_UP).normalize();
-          const step = PILOT_CURSOR_SPEED * delta;
+          const step = PILOT_CURSOR_SPEED * cursorSpeedScale * delta;
           offset.addScaledVector(camRight, dx * step);
           offset.addScaledVector(camForward, -dy * step); // stick up (dy<0) pushes away
           offset.y = 0;
@@ -1287,7 +1292,7 @@ export function GamepadController() {
       } else {
         // Free-roam: move the screen anchor in pixels, then raycast it to the ground.
         if (stickActive) {
-          const step = RETICLE_SPEED_PX_PER_SEC * delta;
+          const step = RETICLE_SPEED_PX_PER_SEC * cursorSpeedScale * delta;
           reticlePos.current.x = clamp(reticlePos.current.x + dx * step, 0, window.innerWidth);
           reticlePos.current.y = clamp(reticlePos.current.y + dy * step, 0, window.innerHeight);
         }

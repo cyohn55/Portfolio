@@ -111,6 +111,14 @@ export function CameraController({
   const bindingsRef = useRef(keyboardBindings);
   bindingsRef.current = keyboardBindings;
 
+  // Player-tuned speed multipliers, mirrored to a ref so the per-frame loop and the
+  // wheel/drag callbacks read the live values without re-subscribing. "scroll" scales
+  // the zoom + camera-pan rate; the keyboard "cursor" multiplier scales edge-scroll
+  // (the OS owns the real mouse pointer, so edge-scroll is what a KB&M player can tune).
+  const controlSpeeds = useGameStore((s) => s.controlSpeeds);
+  const speedsRef = useRef(controlSpeeds);
+  speedsRef.current = controlSpeeds;
+
   // Whether the camera is currently easing toward the selected troops. Manual
   // panning (edge-scroll, middle-drag, controller stick, touch drag) cancels it; making a fresh
   // selection re-arms it.
@@ -203,8 +211,9 @@ export function CameraController({
 
     event.preventDefault();
 
-    // Determine zoom direction and apply
-    const zoomDelta = event.deltaY > 0 ? zoomSpeed : -zoomSpeed;
+    // Determine zoom direction and apply, scaled by the keyboard scroll-speed setting.
+    const wheelStep = zoomSpeed * speedsRef.current.keyboardScroll;
+    const zoomDelta = event.deltaY > 0 ? wheelStep : -wheelStep;
 
     // Apply zoom with constraints
     const newDistance = Math.max(minDistance, Math.min(maxDistance, currentDistance.current + zoomDelta));
@@ -244,8 +253,9 @@ export function CameraController({
     const rightVec = new THREE.Vector3().crossVectors(cameraDirection, up.current).normalize();
 
     // Grabbing the terrain: dragging right slides the world right, so the focus
-    // point moves left (inverted), matching the single-finger touch drag.
-    const perPixel = moveSpeed * dragPanSensitivity;
+    // point moves left (inverted), matching the single-finger touch drag. Middle-drag
+    // is a scroll gesture, so it tracks the keyboard scroll-speed setting.
+    const perPixel = moveSpeed * dragPanSensitivity * speedsRef.current.keyboardScroll;
     target.current.add(rightVec.multiplyScalar(-deltaX * perPixel));
     target.current.add(cameraDirection.multiplyScalar(deltaY * perPixel));
 
@@ -420,6 +430,7 @@ export function CameraController({
     const bindings = bindingsRef.current;
     const cameraIntent = gamepadInput.getCameraIntent();
     const keys = keysPressed.current;
+    const speeds = speedsRef.current;
     const forwardKey = plainKeyToken(bindings.cameraForward);
     const backwardKey = plainKeyToken(bindings.cameraBackward);
     const leftKey = plainKeyToken(bindings.cameraLeft);
@@ -499,32 +510,43 @@ export function CameraController({
       }
     } else {
       // Camera panning: controller stick plus screen-edge scroll. (Middle-drag
-      // is applied directly in handleMouseMove.) Edge-pan only fires while the
-      // cursor sits in the edge band over the canvas, so hovering a HUD widget
-      // near a screen edge doesn't scroll the map.
-      const pan = gamepadMove;
+      // is applied directly in handleMouseMove.) The two sources carry different
+      // player-tuned speeds — the controller stick rides the controller scroll-speed
+      // setting, the screen-edge scroll rides the keyboard cursor-speed setting — so
+      // they are accumulated and scaled independently rather than summed first.
+      const stickPan = gamepadMove;
+
+      // Edge-pan only fires while the cursor sits in the edge band over the canvas, so
+      // hovering a HUD widget near a screen edge doesn't scroll the map.
+      const edgePan = new THREE.Vector3();
       if (mouseOverCanvas.current && !isMiddleDragging.current) {
         const { x: mouseX, y: mouseY } = mousePos.current;
         // One shared computation drives both the pan and the on-screen chevrons,
         // so the chevron for an edge is lit exactly when that edge's pan fires.
         const edges = computeActiveEdges(mouseX, mouseY, window.innerWidth, window.innerHeight, edgePanMargin);
-        if (edges.left) pan.sub(right.current);
-        else if (edges.right) pan.add(right.current);
-        if (edges.top) pan.add(forward.current);
-        else if (edges.bottom) pan.sub(forward.current);
+        if (edges.left) edgePan.sub(right.current);
+        else if (edges.right) edgePan.add(right.current);
+        if (edges.top) edgePan.add(forward.current);
+        else if (edges.bottom) edgePan.sub(forward.current);
         edgePanIndicator.setEdges(edges);
       } else {
         // Cursor off-canvas or mid middle-drag: edge-pan is suppressed, so are the chevrons.
         edgePanIndicator.reset();
       }
 
-      if (pan.length() > 0) {
-        const moveAmount = moveSpeed * 60 * delta; // Scale by 60 for frame-rate independence
-        pan.normalize().multiplyScalar(moveAmount);
-        target.current.add(pan);
-        // Any manual pan input cancels the auto-follow until a fresh selection.
-        followEnabled.current = false;
+      let panned = false;
+      if (stickPan.length() > 0) {
+        const moveAmount = moveSpeed * speeds.controllerScroll * 60 * delta; // 60 = frame-rate independence
+        target.current.add(stickPan.clone().normalize().multiplyScalar(moveAmount));
+        panned = true;
       }
+      if (edgePan.length() > 0) {
+        const moveAmount = moveSpeed * speeds.keyboardCursor * 60 * delta;
+        target.current.add(edgePan.normalize().multiplyScalar(moveAmount));
+        panned = true;
+      }
+      // Any manual pan input cancels the auto-follow until a fresh selection.
+      if (panned) followEnabled.current = false;
 
       // Slow auto-follow: when armed, ease the focus point toward the centroid of
       // the currently selected, still-living troops. Reads the store directly so
@@ -563,16 +585,21 @@ export function CameraController({
     }
 
     // Zoom from bound keyboard keys (if any) plus the controller, applied as a
-    // continuous per-frame rate. Mouse-wheel zoom stays in handleWheel.
-    let zoomDirection = cameraIntent.zoom; // negative = zoom in, positive = zoom out
+    // continuous per-frame rate. Mouse-wheel zoom stays in handleWheel. The controller
+    // trigger zoom rides the controller scroll-speed setting; the bound keyboard zoom
+    // keys ride the keyboard scroll-speed setting (negative = zoom in, positive = out).
     const zoomInKey = plainKeyToken(bindings.cameraZoomIn);
     const zoomOutKey = plainKeyToken(bindings.cameraZoomOut);
-    if (zoomInKey && keys.has(zoomInKey)) zoomDirection -= 1;
-    if (zoomOutKey && keys.has(zoomOutKey)) zoomDirection += 1;
-    if (zoomDirection !== 0) {
-      const zoomAmount = zoomDirection * zoomSpeed * 30 * delta;
+    let keyboardZoom = 0;
+    if (zoomInKey && keys.has(zoomInKey)) keyboardZoom -= 1;
+    if (zoomOutKey && keys.has(zoomOutKey)) keyboardZoom += 1;
+    const applyZoom = (direction: number, speedScale: number) => {
+      if (direction === 0) return;
+      const zoomAmount = direction * zoomSpeed * speedScale * 30 * delta;
       currentDistance.current = Math.max(minDistance, Math.min(maxDistance, currentDistance.current + zoomAmount));
-    }
+    };
+    applyZoom(cameraIntent.zoom, speeds.controllerScroll);
+    applyZoom(keyboardZoom, speeds.keyboardScroll);
 
     // Confine the focus to the playable map. Every pan source above (controller stick, edge-pan,
     // middle-drag, auto-follow, piloted-unit follow) mutates target.current without bounds, so a
