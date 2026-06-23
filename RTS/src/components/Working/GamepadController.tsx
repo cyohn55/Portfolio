@@ -67,7 +67,9 @@ import { getKindTargetScale } from '../../utils/ModelPreloader';
 
 // Single left-stick→camera and right-stick→cursor tuning. Free-roam cursor speed
 // is in pixels/second; pan speed is unitless intent (CameraController scales it).
-const RETICLE_SPEED_PX_PER_SEC = 900;
+// Tuned for a calm, controllable reticle by default; the Controller → Cursor Speed
+// setting multiplies this for players who want it faster or slower.
+const RETICLE_SPEED_PX_PER_SEC = 600;
 // A button press counts as a "tap" only on the frame it transitions to active,
 // so holding a button doesn't repeat the order every frame.
 const UNIT_PICK_RADIUS_PX = 40;

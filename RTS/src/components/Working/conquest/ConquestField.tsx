@@ -490,7 +490,7 @@ const CONTROLLER_GESTURE_ACTIONS: readonly ControlActionId[] = [
 // deflection. Mirrors GamepadController.RETICLE_SPEED_PX_PER_SEC so the controller
 // cursor sweeps the globe at the same pace in both modes. Used only in the rare
 // no-piloted-monarch fallback (defeat); while piloting the cursor is leashed instead.
-const RETICLE_SPEED_PX_PER_SEC = 900;
+const RETICLE_SPEED_PX_PER_SEC = 600;
 
 // --- Monarch-tethered controller cursor (Conquest port of GamepadController's leash) ---
 // While piloting, the right stick extends a 3D targeting cursor out from the monarch
