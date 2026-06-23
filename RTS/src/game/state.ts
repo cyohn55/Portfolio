@@ -1034,6 +1034,14 @@ const loadMusicEnabled = (): boolean => {
 // relocated (or it has wandered well out of place).
 const FORMATION_REFORM_DISTANCE = 8;
 
+// On a re-slot (re-shape / re-face / membership change) a member already standing on
+// its new slot is left in place rather than issued a fresh march order: re-ordering it
+// would wipe its path cache and re-path it for no movement, and a whole squad re-shaped
+// near its current footprint pays that for every member at once (the directing burst).
+// Kept tight (well under FORMATION_REFORM_DISTANCE) so only genuinely-in-place members
+// are skipped. Squared to compare against squared distance without a sqrt.
+const FORMATION_IN_PLACE_DISTANCE_SQ = 1;
+
 // Audible step sizes. Re-facing pivots the formation 30° per press; expand/contract
 // widen/tighten the slot spacing within sane bounds so a shape never collapses onto
 // itself or scatters out of cohesion.
@@ -1167,35 +1175,67 @@ function maintainFormations(draft: FormationMutableState): void {
       if (!target || target.hp <= 0) team.focusTargetId = undefined;
     }
 
-    // Stable and unchanged: the anchors from the last slotting still hold the shape.
-    // Re-anchor only the stragglers that have wandered well out of place.
-    if (!team.dirty && !membershipChanged) {
-      const slots = assignSlots(members.map((u) => u.id), team.shape, team.anchor, team.facing, team.spacing);
-      for (const unit of members) {
-        const slot = slots[unit.id];
-        unit.anchor = { x: slot.x, y: 0, z: slot.z };
-        const drift = Math.hypot(unit.position.x - slot.x, unit.position.z - slot.z);
-        if (drift > FORMATION_REFORM_DISTANCE) {
+    // A re-slot (`reslotAll`) re-shapes the squad and marches EVERY member to its new
+    // slot — triggered only by an explicit change (a command set `dirty`) or a member
+    // gained/lost. Otherwise the team is stable: its anchors still hold the shape and
+    // only stragglers are nudged back. The slot GEOMETRY, though, must be recomputed
+    // whenever any input that moves the slots changes — which includes the anchor
+    // drifting under the drive pre-pass (it moves the anchor without setting `dirty`).
+    const reslotAll = team.dirty || membershipChanged;
+    const slotsInputsChanged =
+      reslotAll ||
+      team.slots === undefined ||
+      team.slotShape !== team.shape ||
+      team.slotAnchorX !== team.anchor.x ||
+      team.slotAnchorZ !== team.anchor.z ||
+      team.slotFacing !== team.facing ||
+      team.slotSpacing !== team.spacing;
+
+    // Recompute the slot assignment only when an input actually changed; otherwise reuse
+    // the cached map. This skips the per-tick sort + per-member trig + allocations for
+    // every formation that is simply holding station — the dominant steady-state cost.
+    let slots: Record<string, Position3D>;
+    if (slotsInputsChanged) {
+      slots = assignSlots(members.map((u) => u.id), team.shape, team.anchor, team.facing, team.spacing);
+      team.slots = slots;
+      team.slotShape = team.shape;
+      team.slotAnchorX = team.anchor.x;
+      team.slotAnchorZ = team.anchor.z;
+      team.slotFacing = team.facing;
+      team.slotSpacing = team.spacing;
+    } else {
+      slots = team.slots!;
+    }
+
+    for (const unit of members) {
+      const slot = slots[unit.id];
+      unit.anchor = { x: slot.x, y: 0, z: slot.z };
+      const dx = unit.position.x - slot.x;
+      const dz = unit.position.z - slot.z;
+      const distSq = dx * dx + dz * dz;
+      if (reslotAll) {
+        // Already on its new slot: leave it be rather than wiping its path cache and
+        // re-pathing it for zero movement (the directing-burst saver).
+        if (distSq <= FORMATION_IN_PLACE_DISTANCE_SQ) {
+          delete draft.unitOrders[unit.id];
+          unit.unitState = 'idle';
+        } else {
           draft.unitOrders[unit.id] = { x: slot.x, y: 0, z: slot.z };
           unit.unitState = 'moving_to_order';
           clearMovementCarryOver(unit);
         }
+      } else if (distSq > FORMATION_REFORM_DISTANCE * FORMATION_REFORM_DISTANCE) {
+        // Stable: only a member that has wandered well out of place is nudged back.
+        draft.unitOrders[unit.id] = { x: slot.x, y: 0, z: slot.z };
+        unit.unitState = 'moving_to_order';
+        clearMovementCarryOver(unit);
       }
-      continue;
     }
 
-    // Changed (re-shaped / moved / re-faced / a member gained or lost): slot every
-    // member to its place and send it there.
-    const slots = assignSlots(members.map((u) => u.id), team.shape, team.anchor, team.facing, team.spacing);
-    for (const unit of members) {
-      const slot = slots[unit.id];
-      unit.anchor = { x: slot.x, y: 0, z: slot.z };
-      draft.unitOrders[unit.id] = { x: slot.x, y: 0, z: slot.z };
-      unit.unitState = 'moving_to_order';
-      clearMovementCarryOver(unit);
+    if (reslotAll) {
+      team.dirty = false;
+      team.memberKey = memberKey;
     }
-    team.dirty = false;
-    team.memberKey = memberKey;
   }
 }
 
@@ -3330,10 +3370,10 @@ export const useGameStore = create<Store>((set, get) => ({
       // deterministic id and stamp it on every member, so loose units selected
       // together become a fire team the instant they are shaped. nextEntityId keeps
       // both lockstep peers minting the same id (same as the deploy path).
+      const firstTeamId = members[0].fireTeamId;
       const sharedTeamId =
-        members.every((unit) => unit.fireTeamId !== undefined) &&
-        members.every((unit) => unit.fireTeamId === members[0].fireTeamId)
-          ? members[0].fireTeamId!
+        firstTeamId !== undefined && members.every((unit) => unit.fireTeamId === firstTeamId)
+          ? firstTeamId
           : null;
       const teamId = sharedTeamId ?? nextEntityId('FT');
       if (sharedTeamId === null) {
@@ -3415,16 +3455,22 @@ export const useGameStore = create<Store>((set, get) => ({
       const play = PLAYBOOK[cmd.play];
       if (!play) return;
 
+      // Group the acting player's living formed members by team in ONE pass, instead of
+      // re-scanning every unit once per team (which was O(teams x units)). The map then
+      // serves both the "which teams have members" filter and the per-team posture loop.
+      const membersByTeam = new Map<string, Unit[]>();
+      for (const unit of draft.units) {
+        const teamId = unit.fireTeamId;
+        if (teamId === undefined || unit.ownerId !== ownerId || unit.kind !== 'Unit' || unit.hp <= 0) continue;
+        if (!draft.fireTeams[teamId]) continue;
+        const list = membersByTeam.get(teamId);
+        if (list) list.push(unit);
+        else membersByTeam.set(teamId, [unit]);
+      }
+
       // The acting player's formed teams with living members, ordered by id so the
       // centroid sum and classification are lockstep-identical.
-      const teamIds = Object.keys(draft.fireTeams)
-        .filter((teamId) =>
-          draft.units.some(
-            (unit) =>
-              unit.fireTeamId === teamId && unit.ownerId === ownerId && unit.kind === 'Unit' && unit.hp > 0
-          )
-        )
-        .sort();
+      const teamIds = [...membersByTeam.keys()].sort();
       if (teamIds.length === 0) return;
 
       // Army centroid + a representative facing, to measure each team's sideways
@@ -3448,11 +3494,9 @@ export const useGameStore = create<Store>((set, get) => ({
         team.spacing = defaultSpacingFor(rolePlay.shape);
         team.role = role;
         team.dirty = true;
-        // Posture every member of the team for the play.
-        for (const unit of draft.units) {
-          if (unit.fireTeamId === teamId && unit.ownerId === ownerId && unit.kind === 'Unit' && unit.hp > 0) {
-            unit.behavior = mergeBehavior(behaviorOf(unit), { stance: rolePlay.stance });
-          }
+        // Posture every member of the team for the play (from the prebuilt group).
+        for (const unit of membersByTeam.get(teamId)!) {
+          unit.behavior = mergeBehavior(behaviorOf(unit), { stance: rolePlay.stance });
         }
       });
     })

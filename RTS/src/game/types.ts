@@ -365,6 +365,19 @@ export interface FireTeamState {
   // membership changes (a death, or a unit added to the team).
   dirty: boolean;
   memberKey: string;
+  // Cached slot assignment from the last time the geometry was computed, keyed by
+  // member id. The maintenance pass reuses this every tick and only recomputes it
+  // (an O(n log n) sort + per-member trig + allocations) when an input that actually
+  // changes the slots does — the shape, anchor, facing, spacing, or membership.
+  // Derived purely deterministically, so both lockstep peers cache identical slots.
+  // The `slot*` fields record the inputs the cache was built from so a change is
+  // detected without recomputing. Absent until the team is first slotted.
+  slots?: Record<string, Position3D>;
+  slotShape?: FormationShape;
+  slotAnchorX?: number;
+  slotAnchorZ?: number;
+  slotFacing?: number;
+  slotSpacing?: number;
 }
 
 export interface GameState {
