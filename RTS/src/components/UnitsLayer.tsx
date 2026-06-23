@@ -158,6 +158,25 @@ const healthBarBgGeometry = new THREE.PlaneGeometry(HEALTH_BAR_WIDTH, HEALTH_BAR
 const healthBarFillGeometry = new THREE.PlaneGeometry(HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT);
 healthBarFillGeometry.translate(HEALTH_BAR_WIDTH / 2, 0, 0);
 
+// Bases are far larger than units, so they carry their own oversized billboard
+// health bar (shared geometry, one per base). The fill is left-anchored exactly
+// like the unit bar so scaling x by the HP ratio drains it from the right.
+const BASE_BAR_WIDTH = 9;
+const BASE_BAR_HEIGHT = 1.1;
+const baseBarBgGeometry = new THREE.PlaneGeometry(BASE_BAR_WIDTH, BASE_BAR_HEIGHT);
+const baseBarFillGeometry = new THREE.PlaneGeometry(BASE_BAR_WIDTH, BASE_BAR_HEIGHT);
+baseBarFillGeometry.translate(BASE_BAR_WIDTH / 2, 0, 0);
+// A base bar only shows for a short window after its HP last changed, so it
+// surfaces "being attacked or healing" rather than lingering whenever damaged.
+const BASE_BAR_SHOW_MS = 2500;
+
+// Team colors for the enlarged bases: the local player's are blue, enemies red.
+// Matched to the existing owner-ring palette for visual consistency.
+const OWN_BASE_BODY_COLOR = '#2f63ff';
+const OWN_BASE_ACCENT_COLOR = '#1a3aa8';
+const ENEMY_BASE_BODY_COLOR = '#e02a3c';
+const ENEMY_BASE_ACCENT_COLOR = '#8f1020';
+
 // depthTest off + a high render order keeps bars readable on top of the scene.
 const HEALTH_BAR_BG_MAT = new THREE.MeshBasicMaterial({
   color: '#000000',
@@ -280,30 +299,102 @@ function accessoryVariantKeyForUnit(unit: Unit, isOwnUnit: boolean): string | nu
   return royalAccessoryVariantKey(unit.animal, node);
 }
 
-function BaseMarker({ x, y, z }: { x: number; y: number; z: number }) {
-  const tileSize = 2; // Fixed size for bases
+// 5x the original footprint (was tileSize 2). Bases are now imposing structures
+// colored by team, with a billboarded health bar that surfaces only while the
+// base is under attack or being healed.
+const BASE_TILE_SIZE = 10;
+const BASE_BODY_HEIGHT = 4; // 5x the original 0.8 cylinder
+const BASE_ACCENT_SIZE = 2; // 5x the original 0.4 cap box
+
+function BaseMarker({ base, isOwn }: { base: Unit; isOwn: boolean }) {
+  const { camera } = useThree();
+  const barGroupRef = useRef<THREE.Group>(null);
+  const fillRef = useRef<THREE.Mesh>(null);
+  // Track HP across frames so we can detect damage/heal and time the bar's
+  // visibility. performance.now() is fine here — this is render-only, not sim.
+  const prevHpRef = useRef(base.hp);
+  const lastChangeMsRef = useRef(-Infinity);
+
+  const bodyColor = isOwn ? OWN_BASE_BODY_COLOR : ENEMY_BASE_BODY_COLOR;
+  const accentColor = isOwn ? OWN_BASE_ACCENT_COLOR : ENEMY_BASE_ACCENT_COLOR;
+
+  // Per-base fill material so each bar can carry its own HP-ratio color without
+  // disturbing the shared unit-bar material.
+  const fillMat = useMemo(() => HEALTH_BAR_FILL_MAT.clone(), []);
+  const healthBarsEnabled = useGameStore((s) => s.healthBarsEnabled);
+
+  useFrame(() => {
+    const group = barGroupRef.current;
+    const fill = fillRef.current;
+    if (!group || !fill) return;
+
+    const nowMs = performance.now();
+    if (base.hp !== prevHpRef.current) {
+      lastChangeMsRef.current = nowMs;
+      prevHpRef.current = base.hp;
+    }
+
+    const recentlyChanged = nowMs - lastChangeMsRef.current < BASE_BAR_SHOW_MS;
+    const visible = healthBarsEnabled && base.hp > 0 && recentlyChanged;
+    group.visible = visible;
+    if (!visible) return;
+
+    // Billboard toward the camera (the parent group has no rotation, so the
+    // child's local quaternion is its world orientation).
+    group.quaternion.copy(camera.quaternion);
+
+    const ratio = Math.max(0, Math.min(1, base.hp / base.maxHp));
+    fill.scale.set(Math.max(ratio, 0.0001), 1, 1);
+    // Remaining-HP color: red (low) -> yellow -> green (high).
+    if (ratio > 0.5) {
+      fillMat.color.setRGB((1 - ratio) * 2, 1, 0.1);
+    } else {
+      fillMat.color.setRGB(1, ratio * 2, 0.1);
+    }
+  });
+
+  // Lift the group so the cylinder's base sits on the ground plane.
+  const groupY = base.position.y + BASE_BODY_HEIGHT / 2;
+  const accentY = BASE_BODY_HEIGHT / 2 + BASE_ACCENT_SIZE / 2;
+  const barY = BASE_BODY_HEIGHT / 2 + BASE_ACCENT_SIZE + 1.5;
+
   return (
-    <group position={[x, y + 0.4, z]}>
+    <group position={[base.position.x, groupY, base.position.z]}>
       <mesh castShadow receiveShadow>
-        <cylinderGeometry args={[tileSize * 0.9, tileSize * 0.9, 0.8, 6]} />
-        <meshStandardMaterial color="#06d6a0" />
+        <cylinderGeometry args={[BASE_TILE_SIZE * 0.9, BASE_TILE_SIZE * 0.9, BASE_BODY_HEIGHT, 6]} />
+        <meshStandardMaterial color={bodyColor} />
       </mesh>
-      <mesh position={[0, 0.45, 0]} castShadow>
-        <boxGeometry args={[0.4, 0.4, 0.4]} />
-        <meshStandardMaterial color="#15a37a" />
+      <mesh position={[0, accentY, 0]} castShadow>
+        <boxGeometry args={[BASE_ACCENT_SIZE, BASE_ACCENT_SIZE, BASE_ACCENT_SIZE]} />
+        <meshStandardMaterial color={accentColor} />
       </mesh>
+
+      {/* Billboarded health bar — hidden until the base is attacked or healed. */}
+      <group ref={barGroupRef} position={[0, barY, 0]} visible={false}>
+        <mesh geometry={baseBarBgGeometry} material={HEALTH_BAR_BG_MAT} renderOrder={998} />
+        <mesh
+          ref={fillRef}
+          geometry={baseBarFillGeometry}
+          material={fillMat}
+          position={[-BASE_BAR_WIDTH / 2, 0, 0]}
+          renderOrder={999}
+        />
+      </group>
     </group>
   );
 }
 
 // Bases are few (<=6) and effectively static, so they stay as plain meshes.
-// A shallow-compared selector keeps this from re-rendering on every game tick.
+// A shallow-compared selector keeps this from re-rendering on every game tick
+// (the selector returns the base units; a base's reference only changes when its
+// HP changes, which is exactly when its health bar needs to update).
 function Bases() {
   const bases = useGameStore((s) => s.units.filter((u) => u.kind === 'Base'), shallow);
+  const localPlayerId = useGameStore((s) => s.localPlayerId);
   return (
     <group>
       {bases.map((base) => (
-        <BaseMarker key={base.id} x={base.position.x} y={base.position.y} z={base.position.z} />
+        <BaseMarker key={base.id} base={base} isOwn={base.ownerId === localPlayerId} />
       ))}
     </group>
   );

@@ -1510,6 +1510,11 @@ export const useGameStore = create<Store>((set, get) => ({
 
       console.log(`👤 Player ${player.name} (${player.isAI ? 'AI' : 'Human'}) animals:`, chosenAnimals);
 
+      // "Forward" is the direction toward the enemy edge: p0 holds the +z edge so
+      // it advances along -z, p1 the reverse. Keyed off role (not is-local) so both
+      // multiplayer peers compute identical spawn positions and stay deterministic.
+      const forwardSign = player.id === 'p0' ? -1 : 1;
+
       for (let i = 0; i < 3; i++) {
         const animal = chosenAnimals[i];
         const basePos = player.basePositions[i];
@@ -1519,11 +1524,23 @@ export const useGameStore = create<Store>((set, get) => ({
         // Base entity (high HP, stationary)
         const base = createBase(player.id, animal, basePos, initialRotation);
         units.push(base);
-        // Queen spawns units; place nearby
-        const queenPos = { x: basePos.x + 3, y: basePos.y, z: basePos.z };
+        // The base footprint is now 5x larger, so the royals and their spawns are
+        // pushed forward (toward the enemy) to clear the structure instead of
+        // sitting buried inside it.
+        const ROYAL_FORWARD_OFFSET = 16;
+        // Queen spawns units; place forward and offset to one side of the base.
+        const queenPos = {
+          x: basePos.x + 4,
+          y: basePos.y,
+          z: basePos.z + forwardSign * ROYAL_FORWARD_OFFSET,
+        };
         units.push(createQueen(player.id, animal, queenPos, initialRotation));
-        // King on another nearby position
-        const kingPos = { x: basePos.x, y: basePos.y, z: basePos.z + 3 };
+        // King forward and offset to the other side so the pair don't overlap.
+        const kingPos = {
+          x: basePos.x - 4,
+          y: basePos.y,
+          z: basePos.z + forwardSign * ROYAL_FORWARD_OFFSET,
+        };
         units.push(createKing(player.id, animal, kingPos, initialRotation));
       }
     }
@@ -1843,9 +1860,20 @@ export const useGameStore = create<Store>((set, get) => ({
         Base: 8,
       };
 
+      // A Queen heals a base from farther out than a regular unit: the enlarged
+      // base footprint means a Queen standing at its edge is already well beyond
+      // the unit regen radius, so a base uses an expanded reach measured from its
+      // center. Tuned to roughly the base radius plus the standard regen radius.
+      const BASE_HEAL_RADIUS = draft.config.regenRadius + 12;
+
       if (!draft.optimizations.regenThrottling || draft.tickCounter % REGEN_CHECK_FREQUENCY === 0) {
-        // Process more healing units for better responsiveness
-        const healingUnitsToProcess = unitsNeedingHealing.slice(0, 30); // Increased to 30 units per frame
+        // Damaged bases are always processed (they are few and their healing is a
+        // requested capability); other units are still capped per frame for CPU.
+        const damagedBases = unitsNeedingHealing.filter((u) => u.kind === 'Base');
+        const otherDamaged = unitsNeedingHealing
+          .filter((u) => u.kind !== 'Base')
+          .slice(0, 30); // up to 30 non-base units per frame
+        const healingUnitsToProcess = [...damagedBases, ...otherDamaged];
         for (const unit of healingUnitsToProcess) {
           // Skip dead units - they should not regenerate
           if (unit.hp <= 0) continue;
@@ -1854,7 +1882,8 @@ export const useGameStore = create<Store>((set, get) => ({
           if (nowMs - lastRegenTime < REGEN_INTERVAL_MS) continue;
 
           // Use spatial grid to find nearby queens (much faster than checking all queens)
-          const nearbyQueens = draft.spatialGrid!.findNearbyQueens(unit, draft.config.regenRadius);
+          const healRadius = unit.kind === 'Base' ? BASE_HEAL_RADIUS : draft.config.regenRadius;
+          const nearbyQueens = draft.spatialGrid!.findNearbyQueens(unit, healRadius);
           if (nearbyQueens.length > 0) {
             const healAmount = REGEN_AMOUNT * REGEN_TIER_BY_KIND[unit.kind];
             unit.hp = Math.min(unit.maxHp, unit.hp + healAmount);
