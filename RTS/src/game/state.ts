@@ -1042,6 +1042,19 @@ const FORMATION_REFORM_DISTANCE = 8;
 // are skipped. Squared to compare against squared distance without a sqrt.
 const FORMATION_IN_PLACE_DISTANCE_SQ = 1;
 
+// Arrival radius for a formation member walking to its slot. A member clears its march
+// order and goes idle once within this distance of its slot, instead of the tight 0.5 a
+// free-roaming unit uses. Two members each occupy a ~2.5-radius footprint, so packed
+// slots (a column, a box corner, a tight line) are physically unreachable to 0.5 — a
+// member would crawl/jitter against its neighbours forever, never clearing the order,
+// paying full movement + a blocker-deflection spatial scan every tick (the steady-state
+// drag that holding a formation otherwise incurs). Settling ~one collision-diameter out
+// lets the squad lock in: the stance leash (anchor pinned to the slot) still holds the
+// shape, and the larger FORMATION_REFORM_DISTANCE re-forms anyone genuinely shoved off.
+// Set to the collision floor (UNIT_MINIMUM_SPACING, declared later in this module) so a
+// member settles as close as crowding physically allows — tight, but never unreachable.
+const FORMATION_ARRIVAL_DISTANCE = 3.75;
+
 // Audible step sizes. Re-facing pivots the formation 30° per press; expand/contract
 // widen/tighten the slot spacing within sane bounds so a shape never collapses onto
 // itself or scatters out of cohesion.
@@ -2103,6 +2116,12 @@ export const useGameStore = create<Store>((set, get) => ({
             unit.unitState = 'moving_to_order';
             const distanceToOrder = distance3D(unit.position, order);
 
+            // A formation member's order is its slot; let it settle (and stop paying
+            // movement + a blocker scan every tick) at a realistic radius rather than the
+            // tight default a lone unit can actually reach. See FORMATION_ARRIVAL_DISTANCE.
+            const inFormation = unit.fireTeamId !== undefined && draft.fireTeams[unit.fireTeamId] !== undefined;
+            const arrivalThreshold = inFormation ? FORMATION_ARRIVAL_DISTANCE : 0.5;
+
             // Check if movement is paused due to collision attempts
             const isInRecentCombat = unit.lastCombatEngagementMs && nowMs - unit.lastCombatEngagementMs < 2000;
             const isMovementPaused = unit.movementPausedUntilMs && nowMs < unit.movementPausedUntilMs && !isInRecentCombat;
@@ -2176,7 +2195,7 @@ export const useGameStore = create<Store>((set, get) => ({
             }
 
             // Move toward ordered position (but allow combat interruption)
-            if (distanceToOrder > 0.5 && !isMovementPaused) {
+            if (distanceToOrder > arrivalThreshold && !isMovementPaused) {
               let direction = normalize3D(subtract3D(steeringTarget(unit, order), unit.position));
 
               // Bias the course around stationary friendly clumps so the unit commits to a way
@@ -2187,8 +2206,12 @@ export const useGameStore = create<Store>((set, get) => ({
               // a King/Queen instead plows straight through its own army via the make-way shove
               // (clearPathForSelectedRoyals) and must not detour. Skipped on a bridge deck, where
               // steering sideways would push toward the water — there the pathfinder's deck
-              // waypoints already track the centerline.
-              if (unit.kind === 'Unit' && ANIMAL_MOVEMENT_TYPES[unit.animal] === 'ground' && !onBridgeMidCrossing) {
+              // waypoints already track the centerline. Also skipped for a formation member: its
+              // target is a deterministic slot whose geometry already spaces it from squadmates,
+              // so deflecting it around friendly clumps fights the shape — and the per-tick
+              // spatial scan it costs, paid by every marching member, is the dominant steady-state
+              // drag of holding a formation (collision still resolves any real overlap).
+              if (unit.kind === 'Unit' && ANIMAL_MOVEMENT_TYPES[unit.animal] === 'ground' && !onBridgeMidCrossing && !inFormation) {
                 const scanRadius = BLOCKER_LOOKAHEAD + UNIT_MINIMUM_SPACING + YETI_SPACING_BONUS;
                 const neighbors = draft.spatialGrid
                   ? draft.spatialGrid.getNearbyUnits(unit.position, scanRadius)
@@ -2251,7 +2274,7 @@ export const useGameStore = create<Store>((set, get) => ({
             }
 
             // Clear order and enter idle state when destination reached
-            if (distanceToOrder <= 0.5) {
+            if (distanceToOrder <= arrivalThreshold) {
               delete draft.unitOrders[unit.id];
               delete unit.arrivedAtDestinationMs;
               unit.unitState = 'idle';
