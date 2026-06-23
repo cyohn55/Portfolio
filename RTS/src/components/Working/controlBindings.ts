@@ -206,6 +206,16 @@ const DPAD_UP = 'button:12';
 const DPAD_DOWN = 'button:13';
 const DPAD_LEFT = 'button:14';
 const DPAD_RIGHT = 'button:15';
+
+// Standard-mapping shoulder buttons. The Directing wheel reserves these as a fixed
+// page-flip convention while it is open (LB = previous page, RB = next) — see the
+// wheel footer and the toggleDirectingRadial help text. Paging therefore reads the
+// physical bumpers directly rather than whatever remappable action happens to be
+// bound to them, so it can never be silently lost when a shoulder binding is unbound
+// or persisted from an older mapping (e.g. setQueenRally only became RB in the 2026
+// "simplify controller mappings" change; pre-change saves store it as unbound).
+export const LEFT_BUMPER = 'button:4';
+export const RIGHT_BUMPER = 'button:5';
 export const DEFAULT_CONTROLLER_BINDINGS: ControlBindings = {
   cameraForward: 'axis:1-',   // Left stick (pilot the monarch)
   cameraBackward: 'axis:1+',

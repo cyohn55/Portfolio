@@ -6,6 +6,8 @@ import {
   type ControlActionId,
   type GamepadLike,
   CONTROLLER_DEADZONE,
+  LEFT_BUMPER,
+  RIGHT_BUMPER,
   controllerTokenMagnitude,
   isControllerTokenActive,
 } from './controlBindings';
@@ -892,17 +894,19 @@ export function GamepadController() {
       }
       radialClosePrevRef.current = closeActive;
 
-      // The Directing wheel is paged; LB/RB flip its pages while it is open (their
-      // normal cycle-monarch / arm-spawn-rally jobs are suppressed in the dispatch
-      // loop below). Rising edge only so a held bumper flips once per press.
+      // The Directing wheel is paged; LB/RB flip its pages while it is open (whatever
+      // action is bound to those bumpers is suppressed in the dispatch loop below).
+      // Paging reads the physical bumpers directly — not the remappable
+      // cycle-monarch / spawn-rally bindings — so it can't be lost to an unbound or
+      // stale shoulder binding. Rising edge only so a held bumper flips once per press.
       if (openRadialNs === 'directing') {
-        const nextActive = isControllerTokenActive(gamepad, controllerBindings.setQueenRally); // RB
+        const nextActive = isControllerTokenActive(gamepad, RIGHT_BUMPER); // RB → next page
         if (nextActive && !pageNextPrevRef.current) {
           window.dispatchEvent(new CustomEvent('rts:directing-radial-page', { detail: { dir: 1 } }));
         }
         pageNextPrevRef.current = nextActive;
 
-        const prevActivePage = isControllerTokenActive(gamepad, controllerBindings.pilotCycleMonarch); // LB
+        const prevActivePage = isControllerTokenActive(gamepad, LEFT_BUMPER); // LB → previous page
         if (prevActivePage && !pagePrevPrevRef.current) {
           window.dispatchEvent(new CustomEvent('rts:directing-radial-page', { detail: { dir: -1 } }));
         }
@@ -1118,9 +1122,7 @@ export function GamepadController() {
           [
             controllerBindings.secondaryAction,
             controllerBindings.deselect,
-            ...(openRadialNs === 'directing'
-              ? [controllerBindings.pilotCycleMonarch, controllerBindings.setQueenRally]
-              : []),
+            ...(openRadialNs === 'directing' ? [LEFT_BUMPER, RIGHT_BUMPER] : []),
           ].filter(Boolean)
         )
       : null;
