@@ -20,17 +20,31 @@ import {
   type ActivationMode,
   type TokenDispatch,
   type TokenGestureConfig,
+  HOLD_ACTIVATION_MS,
   buildTokenDispatch,
 } from './gestureModes';
 import {
+  DIRECT_ARROW_COLOR,
   PATROL_ARROW_COLOR,
   RALLY_ARROW_COLOR,
+  createButtonBadge,
   createDottedArrow,
   createSegmentedLine,
   hideDottedArrow,
+  positionBadge,
   positionDottedArrow,
   positionSegmentedLine,
 } from './dottedArrow';
+import {
+  FIRE_TEAM_BUTTON_SLOTS,
+  FIRE_TEAM_CANCEL_BUTTON,
+  assignFireTeamButtons,
+  directableFireTeamIds,
+  directMoveTarget,
+  directionForHeading,
+  fireTeamMemberIds,
+  headingForGroundVector,
+} from './fireTeamDirecting';
 import type { AnimalId, Unit } from '../../game/types';
 import { getKindTargetScale } from '../../utils/ModelPreloader';
 
@@ -80,6 +94,11 @@ const CURSOR_SPIN_SPEED = 2.2;    // radians/second
 // world units, mapped from full right-stick deflection at this speed.
 const PILOT_CURSOR_MAX_DISTANCE = 50;
 const PILOT_CURSOR_SPEED = 56.25; // world units/second at full deflection (25% faster than the original 45)
+
+// How far (world units) a fire-team quick-direct sends the team along the aim arrow.
+// The arrow is drawn to exactly this point, so the gesture is what-you-see-is-where-
+// they-go. Comparable to the cursor leash (50) so a direct covers similar ground.
+const FIRE_TEAM_DIRECT_DISTANCE = 60;
 
 // Command-trigger color feedback: while the command trigger is held the cursor
 // (and its leash line) turn neon green over open ground or red while aimed at an
@@ -255,6 +274,33 @@ export function GamepadController() {
   const pageNextPrevRef = useRef(false);
   const pagePrevPrevRef = useRef(false);
 
+  // Fire-team quick-direct gesture (hold LB → tap a face button → aim arrow with the
+  // right stick → RT sends the team). All state lives off the React path; the per-team
+  // button badges and the aim arrow are body-appended DOM positioned each frame.
+  //   engaged    — LB is held AND the player had a directable team at press time, so
+  //                LB is captured by this gesture (its normal bound action is deferred).
+  //   consumed   — a team was armed or sent during this hold, so releasing LB must NOT
+  //                fall through to its bound tap action (cycle monarch).
+  //   pressAt    — performance.now() of the LB rising edge, to tell a tap from a hold.
+  //   armedTeamId— the team whose arrow is showing (null = picker shown, none armed).
+  //   heading    — current aim, radians (FireTeamState.facing convention).
+  //   facePrev   — per-selector-button previous active state, for rising-edge arming.
+  //   rtPrev     — previous right-trigger state, so a held trigger sends once.
+  //   cancelPrev — previous B state, so a held B cancels once.
+  const fireTeamDirectRef = useRef({
+    lbPrev: false,
+    engaged: false,
+    consumed: false,
+    pressAt: 0,
+    armedTeamId: null as string | null,
+    heading: 0,
+    facePrev: {} as Record<string, boolean>,
+    rtPrev: false,
+    cancelPrev: false,
+  });
+  const directArrowElRef = useRef<HTMLDivElement | null>(null);
+  const directBadgeElsRef = useRef<HTMLDivElement[]>([]);
+
   // Stop the deploy designation interval (on release, pad disconnect, or unmount).
   const stopPlacementHold = () => {
     if (placementRepeatIntervalRef.current !== null) {
@@ -408,6 +454,20 @@ export function GamepadController() {
     document.body.appendChild(cursorLinkLine);
     cursorLinkLineRef.current = cursorLinkLine;
 
+    // The fire-team quick-direct aim arrow plus one button badge per face slot, all
+    // hidden until the player holds LB. The arrow is the same dotted shape as the
+    // Queen lines; the badges float over each directable team with its button glyph.
+    const directArrow = createDottedArrow(DIRECT_ARROW_COLOR);
+    document.body.appendChild(directArrow);
+    directArrowElRef.current = directArrow;
+
+    const directBadges = FIRE_TEAM_BUTTON_SLOTS.map(() => {
+      const badge = createButtonBadge(DIRECT_ARROW_COLOR);
+      document.body.appendChild(badge);
+      return badge;
+    });
+    directBadgeElsRef.current = directBadges;
+
     return () => {
       gamepadInput.reset();
       stopPlacementHold();
@@ -418,9 +478,13 @@ export function GamepadController() {
       if (rallyArrowElRef.current) document.body.removeChild(rallyArrowElRef.current);
       if (patrolArrowElRef.current) document.body.removeChild(patrolArrowElRef.current);
       if (cursorLinkLineRef.current) document.body.removeChild(cursorLinkLineRef.current);
+      if (directArrowElRef.current) document.body.removeChild(directArrowElRef.current);
+      for (const badge of directBadgeElsRef.current) document.body.removeChild(badge);
       rallyArrowElRef.current = null;
       patrolArrowElRef.current = null;
       cursorLinkLineRef.current = null;
+      directArrowElRef.current = null;
+      directBadgeElsRef.current = [];
     };
     // The helpers cleared here only touch refs (stable), so this one-time
     // setup/teardown effect intentionally runs once; re-subscribing is unnecessary.
@@ -589,6 +653,197 @@ export function GamepadController() {
         });
       }
     }
+  };
+
+  // Hide the quick-direct indicators (the aim arrow and every button badge).
+  const hideFireTeamDirectIndicators = () => {
+    hideDottedArrow(directArrowElRef.current);
+    for (const badge of directBadgeElsRef.current) hideDottedArrow(badge);
+  };
+
+  // Fully reset the quick-direct gesture: clear its captured state and hide its
+  // indicators. Called on release, on a disconnect/pause mid-gesture, and whenever
+  // the gesture's preconditions lapse, so no badge or arrow can ever linger.
+  const cancelFireTeamDirect = () => {
+    const ref = fireTeamDirectRef.current;
+    ref.engaged = false;
+    ref.consumed = false;
+    ref.armedTeamId = null;
+    ref.facePrev = {};
+    ref.rtPrev = false;
+    ref.cancelPrev = false;
+    hideFireTeamDirectIndicators();
+  };
+
+  // The controller action currently bound to a token, or null. Used so a plain LB tap
+  // still fires LB's own action (Switch Monarch by default) even though the gesture
+  // captures LB physically — and respects a remap rather than hard-coding the action.
+  const boundActionFor = (token: string): ControlActionId | null => {
+    const bindings = useGameStore.getState().controllerBindings;
+    for (const actionId of Object.keys(bindings) as ControlActionId[]) {
+      if (bindings[actionId] === token) return actionId;
+    }
+    return null;
+  };
+
+  // The fire-team quick-direct gesture, run each frame. Returns whether LB is captured
+  // by directing this frame so the caller can suppress the cursor and the normal
+  // dispatch of LB / the face buttons / (while aiming) RT.
+  //
+  // Lifecycle: holding LB with at least one directable team "engages" the gesture and
+  // shows a button badge over each team. Tapping a team's face button arms its aim
+  // arrow; the right stick rotates the arrow (absolute, camera-relative like the
+  // cursor); RT sends that team along the arrow and clears it for the next pick. A
+  // short, unconsumed LB tap falls through to LB's bound action; releasing LB ends it.
+  const updateFireTeamDirect = (gamepad: GamepadLike, canDirect: boolean): boolean => {
+    const ref = fireTeamDirectRef.current;
+    const lbActive = isControllerTokenActive(gamepad, LEFT_BUMPER);
+
+    // The gesture is inert while a radial owns LB (page-flip) or the match is not live.
+    // Abandon any in-progress aim so a press begun elsewhere can't leak in on return.
+    if (!canDirect) {
+      if (ref.engaged || ref.armedTeamId) cancelFireTeamDirect();
+      ref.lbPrev = lbActive;
+      return false;
+    }
+
+    const now = performance.now();
+    const { units, fireTeams, localPlayerId, controllerBindings: bindings } = useGameStore.getState();
+    const assignments = assignFireTeamButtons(directableFireTeamIds(units, fireTeams, localPlayerId));
+
+    // Rising edge: engage only when the player actually has a team to direct. With no
+    // team, LB keeps its normal bound action (handled by the dispatch loop on press).
+    if (lbActive && !ref.lbPrev) {
+      ref.pressAt = now;
+      ref.consumed = false;
+      ref.engaged = assignments.length > 0;
+      ref.armedTeamId = null;
+    }
+
+    if (lbActive && ref.engaged) {
+      // Button taps arm (or switch to) the mapped team's aim arrow. The arrow starts
+      // pointed where the team currently faces, so a tap-then-send keeps its heading
+      // and a tap-then-rotate adjusts from a sensible default.
+      for (const assignment of assignments) {
+        const active = isControllerTokenActive(gamepad, assignment.token);
+        const wasActive = ref.facePrev[assignment.token] ?? false;
+        if (active && !wasActive) {
+          ref.armedTeamId = assignment.teamId;
+          ref.consumed = true;
+          const team = fireTeams[assignment.teamId];
+          if (team) ref.heading = team.facing;
+        }
+        ref.facePrev[assignment.token] = active;
+      }
+
+      // B cancels the current pick: drop the arrow and return to the picker (the
+      // player can choose another team or release LB). Rising edge so a held B fires
+      // once. Tracked unconditionally so the edge is clean across arm/disarm.
+      const cancelActive = isControllerTokenActive(gamepad, FIRE_TEAM_CANCEL_BUTTON);
+      if (cancelActive && !ref.cancelPrev && ref.armedTeamId) {
+        ref.armedTeamId = null;
+        ref.consumed = true; // a deliberate cancel, so LB release must not also cycle
+      }
+      ref.cancelPrev = cancelActive;
+
+      if (ref.armedTeamId) {
+        // Right stick → absolute aim. Map the stick to camera-relative ground
+        // directions (as the cursor does) so "up" on the stick aims away from the
+        // camera on screen regardless of yaw; a centered stick keeps the prior aim.
+        const rx = gamepad.axes[2] ?? 0;
+        const ry = gamepad.axes[3] ?? 0;
+        const dx = Math.abs(rx) > CONTROLLER_DEADZONE ? rx : 0;
+        const dy = Math.abs(ry) > CONTROLLER_DEADZONE ? ry : 0;
+        if (dx !== 0 || dy !== 0) {
+          const { camForward, camRight } = cursorScratch.current;
+          camera.getWorldDirection(camForward);
+          camForward.y = 0;
+          if (camForward.lengthSq() > 0) camForward.normalize();
+          camRight.crossVectors(camForward, WORLD_UP).normalize();
+          const worldX = camRight.x * dx + camForward.x * -dy;
+          const worldZ = camRight.z * dx + camForward.z * -dy;
+          const heading = headingForGroundVector(worldX, worldZ);
+          if (heading !== null) ref.heading = heading;
+        }
+
+        // RT sends the team along the arrow (rising edge so a held trigger fires once),
+        // then clears the arrow so the player can pick another team or release LB.
+        const rtActive = isControllerTokenActive(gamepad, bindings.secondaryAction);
+        if (rtActive && !ref.rtPrev) {
+          const team = fireTeams[ref.armedTeamId];
+          const memberIds = fireTeamMemberIds(units, ref.armedTeamId, localPlayerId);
+          if (team && memberIds.length > 0) {
+            const target = directMoveTarget(team.anchor, ref.heading, FIRE_TEAM_DIRECT_DISTANCE);
+            // Keep the destination inside the playable map (the arrow may overshoot an edge).
+            const clamped = new THREE.Vector3(target.x, 0, target.z);
+            clampToArena(clamped);
+            useGameStore.getState().moveCommand({
+              unitIds: memberIds,
+              target: { x: clamped.x, y: 0, z: clamped.z },
+            });
+          }
+          ref.consumed = true;
+          ref.armedTeamId = null;
+        }
+        ref.rtPrev = rtActive;
+      } else {
+        ref.rtPrev = isControllerTokenActive(gamepad, bindings.secondaryAction);
+      }
+    }
+
+    // Falling edge: a short, unconsumed press is a plain LB tap, so fire LB's bound
+    // action (Switch Monarch by default). A long hold, or one that armed/sent a team,
+    // does not — the player was directing, not tapping. Then end the gesture.
+    if (!lbActive && ref.lbPrev) {
+      if (ref.engaged && !ref.consumed && now - ref.pressAt <= HOLD_ACTIVATION_MS) {
+        const lbAction = boundActionFor(LEFT_BUMPER);
+        if (lbAction) fireAction(lbAction);
+      }
+      cancelFireTeamDirect();
+    }
+    ref.lbPrev = lbActive;
+
+    // Draw the badges over each team and the arrow from the armed team's anchor.
+    const engaged = lbActive && ref.engaged;
+    if (engaged) {
+      let slotIndex = 0;
+      for (; slotIndex < assignments.length; slotIndex++) {
+        const assignment = assignments[slotIndex];
+        const badge = directBadgeElsRef.current[slotIndex];
+        const team = fireTeams[assignment.teamId];
+        if (!team || !badge) {
+          hideDottedArrow(badge);
+          continue;
+        }
+        badge.textContent = assignment.glyph;
+        // Solid fill on the armed team's badge so the active selection stands out.
+        const armed = assignment.teamId === ref.armedTeamId;
+        badge.style.background = armed ? DIRECT_ARROW_COLOR : 'rgba(0, 0, 0, 0.65)';
+        badge.style.color = armed ? '#000000' : DIRECT_ARROW_COLOR;
+        positionBadge(badge, projectToScreen(team.anchor.x, 0, team.anchor.z));
+      }
+      for (; slotIndex < directBadgeElsRef.current.length; slotIndex++) {
+        hideDottedArrow(directBadgeElsRef.current[slotIndex]);
+      }
+
+      const armedTeam = ref.armedTeamId ? fireTeams[ref.armedTeamId] : undefined;
+      if (armedTeam) {
+        const direction = directionForHeading(ref.heading);
+        const tipX = armedTeam.anchor.x + direction.x * FIRE_TEAM_DIRECT_DISTANCE;
+        const tipZ = armedTeam.anchor.z + direction.z * FIRE_TEAM_DIRECT_DISTANCE;
+        positionDottedArrow(
+          directArrowElRef.current,
+          projectToScreen(armedTeam.anchor.x, 0, armedTeam.anchor.z),
+          projectToScreen(tipX, 0, tipZ),
+        );
+      } else {
+        hideDottedArrow(directArrowElRef.current);
+      }
+    } else {
+      hideFireTeamDirectIndicators();
+    }
+
+    return engaged;
   };
 
   // Edge-detect the rally / patrol buttons and run their handlers. Kept together so
@@ -852,6 +1107,8 @@ export function GamepadController() {
       dispatchRef.current.resolvers.forEach((resolver) => resolver.reset());
       cancelRallyAim();
       cancelPatrolAim();
+      cancelFireTeamDirect();
+      fireTeamDirectRef.current.lbPrev = false;
       rallyPrevRef.current = false;
       patrolPrevRef.current = false;
       pressAmountRef.current = 0;
@@ -868,6 +1125,13 @@ export function GamepadController() {
     const openRadialNs = openRadialNsRef.current;
     // A wheel owns the right stick while open, so the cursor block below is suppressed.
     const anyRadialOpen = openRadialNs !== null;
+
+    // --- Fire-team quick-direct (hold LB → tap a face button → aim arrow → RT). Run
+    // before the cursor/dispatch blocks so its return value can suppress them: while
+    // it captures LB the right stick aims the arrow (not the cursor) and LB / the face
+    // buttons / (while aiming) RT are skipped in the dispatch loop below. Inert while a
+    // radial owns LB or the match is not live. ---
+    const fireTeamDirecting = updateFireTeamDirect(gamepad, matchStarted && !isPaused && !anyRadialOpen);
 
     // --- Radial selection (right stick + RT + B) for whichever wheel is open. The
     // right stick aims it (each wheel derives its highlight from the raw vector), RT
@@ -922,9 +1186,11 @@ export function GamepadController() {
       pagePrevPrevRef.current = false;
     }
 
-    // --- Camera intent (analog, held). Suppressed while paused. Zoom is the bound
-    // zoom tokens' magnitude (D-Pad Up/Down by default), held = continuous zoom. ---
-    if (matchStarted && !isPaused) {
+    // --- Camera intent (analog, held). Suppressed while paused, and while the
+    // quick-direct gesture is active so the D-pad (which it uses to pick teams) does
+    // not also drive zoom and the left stick does not pan under the arrow. Zoom is the
+    // bound zoom tokens' magnitude (D-Pad Up/Down by default), held = continuous zoom. ---
+    if (matchStarted && !isPaused && !fireTeamDirecting) {
       const right = controllerTokenMagnitude(gamepad, controllerBindings.cameraRight);
       const left = controllerTokenMagnitude(gamepad, controllerBindings.cameraLeft);
       const forward = controllerTokenMagnitude(gamepad, controllerBindings.cameraForward);
@@ -942,7 +1208,7 @@ export function GamepadController() {
     // PILOT_CURSOR_MAX_DISTANCE leash; otherwise it free-roams the screen (raycast to
     // the ground each frame). Hidden entirely while paused / before match start, and
     // while the posture radial owns the right stick (above). ---
-    if (matchStarted && !isPaused && !anyRadialOpen) {
+    if (matchStarted && !isPaused && !anyRadialOpen && !fireTeamDirecting) {
       const rx = gamepad.axes[2] ?? 0;
       const ry = gamepad.axes[3] ?? 0;
       const dx = Math.abs(rx) > CONTROLLER_DEADZONE ? rx : 0;
@@ -1116,18 +1382,32 @@ export function GamepadController() {
     // command and a stray release firing once the radial closes. The Directing wheel
     // additionally borrows LB/RB as its page-flip, so those are skipped too while it
     // is open (they flip pages in the open-radial block above). ---
+    // Tokens another modal layer owns this frame, so the normal dispatch must not also
+    // act on them: a radial wheel owns RT (select) + B (close) (and the Directing wheel
+    // LB/RB for paging); the quick-direct gesture owns LB + the four face buttons (and,
+    // while aiming, RT for the send). Skipping a token means its resolver registers
+    // neither the press nor the release, so no command fires and none leaks out later.
     const dispatch = dispatchRef.current;
-    const radialOwnedTokens = anyRadialOpen
-      ? new Set(
-          [
-            controllerBindings.secondaryAction,
-            controllerBindings.deselect,
-            ...(openRadialNs === 'directing' ? [LEFT_BUMPER, RIGHT_BUMPER] : []),
-          ].filter(Boolean)
-        )
-      : null;
+    const ownedTokens = new Set<string>();
+    if (anyRadialOpen) {
+      ownedTokens.add(controllerBindings.secondaryAction);
+      ownedTokens.add(controllerBindings.deselect);
+      if (openRadialNs === 'directing') {
+        ownedTokens.add(LEFT_BUMPER);
+        ownedTokens.add(RIGHT_BUMPER);
+      }
+    }
+    if (fireTeamDirecting) {
+      // The gesture owns LB, every selector button, B (cancel), and RT (send) for the
+      // whole hold, so none of their normal actions fire underneath the picker/arrow.
+      ownedTokens.add(LEFT_BUMPER);
+      for (const slot of FIRE_TEAM_BUTTON_SLOTS) ownedTokens.add(slot.token);
+      ownedTokens.add(FIRE_TEAM_CANCEL_BUTTON);
+      ownedTokens.add(controllerBindings.secondaryAction);
+    }
+    ownedTokens.delete(''); // an unbound action contributes no real token
     for (const [token, resolver] of dispatch.resolvers) {
-      if (radialOwnedTokens?.has(token)) continue;
+      if (ownedTokens.has(token)) continue;
       const active = isControllerTokenActive(gamepad, token);
       const wasActive = prevActive.current[token] ?? false;
       if (active && !wasActive) resolver.press(performance.now());
@@ -1146,8 +1426,10 @@ export function GamepadController() {
 
     // --- Queen spawn-rally aim + patrol hold. Only meaningful while the match is
     // live; otherwise abandon any in-progress aim (releasing a patrol pin) and reset
-    // the edge state so a press that began during a pause can't commit on resume. ---
-    if (matchStarted && !isPaused) {
+    // the edge state so a press that began during a pause can't commit on resume. Also
+    // suspended while the quick-direct gesture owns the controller, so a stray bumper
+    // press during a Left-Bumper hold can't arm a Queen line underneath the arrow. ---
+    if (matchStarted && !isPaused && !fireTeamDirecting) {
       updateQueenGestures(gamepad, controllerBindings);
     } else {
       cancelRallyAim();
