@@ -140,6 +140,65 @@ test.describe('Frog tongue ability', () => {
     expect(result.tongueCleared).toBe(true);
   });
 
+  test('a tongue lashed at an enemy base damages it once and never drags it', async ({ page }) => {
+    test.setTimeout(60_000);
+    await openFrogMatch(page);
+
+    const result = await page.evaluate(({ frogPos, dtSec, dtMs, ticks }) => {
+      const store = (window as any).__rtsStore;
+      const animals = (window as any).__rtsAnimals;
+      const state = store.getState();
+      const localId = state.localPlayerId as string;
+      const enemyId = state.players.find((p: any) => p.id !== localId)!.id as string;
+
+      const template = state.units.find((u: any) => u.animal === 'Frog' && u.ownerId === localId);
+      if (!template) return { frogFound: false } as any;
+
+      const frog = {
+        ...template, id: 'frog-base', kind: 'Unit', position: { ...frogPos },
+        attackDamage: animals.Frog.dmg,
+        attackCooldownMs: 1e9,            // never melee within the window — isolate the grab's damage
+        lastAttackAtMs: 0, moveSpeed: 0, tongue: undefined, lastTongueAtMs: undefined,
+      };
+      // Base center beyond the frog's melee range (8) but within the tongue's
+      // base-aware reach, so the lash — not a melee swing — is what connects.
+      const baseStartHp = 2000; // survives the hit so the win check doesn't end the match
+      const enemyBasePos = { x: frogPos.x + 20, y: frogPos.y, z: frogPos.z };
+      const enemyBase = {
+        ...template, id: 'enemy-base', ownerId: enemyId, kind: 'Base',
+        position: { ...enemyBasePos }, hp: baseStartHp, maxHp: baseStartHp, moveSpeed: 0, tongue: undefined,
+      };
+      const playerBase = { ...template, id: 'player-base', kind: 'Base', position: { x: frogPos.x - 60, y: frogPos.y, z: frogPos.z }, moveSpeed: 0 };
+      store.setState({ units: [frog, enemyBase, playerBase], unitOrders: {}, projectiles: [] });
+
+      store.getState().fireTongues({ unitIds: [frog.id], cursor: { ...enemyBasePos } });
+      const claimedTargetId = store.getState().units.find((u: any) => u.id === frog.id)?.tongue?.targetId ?? null;
+
+      const nowBase = performance.now();
+      for (let i = 0; i < ticks; i++) store.getState().tick(dtSec, nowBase + i * dtMs);
+
+      const f = store.getState().units.find((u: any) => u.id === frog.id);
+      const b = store.getState().units.find((u: any) => u.id === enemyBase.id);
+      return {
+        frogFound: true,
+        claimedTargetId,
+        expectedDamage: animals.Frog.dmg,
+        baseDamageTaken: baseStartHp - (b?.hp ?? baseStartHp),
+        // A Base is immovable: the retract phase must not have dragged it from its spot.
+        baseMoved: b ? Math.hypot(b.position.x - enemyBasePos.x, b.position.z - enemyBasePos.z) : null,
+        tongueCleared: !f?.tongue,
+      };
+    }, { frogPos: FROG_POSITION, dtSec: SIM_DT_SEC, dtMs: SIM_DT_MS, ticks: TICK_COUNT });
+
+    expect(result.frogFound).toBe(true);
+    // The frog claimed the base and the lash dealt exactly its attack damage — once.
+    expect(result.claimedTargetId).toBe('enemy-base');
+    expect(result.baseDamageTaken).toBe(result.expectedDamage);
+    // The base never moved, and the tongue fully retracted and released the frog.
+    expect(result.baseMoved).toBe(0);
+    expect(result.tongueCleared).toBe(true);
+  });
+
   test('two frogs both fire, but only one grabs the single enemy (the other whiffs)', async ({ page }) => {
     test.setTimeout(60_000);
     await openFrogMatch(page);

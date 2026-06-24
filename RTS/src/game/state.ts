@@ -118,6 +118,14 @@ export const ANIMALS: Record<AnimalId, { baseHp: number; dmg: number; speed: num
 // threats (kiting) instead of walking into their swing.
 const MELEE_RANGE = 5;
 
+// A Base is a wide hexagonal structure, not a point target: its `position` is the
+// center of a footprint rendered at BASE_TILE_SIZE * 0.9 ground radius (UnitsLayer).
+// The player-activated strikes that are allowed to hit a base (egg, frog tongue,
+// bee swarm) add this footprint to their reach so they connect on the base's
+// surface instead of only near its exact center. Kept in sync with the render
+// footprint by hand — see BASE_TILE_SIZE in UnitsLayer.tsx.
+const BASE_FOOTPRINT_RADIUS = 9;
+
 // Turtle "shell" ability tuning. Shelling pins the Turtle in place (it cannot move or
 // attack and resists knockback) in exchange for absorbing most incoming damage — the
 // shell's defensive payoff. A shelled Turtle still takes this fraction of every hit, so
@@ -176,7 +184,8 @@ const HISS_COOLDOWN_MS = 3000;       // minimum time between a cat's hisses
 const SWARM_DIVE_SPEED = 60;          // world units/sec a swarming bee closes on its target (a fast dive)
 const SWARM_STING_RANGE = 3.0;        // distance at which the bee reaches its target and stings
 const SWARM_STING_RANGE_SQ = SWARM_STING_RANGE * SWARM_STING_RANGE;
-const SWARM_STING_KILL_CHANCE = 0.5;  // probability a sting kills both the target and the bee
+const SWARM_STING_KILL_CHANCE = 0.5;  // probability a sting kills both the target and the bee (vs an animal)
+const SWARM_BASE_STING_MULT = 3;      // a sacrificial dive into a Base deals this multiple of the bee's attack damage (a structure can't be coin-flip killed)
 const SWARM_WING_FLAP_PER_SEC = 3;    // wing-flap cycles/sec kept advancing so the dive reads as active flight
 
 // Owl "Pickup" ability tuning. A player-activated abduction fired by holding both mouse
@@ -3979,10 +3988,14 @@ export const useGameStore = create<Store>((set, get) => ({
         let bestCursorDistSq = Infinity;
         for (const candidate of draft.units) {
           if (candidate.ownerId === unit.ownerId) continue; // enemies only
-          if (candidate.kind === 'Base') continue;          // animals only, never structures
           if (candidate.hp <= 0) continue;
-          if (claimedTargetIds.has(candidate.id)) continue; // one frog per enemy
-          if (distanceSquared3D(unit.position, candidate.position) > TONGUE_RANGE_SQ) continue;
+          const isBase = candidate.kind === 'Base';
+          // One frog per enemy animal so a cluster spreads its grabs; a Base is a
+          // wide structure many frogs can lash at once, so it is never reserved.
+          if (!isBase && claimedTargetIds.has(candidate.id)) continue;
+          // Measure reach to a Base's footprint, not its center point.
+          const reach = isBase ? TONGUE_RANGE + BASE_FOOTPRINT_RADIUS : TONGUE_RANGE;
+          if (distanceSquared3D(unit.position, candidate.position) > reach * reach) continue;
           const cursorDistSq = distanceSquared3D(cmd.cursor, candidate.position);
           if (cursorDistSq < bestCursorDistSq) {
             bestCursorDistSq = cursorDistSq;
@@ -3996,7 +4009,9 @@ export const useGameStore = create<Store>((set, get) => ({
         let targetId = '';
         let direction: Position3D;
         if (target) {
-          claimedTargetIds.add(target.id); // reserve it so a later frog in this batch can't reuse it
+          // Reserve an animal so a later frog in this batch can't reuse it; a Base
+          // stays unreserved so a whole line of frogs can lash the same structure.
+          if (target.kind !== 'Base') claimedTargetIds.add(target.id);
           targetId = target.id;
           direction = normalize3D(subtract3D(target.position, unit.position));
         } else {
@@ -4080,11 +4095,12 @@ export const useGameStore = create<Store>((set, get) => ({
   ),
 
   // Bee "Swarm" ability. Each selected friendly Bee that is not already swarming
-  // claims the closest living enemy animal no other bee has taken and commits to a
-  // dive at it (the dive + sting then plays out entirely in the tick — see
-  // updateBeeSwarms). Targeting respects two rules: a bee dives at exactly one enemy,
-  // and no two bees may claim the same enemy at once, so a cloud of bees spreads its
-  // stings across distinct targets rather than piling onto one.
+  // claims the closest living enemy no other bee has taken and commits to a dive at
+  // it (the dive + sting then plays out entirely in the tick — see updateBeeSwarms).
+  // Targeting spreads animal stings across distinct targets: a bee dives at exactly
+  // one enemy and no two bees may claim the same enemy ANIMAL at once. An enemy Base
+  // is the exception — it is a wide structure a whole cloud can dive at once, so it
+  // is never reserved and a bee that reaches one sacrifices itself to chip it.
   swarm: (cmd) => routeCommand({ type: 'swarm', payload: cmd }) ? undefined : set((prev) =>
     produce(prev, (draft) => {
       // Enemies already claimed by another bee mid-Swarm — excluded so no two bees
@@ -4101,14 +4117,16 @@ export const useGameStore = create<Store>((set, get) => ({
         if (bee.hp <= 0) continue;
         if (bee.swarmTargetId !== undefined) continue; // already diving
 
-        // Claim the closest living enemy animal (never a Base) not already claimed.
+        // Claim the closest living enemy not already claimed — an enemy animal, or
+        // an enemy Base when one is the nearest target (a bee will dive a structure).
         let target: Unit | null = null;
         let bestDistSq = Infinity;
         for (const candidate of draft.units) {
           if (candidate.ownerId === bee.ownerId) continue; // enemies only
-          if (candidate.kind === 'Base') continue;          // animals only, never structures
           if (candidate.hp <= 0) continue;
-          if (claimedTargetIds.has(candidate.id)) continue; // one bee per enemy
+          // One bee per enemy animal so the cloud spreads its stings; a Base is a
+          // wide structure many bees can dive at once, so it is never reserved.
+          if (candidate.kind !== 'Base' && claimedTargetIds.has(candidate.id)) continue;
           const distSq = distanceSquared3D(bee.position, candidate.position);
           if (distSq < bestDistSq) {
             bestDistSq = distSq;
@@ -4117,7 +4135,7 @@ export const useGameStore = create<Store>((set, get) => ({
         }
         if (!target) continue; // no unclaimed enemy left for this bee — it sits this swarm out
 
-        claimedTargetIds.add(target.id); // reserve so a later bee in this batch can't reuse it
+        if (target.kind !== 'Base') claimedTargetIds.add(target.id); // reserve animals so a later bee in this batch can't reuse them
         bee.swarmTargetId = target.id;
         // Drop any pending move order so the dive isn't fighting a stale destination.
         delete draft.unitOrders[bee.id];
@@ -4991,10 +5009,11 @@ function creditKill(draft: Store, attackerOwnerId: string, target: Unit): void {
 }
 
 // Advance every in-flight egg one tick: move it along its flight vector, then
-// resolve the first enemy animal (non-Base) it passes within EGG_HIT_RADIUS of.
-// A hit removes EGG_DAMAGE hp (crediting the kill and queuing removal through the
-// shared dead-unit path) and consumes the egg. Eggs that fly past EGG_MAX_RANGE
-// without a hit simply expire. Mutates draft.projectiles in place.
+// resolve the first enemy it passes within range of — an animal near the egg's
+// center, or an enemy Base whose footprint the egg has reached. A hit removes
+// EGG_DAMAGE hp (crediting the kill and queuing removal through the shared
+// dead-unit path) and consumes the egg. Eggs that fly past EGG_MAX_RANGE without
+// a hit simply expire. Mutates draft.projectiles in place.
 function updateProjectiles(draft: Store, dtSec: number): void {
   if (!draft.projectiles || draft.projectiles.length === 0) return;
 
@@ -5006,17 +5025,20 @@ function updateProjectiles(draft: Store, dtSec: number): void {
     egg.position.z += stepZ;
     egg.traveled += Math.sqrt(stepX * stepX + stepZ * stepZ);
 
-    // Resolve the closest enemy animal within the egg's hit radius this tick.
+    // Resolve the closest enemy the egg overlaps this tick — an animal near the
+    // egg's center, or an enemy Base whose wide footprint the egg has reached.
     let hitTarget: Unit | null = null;
-    let closestSq = EGG_HIT_RADIUS_SQ;
+    let closestSq = Infinity;
     for (const candidate of draft.units) {
       if (candidate.ownerId === egg.ownerId) continue; // enemies only
-      if (candidate.kind === 'Base') continue;         // animals only
       if (candidate.hp <= 0) continue;
       const dx = candidate.position.x - egg.position.x;
       const dz = candidate.position.z - egg.position.z;
       const distSq = dx * dx + dz * dz; // XZ plane; the egg flies at a fixed height
-      if (distSq <= closestSq) {
+      // A Base is a structure: the egg connects anywhere within its footprint,
+      // not just near the center point that an animal is hit at.
+      const hitRadius = candidate.kind === 'Base' ? EGG_HIT_RADIUS + BASE_FOOTPRINT_RADIUS : EGG_HIT_RADIUS;
+      if (distSq <= hitRadius * hitRadius && distSq < closestSq) {
         closestSq = distSq;
         hitTarget = candidate;
       }
@@ -5064,6 +5086,11 @@ function updateFrogTongues(draft: Store, dtSec: number, nowMs: number): void {
 
     const target = draft.units.find((candidate) => candidate.id === tongue.targetId);
     const targetAlive = !!target && target.hp > 0;
+    // A Base is a wide structure: it is reached and latched on its footprint, not
+    // its center point, and it is damaged-in-place rather than dragged.
+    const targetIsBase = !!target && target.kind === 'Base';
+    const tongueReachSq = targetIsBase ? (TONGUE_RANGE + BASE_FOOTPRINT_RADIUS) ** 2 : TONGUE_RANGE_SQ;
+    const tongueHitSq = targetIsBase ? (TONGUE_HIT_RADIUS + BASE_FOOTPRINT_RADIUS) ** 2 : TONGUE_HIT_RADIUS_SQ;
 
     if (tongue.phase === 'windup') {
       if (nowMs < tongue.phaseUntilMs) continue; // hold the Frog_F2 beat
@@ -5071,7 +5098,7 @@ function updateFrogTongues(draft: Store, dtSec: number, nowMs: number): void {
       // alive and in reach — otherwise it fizzles. A whiff (no targetId) always
       // shoots out along its fixed cursor-facing direction.
       if (tongue.targetId) {
-        if (!targetAlive || distanceSquared3D(frog.position, target!.position) > TONGUE_RANGE_SQ) {
+        if (!targetAlive || distanceSquared3D(frog.position, target!.position) > tongueReachSq) {
           frog.tongue = undefined; // fizzle — cooldown still applies (lastTongueAtMs set at fire)
           continue;
         }
@@ -5092,7 +5119,7 @@ function updateFrogTongues(draft: Store, dtSec: number, nowMs: number): void {
         const tipZ = tongue.origin.z + tongue.direction.z * tongue.length;
         const dx = target!.position.x - tipX;
         const dz = target!.position.z - tipZ;
-        if (dx * dx + dz * dz <= TONGUE_HIT_RADIUS_SQ) {
+        if (dx * dx + dz * dz <= tongueHitSq) {
           tongue.grabbed = true;
           if (!tongue.damageDealt) {
             tongue.damageDealt = true;
@@ -5115,7 +5142,7 @@ function updateFrogTongues(draft: Store, dtSec: number, nowMs: number): void {
     // retracting — reel the tongue back; drag a living catch along with the tip.
     tongue.length = Math.max(tongue.length - TONGUE_RETRACT_SPEED * dtSec, 0);
 
-    if (tongue.grabbed && targetAlive) {
+    if (tongue.grabbed && targetAlive && !targetIsBase) {
       const tipX = tongue.origin.x + tongue.direction.x * tongue.length;
       const tipZ = tongue.origin.z + tongue.direction.z * tongue.length;
       // Stop dragging once the catch is right in front of the frog so it doesn't
@@ -5136,11 +5163,13 @@ function updateFrogTongues(draft: Store, dtSec: number, nowMs: number): void {
 
 // Advance every Bee that is mid-Swarm, one tick. A swarming bee flies straight at its
 // claimed enemy at SWARM_DIVE_SPEED (its normal AI is suppressed by the swarm intercept
-// in tick). On reaching SWARM_STING_RANGE it stings once: with probability
-// SWARM_STING_KILL_CHANCE both the bee and the target die, otherwise the sting glances
-// off harmlessly; either way the surviving bee disengages (swarmTargetId cleared) and
-// resumes normal behavior. A bee whose target dies or vanishes before contact simply
-// breaks off. Bees are air units, so the dive ignores terrain and unit collision.
+// in tick). On reaching sting range it stings once. Against an enemy ANIMAL the sting
+// is a coin flip: with probability SWARM_STING_KILL_CHANCE both the bee and the target
+// die, otherwise it glances off harmlessly. Against an enemy BASE — a structure that
+// can't be coin-flip killed — the bee always sacrifices itself, chipping the base for
+// SWARM_BASE_STING_MULT times its sting. Either way the surviving bee (animal-miss only)
+// disengages and resumes normal behavior; a bee whose target dies or vanishes before
+// contact breaks off. Bees are air units, so the dive ignores terrain and unit collision.
 function updateBeeSwarms(draft: Store, dtSec: number, nowMs: number): void {
   for (const bee of draft.units) {
     if (bee.swarmTargetId === undefined) continue;
@@ -5159,10 +5188,27 @@ function updateBeeSwarms(draft: Store, dtSec: number, nowMs: number): void {
     const toTargetZ = target.position.z - bee.position.z;
     const distSq = toTargetX * toTargetX + toTargetZ * toTargetZ;
 
-    if (distSq <= SWARM_STING_RANGE_SQ) {
-      // Contact: sting once. A coin flip kills both the bee and its target, or neither.
+    // A Base is reached on its footprint, not its center point.
+    const targetIsBase = target.kind === 'Base';
+    const stingRangeSq = targetIsBase ? (SWARM_STING_RANGE + BASE_FOOTPRINT_RADIUS) ** 2 : SWARM_STING_RANGE_SQ;
+
+    if (distSq <= stingRangeSq) {
+      // Contact: the bee stings once and the dive ends.
       bee.lastAttackAtMs = nowMs; // count the sting as a swing for pose/combat timing
-      if (simRng.next() < SWARM_STING_KILL_CHANCE) {
+      if (targetIsBase) {
+        // A structure can't be coin-flip killed: the bee sacrifices itself to chip
+        // the base for a multiple of its sting, then always dies on impact.
+        target.hp -= mitigatedDamage(target, bee.attackDamage * SWARM_BASE_STING_MULT);
+        if (target.hp <= 0) {
+          target.hp = 0;
+          draft.deadUnitsToRemove.push(target.id);
+          creditKill(draft, bee.ownerId, target);
+        }
+        bee.hp = 0;
+        draft.deadUnitsToRemove.push(bee.id);
+        creditKill(draft, target.ownerId, bee);        // the base's owner is credited for the bee
+      } else if (simRng.next() < SWARM_STING_KILL_CHANCE) {
+        // Against an animal a coin flip kills both the bee and its target, or neither.
         target.hp = 0;
         draft.deadUnitsToRemove.push(target.id);
         creditKill(draft, bee.ownerId, target);      // the bee's owner killed the target

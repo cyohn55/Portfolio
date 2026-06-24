@@ -111,6 +111,49 @@ test.describe('Chicken egg ability', () => {
     expect(result.remainingProjectiles).toBe(0);
   });
 
+  test('an egg thrown at an enemy base damages it', async ({ page }) => {
+    test.setTimeout(60_000);
+    await openChickenMatch(page);
+
+    const result = await page.evaluate(({ chickenPos, dtSec, ticks }) => {
+      const store = (window as any).__rtsStore;
+      const state = store.getState();
+      const localId = state.localPlayerId as string;
+      const enemyId = state.players.find((p: any) => p.id !== localId)!.id as string;
+
+      const template = state.units.find((u: any) => u.animal === 'Chicken' && u.ownerId === localId);
+      if (!template) return { chickenFound: false } as any;
+
+      const chicken = { ...template, id: 'chicken-base', position: { ...chickenPos }, lastEggAtMs: undefined, eggThrowUntilMs: undefined };
+      // The enemy base center sits beyond the chicken's melee range so only the
+      // thrown egg — reaching the base's wide footprint — can connect.
+      const baseStartHp = 2000; // survives the hit so the win check doesn't end the match
+      const enemyBasePos = { x: chickenPos.x + 20, y: chickenPos.y, z: chickenPos.z };
+      const enemyBase = {
+        ...template, id: 'enemy-base', ownerId: enemyId, kind: 'Base',
+        position: { ...enemyBasePos }, hp: baseStartHp, maxHp: baseStartHp, moveSpeed: 0,
+      };
+      // A friendly base keeps the win check from ending the match.
+      const playerBase = { ...template, id: 'player-base', kind: 'Base', position: { x: chickenPos.x - 60, y: chickenPos.y, z: chickenPos.z }, moveSpeed: 0 };
+      store.setState({ units: [chicken, enemyBase, playerBase], unitOrders: {}, projectiles: [] });
+
+      store.getState().throwEggs({ unitIds: [chicken.id], target: { ...enemyBasePos } });
+      for (let i = 0; i < ticks; i++) store.getState().tick(dtSec, performance.now());
+
+      const b = store.getState().units.find((x: any) => x.id === enemyBase.id);
+      return {
+        chickenFound: true,
+        baseDamageTaken: baseStartHp - (b?.hp ?? baseStartHp),
+        remainingProjectiles: store.getState().projectiles.length,
+      };
+    }, { chickenPos: CHICKEN_POSITION, dtSec: SIM_DT_SEC, ticks: TICK_COUNT });
+
+    expect(result.chickenFound).toBe(true);
+    // The egg struck the base for the egg's damage, then was consumed.
+    expect(result.baseDamageTaken).toBe(EXPECTED_EGG_DAMAGE);
+    expect(result.remainingProjectiles).toBe(0);
+  });
+
   test('an egg never damages a friendly animal (enemies only)', async ({ page }) => {
     test.setTimeout(60_000);
     await openChickenMatch(page);
