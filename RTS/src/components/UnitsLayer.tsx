@@ -302,9 +302,12 @@ function accessoryVariantKeyForUnit(unit: Unit, isOwnUnit: boolean): string | nu
 // 5x the original footprint (was tileSize 2). Bases are now imposing structures
 // colored by team, with a billboarded health bar that surfaces only while the
 // base is under attack or being healed.
-const BASE_TILE_SIZE = 10;
-const BASE_BODY_HEIGHT = 4; // 5x the original 0.8 cylinder
-const BASE_ACCENT_SIZE = 2; // 5x the original 0.4 cap box
+// 5x the original footprint, then a further 15% enlargement (10 -> 11.5,
+// 4 -> 4.6, 2 -> 2.3). All three scale together so the base keeps its
+// proportions and the ground-sit math below stays correct.
+const BASE_TILE_SIZE = 11.5;
+const BASE_BODY_HEIGHT = 4.6; // 5x the original 0.8 cylinder, +15%
+const BASE_ACCENT_SIZE = 2.3; // 5x the original 0.4 cap box, +15%
 
 function BaseMarker({ base, isOwn }: { base: Unit; isOwn: boolean }) {
   const { camera } = useThree();
@@ -368,11 +371,11 @@ function BaseMarker({ base, isOwn }: { base: Unit; isOwn: boolean }) {
         <mesh castShadow receiveShadow>
           {/* Top hexagonal face is 20% smaller than the bottom (tapered prism). */}
           <cylinderGeometry args={[BASE_TILE_SIZE * 0.9 * 0.8, BASE_TILE_SIZE * 0.9, BASE_BODY_HEIGHT, 6]} />
-          <meshStandardMaterial color={bodyColor} />
+          <meshStandardMaterial color={bodyColor} flatShading />
         </mesh>
         <mesh position={[0, accentY, 0]} castShadow>
           <boxGeometry args={[BASE_ACCENT_SIZE, BASE_ACCENT_SIZE, BASE_ACCENT_SIZE]} />
-          <meshStandardMaterial color={accentColor} />
+          <meshStandardMaterial color={accentColor} flatShading />
         </mesh>
       </group>
 
