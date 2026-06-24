@@ -501,6 +501,24 @@ export function getBakedAnimalParts(gltf: any, animal: AnimalId): BakedPart[] {
   return parts;
 }
 
+// Baked parts for an animal's idle/primary pose — the single still pose used for
+// stationary displays (e.g. the King statue perched on each base). Multi-pose
+// models resolve to their first frame; the rest use their sole base variant.
+// Reuses the same cached bakes the instanced renderer builds, so this allocates
+// nothing new once a fielded animal's variants exist.
+export function getPrimaryPoseParts(gltf: any, animal: AnimalId): BakedPart[] {
+  switch (animal) {
+    case 'Turtle': return getBakedTurtleFrameParts(gltf, 0);
+    case 'Fox': return getBakedFoxFrameParts(gltf, 0);
+    case 'Yetti': return getBakedYetiFrameParts(gltf, 0);
+    case 'Cat': return getBakedCatFrameParts(gltf, 0);
+    case 'Bee': return getBakedBeeFrameParts(gltf, 0);
+    case 'Frog': return getBakedFrogFrameParts(gltf, 0);
+    case 'Chicken': return getBakedChickenFrameParts(gltf, 0);
+    default: return getBakedAnimalParts(gltf, animal);
+  }
+}
+
 // Bake one or more named pose objects (Turtle_F#, Fox_F#, …) out of a multi-pose
 // glb into instanced parts. All poses share one normalization — derived from the
 // whole model's bounds rather than each pose's own — so every frame lands at the

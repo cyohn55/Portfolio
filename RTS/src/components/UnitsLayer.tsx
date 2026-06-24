@@ -31,6 +31,7 @@ import {
   chickenFrameVariantKey,
   getKindTargetScale,
   getBakedAnimalParts,
+  getPrimaryPoseParts,
   getBakedOwlWingParts,
   getBakedTurtleFrameParts,
   getBakedFoxFrameParts,
@@ -394,6 +395,40 @@ function BaseMarker({ base, isOwn }: { base: Unit; isOwn: boolean }) {
   );
 }
 
+// A stationary King statue perched on top of each base, baked from the base's
+// own animal model (idle pose + the team-colored crown) so every base visibly
+// announces which animal it belongs to — the frog base wears a frog king, the
+// bee base a bee king, and so on. Bases are static, so this is plain meshes with
+// no per-frame work, reusing the cached bakes the instanced renderer already
+// builds for fielded animals.
+function BaseKingStatue({ base, isOwn, gltf }: { base: Unit; isOwn: boolean; gltf: any }) {
+  const { bodyParts, crownParts, scale } = useMemo(() => {
+    const body = getPrimaryPoseParts(gltf, base.animal);
+    // Local player's king is Blue, the enemy's Red (matches the live royals).
+    const crownNode = royalAccessoryNodeFor(isOwn, 'King');
+    const crown = hasRoyalAccessories(gltf)
+      ? getBakedRoyalAccessoryParts(gltf, base.animal, crownNode)
+      : [];
+    return { bodyParts: body, crownParts: crown, scale: getKindTargetScale(base.animal, 'King') };
+  }, [gltf, base.animal, isOwn]);
+
+  // Stand the statue on top of the base structure (body prism + accent cap). The
+  // baked parts are normalized feet-on-y=0, so scaling the group resizes the
+  // model in place — only the group's world Y lifts the feet onto the cap.
+  const feetY = base.position.y + BASE_BODY_HEIGHT + BASE_ACCENT_SIZE;
+
+  return (
+    <group position={[base.position.x, feetY, base.position.z]} scale={scale}>
+      {bodyParts.map((part, index) => (
+        <mesh key={`body-${index}`} geometry={part.geometry} material={part.material} castShadow receiveShadow />
+      ))}
+      {crownParts.map((part, index) => (
+        <mesh key={`crown-${index}`} geometry={part.geometry} material={part.material} castShadow />
+      ))}
+    </group>
+  );
+}
+
 // Bases are few (<=6) and effectively static, so they stay as plain meshes.
 // A shallow-compared selector keeps this from re-rendering on every game tick
 // (the selector returns the base units; a base's reference only changes when its
@@ -401,11 +436,22 @@ function BaseMarker({ base, isOwn }: { base: Unit; isOwn: boolean }) {
 function Bases() {
   const bases = useGameStore((s) => s.units.filter((u) => u.kind === 'Base'), shallow);
   const localPlayerId = useGameStore((s) => s.localPlayerId);
+  // Models for the King statues. Already loaded/cached by InstancedUnits; this
+  // shares drei's per-path cache and the same Suspense boundary.
+  const gltfs = useGLTF(ALL_ANIMAL_PATHS) as any[];
+  const animalIds = useMemo(() => Object.keys(ANIMAL_FILE_MAP) as AnimalId[], []);
   return (
     <group>
-      {bases.map((base) => (
-        <BaseMarker key={base.id} base={base} isOwn={base.ownerId === localPlayerId} />
-      ))}
+      {bases.map((base) => {
+        const isOwn = base.ownerId === localPlayerId;
+        const gltf = gltfs[animalIds.indexOf(base.animal)];
+        return (
+          <group key={base.id}>
+            <BaseMarker base={base} isOwn={isOwn} />
+            {gltf && <BaseKingStatue base={base} isOwn={isOwn} gltf={gltf} />}
+          </group>
+        );
+      })}
     </group>
   );
 }
