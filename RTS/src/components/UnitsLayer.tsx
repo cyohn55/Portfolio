@@ -417,8 +417,12 @@ function BaseKingStatue({ base, isOwn, gltf }: { base: Unit; isOwn: boolean; glt
   // model in place — only the group's world Y lifts the feet onto the cap.
   const feetY = base.position.y + BASE_BODY_HEIGHT + BASE_ACCENT_SIZE;
 
+  // The local player holds the +z edge, so its statues are turned 180° to face
+  // the enemy across the field; the enemy's keep their default forward facing.
+  const facingY = isOwn ? Math.PI : 0;
+
   return (
-    <group position={[base.position.x, feetY, base.position.z]} scale={scale}>
+    <group position={[base.position.x, feetY, base.position.z]} rotation={[0, facingY, 0]} scale={scale}>
       {bodyParts.map((part, index) => (
         <mesh key={`body-${index}`} geometry={part.geometry} material={part.material} castShadow receiveShadow />
       ))}
