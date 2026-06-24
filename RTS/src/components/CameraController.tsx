@@ -44,10 +44,12 @@ const INITIAL_DISTANCE = 200;
 // look-at point *ahead* of the unit — deeper into the battlefield — by this
 // fraction of the current zoom distance. The camera always frames its look-at
 // point at screen center, so biasing the focus forward leaves the followed unit
-// behind it: closer to the camera and sitting in the lower third of the screen
-// rather than dead center. The bias scales with zoom distance (and the shallow
-// fixed camera angle) so the on-screen placement stays put as the player zooms.
-const FOLLOW_SCREEN_BIAS = 0.5;
+// behind it: closer to the camera and sitting a touch below dead center. The
+// bias scales with zoom distance (and the shallow fixed camera angle) so the
+// on-screen placement stays put as the player zooms. Kept modest so a large,
+// spread-out selection clears the bottom-edge HUD buttons instead of hiding
+// behind them.
+const FOLLOW_SCREEN_BIAS = 0.25;
 
 // A piloted King/Queen rides a touch higher on screen than a plain selection: a
 // smaller forward bias pulls its look-at point back toward the unit, lifting the
