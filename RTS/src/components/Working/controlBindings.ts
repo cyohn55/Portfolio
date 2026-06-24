@@ -191,22 +191,20 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
 
 // Controller layout (Standard Gamepad). Left stick pilots the monarch; right
 // stick drives the targeting cursor (and, while a radial wheel is open, aims it).
-// Every input is single-purpose — there are no tap/hold overloads on the D-pad:
-//   LT  — Select Monarch's Animal (tap) / Select All Units (double-tap)
+// Inputs that share a button are split by activation mode (see DEFAULT_CONTROLLER_MODES):
+//   LT  — Select All Units (tap) / Rally to monarch (double-tap)
 //   RT  — Move/Attack (press) / Deploy at cursor (hold)  [via secondaryAction]
-//   LB  — Switch Monarch (tap) / Quick-Direct fire teams (hold)
-//   RB  — Arm Queen spawn-rally
-//   L3  — Set Patrol aim (hold)         R3 — Rally to monarch
+//   LB  — Use Ability
 //   A   — Select / Confirm              B  — Deselect / close wheel
-//   X   — Use Ability                   Y  — Switch King/Queen
-//   D-Pad — Up/Down Zoom In/Out, Left Combat wheel, Right Directing wheel
+//   X   — Switch King/Queen             Y  — Cycle fire team
+//   R3  — Directing wheel (tap) / Combat posture wheel (double-tap)
+//   D-Pad — Up/Down Zoom In/Out, Left Switch Monarch
 //   Start — Pause / Settings menu
 // While the Directing wheel is open, LB/RB instead flip its pages (modal); see
 // GamepadController.
 const DPAD_UP = 'button:12';
 const DPAD_DOWN = 'button:13';
 const DPAD_LEFT = 'button:14';
-const DPAD_RIGHT = 'button:15';
 
 // Standard-mapping shoulder buttons. The Directing wheel reserves these as a fixed
 // page-flip convention while it is open (LB = previous page, RB = next) — see the
@@ -225,36 +223,37 @@ export const DEFAULT_CONTROLLER_BINDINGS: ControlBindings = {
   // Zoom is held on the D-Pad vertical axis (read analogically by the camera block).
   cameraZoomIn: DPAD_UP,    // D-Pad Up
   cameraZoomOut: DPAD_DOWN, // D-Pad Down
-  rally: 'button:11', // R3 — rally the piloted army to the monarch
-  // LT: tap selects the piloted monarch's animal; double-tap selects all units.
-  selectMonarchAnimal: 'button:6', // LT (tap)
-  selectAllUnits: 'button:6',      // LT (double-tap)
+  // LT shares one button: tap selects all units, double-tap rallies to the monarch.
+  rally: 'button:6',               // LT (double-tap)
+  selectMonarchAnimal: '',
+  selectAllUnits: 'button:6',      // LT (tap)
   // Deploy-at-cursor rides the RT (secondaryAction) hold in GamepadController, so
-  // the standalone deploy-at-monarch action is unbound on the controller.
-  deployUnits: '',
-  // Per-animal group selects move to the keyboard; LB is Switch Monarch, so the
-  // old LB+face chords are unbound here.
+  // the standalone deploy-at-monarch action shares RT here.
+  deployUnits: 'button:7', // RT (hold)
+  // Per-animal group selects move to the keyboard, so the old face chords are
+  // unbound here.
   selectGroup1: '',
   selectGroup2: '',
   selectGroup3: '',
   deselect: 'button:1', // B
   primaryAction: 'button:0', // A — Select / Confirm
   secondaryAction: 'button:7', // RT — Move/Attack (press) + Deploy (hold)
-  useAbility: 'button:2', // X — fires the selected animal's ability at the reticle
-  setQueenRally: 'button:5', // RB — arm the Queen spawn-rally aim (committed by RT)
-  setPatrol: 'button:10', // L3 held arms the patrol aim; release commits
-  // The two radial wheels live on the D-Pad horizontal axis (tap to open; aim with
-  // the right stick, RT to select, B to close).
-  toggleBehaviorRadial: DPAD_LEFT,   // Left — Combat posture
-  toggleDirectingRadial: DPAD_RIGHT, // Right — Directing (Shapes / Audibles / Plays)
-  pilotCycleMonarch: 'button:4', // LB — Switch Monarch
-  // The left stick pilots and LB cycles monarchs, so the old per-slot D-Pad pilots
-  // stay unbound.
+  useAbility: 'button:4', // LB — fires the selected animal's ability at the reticle
+  // Queen spawn-rally and patrol aim stay unbound by default on the controller.
+  setQueenRally: '',
+  setPatrol: '',
+  // Both radial wheels share R3: tap opens Directing, double-tap opens Combat posture
+  // (aim with the right stick, RT to select, B to close).
+  toggleBehaviorRadial: 'button:11',  // R3 (double-tap) — Combat posture
+  toggleDirectingRadial: 'button:11', // R3 (tap) — Directing (Shapes / Audibles / Plays)
+  pilotCycleMonarch: DPAD_LEFT, // D-Pad Left — Switch Monarch
+  // The left stick pilots and D-Pad Left cycles monarchs, so the old per-slot D-Pad
+  // pilots stay unbound.
   pilotMonarch1: '',
   pilotMonarch2: '',
   pilotMonarch3: '',
-  pilotToggleMonarch: 'button:3', // Y — Switch King / Queen
-  cycleFireTeam: 'button:8', // Back/View — cycle drive control through deployed fire teams
+  pilotToggleMonarch: 'button:2', // X — Switch King / Queen
+  cycleFireTeam: 'button:3', // Y — cycle drive control through deployed fire teams
   pause: 'button:9', // Start — Pause / Settings
 };
 
@@ -306,8 +305,26 @@ export const DEFAULT_BINDING_MODES: ControlBindingModes = {
   pause: 'tap',
 };
 
-export function getDefaultModes(_device: InputDevice): ControlBindingModes {
-  return { ...DEFAULT_BINDING_MODES };
+/**
+ * Controller activation modes. The controller layout overloads a few buttons that
+ * the keyboard keeps separate, so it needs its own mode map:
+ *   - LT: tap = Select All Units, double-tap = Rally to monarch,
+ *   - R3: tap = Directing wheel, double-tap = Combat posture wheel,
+ *   - setQueenRally: Hold (its hold-to-aim gesture).
+ */
+export const DEFAULT_CONTROLLER_MODES: ControlBindingModes = {
+  ...DEFAULT_BINDING_MODES,
+  rally: 'double-tap',
+  selectAllUnits: 'tap',
+  setQueenRally: 'hold',
+  toggleBehaviorRadial: 'double-tap',
+  toggleDirectingRadial: 'tap',
+};
+
+export function getDefaultModes(device: InputDevice): ControlBindingModes {
+  return device === 'keyboard'
+    ? { ...DEFAULT_BINDING_MODES }
+    : { ...DEFAULT_CONTROLLER_MODES };
 }
 
 function storageKey(device: InputDevice): string {
