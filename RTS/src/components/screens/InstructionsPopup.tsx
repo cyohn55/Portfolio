@@ -73,34 +73,35 @@ const CONTROLLER_GROUPS: readonly ControlGroup[] = [
     entries: [
       { input: 'Left Stick', action: 'Pan camera (or drive a piloted monarch)' },
       { input: 'Right Stick', action: 'Move the targeting reticle' },
-      { input: 'LT / RT', action: 'Zoom out / in' },
+      { input: 'D-Pad ↑ / ↓', action: 'Zoom in / out' },
     ],
   },
   {
     label: 'Selection',
     entries: [
       { input: 'A', action: 'Select the animal under the reticle' },
-      { input: 'LB + A / B / Y', action: 'Select your 1st / 2nd / 3rd animal' },
-      { input: 'Double-Tap X', action: 'Select all your animals' },
-      { input: 'Y', action: 'Deselect all' },
+      { input: 'Tap LT', action: 'Select all your animals' },
+      { input: 'B', action: 'Deselect all' },
     ],
   },
   {
     label: 'Commands',
     entries: [
-      { input: 'B', action: 'Move / Attack at the reticle' },
-      { input: 'RB', action: "Use the selected animal's special ability" },
-      { input: 'R3, then B', action: "Aim & set a lone Queen's spawn rally point" },
-      { input: 'Hold L3', action: "Draw a lone Queen's patrol route" },
+      { input: 'RT', action: 'Move / Attack at the reticle' },
+      { input: 'Hold RT', action: 'Deploy units at the reticle' },
+      { input: 'LB', action: "Use the selected animal's special ability" },
+      { input: 'Tap R3', action: 'Open the Directing wheel' },
+      { input: 'Double-Tap R3', action: 'Open the Combat posture wheel' },
+      { input: 'Y', action: 'Cycle control through deployed fire teams' },
     ],
   },
   {
     label: 'Pilot a Monarch',
     entries: [
-      { input: 'D-Pad ↑ / ← / →', action: 'Pilot your 1st / 2nd / 3rd King' },
-      { input: 'D-Pad ↓', action: 'Toggle the King / Queen' },
-      { input: 'Tap X', action: 'Rally that army to follow' },
-      { input: 'Hold X', action: 'Deploy units at the monarch' },
+      { input: 'D-Pad ←', action: 'Pilot / cycle your Kings' },
+      { input: 'X', action: 'Toggle the King / Queen' },
+      { input: 'Double-Tap LT', action: 'Rally that army to follow' },
+      { input: 'Hold RT', action: 'Deploy units at the monarch' },
     ],
   },
   {
