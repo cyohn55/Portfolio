@@ -93,6 +93,8 @@ const CONTROLLER_GROUPS: readonly ControlGroup[] = [
       { input: 'Tap R3', action: 'Open the Directing wheel' },
       { input: 'Double-Tap R3', action: 'Open the Combat posture wheel' },
       { input: 'Y', action: 'Cycle control through deployed fire teams' },
+      { input: 'Unbound', action: "Aim & set a lone Queen's spawn rally point (map a button to enable)" },
+      { input: 'Unbound', action: "Draw a lone Queen's patrol route (map a button to enable)" },
     ],
   },
   {
@@ -129,7 +131,7 @@ const ControlGroupList: React.FC<{ groups: readonly ControlGroup[] }> = ({ group
         <h4 className="controls-group-label">{group.label}</h4>
         <ul className="controls-list">
           {group.entries.map((entry) => (
-            <li key={entry.input}>
+            <li key={`${entry.input}-${entry.action}`}>
               <span className="control-key">{entry.input}</span>
               {entry.action}
             </li>
