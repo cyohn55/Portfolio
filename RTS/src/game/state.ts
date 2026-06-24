@@ -4602,11 +4602,14 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
       continue;
     }
 
-    // Fly-over: an airborne mover ignores friendly GROUND/WATER teammates entirely — it is in
-    // the air above them, so they can never hem it in. Without this a Bee surrounded by its own
-    // army was frozen in place. Spacing against other airborne friendlies (Bee/Owl) still holds
-    // so flyers don't perfectly stack, and enemy collision is untouched (combat is unaffected).
-    if (isFriendly && isCurrentUnitAirborne && !isAirborneUnit(other)) {
+    // Layer separation: a flying unit and a ground/water unit never share the same space — the
+    // flyer glides over whatever is below and the grounded unit passes underneath — so the pair
+    // never pushes each other, friendly OR enemy. This is symmetric: it fires whether the flyer
+    // or the grounded unit is the one moving, so a ground crowd no longer parts around a Bee
+    // overhead and a Bee no longer hems in (or is hemmed in by) the units beneath it. Air-vs-air
+    // and ground-vs-ground spacing still applies (flyers don't stack), and combat is unaffected
+    // because the combat phase applies damage without ever running through checkCollision.
+    if (isCurrentUnitAirborne !== isAirborneUnit(other)) {
       continue;
     }
 
