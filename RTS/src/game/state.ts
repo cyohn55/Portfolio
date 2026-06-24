@@ -4746,14 +4746,21 @@ function clearPathForSelectedRoyals(draft: Store, priorityUnitIds: ReadonlySet<s
     if (!playerOwnedIds.has(royal.ownerId)) continue;
     if (!selectedIds.has(royal.id)) continue;
 
+    // A royal carves its make-way clearance only out of teammates on its OWN layer: a flying
+    // King/Queen (Bee/Owl) shoves other flyers aside but glides over grounded units, while a
+    // grounded royal shoves ground units but cannot push a teammate flying above it.
+    const royalIsAirborne = isAirborneUnit(royal);
+
     const neighbors = grid ? grid.getNearbyUnits(royal.position, queryRadius) : draft.units;
 
     for (const other of neighbors) {
       if (other.id === royal.id || other.kind === 'Base') continue;
       if (other.ownerId !== royal.ownerId) continue; // friendly only — enemies are combat, not cargo
-      // Airborne/carried teammates fly over the royal's path and are positioned elsewhere; a
-      // royal can't shove a unit that isn't on the ground beside it, so don't fight them.
-      if (other.carriedByOwlId !== undefined || isAirborneUnit(other)) continue;
+      // Carried teammates are positioned by the carry system; don't fight them. Otherwise only
+      // shove teammates sharing the royal's layer — a grounded royal skips flyers above it and a
+      // flying royal skips the ground crowd below, but a flying royal still clears other flyers.
+      if (other.carriedByOwlId !== undefined) continue;
+      if (isAirborneUnit(other) !== royalIsAirborne) continue;
       // Only shove UNSELECTED teammates: a selected unit (including another royal) is moving
       // under the player's own control and clears itself, so bulldozing it would fight that.
       if (selectedIds.has(other.id)) continue;
