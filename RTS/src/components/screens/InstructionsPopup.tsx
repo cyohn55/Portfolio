@@ -167,8 +167,12 @@ export const InstructionsPopup: React.FC<InstructionsPopupProps> = ({ onClose })
 
         <div className="instructions-section">
           <h3>Objective</h3>
-          <p>Eliminate the enemy army or destroy all three enemy bases to win!</p>
+          <p>Eliminate the enemy and destroy all three bases to win!</p>
         </div>
+
+        <button className="start-battle-btn" onClick={onClose}>
+          Begin Battle!
+        </button>
 
         <div className="instructions-section">
           <h3>Controls</h3>
@@ -203,10 +207,6 @@ export const InstructionsPopup: React.FC<InstructionsPopupProps> = ({ onClose })
             </>
           )}
         </div>
-
-        <button className="start-battle-btn" onClick={onClose}>
-          Begin Battle!
-        </button>
       </div>
     </div>
   );
