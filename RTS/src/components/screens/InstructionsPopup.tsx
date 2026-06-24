@@ -47,6 +47,9 @@ const KEYBOARD_MOUSE_GROUPS: readonly ControlGroup[] = [
     entries: [
       { input: 'Right-Click', action: 'Move / Attack' },
       { input: 'Left + Right Click', action: "Use the selected animal's special ability" },
+      { input: 'B', action: 'Open the Combat posture wheel' },
+      { input: 'V', action: 'Open the Directing wheel' },
+      { input: 'T', action: 'Cycle control through deployed fire teams' },
       { input: 'Right-Hold on Queen', action: 'Draw a patrol route' },
       { input: 'R, then Right-Click', action: "Set a lone Queen's spawn rally point" },
     ],
