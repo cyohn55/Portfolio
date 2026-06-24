@@ -360,14 +360,21 @@ function BaseMarker({ base, isOwn }: { base: Unit; isOwn: boolean }) {
 
   return (
     <group position={[base.position.x, groupY, base.position.z]}>
-      <mesh castShadow receiveShadow>
-        <cylinderGeometry args={[BASE_TILE_SIZE * 0.9, BASE_TILE_SIZE * 0.9, BASE_BODY_HEIGHT, 6]} />
-        <meshStandardMaterial color={bodyColor} />
-      </mesh>
-      <mesh position={[0, accentY, 0]} castShadow>
-        <boxGeometry args={[BASE_ACCENT_SIZE, BASE_ACCENT_SIZE, BASE_ACCENT_SIZE]} />
-        <meshStandardMaterial color={accentColor} />
-      </mesh>
+      {/* Body + accent rotated 90° horizontally (yaw). Kept in an inner group so
+          the parent stays unrotated — the health bar below billboards by copying
+          the camera quaternion into its local rotation, which only equals its
+          world orientation while its parent has no rotation. */}
+      <group rotation={[0, Math.PI / 2, 0]}>
+        <mesh castShadow receiveShadow>
+          {/* Top hexagonal face is 20% smaller than the bottom (tapered prism). */}
+          <cylinderGeometry args={[BASE_TILE_SIZE * 0.9 * 0.8, BASE_TILE_SIZE * 0.9, BASE_BODY_HEIGHT, 6]} />
+          <meshStandardMaterial color={bodyColor} />
+        </mesh>
+        <mesh position={[0, accentY, 0]} castShadow>
+          <boxGeometry args={[BASE_ACCENT_SIZE, BASE_ACCENT_SIZE, BASE_ACCENT_SIZE]} />
+          <meshStandardMaterial color={accentColor} />
+        </mesh>
+      </group>
 
       {/* Billboarded health bar — hidden until the base is attacked or healed. */}
       <group ref={barGroupRef} position={[0, barY, 0]} visible={false}>
