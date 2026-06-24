@@ -4462,6 +4462,17 @@ function minimumSpacingBetween(currentUnit: Unit, other: Unit): number {
   return UNIT_MINIMUM_SPACING + yetiBonus;
 }
 
+// A unit is "airborne" — occupying the air layer above the battlefield rather than standing on
+// it — when its animal is an air type (Bee, Owl) or it is mid-flight/lift (an Owl with wings
+// out, a unit being carried aloft). Airborne units fly OVER friendly ground/water crowds, so the
+// spacing and separation passes must never let a grounded teammate block one. Pure and
+// deterministic (a lookup plus two flags), so both lockstep peers classify a unit identically.
+function isAirborneUnit(unit: Unit): boolean {
+  return ANIMAL_MOVEMENT_TYPES[unit.animal] === 'air' ||
+         unit.isFlying === true ||
+         (unit.flightLift ?? 0) > 0;
+}
+
 // Shared empty set so the collision/separation passes can default their priority
 // inputs without allocating, and so a missing argument can never reintroduce the
 // per-peer local state these parameters were created to keep OUT of the sim.
@@ -4504,6 +4515,10 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
   // and terrain are still enforced.
   const isSelectedOwnRoyal = isCurrentUnitSelected && isCurrentUnitPlayer &&
                              (currentUnit.kind === 'King' || currentUnit.kind === 'Queen');
+
+  // A flying mover (Bee, Owl in flight) occupies the air layer, so friendly units standing on
+  // the ground are simply flown over — they must never block or push it. Computed once per call.
+  const isCurrentUnitAirborne = isAirborneUnit(currentUnit);
 
   // Precompute the bridge pass-through predicate ONCE per call — it depends only on
   // currentUnit.position (constant for this checkCollision pass), not on `other`. The
@@ -4584,6 +4599,14 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
     // open-field combat positioning is unaffected. The bridge predicate is hoisted to
     // canPassThroughEnemyOnBridge above so this loop body stays O(1) per neighbor.
     if (isEnemy && canPassThroughEnemyOnBridge) {
+      continue;
+    }
+
+    // Fly-over: an airborne mover ignores friendly GROUND/WATER teammates entirely — it is in
+    // the air above them, so they can never hem it in. Without this a Bee surrounded by its own
+    // army was frozen in place. Spacing against other airborne friendlies (Bee/Owl) still holds
+    // so flyers don't perfectly stack, and enemy collision is untouched (combat is unaffected).
+    if (isFriendly && isCurrentUnitAirborne && !isAirborneUnit(other)) {
       continue;
     }
 
@@ -4728,8 +4751,9 @@ function clearPathForSelectedRoyals(draft: Store, priorityUnitIds: ReadonlySet<s
     for (const other of neighbors) {
       if (other.id === royal.id || other.kind === 'Base') continue;
       if (other.ownerId !== royal.ownerId) continue; // friendly only — enemies are combat, not cargo
-      // Units owned by the air/carry systems are positioned elsewhere; don't fight them.
-      if (other.carriedByOwlId !== undefined || other.isFlying || (other.flightLift ?? 0) > 0) continue;
+      // Airborne/carried teammates fly over the royal's path and are positioned elsewhere; a
+      // royal can't shove a unit that isn't on the ground beside it, so don't fight them.
+      if (other.carriedByOwlId !== undefined || isAirborneUnit(other)) continue;
       // Only shove UNSELECTED teammates: a selected unit (including another royal) is moving
       // under the player's own control and clears itself, so bulldozing it would fight that.
       if (selectedIds.has(other.id)) continue;
@@ -4837,7 +4861,9 @@ function separateOverlappingUnits(draft: Store, priorityUnitIds: ReadonlySet<str
     // not ours to manage, and nudging them would fight those systems.
     if (unit.kind === 'Base') continue;
     if (unit.carriedByOwlId !== undefined) continue;
-    if (unit.isFlying || (unit.flightLift ?? 0) > 0 || unit.owlPickup !== undefined) continue;
+    // Airborne units (Bee, Owl in flight) and units being lifted are positioned in the air layer —
+    // their spacing is not the ground crowd's to manage, so they are never nudged here.
+    if (isAirborneUnit(unit) || unit.owlPickup !== undefined) continue;
     if (unit.isShelled || unit.tongue) continue;
     if (unit.hissUntilMs !== undefined && nowMs < unit.hissUntilMs) continue;
     // The piloted monarch's position is owned by the player's pilot input — like carried or
@@ -4859,8 +4885,8 @@ function separateOverlappingUnits(draft: Store, priorityUnitIds: ReadonlySet<str
 
     for (const other of neighbors) {
       if (other.id === unit.id || other.kind === 'Base') continue;
-      // Skip units owned by the air/carry systems, for the same reason we skip them as `unit`.
-      if (other.carriedByOwlId !== undefined || other.isFlying || (other.flightLift ?? 0) > 0) continue;
+      // Skip airborne/carried neighbors, for the same reason we skip them as `unit`.
+      if (other.carriedByOwlId !== undefined || isAirborneUnit(other)) continue;
 
       // Selected units travel AROUND their idle teammates rather than pushing them: an
       // unselected friendly holds its ground against a selected friendly neighbor, so a
