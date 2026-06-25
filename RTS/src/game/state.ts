@@ -4456,6 +4456,14 @@ const UNIT_MINIMUM_SPACING = 3.75;
 // Extra spacing when a Yetti is involved on either side — its model is larger than the rest.
 const YETI_SPACING_BONUS = 1.5;
 
+// "Living wall" block distance: how close an enemy may press to a shelled Turtle before the
+// turtle stops it cold. Deliberately tighter than UNIT_MINIMUM_SPACING so the attacker ends up
+// flush against the shell — comfortably inside its own melee reach (every melee animal has
+// range 4), which keeps the wall destructible — yet wide enough that a turtle line at the
+// normal ~3.75-unit separation leaves no gap an enemy can thread (one shell seals a swath
+// 2 * radius wide). See the enemy branch of checkCollision.
+const SHELL_BLOCK_RADIUS = 2.75;
+
 // Minimum spacing required between currentUnit and other, accounting for the Yetti size bonus.
 function minimumSpacingBetween(currentUnit: Unit, other: Unit): number {
   const yetiBonus = (currentUnit.animal === 'Yetti' || other.animal === 'Yetti') ? YETI_SPACING_BONUS : 0;
@@ -4571,7 +4579,15 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
     const isEnemy = currentUnit.ownerId !== other.ownerId;
     const isFriendly = currentUnit.ownerId === other.ownerId;
 
-    if (isEnemy && distanceSquared <= 4) { // Within 2 units, allow very close combat
+    // A shelled enemy Turtle is a deliberate "living wall": it forfeits BOTH the melee-range
+    // skip here and the bridge pass-through below, so a tightly grouped, shelled turtle line
+    // physically seals a lane (e.g. the Center_Bridge chokepoint) instead of letting enemies
+    // slip through the 2-unit combat gap. The wall stays destructible — the enemy is held at
+    // SHELL_BLOCK_RADIUS, which is inside its melee reach, so it can still attack the shell
+    // down. Only turtles ever carry isShelled (see toggleTurtleShell), so this is turtle-only.
+    const isOtherShelledTurtle = other.isShelled === true;
+
+    if (isEnemy && distanceSquared <= 4 && !isOtherShelledTurtle) { // Within 2 units, allow very close combat
       continue;
     }
 
@@ -4598,7 +4614,7 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
     // crossing and re-engage on open ground. Scoped to bridge + ordered ground units so
     // open-field combat positioning is unaffected. The bridge predicate is hoisted to
     // canPassThroughEnemyOnBridge above so this loop body stays O(1) per neighbor.
-    if (isEnemy && canPassThroughEnemyOnBridge) {
+    if (isEnemy && canPassThroughEnemyOnBridge && !isOtherShelledTurtle) {
       continue;
     }
 
@@ -4614,8 +4630,12 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
     }
 
     // UNIT SPACING: enforce each unit's personal space so massed crowds spread out without
-    // bunching on a point. The same spacing is reused by the idle separation pass.
-    const minimumDistance = minimumSpacingBetween(currentUnit, other);
+    // bunching on a point. The same spacing is reused by the idle separation pass. An enemy
+    // pressing a shelled turtle is instead held at the tighter SHELL_BLOCK_RADIUS so it stops
+    // flush against the wall — close enough to attack the shell, but unable to push past it.
+    const minimumDistance = (isEnemy && isOtherShelledTurtle)
+      ? SHELL_BLOCK_RADIUS
+      : minimumSpacingBetween(currentUnit, other);
     const minimumDistanceSquared = minimumDistance * minimumDistance;
 
     if (distanceSquared < minimumDistanceSquared) {
