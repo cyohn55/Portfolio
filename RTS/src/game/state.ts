@@ -143,6 +143,7 @@ const EGG_MAX_RANGE = 60;        // an egg expires after flying this far without
 const EGG_COOLDOWN_MS = 700;     // minimum time between a chicken's egg throws
 const EGG_THROW_POSE_MS = 600;   // how long the Chicken_F3 + Egg throw pose stays up
 const EGG_SPAWN_HEIGHT = 1.5;    // height above the chicken's base the egg launches from
+const EGG_SPAWN_BACK_OFFSET = 1.0; // how far toward the target (the chicken's rear) the egg spawns, so it leaves from behind
 
 // Frog tongue-grab ability tuning. The frog keeps its melee tongue (the ANIMALS
 // stats: range 8) for normal combat; this is a separate, player-activated grab
@@ -2044,6 +2045,16 @@ export const useGameStore = create<Store>((set, get) => ({
           continue;
         }
 
+        // Chicken egg-throw pose: while the throw plays out the chicken plants itself
+        // and keeps the backside-to-target rotation set in throwEggs, so the egg
+        // launches cleanly from its tail rather than its face or wing. Freeze its
+        // movement/rotation/combat for the pose window (like the ability guards above)
+        // so a pending move order can't spin it back around mid-throw; it resumes
+        // normal behavior the moment the pose expires.
+        if (unit.animal === 'Chicken' && unit.eggThrowUntilMs !== undefined && nowMs < unit.eggThrowUntilMs) {
+          continue;
+        }
+
         // Direct piloting: the player is driving this King/Queen with the camera-movement
         // keys (z/x/c selected it). Its movement is purely the `pilotInput` vector — never
         // the AI or order system — and it never auto-attacks (fully manual). Any stale move
@@ -3939,7 +3950,12 @@ export const useGameStore = create<Store>((set, get) => ({
         const direction = normalize3D(subtract3D(cmd.target, unit.position));
         if (direction.x === 0 && direction.z === 0) continue; // target on top of the chicken
 
-        unit.rotation = Math.atan2(direction.x, direction.z); // face the throw, like movement does
+        // A chicken lays its egg from the rear, so turn the chicken's BACKSIDE to
+        // the target (face away, the opposite of a movement heading). The egg then
+        // launches toward the target out of the chicken's tail end instead of its
+        // face or wing. The throw-pose window holds this rotation by freezing the
+        // chicken's movement for its duration (see the egg-throw guard in tick).
+        unit.rotation = Math.atan2(-direction.x, -direction.z);
         unit.lastEggAtMs = now;
         unit.eggThrowUntilMs = now + EGG_THROW_POSE_MS;
 
@@ -3947,7 +3963,13 @@ export const useGameStore = create<Store>((set, get) => ({
         draft.projectiles.push({
           id: nextEntityId(`egg-${id}`),
           ownerId: unit.ownerId,
-          position: { x: unit.position.x, y: unit.position.y + EGG_SPAWN_HEIGHT, z: unit.position.z },
+          // Spawn at the chicken's tail (a step toward the target, the side its
+          // backside now faces) so the egg visibly emerges from behind it.
+          position: {
+            x: unit.position.x + direction.x * EGG_SPAWN_BACK_OFFSET,
+            y: unit.position.y + EGG_SPAWN_HEIGHT,
+            z: unit.position.z + direction.z * EGG_SPAWN_BACK_OFFSET,
+          },
           velocity: { x: direction.x * EGG_SPEED, y: 0, z: direction.z * EGG_SPEED },
           traveled: 0,
           maxRange: Math.min(Math.max(distanceToTarget, EGG_HIT_RADIUS), EGG_MAX_RANGE),
