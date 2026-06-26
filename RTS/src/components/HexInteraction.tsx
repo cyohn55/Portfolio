@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, type RefObject } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useGameStore } from '../game/state';
+import type { Position3D } from '../game/types';
 import * as THREE from 'three';
 import { tokenToMouseButton, keyboardEventToToken } from './Working/controlBindings';
 import {
@@ -85,6 +86,21 @@ export function MapInteraction() {
   // throw) to one fire per press, reset once the buttons are no longer both held
   // (see handleMouseUp). One press = at most one egg per chicken.
   const shellComboHandledRef = useRef(false);
+
+  // Deferred secondary-button move for an ability-capable selection (chicken,
+  // turtle, frog, cat, bee, owl). The left+right combo and a plain right-click
+  // move share the secondary button, and pointer events arrive one at a time, so
+  // pressing the move button a hair before the combo's other button would fire an
+  // immediate move *and then* the ability — the chickens would run to the egg's
+  // aim point instead of standing and throwing. To make press order irrelevant we
+  // hold the move until the secondary button is released (handleMouseUp): if the
+  // combo fired during the press we drop the move, otherwise we issue it. Plain
+  // right-click moves still feel instant because a quick click resolves on release.
+  const deferredMoveRef = useRef<{ pending: boolean; comboFired: boolean; target: Position3D | null }>({
+    pending: false,
+    comboFired: false,
+    target: null,
+  });
 
   // Use ref instead of state to avoid timing issues
   const dragStateRef = useRef<DragState>({
@@ -291,6 +307,17 @@ export function MapInteraction() {
       .filter((unit) => unit.ownerId === localPlayerId && unit.animal === 'Owl' && unit.kind === 'Unit' && selectedUnitIds.includes(unit.id))
       .map((unit) => unit.id);
 
+  // True when the selection contains at least one regular (Unit-kind) unit whose
+  // animal has a left+right combo ability. For these the secondary-button move is
+  // deferred to release so it can be cancelled if the combo fires (see deferredMoveRef).
+  const selectionHasComboAnimal = (): boolean =>
+    selectedFriendlyTurtleIds().length > 0 ||
+    selectedFriendlyChickenIds().length > 0 ||
+    selectedFriendlyFrogIds().length > 0 ||
+    selectedFriendlyCatIds().length > 0 ||
+    selectedFriendlyBeeIds().length > 0 ||
+    selectedFriendlyOwlIds().length > 0;
+
   // The unit (any owner) whose projected center is nearest the cursor within
   // UNIT_PICK_RADIUS_PX, excluding Bases — the Owl Pickup target whose animal type and owner
   // define which units the selected Owls grab. Returns null when no unit is under the cursor.
@@ -413,6 +440,9 @@ export function MapInteraction() {
         // other button raises while both are held (reset in handleMouseUp).
         if (!shellComboHandledRef.current) {
           shellComboHandledRef.current = true;
+          // Cancel any move deferred by the secondary button this press: the
+          // chickens (etc.) should stand and use the ability, not also march.
+          deferredMoveRef.current.comboFired = true;
           executeAbilityCombo(plan, abilityActions);
           // Discard the selection/patrol drag the first button may have started.
           hideSelectionBox();
@@ -556,6 +586,7 @@ export function MapInteraction() {
       };
       resetPatrolDrag();
       resetRallyPlacement();
+      deferredMoveRef.current = { pending: false, comboFired: false, target: null };
       return;
     }
 
@@ -634,6 +665,17 @@ export function MapInteraction() {
     // here reflects the buttons still held after this release.
     if (!areShellButtonsHeld(event.buttons)) {
       shellComboHandledRef.current = false;
+    }
+
+    // Resolve a move deferred by an ability-capable selection's secondary press:
+    // a plain right-click commits the move on release; if the combo fired during
+    // the press the move is dropped so the casters stand and use the ability.
+    if (deferredMoveRef.current.pending && event.button === secondaryButton) {
+      const { comboFired, target } = deferredMoveRef.current;
+      deferredMoveRef.current = { pending: false, comboFired: false, target: null };
+      if (!comboFired && target && selectedUnitIds.length > 0) {
+        moveCommand({ unitIds: selectedUnitIds, target });
+      }
     }
 
     if (dragStateRef.current.isDragging && event.button === primaryButton) {
@@ -756,16 +798,6 @@ export function MapInteraction() {
     // Only handle the secondary (command) button for movement
     if (e.button === secondaryButton) { // Secondary (command) button
 
-      // Skip the move when this secondary press is half of a combo on a selected
-      // turtle (shell toggle), chicken (egg throw), frog (tongue grab), cat (Hiss),
-      // bee (Swarm) or owl (Pickup) — those are handled in handleMouseDown instead, and
-      // shouldn't also issue a move.
-      const heldButtons = e.nativeEvent?.buttons ?? 0;
-      if (areShellButtonsHeld(heldButtons) &&
-          (selectedFriendlyTurtleIds().length > 0 || selectedFriendlyChickenIds().length > 0 || selectedFriendlyFrogIds().length > 0 || selectedFriendlyCatIds().length > 0 || selectedFriendlyBeeIds().length > 0 || selectedFriendlyOwlIds().length > 0)) {
-        return;
-      }
-
       if (selectedUnitIds.length === 0) {
         return;
       }
@@ -779,12 +811,25 @@ export function MapInteraction() {
         return;
       }
 
-      // Calculate world position from mouse click using the event's intersection point
-      if (e.point) {
-        // Use Three.js intersection point directly
-        const target = { x: e.point.x, y: 0, z: e.point.z };
-        moveCommand({ unitIds: selectedUnitIds, target });
+      if (!e.point) {
+        return;
       }
+      const target: Position3D = { x: e.point.x, y: 0, z: e.point.z };
+
+      // An ability-capable selection (turtle, chicken, frog, cat, bee, owl) shares
+      // the secondary button between "move" and the left+right combo. Because the
+      // two button presses arrive as separate pointer events, an immediate move
+      // here would fire whenever the move button lands first — then the combo would
+      // throw on top of it, sending the casters running to the aim point. Defer the
+      // move to release instead: handleMouseUp drops it if the combo fired, or
+      // issues it for a plain right-click (which still feels instant on release).
+      if (selectionHasComboAnimal()) {
+        deferredMoveRef.current = { pending: true, comboFired: false, target };
+        return;
+      }
+
+      // Non-combo selections keep the instant move on press.
+      moveCommand({ unitIds: selectedUnitIds, target });
     }
   };
 
