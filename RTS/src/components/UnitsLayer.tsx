@@ -2,7 +2,7 @@ import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { shallow } from 'zustand/shallow';
-import { useGameStore } from '../game/state';
+import { useGameStore, getSimClockMs } from '../game/state';
 import type { AnimalId, Unit } from '../game/types';
 import {
   ALL_ANIMAL_PATHS,
@@ -643,10 +643,10 @@ function bearTiltPitch(unit: Unit, elapsedMs: number, isMoving: boolean): number
 const ATTACK_ANIM_GRACE_MS = 250;
 
 // Whether a unit is currently in an attack exchange, for pose selection (e.g.
-// the cat's attack cycle). The game tick stamps lastAttackAtMs with
-// performance.now() on every hit and attackCooldownMs is the fixed inter-swing
-// interval, so a unit counts as attacking until one full cadence (plus grace)
-// passes with no new swing. `nowMs` must come from performance.now() to match
+// the cat's attack cycle). The game tick stamps lastAttackAtMs with the SIM clock
+// on every hit and attackCooldownMs is the fixed inter-swing interval, so a unit
+// counts as attacking until one full cadence (plus grace) passes with no new
+// swing. `nowMs` must come from the sim clock (getSimClockMs) to match
 // lastAttackAtMs. A unit that has never attacked has lastAttackAtMs === 0.
 function isUnitAttacking(unit: Unit, nowMs: number): boolean {
   if (!unit.lastAttackAtMs) return false; // 0 => has never attacked
@@ -991,17 +991,22 @@ function InstancedUnits() {
     let healthBarCount = 0;
 
     const elapsedMs = clock.elapsedTime * 1000;
-    // Attack timing is stamped with performance.now() in the game tick, so the
-    // attack-exchange test must read the same clock (not the render clock above).
-    const nowPerf = performance.now();
+    // Gameplay timestamps (lastAttackAtMs, hissUntilMs, eggThrowUntilMs, …) are
+    // stamped by the game tick in the deterministic SIM clock — tick-derived time
+    // since match start, NOT performance.now() (see getSimClockMs). Pose gates that
+    // test those fields must read the same clock, or the comparison spans two
+    // unrelated time bases (sim time vs page-load wall time) and the gated pose —
+    // the cat's Hiss, the chicken's egg-throw, every attack-exchange pose — never
+    // shows because wall time is always far ahead of the sim window.
+    const nowSim = getSimClockMs();
 
     for (let i = 0; i < units.length; i++) {
       const unit = units[i];
       if (unit.kind === 'Base') continue;
 
       const isMoving = isUnitMoving(unit, elapsedMs);
-      const isAttacking = isUnitAttacking(unit, nowPerf);
-      const key = variantKeyForUnit(unit, { elapsedMs, isMoving, isAttacking, nowMs: nowPerf });
+      const isAttacking = isUnitAttacking(unit, nowSim);
+      const key = variantKeyForUnit(unit, { elapsedMs, isMoving, isAttacking, nowMs: nowSim });
       if (!counts.has(key)) continue; // not a currently-mounted variant
       const meshes = meshRefs.current.get(key);
       if (!meshes || meshes.length === 0) continue;

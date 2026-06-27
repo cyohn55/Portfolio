@@ -247,6 +247,18 @@ const ALL_ANIMALS = Object.keys(ANIMALS) as AnimalId[];
 /** Simulation clock in milliseconds; set at the top of each tick from the tick counter. */
 let simClockMs = 0;
 
+/**
+ * Read the current simulation clock (milliseconds since match start). The sim
+ * stamps every gameplay timestamp — `lastAttackAtMs`, `hissUntilMs`,
+ * `eggThrowUntilMs`, … — in this tick-derived clock (NOT `performance.now()`),
+ * so any consumer outside the tick (e.g. the renderer's pose selection) MUST
+ * compare against this clock rather than wall time, or the comparison spans two
+ * unrelated time bases and the gated pose never shows.
+ */
+export function getSimClockMs(): number {
+  return simClockMs;
+}
+
 /** Active match RNG; repointed to the live store's `rng` each tick. Seeded at match start. */
 let simRng: SeededRng = new SeededRng(1);
 
@@ -4519,9 +4531,9 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
   // move keeps the unit pinned while still letting combat (which never touches
   // checkCollision) run. The frog must hold position so its tongue's origin stays
   // anchored at the mouth for the whole extend/retract animation; the cat holds while
-  // its Kitty_F2 hiss pose plays. The hiss window is stamped with performance.now()
-  // (same clock used to set hissUntilMs), and the && short-circuits so the clock read
-  // only happens for cats that have actually hissed.
+  // its Kitty_F2 hiss pose plays. The hiss window is stamped in the sim clock
+  // (same clock `hissUntilMs` is set from and `simClockMs` exposes), and the &&
+  // short-circuits so the clock read only happens for cats that have actually hissed.
   const hissLocked = currentUnit.hissUntilMs !== undefined && simClockMs < currentUnit.hissUntilMs;
   if (currentUnit.isShelled || currentUnit.tongue || hissLocked) {
     return { x: currentUnit.position.x, y: currentUnit.position.y, z: currentUnit.position.z };
