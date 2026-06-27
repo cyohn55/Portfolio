@@ -163,9 +163,16 @@ export function abilityPlanIsActionable(plan: AbilityComboPlan): boolean {
 /** Dispatch every ability the plan calls for. Cursor-aimed abilities no-op when the cursor missed the map. */
 export function executeAbilityCombo(plan: AbilityComboPlan, actions: AbilityComboActions): void {
   if (plan.turtleIds.length > 0) actions.toggleTurtleShell(plan.turtleIds);
-  // Hiss is radial from each cat and Swarm has each bee pick its own target, so
-  // neither needs a cursor position.
-  if (plan.catIds.length > 0) actions.hiss({ unitIds: plan.catIds });
+  // Hiss is radial (it shoves every direction at once) so it fires with or without
+  // a cursor, but when the click landed on the map the cat turns to face that point
+  // so the hiss pose reads as aimed where the player pressed. Swarm has each bee
+  // pick its own target, so it never needs a cursor.
+  if (plan.catIds.length > 0) {
+    const cursor = plan.groundPoint
+      ? { x: plan.groundPoint.x, y: 0, z: plan.groundPoint.z }
+      : undefined;
+    actions.hiss({ unitIds: plan.catIds, cursor });
+  }
   if (plan.beeIds.length > 0) actions.swarm({ unitIds: plan.beeIds });
 
   if (plan.deliveringOwlIds.length > 0) {

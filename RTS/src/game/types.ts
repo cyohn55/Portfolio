@@ -544,6 +544,7 @@ export interface CommandFireTongues {
 
 export interface CommandHiss {
   unitIds: string[];      // selected units; only friendly Cats off cooldown hiss
+  cursor?: Position3D;    // optional aim point; each cat turns to face it (the radial shove is unchanged)
 }
 
 export interface CommandSwarm {

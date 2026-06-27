@@ -2067,6 +2067,24 @@ export const useGameStore = create<Store>((set, get) => ({
           continue;
         }
 
+        // Frog tongue-grab: a frog mid-grab is pinned and driven entirely by
+        // updateFrogTongues (windup -> extend -> grab/whiff -> reel), holding the aim
+        // rotation set in fireTongues. Freeze its normal AI/combat for the grab — like
+        // the guards above — so combat-facing can't spin it off the throw heading while
+        // the tongue plays out.
+        if (unit.tongue) {
+          continue;
+        }
+
+        // Cat Hiss pose: while the Kitty_F2 pose plays the cat plants itself facing the
+        // aim point set in hiss. Freeze its movement/rotation/combat for the pose window
+        // (like the chicken egg-throw above) so combat-facing or a pending move order
+        // can't spin it off its hiss heading mid-pose. It resumes the moment the pose
+        // expires.
+        if (unit.animal === 'Cat' && unit.hissUntilMs !== undefined && nowMs < unit.hissUntilMs) {
+          continue;
+        }
+
         // Direct piloting: the player is driving this King/Queen with the camera-movement
         // keys (z/x/c selected it). Its movement is purely the `pilotInput` vector — never
         // the AI or order system — and it never auto-attacks (fully manual). Any stale move
@@ -4095,6 +4113,17 @@ export const useGameStore = create<Store>((set, get) => ({
 
         cat.lastHissAtMs = now;
         cat.hissUntilMs = now + HISS_POSE_MS;
+
+        // Turn the cat to face the point the player clicked, so the hiss pose reads
+        // as aimed where they pressed. The shove below stays radial; this is purely
+        // facing. A degenerate aim (cursor on top of the cat) is left as-is so we
+        // never snap it to a meaningless heading. The hiss-pose guard in tick then
+        // holds this rotation for the whole pose window.
+        if (cmd.cursor) {
+          const aimX = cmd.cursor.x - cat.position.x;
+          const aimZ = cmd.cursor.z - cat.position.z;
+          if (aimX !== 0 || aimZ !== 0) cat.rotation = Math.atan2(aimX, aimZ);
+        }
 
         for (const enemy of draft.units) {
           if (enemy.ownerId === cat.ownerId) continue; // only enemies are knocked back
