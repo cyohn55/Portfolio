@@ -16,6 +16,7 @@ import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { useGameStore, getSimSnapshot } from '../../game/state';
+import { useUiStore } from '../../game/uiStore';
 import { getKindTargetScale } from '../../utils/ModelPreloader';
 import type { MonarchKind } from './monarchPilot';
 
@@ -29,10 +30,11 @@ const CURSOR_HEADROOM = 4.5;
 export function UnitPlacementIndicator() {
   const groupRef = useRef<THREE.Group>(null);
   const pilotedUnitId = useGameStore((s) => s.pilotedUnitId);
-  const placementCount = useGameStore((s) => s.unitPlacementCount);
+  // Placement teardrop state lives on useUiStore (local-UI, P1-1).
+  const placementCount = useUiStore((s) => s.unitPlacementCount);
   // When set, the teardrop floats above this ground point (the controller's
   // cursor deploy) instead of above the piloted monarch.
-  const placementCursor = useGameStore((s) => s.unitPlacementCursor);
+  const placementCursor = useUiStore((s) => s.unitPlacementCursor);
 
   // Keep the teardrop pinned over its anchor — the cursor point when deploying at
   // the cursor, otherwise the piloted monarch as it is driven around.

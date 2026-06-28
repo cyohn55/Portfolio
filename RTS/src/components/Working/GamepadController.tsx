@@ -333,7 +333,8 @@ export function GamepadController() {
     if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted || !state.pilotedUnitId) return;
     cursorDeployActiveRef.current = true;
     stopCursorDeployInterval();
-    state.setUnitPlacementCursor({
+    // Placement teardrop state lives on useUiStore (local-UI, P1-1).
+    useUiStore.getState().setUnitPlacementCursor({
       x: cursorWorldRef.current.x,
       y: cursorWorldRef.current.y,
       z: cursorWorldRef.current.z,
@@ -348,14 +349,14 @@ export function GamepadController() {
   const commitCursorDeploy = () => {
     stopCursorDeployInterval();
     cursorDeployActiveRef.current = false;
-    const count = useGameStore.getState().unitPlacementCount;
+    const count = useUiStore.getState().unitPlacementCount; // placement is local-UI (P1-1)
     if (count >= 1) {
       useGameStore.getState().placeRalliedUnits(count, {
         x: cursorWorldRef.current.x,
         z: cursorWorldRef.current.z,
       });
     } else {
-      useGameStore.getState().setUnitPlacementCursor(null);
+      useUiStore.getState().setUnitPlacementCursor(null);
     }
   };
 
@@ -364,7 +365,7 @@ export function GamepadController() {
     stopCursorDeployInterval();
     if (cursorDeployActiveRef.current) {
       cursorDeployActiveRef.current = false;
-      useGameStore.getState().resetUnitPlacement();
+      useUiStore.getState().resetUnitPlacement(); // placement is local-UI (P1-1)
     }
     secondaryPrevRef.current = false;
   };
@@ -418,7 +419,7 @@ export function GamepadController() {
   };
   const commitDeploy = () => {
     stopPlacementHold();
-    const count = useGameStore.getState().unitPlacementCount;
+    const count = useUiStore.getState().unitPlacementCount; // placement is local-UI (P1-1)
     if (count >= 1) useGameStore.getState().placeRalliedUnits(count);
   };
 
@@ -1392,9 +1393,10 @@ export function GamepadController() {
       ) {
         startCursorDeploy();
       }
-      // While deploying, keep the teardrop floating over the live cursor point.
+      // While deploying, keep the teardrop floating over the live cursor point
+      // (placement teardrop is local-UI state on useUiStore, P1-1).
       if (cursorDeployActiveRef.current) {
-        useGameStore.getState().setUnitPlacementCursor({
+        useUiStore.getState().setUnitPlacementCursor({
           x: cursorWorldRef.current.x,
           y: cursorWorldRef.current.y,
           z: cursorWorldRef.current.z,

@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
-import { useGameStore, getSimSnapshot, computeBridgeOccupancy, syncLocalPilotMirror } from '../game/state';
+import { useGameStore, getSimSnapshot, computeBridgeOccupancy, syncLocalPilotMirror, syncLocalSelectionMirror } from '../game/state';
 import { useUiStore } from '../game/uiStore';
 import { getActiveNetEngine } from './Working/net/netMatch';
 import { runAiCommanders } from './Working/ai/aiCommander';
@@ -319,6 +319,12 @@ export function BattleMap() {
     // writes pilotedUnitId/pilotedFireTeamId, so this is what propagates a sim-driven
     // death-release of the piloted monarch/squad into the HUD/camera each frame.
     syncLocalPilotMirror();
+
+    // Reconcile the local selection mirror from the snapshot: fold reinforcements that
+    // just spawned in behind a selected monarch into the selection. The tick no longer
+    // writes selectedUnitIds (Bucket-C-local), so this main-thread pass is the heir to
+    // the old in-tick spawn auto-select.
+    syncLocalSelectionMirror();
 
 
     // Update bridge visibility based on game state

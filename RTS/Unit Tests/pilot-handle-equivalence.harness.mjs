@@ -35,11 +35,15 @@ const DT = 1 / 60;
 const ROLE = 'p0';
 const LINEUPS = { p0: ['Bear', 'Fox', 'Bee'], p1: ['Cat', 'Owl', 'Frog'] };
 
-// Golden captured from the pre-T4-Tier-3 build (the handles' inline route-or-apply).
+// Golden re-blessed for worker-offload P1-PRE: single-player movement-priority now
+// derives from `unitOrders` (was `selectedUnitIds`), matching lockstep. The piloted,
+// order-less monarch (K-2) loses its old selection-granted make-way priority, which
+// shifts the trajectory by sub-units — the intended, approved behaviour change. The
+// pre-P1-PRE digest was c9d773db…; the handle route-or-apply path is otherwise unchanged.
 const GOLDEN = {
   ticks: 720,
-  finalChecksum: 't720#rng1753360372#B-0|p0|Base|760.000|73.500|252.000;B-12|p1|Base|360.000|1.000|-248.000;B-15|p1|Base|480.000|-74.000|-248.000;B-3|p0|Base|720.000|-2.000|252.000;B-6|p0|Base|320.000|-77.000|252.000;B-9|p1|Base|520.000|76.500|-248.000;K-11|p1|King|195.000|72.500|-232.000;K-14|p1|King|135.000|-3.000|-232.000;K-17|p1|King|180.000|-78.000|-232.000;K-2|p0|King|285.000|68.660|235.116;K-5|p0|King|270.000|-6.000|236.000;K-8|p0|King|120.000|-81.000|236.000;Q-1|p0|Queen|190.000|77.024|236.062;Q-10|p1|Queen|130.000|80.248|-232.071;Q-13|p1|Queen|90.000|5.000|-232.000;Q-16|p1|Queen|120.000|-70.252|-232.071;Q-4|p0|Queen|180.000|1.339|236.267;Q-7|p0|Queen|80.000|-73.000|236.000;U-18|p0|Unit|95.000|73.266|232.333;U-19|p0|Unit|90.000|-0.466|232.941;U-20|p0|Unit|40.000|-69.875|236.000;U-21|p1|Unit|65.000|84.095|-232.089;U-22|p1|Unit|45.000|8.125|-232.000;U-23|p1|Unit|60.000|-66.405|-232.089;U-24|p0|Unit|95.000|71.206|237.845;U-25|p0|Unit|90.000|-1.097|239.141;U-26|p0|Unit|40.000|-71.050|238.837;U-27|p1|Unit|65.000|82.187|-228.861;U-28|p1|Unit|45.000|6.950|-229.163;U-29|p1|Unit|60.000|-68.313|-228.861',
-  digest: 'c9d773db9e2cbe7b409ddbd9c6e0d04b32ba5e9c259d179b8996ad68e5535c70',
+  finalChecksum: 't720#rng1753360372#B-0|p0|Base|760.000|73.500|252.000;B-12|p1|Base|360.000|1.000|-248.000;B-15|p1|Base|480.000|-74.000|-248.000;B-3|p0|Base|720.000|-2.000|252.000;B-6|p0|Base|320.000|-77.000|252.000;B-9|p1|Base|520.000|76.500|-248.000;K-11|p1|King|195.000|72.500|-232.000;K-14|p1|King|135.000|-3.000|-232.000;K-17|p1|King|180.000|-78.000|-232.000;K-2|p0|King|285.000|69.500|236.000;K-5|p0|King|270.000|-6.000|236.000;K-8|p0|King|120.000|-81.000|236.000;Q-1|p0|Queen|190.000|77.241|235.921;Q-10|p1|Queen|130.000|80.248|-232.071;Q-13|p1|Queen|90.000|5.000|-232.000;Q-16|p1|Queen|120.000|-70.252|-232.071;Q-4|p0|Queen|180.000|1.719|235.916;Q-7|p0|Queen|80.000|-73.000|236.000;U-18|p0|Unit|95.000|72.411|232.865;U-19|p0|Unit|90.000|-0.019|232.498;U-20|p0|Unit|40.000|-69.875|236.000;U-21|p1|Unit|65.000|84.095|-232.089;U-22|p1|Unit|45.000|8.125|-232.000;U-23|p1|Unit|60.000|-66.405|-232.089;U-24|p0|Unit|95.000|73.209|236.553;U-25|p0|Unit|90.000|-0.883|238.785;U-26|p0|Unit|40.000|-71.050|238.837;U-27|p1|Unit|65.000|82.187|-228.861;U-28|p1|Unit|45.000|6.950|-229.163;U-29|p1|Unit|60.000|-68.313|-228.861',
+  digest: 'bb4ef00d491b32a21549a7e06eb05ec87c772b37fe8a018a95f6d04e0662bf70',
 };
 
 const stubLeaderboard = {

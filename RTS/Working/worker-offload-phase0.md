@@ -142,7 +142,7 @@ Bucket-A reads outside the accessor).
         (headless browser disabled in this env) — `state.ts` change is sim-path-
         neutral (removed non-tick settings only). Node-only spec runner:
         `npx playwright test --config Working/pw-nodeonly.config.ts <spec>`.
-- [~] **T2** Extract Bucket C (local-UI). **Investigation (2026-06-27) found
+- [x] **T2 — DONE.** Extract Bucket C (local-UI). **Investigation (2026-06-27) found
       Bucket C is NOT uniformly extractable** — it splits in two:
       - **C-entangled — BLOCKED until T3/T4/T5:** `pilotedUnitId`,
         `pilotedFireTeamId`, `selectedUnitIds` are written by the `apply*ToDraft`
@@ -213,12 +213,50 @@ Bucket-A reads outside the accessor).
           run `syncLocalPilotMirror` each tick like the real loop) still reproduces its
           720-tick golden, proving gesture/trajectory behaviour is unchanged. tsc + build
           clean; all 7 harnesses + boundary guard green.
-        - **Still deferred — `selectedUnitIds`:** bigger than the §1 grouping implied — the
-          TICK augments it (auto-selects newly spawned units near a selected monarch,
-          `state.ts:~1704`) on top of the team-grab selection in `applyPilotFireTeamToDraft`.
-          Deriving it main-thread means replicating that spawn-time selection, so it stays a
-          sim-side mirror for now. `unitPlacementCount/cursor` likewise remain (reset inside
-          the pilot handlers).
+        - **T2-D DONE (selectedUnitIds + unitPlacementCount/cursor derivation).** The
+          simulation no longer writes ANY of the three C-entangled local-UI fields. Removed
+          the remaining sim-side writes:
+          - **selectedUnitIds — 3 sim writes removed:** the tick's spawn auto-select
+            (`state.ts` reinforcement follow-rally branch), the team-grab selection in
+            `applyPilotFireTeamToDraft`, and the place-rallied deselect in
+            `applyPlaceRalliedToDraft`. The two gesture-driven ones moved to their issuing
+            handles as optimistic main-thread sets (`cycleFireTeam` selects the grabbed
+            team's members + clears placement; `placeRalliedUnits` recomputes the same
+            position-deterministic `chosen` set to deselect the deployed units). The
+            autonomous spawn one became a new per-frame derivation `syncLocalSelectionMirror()`
+            (exported from state.ts; HexGrid runs it after the tick, beside the pilot sync):
+            it diffs each snapshot for units that appeared this frame, are owned by the local
+            player, and follow a currently-selected monarch, and ADDS exactly those (only
+            adds — gestures own replacement/clearing — so a hand-deselect sticks). One frame
+            later than the old in-tick write, within the mirror's documented stale budget.
+          - **unitPlacementCount/cursor + pilotInput — resets removed from the sim:**
+            `stopOwnerPilot`, `applyPilotSelectionToDraft`, and `applyPilotFireTeamToDraft`
+            no longer touch them. The local-stop heirs are the gesture handles
+            (`beginLocalPilot`/`clearPilot`/`clearSelection`/`cycleFireTeam`, which already
+            reset on the issuing machine); the **sim-driven** heir — above all a tick
+            death-release of the piloted monarch, plus a move/patrol/attack order reclaiming
+            it — is `syncLocalPilotMirror`, now extended to clear the teardrop + drive intent
+            on the transition to driving-nothing (both pilot slots null, so it never zeroes a
+            fire-team drive vector mid-drive).
+          - **Why checksum-neutral (verified):** both checksum harnesses run via
+            `startMultiplayerMatch` and never set a follow-rally with a selected monarch, so
+            the removed spawn auto-select never fired in them; the two gesture-driven selection
+            writes moved same-tick-before-dispatch (identical value at tick() time); and the
+            relocated `pilotInput.reset()` only ever changes the NEXT tick's drive vector,
+            which both old (mid-tick) and new (post-tick) paths reset before that tick reads
+            it. selectedUnitIds/placement never enter `computeStateChecksum` regardless.
+          - **Verification:** new `Unit Tests/selection-mirror-derivation.harness.mjs` asserts
+            the four invariants no checksum harness can see — spawn auto-select folds a newborn
+            following a selected monarch into the selection; add-only (a hand-deselect sticks);
+            monarch-gated (a spawn whose monarch is unselected does NOT auto-select); and the
+            death-release placement clear. tsc + vite build clean; the full Phase-0 suite
+            (boundary guard + checksum baseline + dispatch/pilot-handle equivalence + pilot-mirror
+            derivation + two-peer + pilot determinism) all green and byte-identical.
+          - **Phase-1 note (not Phase 0):** `selectedUnitIds` still LIVES on `useGameStore`
+            (exactly as `pilotedUnitId` does post-T2-C) and the SP movement-priority read at
+            `state.ts:~1495` still reads it. Moving the field onto a `useUiStore` and severing
+            that last sim READ (unify SP onto the lockstep `unitOrders` rule, or feed selection
+            into the worker) is the store-split step (§1), which belongs to the Phase-1 cutover.
 - [x] **T3 — DONE.** `dispatchCommand(command: NetCommand)` added to `state.ts` as
       the single funnel for locally-issued input. Gameplay commands delegate to the
       existing self-routing typed action; pilot/control commands route-then-pure-apply

@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { produce, setAutoFreeze } from 'immer';
 import { useUiStore } from './uiStore';
+// Re-export so headless harnesses that bundle state.ts reach the SAME local-UI store
+// singleton the sim writes through (a separate import would be a different instance).
+export { useUiStore } from './uiStore';
 import { SpatialGrid } from '../utils/SpatialGrid';
 import { SeededRng } from '../components/Working/net/prng';
 import type { NetCommand, PlayerRole } from '../components/Working/net/netMessages';
@@ -362,8 +365,6 @@ type PilotMutableState = Pick<
   | 'pilotedUnitId'
   | 'pilotedUnitIdByOwner'
   | 'pilotMoveByOwner'
-  | 'unitPlacementCount'
-  | 'unitPlacementCursor'
   | 'pilotedFireTeamId'
   | 'pilotedFireTeamByOwner'
   | 'selectedUnitIds'
@@ -385,15 +386,11 @@ function stopOwnerPilot(draft: PilotMutableState, ownerId: string): void {
   draft.pilotedUnitIdByOwner[ownerId] = null;
   draft.pilotedFireTeamByOwner[ownerId] = null;
   draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
-  if (ownerId === draft.localPlayerId) {
-    // pilotedUnitId / pilotedFireTeamId are NOT written here: they are derived on the
-    // main thread from the *ByOwner maps above (see syncLocalPilotMirror), so the
-    // worker tick that death-releases a monarch never touches the UI mirror. The
-    // placement teardrop + drive intent are still local-only resets.
-    draft.unitPlacementCount = 0;
-    draft.unitPlacementCursor = null;
-    pilotInput.reset();
-  }
+  // No Bucket-C-local writes here: the worker-bound sim never touches the main-thread
+  // UI mirror. pilotedUnitId / pilotedFireTeamId are derived from the *ByOwner maps
+  // above (syncLocalPilotMirror), and that same post-tick pass clears the placement
+  // teardrop + drive intent when this release leaves the local player driving nothing
+  // (e.g. a tick death-release of the piloted monarch) — see syncLocalPilotMirror.
 }
 
 /**
@@ -455,13 +452,10 @@ function applyPilotSelectionToDraft(draft: PilotMutableState, ownerId: string, u
   // vector, one target — so grabbing a monarch releases any team this owner was
   // steering (and vice versa in applyPilotFireTeamToDraft).
   if (unitId !== null) draft.pilotedFireTeamByOwner[ownerId] = null;
-  if (ownerId === draft.localPlayerId && unitId === null) {
-    // pilotedUnitId / pilotedFireTeamId are derived main-thread from the *ByOwner
-    // maps (syncLocalPilotMirror), not written here. Only the local-only placement
-    // teardrop is cleared when piloting stops.
-    draft.unitPlacementCount = 0;
-    draft.unitPlacementCursor = null;
-  }
+  // No Bucket-C-local writes here: pilotedUnitId is derived main-thread from the
+  // *ByOwner map (syncLocalPilotMirror), and the placement teardrop is cleared by the
+  // issuing gesture handle (beginLocalPilot / clearPilot) for a local stop, or by the
+  // post-tick mirror sync when a release leaves the player driving nothing.
 }
 
 /**
@@ -485,22 +479,11 @@ function applyPilotFireTeamToDraft(draft: PilotMutableState, ownerId: string, te
     if (previouslyPiloted) holdReleasedMonarch(draft, ownerId, previouslyPiloted);
     draft.pilotedUnitIdByOwner[ownerId] = null;
   }
-
-  if (ownerId === draft.localPlayerId) {
-    // pilotedFireTeamId / pilotedUnitId are derived main-thread (syncLocalPilotMirror);
-    // not written here. selectedUnitIds is still a sim-side mirror for now (the tick
-    // also augments it on spawn) — deferred to a later T2 step.
-    if (teamId !== null) {
-      draft.unitPlacementCount = 0;
-      draft.unitPlacementCursor = null;
-      pilotInput.reset();
-      // Highlight the squad about to be driven so the player can also right-click
-      // order it; an empty team (already wiped) just clears the selection.
-      draft.selectedUnitIds = draft.units
-        .filter((unit) => unit.ownerId === ownerId && unit.fireTeamId === teamId && unit.hp > 0)
-        .map((unit) => unit.id);
-    }
-  }
+  // No Bucket-C-local writes here: pilotedFireTeamId / pilotedUnitId are derived
+  // main-thread (syncLocalPilotMirror). The team-grab's local-only effects — selecting
+  // the squad about to be driven, clearing the placement teardrop, resetting the drive
+  // intent — now live in the issuing gesture handle (cycleFireTeam), the one machine
+  // that owns the local UI, so the worker tick never reaches across the boundary.
 }
 
 /**
@@ -610,14 +593,11 @@ function applyPlaceRalliedToDraft(
     delete unit.pathProgressDist;
   }
 
-  // Deployed units leave the monarch's command group: drop them from the local
-  // selection so they aren't swept up by the next order. Selection is local-only
-  // UI, so only touch it for the local player's own placement (never a remote
-  // peer's), and it never feeds the determinism checksum.
-  if (ownerId === draft.localPlayerId && chosen.length > 0) {
-    const placedIds = new Set(chosen.map((unit) => unit.id));
-    draft.selectedUnitIds = draft.selectedUnitIds.filter((id) => !placedIds.has(id));
-  }
+  // Deployed units leave the monarch's command group, so they should drop out of the
+  // local selection — but that is a Bucket-C-local write the worker-bound sim must not
+  // make. The issuing gesture handle (placeRalliedUnits) performs the optimistic
+  // deselect using the same position-deterministic `chosen` set, so selection stays a
+  // pure main-thread concern. selectedUnitIds never feeds the determinism checksum.
 }
 
 /**
@@ -687,12 +667,13 @@ function beginLocalPilot(monarchId: string | null): void {
   // before the (possibly delayed) simulation switch lands.
   useGameStore.setState({
     pilotedUnitId: monarchId,
-    unitPlacementCount: monarchId === null ? 0 : prev.unitPlacementCount,
-    unitPlacementCursor: monarchId === null ? null : prev.unitPlacementCursor,
     selectedUnitIds: monarchId
       ? selectionForMonarch(prev.units, monarchId)
       : prev.selectedUnitIds,
   });
+  // Releasing the monarch (null) ends any placement hold; grabbing one leaves the
+  // teardrop untouched. Placement is local-UI state on useUiStore (P1-1).
+  if (monarchId === null) useUiStore.getState().resetUnitPlacement();
 
   // Authoritative pilot switch through the single sim funnel: routed to lockstep in
   // MP, applied locally in single-player. dispatchCommand attributes the command to
@@ -820,17 +801,16 @@ type Store = GameState & {
   // Hold-to-place: while the rally key is held over a piloted monarch, the input
   // layer calls incrementUnitPlacement once per UNIT_PLACEMENT_INTERVAL_MS to
   // designate one more follower; on release placeRalliedUnits peels that many
-  // followers off to the monarch's position; resetUnitPlacement clears a gesture
-  // that ended without placing (a quick tap, a cancel, or the monarch dying).
+  // followers off to the monarch's position. Both read sim state (the piloted
+  // monarch's followers) and write the placement teardrop, which now lives on
+  // useUiStore (P1-1) — these orchestrators stay here so they can read the sim,
+  // and call useUiStore's setters for the local-UI side. The pure teardrop setters
+  // (resetUnitPlacement / setUnitPlacementCursor) live directly on useUiStore.
   incrementUnitPlacement: () => number;
   // Place `count` followers. With no target they land on the monarch (the rally
   // key gesture); with a target ground point they land there (the controller's
   // hold-right-trigger cursor deploy).
   placeRalliedUnits: (count: number, target?: { x: number; z: number }) => void;
-  resetUnitPlacement: () => void;
-  // Set the ground point the teardrop indicator floats above (the cursor deploy),
-  // or null to fall back to floating above the piloted monarch. Local UI only.
-  setUnitPlacementCursor: (point: Position3D | null) => void;
   clearPilot: () => void;
   // Deterministic apply-side handlers for the piloting net commands. Invoked by
   // applyNetCommand with the issuing owner so a lockstep peer mutates the right
@@ -1145,8 +1125,6 @@ export const useGameStore = create<Store>((set, get) => ({
   pilotedFireTeamByOwner: { p0: null, p1: null },
   fireTeams: {},
   movementHeldUnitId: null,
-  unitPlacementCount: 0,
-  unitPlacementCursor: null,
   unitOrders: {},
   queenPatrols: {},
   queenRallyTargets: {},
@@ -1225,7 +1203,9 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, pilotedUnitIdByOwner: { p0: null, p1: null }, pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } }, pilotedFireTeamId: null, pilotedFireTeamByOwner: { p0: null, p1: null }, fireTeams: {}, movementHeldUnitId: null, unitPlacementCount: 0, unitPlacementCursor: null, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, selectedUnitIds: [], pilotedUnitId: null, pilotedUnitIdByOwner: { p0: null, p1: null }, pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } }, pilotedFireTeamId: null, pilotedFireTeamByOwner: { p0: null, p1: null }, fireTeams: {}, movementHeldUnitId: null, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    // Placement teardrop is local-UI state on useUiStore (P1-1); clear it on a fresh game.
+    useUiStore.getState().resetUnitPlacement();
   },
 
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
@@ -1317,8 +1297,6 @@ export const useGameStore = create<Store>((set, get) => ({
       pilotedFireTeamByOwner: { p0: null, p1: null },
       fireTeams: {},
       movementHeldUnitId: null,
-      unitPlacementCount: 0,
-      unitPlacementCursor: null,
       unitOrders: {},
       queenRallyTargets: {},
       lastSpawnAtMsByQueenId: {},
@@ -1364,8 +1342,10 @@ export const useGameStore = create<Store>((set, get) => ({
     // The match opens paused: single-player waits behind the instructions popup
     // (dismissing it calls useUiStore.unpauseGame). Pause is local UI state now, so
     // set it cross-store rather than inside the sim `set()`. Multiplayer immediately
-    // unpauses below (lockstep can't pause).
+    // unpauses below (lockstep can't pause). The placement teardrop (also useUiStore,
+    // P1-1) is cleared the same way so a new match never inherits a stale hold.
     useUiStore.getState().setPaused(true);
+    useUiStore.getState().resetUnitPlacement();
   },
 
   startMultiplayerMatch: ({ localRole, seed, lineups }) => {
@@ -1474,26 +1454,24 @@ export const useGameStore = create<Store>((set, get) => ({
       }
 
       // Deterministic movement-priority inputs for the collision/separation passes.
-      // These replace the per-peer `selectedUnitIds` + `localPlayerId` the passes used
-      // to read directly — both of which differ between the two machines in a lockstep
-      // match (each peer selects only its own units, selection is never networked, and
-      // localPlayerId is p0 on the host but p1 on the guest). Feeding that local state
-      // into the shared simulation made the two peers resolve collisions differently,
-      // so unit positions drifted apart and the desync checksum stopped the match —
-      // which surfaced to players as a frozen sim where units ignore move orders.
+      // A unit with an active move order gets the "push through idle teammates / royal
+      // make-way" treatment so ordered units actually reach their destination. This is
+      // derived purely from `unitOrders` (Bucket-A sim state) in BOTH single-player and
+      // lockstep — the single source of truth the worker can read without reaching across
+      // the main-thread boundary.
       //
-      // Single-player keeps reading the live selection (one machine, no peer to match).
-      // Lockstep derives priority from synced order state instead: a unit with an active
-      // move order gets the same "push through idle teammates / royal make-way" treatment
-      // selection grants solo, and `unitOrders` is identical on both peers because it is
-      // mutated only by networked commands and deterministic tick logic. playerControlled
+      // History: this used to read the local `selectedUnitIds` + `localPlayerId` directly,
+      // but both differ between the two machines in a lockstep match (each peer selects
+      // only its own units, selection is never networked, and localPlayerId is p0 on the
+      // host but p1 on the guest), which drifted the peers' collisions apart and tripped
+      // the desync checksum. Lockstep was switched to `unitOrders`; single-player has now
+      // followed (worker-offload P1-PRE) so selection is purely main-thread UI and the sim
+      // reads no Bucket-C field. The behaviour change vs the old solo rule: a *selected but
+      // order-less* unit no longer gets priority until it has an active order. playerControlled
       // owners (the non-AI players) replace localPlayerId in the same passes: that set is
-      // exactly { localPlayerId } solo and { p0, p1 } online, so the rules are unchanged
-      // in single-player and symmetric across both humans in multiplayer.
+      // exactly { localPlayerId } solo and { p0, p1 } online, symmetric across humans.
       const isLockstepMatch = commandRouter !== null;
-      const movementPriorityIds: ReadonlySet<string> = new Set(
-        isLockstepMatch ? Object.keys(draft.unitOrders) : draft.selectedUnitIds
-      );
+      const movementPriorityIds: ReadonlySet<string> = new Set(Object.keys(draft.unitOrders));
       const playerControlledOwnerIds: ReadonlySet<string> = new Set(
         draft.players.filter((player) => !player.isAI).map((player) => player.id)
       );
@@ -1698,14 +1676,12 @@ export const useGameStore = create<Store>((set, get) => ({
                 if (monarch && monarch.hp > 0) {
                   tempUnit.followMonarchId = rally.monarchId;
                   tempUnit.unitState = 'moving_to_order';
-                  // If the player currently has the followed monarch selected, fold
-                  // the newborn into the selection too, so it joins the band the
-                  // player is actively commanding the moment it spawns rather than
-                  // appearing unselected behind the King. (tempUnit is pushed to
-                  // draft.units just below, so the id resolves on the next read.)
-                  if (draft.selectedUnitIds.includes(monarch.id)) {
-                    draft.selectedUnitIds.push(tempUnit.id);
-                  }
+                  // The newborn falling in behind a selected monarch should join the
+                  // band the player is actively commanding — but folding it into
+                  // selectedUnitIds is a Bucket-C-local write the worker-bound sim must
+                  // not make. The main thread derives that one frame later from the
+                  // snapshot (syncLocalSelectionMirror): a unit that appeared this frame
+                  // following a currently-selected monarch is added to the selection.
                 } else {
                   // The designated monarch is gone — drop the now-stale follow rally.
                   delete draft.queenRallyTargets[q.id];
@@ -3396,7 +3372,8 @@ export const useGameStore = create<Store>((set, get) => ({
     // Local UI release is immediate in both modes: empty the selection, drop the
     // gold ring, and cancel any placement hold so the controls feel responsive.
     pilotInput.reset();
-    set({ selectedUnitIds: [], pilotedUnitId: null, unitPlacementCount: 0, unitPlacementCursor: null });
+    set({ selectedUnitIds: [], pilotedUnitId: null });
+    useUiStore.getState().resetUnitPlacement(); // teardrop is local-UI state (P1-1)
 
     // The simulation-affecting part (stop piloting + break this owner's rally,
     // which mutates followMonarchId / unitOrders) must go through the
@@ -3564,6 +3541,21 @@ export const useGameStore = create<Store>((set, get) => ({
     // stale teardrop never lingers from the monarch the player just stepped off.
     pilotInput.reset();
 
+    // Optimistic local UI (the sim no longer writes the selection/placement mirror —
+    // it's Bucket-C-local, owned by the main thread). Grabbing a team highlights its
+    // living members so the player can also right-click order it, and cancels any
+    // placement teardrop; an empty team (already wiped) just clears the selection.
+    // Cycling off (nextTeamId === null) leaves the current selection untouched, exactly
+    // as the old in-sim write did (it only acted when teamId !== null).
+    if (nextTeamId !== null) {
+      set({
+        selectedUnitIds: prev.units
+          .filter((unit) => unit.ownerId === localPlayerId && unit.fireTeamId === nextTeamId && unit.hp > 0)
+          .map((unit) => unit.id),
+      });
+      useUiStore.getState().resetUnitPlacement(); // teardrop is local-UI state (P1-1)
+    }
+
     dispatchCommand({ type: 'setPilotFireTeam', payload: { teamId: nextTeamId } });
   },
 
@@ -3575,12 +3567,15 @@ export const useGameStore = create<Store>((set, get) => ({
   // quick tap (0) occurred on release.
   incrementUnitPlacement: () => {
     const prev = get();
-    // Purely a local UI counter for the teardrop indicator (the actual order is
-    // issued by placeRalliedUnits on release), so it stays local in multiplayer.
-    if (!prev.localPlayerId || !prev.pilotedUnitId) return prev.unitPlacementCount;
+    // Purely a local-UI counter for the teardrop indicator (the actual order is issued
+    // by placeRalliedUnits on release), so it lives on useUiStore (P1-1) and stays local
+    // in multiplayer. This orchestrator stays on the sim store to read the follower set.
+    const ui = useUiStore.getState();
+    const currentCount = ui.unitPlacementCount;
+    if (!prev.localPlayerId || !prev.pilotedUnitId) return currentCount;
 
     const monarch = prev.units.find((u) => u.id === prev.pilotedUnitId);
-    if (!monarch) return prev.unitPlacementCount;
+    if (!monarch) return currentCount;
 
     const followerCount = prev.units.reduce(
       (count, unit) =>
@@ -3596,8 +3591,8 @@ export const useGameStore = create<Store>((set, get) => ({
     // Climb the deployment ladder (1, 5, 10, 15, 25, …) rather than one unit per
     // interval, so a held Deploy designates a meaningful batch quickly. Always
     // clamped to the followers actually trailing the monarch.
-    const next = clampPlacementCount(nextPlacementStep(prev.unitPlacementCount), followerCount);
-    if (next !== prev.unitPlacementCount) set({ unitPlacementCount: next });
+    const next = clampPlacementCount(nextPlacementStep(currentCount), followerCount);
+    if (next !== currentCount) ui.setUnitPlacementCount(next);
     return next;
   },
 
@@ -3608,11 +3603,32 @@ export const useGameStore = create<Store>((set, get) => ({
   placeRalliedUnits: (count, target) => {
     const prev = get();
     const localPlayerId = prev.localPlayerId;
-    // The gesture is consumed regardless of outcome: clear the local teardrop now.
-    if (prev.unitPlacementCount !== 0) set({ unitPlacementCount: 0 });
-    if (prev.unitPlacementCursor !== null) set({ unitPlacementCursor: null });
+    // The gesture is consumed regardless of outcome: clear the local teardrop now
+    // (placement is local-UI state on useUiStore, P1-1).
+    useUiStore.getState().resetUnitPlacement();
     if (count <= 0 || !localPlayerId || !prev.pilotedUnitId) return;
     const monarchId = prev.pilotedUnitId;
+
+    // Optimistic local deselect (the sim no longer writes the selection mirror — it's
+    // Bucket-C-local): the units about to be deployed leave the monarch's command group,
+    // so drop them now from the local selection or the next order would sweep them back
+    // up. Recompute the exact `chosen` set with the same position-deterministic helper
+    // the command will apply, so the deselect matches the units actually peeled off.
+    const monarch = prev.units.find((unit) => unit.id === monarchId);
+    if (monarch) {
+      const followers = prev.units.filter(
+        (unit) =>
+          unit.ownerId === localPlayerId &&
+          unit.kind === 'Unit' &&
+          unit.animal === monarch.animal &&
+          unit.followMonarchId === monarch.id
+      );
+      const chosen = selectFollowersForPlacement(followers, monarch.position, count);
+      if (chosen.length > 0) {
+        const placedIds = new Set(chosen.map((unit) => unit.id));
+        set({ selectedUnitIds: prev.selectedUnitIds.filter((id) => !placedIds.has(id)) });
+      }
+    }
 
     // The placement issues real move orders (simulation state), so it goes through
     // the command funnel — routed in multiplayer, applied at once in single-player.
@@ -3621,18 +3637,9 @@ export const useGameStore = create<Store>((set, get) => ({
     dispatchCommand({ type: 'placeRallied', payload: { monarchId, count, target } });
   },
 
-  // Cancel a placement hold without issuing an order (a quick tap, a deselect, or
-  // the monarch dying) so the teardrop indicator disappears.
-  resetUnitPlacement: () => {
-    if (get().unitPlacementCount !== 0) set({ unitPlacementCount: 0 });
-    if (get().unitPlacementCursor !== null) set({ unitPlacementCursor: null });
-  },
-
-  // Point the teardrop at a chosen ground spot (cursor deploy) or back at the
-  // monarch (null). Purely local UI; never routed.
-  setUnitPlacementCursor: (point) => {
-    set({ unitPlacementCursor: point });
-  },
+  // resetUnitPlacement / setUnitPlacementCursor moved to useUiStore (P1-1): they are
+  // pure teardrop-state writes with no sim read, so they live directly on the local-UI
+  // store. Callers use useUiStore.getState().{resetUnitPlacement,setUnitPlacementCursor}.
 
   // Stop piloting entirely (used on death / match end / explicit cancel). Clears
   // the local UI immediately and routes the per-owner simulation release so a
@@ -3640,7 +3647,8 @@ export const useGameStore = create<Store>((set, get) => ({
   clearPilot: () => {
     const prev = get();
     pilotInput.reset();
-    set({ pilotedUnitId: null, unitPlacementCount: 0, unitPlacementCursor: null });
+    set({ pilotedUnitId: null });
+    useUiStore.getState().resetUnitPlacement(); // teardrop is local-UI state (P1-1)
     if (!prev.localPlayerId) return;
     dispatchCommand({ type: 'setPilot', payload: { unitId: null } });
   },
@@ -4128,7 +4136,72 @@ export function syncLocalPilotMirror(): void {
   const pilotedUnitId = state.pilotedUnitIdByOwner[localPlayerId] ?? null;
   const pilotedFireTeamId = state.pilotedFireTeamByOwner[localPlayerId] ?? null;
   if (pilotedUnitId !== state.pilotedUnitId || pilotedFireTeamId !== state.pilotedFireTeamId) {
+    // When a sim event leaves the local player driving NOTHING — above all the tick's
+    // death-release of the piloted monarch, or a move/patrol/attack order reclaiming it
+    // (the releases that used to clear these inline in stopOwnerPilot) — also clear the
+    // placement teardrop (useUiStore, P1-1) and the stale drive intent. Gated on the
+    // transition to no-control (both slots null) so it never zeroes the drive vector
+    // while a fire team is being driven — pilotedUnitId is null then, but the fire team
+    // slot is not, and that case is handled optimistically by cycleFireTeam.
+    if (pilotedUnitId === null && pilotedFireTeamId === null) {
+      pilotInput.reset();
+      useUiStore.getState().resetUnitPlacement();
+    }
     useGameStore.setState({ pilotedUnitId, pilotedFireTeamId });
+  }
+}
+
+// The unit ids present at the previous main-thread frame, so syncLocalSelectionMirror
+// can distinguish a just-spawned unit from one that already existed. Main-thread-only
+// reconciliation state — never enters the sim or the determinism checksum — reset to
+// null whenever there is no local player (match teardown / pre-match).
+let previousFrameUnitIds: Set<string> | null = null;
+
+/**
+ * Fold newly-spawned reinforcements into the LOCAL selection when they fall in behind
+ * a monarch the player already has selected — the main-thread heir to the tick's old
+ * spawn-time selection write (the reinforcement follow-rally branch). The simulation no
+ * longer augments `selectedUnitIds` (a worker can't reach the main-thread selection
+ * mirror); instead the main thread diffs each snapshot for units that appeared this
+ * frame, are owned by the local player, and follow a currently-selected monarch, and
+ * adds exactly those. This lands one frame later than the old in-tick write — within the
+ * mirror's documented one-frame-stale budget and imperceptible in play. It only ADDS
+ * (gestures own selection replacement/clearing), so it never clobbers a hand-made
+ * selection. No-op before a match has a local player, on the first frame (no prior set
+ * to diff), or when nothing is selected (no monarch to inherit from). Run once per frame
+ * after the tick, alongside syncLocalPilotMirror (see HexGrid's loop).
+ */
+export function syncLocalSelectionMirror(): void {
+  const state = useGameStore.getState();
+  const localPlayerId = state.localPlayerId;
+  if (!localPlayerId) {
+    previousFrameUnitIds = null;
+    return;
+  }
+
+  const currentUnitIds = new Set(state.units.map((unit) => unit.id));
+  const priorUnitIds = previousFrameUnitIds;
+  previousFrameUnitIds = currentUnitIds;
+  if (!priorUnitIds) return;
+
+  const selectedUnitIds = state.selectedUnitIds;
+  if (selectedUnitIds.length === 0) return;
+  const selectedSet = new Set(selectedUnitIds);
+
+  const newlySpawnedFollowers: string[] = [];
+  for (const unit of state.units) {
+    if (priorUnitIds.has(unit.id)) continue; // already existed — not a fresh spawn
+    if (unit.ownerId !== localPlayerId) continue;
+    if (unit.followMonarchId === undefined) continue;
+    if (!selectedSet.has(unit.followMonarchId)) continue; // its monarch isn't selected
+    if (selectedSet.has(unit.id)) continue; // already selected (defensive)
+    newlySpawnedFollowers.push(unit.id);
+  }
+
+  if (newlySpawnedFollowers.length > 0) {
+    useGameStore.setState({
+      selectedUnitIds: [...selectedUnitIds, ...newlySpawnedFollowers],
+    });
   }
 }
 

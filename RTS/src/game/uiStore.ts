@@ -15,6 +15,11 @@
 
 import { create } from 'zustand';
 
+// Position of the cursor-deploy teardrop, mirroring the sim's Position3D shape without
+// importing the sim store (uiStore stays a leaf module the worker-bound state.ts can
+// depend on, never the reverse). x/z are world coordinates; y is unused for the cursor.
+export type PlacementCursor = { x: number; y: number; z: number };
+
 export type GameScreen =
   | 'menu'
   | 'lobby'
@@ -38,6 +43,22 @@ type UiStore = {
   setPaused: (paused: boolean) => void;
   unpauseGame: () => void;
   togglePause: () => void;
+
+  // Hold-to-deploy teardrop indicator: how many followers the held Deploy gesture has
+  // designated (`unitPlacementCount`) and, for the controller cursor-deploy, the ground
+  // point the teardrop floats over (`unitPlacementCursor`, null = float over the piloted
+  // monarch). Pure local-UI state — the simulation neither reads nor writes it (the
+  // actual deploy order is issued separately via the placeRallied command). It lived on
+  // the sim store until worker-offload P1-1; the sim-reading orchestrators that drive it
+  // (incrementUnitPlacement / placeRalliedUnits in state.ts) now write these setters.
+  unitPlacementCount: number;
+  unitPlacementCursor: PlacementCursor | null;
+  setUnitPlacementCount: (count: number) => void;
+  setUnitPlacementCursor: (point: PlacementCursor | null) => void;
+  // Cancel a placement hold that ended without deploying (a quick tap, a deselect, or the
+  // monarch dying): clear both fields, but only touch each when it is non-default so an
+  // idle frame never fires a needless re-render of the teardrop indicator.
+  resetUnitPlacement: () => void;
 };
 
 export const useUiStore = create<UiStore>((set) => ({
@@ -48,4 +69,14 @@ export const useUiStore = create<UiStore>((set) => ({
   setPaused: (paused) => set({ isPaused: paused }),
   unpauseGame: () => set({ isPaused: false }),
   togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
+
+  unitPlacementCount: 0,
+  unitPlacementCursor: null,
+  setUnitPlacementCount: (count) => set({ unitPlacementCount: count }),
+  setUnitPlacementCursor: (point) => set({ unitPlacementCursor: point }),
+  resetUnitPlacement: () =>
+    set((state) => ({
+      unitPlacementCount: state.unitPlacementCount !== 0 ? 0 : state.unitPlacementCount,
+      unitPlacementCursor: state.unitPlacementCursor !== null ? null : state.unitPlacementCursor,
+    })),
 }));

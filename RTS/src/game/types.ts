@@ -435,18 +435,11 @@ export interface GameState {
   // stays anchored to her instead of drifting if a prior order/patrol were
   // still carrying her. Cleared on release/cancel. See HexInteraction.tsx.
   movementHeldUnitId: string | null;
-  // How many units the current "hold rally to place units" gesture has
-  // designated so far (0 when no hold is in progress). Drives the blue teardrop
-  // indicator above the piloted monarch; the input layer increments it once per
-  // UNIT_PLACEMENT_INTERVAL_MS while the rally key is held, and it is cleared
-  // when the order executes or the gesture is cancelled. See monarchPilot.ts.
-  unitPlacementCount: number;
-  // When a placement gesture targets a chosen ground point (the controller's
-  // hold-right-trigger cursor deploy) rather than the monarch's own position,
-  // this holds that point so the teardrop indicator floats above the cursor
-  // instead of the monarch. Null for the default deploy-at-monarch gesture and
-  // whenever no placement hold is in progress. Local UI only.
-  unitPlacementCursor: Position3D | null;
+  // NOTE: `unitPlacementCount` / `unitPlacementCursor` (the hold-to-deploy teardrop
+  // state) moved to `useUiStore` (src/game/uiStore.ts) in worker-offload P1-1 — pure
+  // local-UI state the simulation never reads or writes, so it must not live on the
+  // worker-bound sim store. The sim-reading orchestrators that drive it
+  // (incrementUnitPlacement / placeRalliedUnits in state.ts) write the uiStore setters.
   // Id of the fire team the LOCAL player is currently driving remotely (or null
   // when driving a monarch or nothing). A piloted monarch can hand its ESDF/stick
   // drive over to a deployed fire team so the player steers that whole squad from

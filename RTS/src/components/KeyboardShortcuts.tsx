@@ -133,7 +133,7 @@ export function KeyboardShortcuts() {
     };
     const commitDeploy = () => {
       stopPlacementHold();
-      const count = useGameStore.getState().unitPlacementCount;
+      const count = useUiStore.getState().unitPlacementCount; // placement is local-UI (P1-1)
       if (count >= 1) useGameStore.getState().placeRalliedUnits(count);
     };
 
