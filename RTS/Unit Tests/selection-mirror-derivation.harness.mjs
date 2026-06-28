@@ -104,7 +104,7 @@ async function main() {
   // spawned now follows the King; because the King is selected, the derivation must
   // fold the newborn into the selection.
   dispatchCommand({ type: 'setQueenRally', payload: { queenId: queen.id, target: { mode: 'follow', monarchId: king.id } } });
-  g().selectUnits([king.id]);
+  ui().selectUnits([king.id]);
   syncLocalSelectionMirror(); // establish the previous-frame baseline with only the King selected
 
   // Force the Queen to spawn on the very next tick by back-dating her last-spawn clock
@@ -122,21 +122,21 @@ async function main() {
   check('a reinforcement actually spawned this tick', g().units.length > unitCountBefore && newFollowers.length > 0);
 
   // 1) Spawn auto-select: every newborn following the selected King is now selected.
-  const selectedAfterSpawn = new Set(g().selectedUnitIds);
+  const selectedAfterSpawn = new Set(ui().selectedUnitIds);
   check('king stays selected', selectedAfterSpawn.has(king.id));
   check('new followers folded into selection', newFollowers.every((u) => selectedAfterSpawn.has(u.id)));
 
   // 2) Only ADDS: a hand-deselect sticks. Drop the followers back to just the King; a
   //    further frame with no NEW spawn must not re-add the units the player deselected.
-  g().selectUnits([king.id]);
+  ui().selectUnits([king.id]);
   tick(); // no forced spawn this tick
-  check('hand-deselected followers are not re-added', g().selectedUnitIds.length === 1 && g().selectedUnitIds[0] === king.id);
+  check('hand-deselected followers are not re-added', ui().selectedUnitIds.length === 1 && ui().selectedUnitIds[0] === king.id);
 
   // 3) Not-selected monarch: a newborn does NOT join the selection when its monarch
   //    isn't selected. Select an unrelated unit (or nothing-relevant), force another
   //    spawn, and confirm the new follower is absent from the selection.
   const bystander = g().units.find((u) => u.ownerId === ROLE && u.kind === 'Unit' && u.followMonarchId !== king.id);
-  g().selectUnits(bystander ? [bystander.id] : []);
+  ui().selectUnits(bystander ? [bystander.id] : []);
   syncLocalSelectionMirror(); // re-baseline with the King deselected
   useGameStore.setState({
     lastSpawnAtMsByQueenId: { ...g().lastSpawnAtMsByQueenId, [queen.id]: -g().config.spawnIntervalMs },
@@ -146,7 +146,7 @@ async function main() {
   const spawnedWhileUnselected = g().units.filter(
     (u) => !idsBeforeUnselectedSpawn.has(u.id) && u.ownerId === ROLE && u.followMonarchId === king.id
   );
-  const selectionNow = new Set(g().selectedUnitIds);
+  const selectionNow = new Set(ui().selectedUnitIds);
   check('spawn while monarch unselected does not auto-select', spawnedWhileUnselected.every((u) => !selectionNow.has(u.id)));
 
   // 4) Placement clear on death-release: while piloting the King with an active

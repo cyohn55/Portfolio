@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { shallow } from 'zustand/shallow';
 import { useGameStore, getSimClockMs, getSimSnapshot, dispatchCommand } from '../game/state';
+import { useUiStore } from '../game/uiStore';
 
 import { useUiSettingsStore } from "../game/uiSettingsStore";
 import type { AnimalId, Unit } from '../game/types';
@@ -929,7 +930,7 @@ function InstancedUnits() {
     const s = getSimSnapshot();
     const units = s.units;
     const localPlayerId = s.localPlayerId;
-    const selected = s.selectedUnitIds;
+    const selected = useUiStore.getState().selectedUnitIds; // selection is local-UI (P1-1)
     const selectedSet = selected.length > 0 ? new Set(selected) : null;
     // The monarch the local player is actively piloting (null when none). Used to
     // gate the own-unit outline: a rallied follower only counts as "actively
@@ -1370,8 +1371,9 @@ function InstancedUnits() {
     if (!unit || unit.ownerId === s.localPlayerId) return;
 
     e.stopPropagation();
+    const selectedIds = new Set(useUiStore.getState().selectedUnitIds); // selection is local-UI (P1-1)
     const selectedOwn = s.units.filter(
-      (u) => s.selectedUnitIds.includes(u.id) && u.ownerId === s.localPlayerId
+      (u) => selectedIds.has(u.id) && u.ownerId === s.localPlayerId
     );
     if (selectedOwn.length > 0) {
       dispatchCommand({ type: 'attackTarget', payload: { unitIds: selectedOwn.map((u) => u.id), targetId: unit.id } });

@@ -107,9 +107,11 @@ function buildScript(store) {
 }
 
 function runMatch(api) {
-  const { useGameStore, computeStateChecksum, dispatchCommand } = api;
+  const { useGameStore, useUiStore, computeStateChecksum, dispatchCommand } = api;
   useGameStore.getState().startMultiplayerMatch({ localRole: ROLE, seed: SEED, lineups: LINEUPS });
-  useGameStore.getState().selectUnits(ownedNonBase(useGameStore, ROLE));
+  // Selection lives on useUiStore (P1-1); post-P1-PRE the sim ignores it (kept for parity
+  // with a real session's setup — the digest is identical with or without it).
+  useUiStore.getState().selectUnits(ownedNonBase(useGameStore, ROLE));
 
   const script = buildScript(useGameStore);
   const perTick = [];

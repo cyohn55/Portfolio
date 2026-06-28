@@ -398,7 +398,10 @@ export interface GameState {
   matchStartNonce: number;
   gameOver: boolean;
   winner: string | null; // player id who won
-  selectedUnitIds: string[]; // currently selected units
+  // NOTE: `selectedUnitIds` (the LOCAL player's current selection) moved to `useUiStore`
+  // (src/game/uiStore.ts) in worker-offload P1-1. Post-P1-PRE the simulation reads no
+  // selection at all, so it is pure main-thread UI state and must not live on the
+  // worker-bound sim store.
   unitOrders: Record<string, Position3D>; // unit id -> target position for movement orders
   queenPatrols: Record<string, PatrolRoute>; // queen id -> patrol route
   // Per-Queen spawn rally target. When set, every Unit that Queen spawns is sent

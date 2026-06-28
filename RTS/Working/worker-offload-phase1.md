@@ -109,11 +109,38 @@ riskiest mechanical step, so it lands first and on its own.
     controller, hold the cursor-deploy trigger → the teardrop floats over the moving cursor
     and deploys there; deselect / switch monarch / let the piloted monarch die → the teardrop
     disappears immediately.
-- **Remaining slices (next):** `selectedUnitIds` (largest reactive surface — HexInteraction,
-  AnimalSelectionButtons, CameraController, BehaviorRadial, DirectingRadial, UnitsLayer),
-  then `pilotedUnitId` / `pilotedFireTeamId`, then `selectedAnimalPool`. `localPlayerId`
-  stays on the sim store (read sim-wide; becomes worker config in P1-2). Each slice: same
-  tsc-driven pattern + an in-browser pass.
+- **Slice 2 DONE (selectedUnitIds) — 2026-06-28.** The largest reactive surface. Moved
+  `selectedUnitIds` + the pure setters `selectUnits` / `addToSelection` onto `useUiStore`.
+  Safe because P1-PRE already severed the only sim read of selection, so it is now purely
+  main-thread. The sim-reading orchestrators (clearSelection, rallyToMonarch, beginLocalPilot,
+  cycleFireTeam, placeRalliedUnits) and the post-tick `syncLocalSelectionMirror` stay in
+  state.ts but write the `useUiStore` setters; lifecycle resets (initializeGame / startMatch)
+  call `useUiStore.getState().selectUnits([])` cross-store. tsc-driven cutover of all
+  consumers:
+  - Reactive subs → `useUiStore`: HexInteraction (selectedUnitIds + selectUnits + addToSelection),
+    AnimalSelectionButtons, CameraController, BehaviorRadial, DirectingRadial.
+  - Imperative reads → `useUiStore.getState().selectedUnitIds`: UnitsLayer (per-frame render
+    read + right-click pick), CameraController (auto-follow centroid), GamepadController
+    (loneSelectedQueen, cursor command, ability ctx).
+  - `selectUnits` callers → `useUiStore`: KeyboardShortcuts (selectByAnimal / selectAll),
+    GamepadController (primary-action / select-group / select-all / select-monarch-animal).
+  - BehaviorRadial's `behaviorSignature` selector still subscribes to the sim store for
+    `units` (re-runs each tick) but reads the selection from the component's `useUiStore`
+    closure value, so it stays current with at most one tick of lag — fine for a wheel
+    highlight.
+  - **Verified:** tsc + vite build clean; all 8 sim harnesses + boundary guard green (the 5
+    harnesses that selected units for legacy setup redirected to `useUiStore`; selection no
+    longer affects any checksum). **Rendering NOT browser-verified.** → **In-browser checklist:**
+    left-click / drag-select units → gold ring + HUD highlight track the selection; right-click
+    → the selected army moves/attacks (not the piloted monarch); Shift-click adds; click empty
+    ground deselects; the King/Queen selection buttons highlight the piloted monarch; the
+    behavior + directing radials highlight the selected units' current postures; camera
+    auto-follow eases onto the selection; reinforcements spawned behind a selected monarch join
+    the selection.
+- **Remaining slices (next):** `pilotedUnitId` / `pilotedFireTeamId` (HUD ring, camera,
+  several radials), then `selectedAnimalPool`. `localPlayerId` stays on the sim store (read
+  sim-wide; becomes worker config in P1-2). Each slice: same tsc-driven pattern + an
+  in-browser pass.
 
 - **Sim module (`state.ts`):** keeps Bucket A + A′ + the tick + all command handlers.
   Becomes "the simulation," unaware of any store split.

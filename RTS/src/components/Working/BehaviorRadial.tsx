@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGameStore, dispatchCommand } from '../../game/state';
+import { useUiStore } from '../../game/uiStore';
 
 import { useUiSettingsStore } from "../../game/uiSettingsStore";
 import type { CommandSetBehavior, FireMode, TargetPriority, Unit, UnitStance } from '../../game/types';
@@ -44,7 +45,7 @@ import {
 
 export function BehaviorRadial() {
   const matchStarted = useGameStore((s) => s.matchStarted);
-  const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
+  const selectedUnitIds = useUiStore((s) => s.selectedUnitIds); // selection is local-UI (P1-1)
   const localPlayerId = useGameStore((s) => s.localPlayerId);
   // Stable adapter so the dep arrays below keep a constant reference: issues the
   // posture change through the single command funnel instead of the store action.
@@ -63,7 +64,10 @@ export function BehaviorRadial() {
   // real posture change (e.g. after setBehavior), keeping the open wheel's active
   // highlights live without the per-tick churn. Membership tracks selectedUnitIds.
   const behaviorSignature = useGameStore((s) => {
-    const selected = s.selectedUnitIds;
+    // Selection lives on useUiStore (P1-1); use the closure value from the sub above
+    // (refreshed each render). The selector still subscribes to the sim store for
+    // s.units, so it re-runs each tick and stays current.
+    const selected = selectedUnitIds;
     if (selected.length === 0) return '';
     const ids = new Set(selected);
     let signature = '';

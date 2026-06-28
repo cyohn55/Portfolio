@@ -375,8 +375,9 @@ export function GamepadController() {
   // (mirrors isSelectedQueenOnly in the mouse path).
   const loneSelectedQueen = (): Unit | null => {
     const state = getSimSnapshot();
-    if (state.selectedUnitIds.length !== 1) return null;
-    const unit = state.units.find((candidate) => candidate.id === state.selectedUnitIds[0]);
+    const selectedUnitIds = useUiStore.getState().selectedUnitIds; // selection is local-UI (P1-1)
+    if (selectedUnitIds.length !== 1) return null;
+    const unit = state.units.find((candidate) => candidate.id === selectedUnitIds[0]);
     if (!unit || unit.kind !== 'Queen' || unit.ownerId !== state.localPlayerId) return null;
     return unit;
   };
@@ -964,7 +965,7 @@ export function GamepadController() {
     switch (actionId) {
       case 'primaryAction': {
         const ownId = nearestUnitId((ownerId, localId) => ownerId === localId);
-        if (ownId) state.selectUnits([ownId]);
+        if (ownId) useUiStore.getState().selectUnits([ownId]); // selection is local-UI (P1-1)
         else state.clearSelection();
         break;
       }
@@ -979,7 +980,7 @@ export function GamepadController() {
         // The cursor commands the player's units — never the monarch they are
         // actively piloting (that one is driven by the left stick). Excluding the
         // piloted monarch stops it from marching to the cursor on a command.
-        const commandIds = state.selectedUnitIds.filter((id) => id !== state.pilotedUnitId);
+        const commandIds = useUiStore.getState().selectedUnitIds.filter((id) => id !== state.pilotedUnitId); // selection is local-UI (P1-1)
         if (commandIds.length === 0) break;
         if (enemyId) {
           dispatchCommand({ type: 'attackTarget', payload: { unitIds: commandIds, targetId: enemyId } });
@@ -1003,14 +1004,14 @@ export function GamepadController() {
         const ids = state.units
           .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base' && u.animal === animal)
           .map((u) => u.id);
-        if (ids.length > 0) state.selectUnits(ids);
+        if (ids.length > 0) useUiStore.getState().selectUnits(ids); // selection is local-UI (P1-1)
         break;
       }
       case 'useAbility':
         // Fire the selected animal's special ability at the reticle, shared with
         // the keyboard/mouse left+right gesture so behaviour can't drift.
         tryFireAbilityCombo(
-          { units: state.units, localPlayerId: state.localPlayerId, selectedUnitIds: state.selectedUnitIds },
+          { units: state.units, localPlayerId: state.localPlayerId, selectedUnitIds: useUiStore.getState().selectedUnitIds },
           abilityCursor,
           state
         );
@@ -1026,7 +1027,7 @@ export function GamepadController() {
         const ids = state.units
           .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base')
           .map((u) => u.id);
-        if (ids.length > 0) state.selectUnits(ids);
+        if (ids.length > 0) useUiStore.getState().selectUnits(ids); // selection is local-UI (P1-1)
         break;
       }
       case 'selectMonarchAnimal': {
@@ -1037,7 +1038,7 @@ export function GamepadController() {
         const ids = state.units
           .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base' && u.animal === piloted.animal)
           .map((u) => u.id);
-        if (ids.length > 0) state.selectUnits(ids);
+        if (ids.length > 0) useUiStore.getState().selectUnits(ids); // selection is local-UI (P1-1)
         break;
       }
       case 'toggleBehaviorRadial':

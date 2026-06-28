@@ -95,7 +95,7 @@ function driveVector(role, tick) {
 
 // Run one peer end to end and return its per-tick checksum list.
 function runPeer(api, localRole) {
-  const { useGameStore, applyNetCommand, computeStateChecksum, setCommandRouter } = api;
+  const { useGameStore, useUiStore, applyNetCommand, computeStateChecksum, setCommandRouter } = api;
   // Arm a dummy router so the sim takes the lockstep path; commands still apply
   // via applyNetCommand, which bypasses the router by design.
   setCommandRouter(() => {});
@@ -107,7 +107,7 @@ function runPeer(api, localRole) {
     .getState()
     .units.filter((u) => u.ownerId === localRole && u.kind !== 'Base')
     .map((u) => u.id);
-  useGameStore.getState().selectUnits(ownNonBase);
+  useUiStore.getState().selectUnits(ownNonBase); // selection is local-UI (P1-1); sim ignores it
 
   const p0King = firstKingId(useGameStore, 'p0', LINEUPS.p0[0]);
   const p1King = firstKingId(useGameStore, 'p1', LINEUPS.p1[0]);

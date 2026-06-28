@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { keyboardCoordinator } from '../utils/keyboardCoordination';
 import { useGameStore, getSimSnapshot } from '../game/state';
+import { useUiStore } from '../game/uiStore';
 
 import { useUiSettingsStore } from "../game/uiSettingsStore";
 import { gamepadInput } from './Working/gamepadInput';
@@ -131,7 +132,7 @@ export function CameraController({
   // Re-arm follow whenever the player makes a non-empty selection. The store
   // hands out a new array reference on every select/add/clear, so this fires on
   // each selection change rather than every game tick.
-  const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
+  const selectedUnitIds = useUiStore((s) => s.selectedUnitIds); // selection is local-UI (P1-1)
   useEffect(() => {
     followEnabled.current = selectedUnitIds.length > 0;
   }, [selectedUnitIds]);
@@ -556,7 +557,7 @@ export function CameraController({
       // the currently selected, still-living troops. Reads the store directly so
       // the per-frame loop never forces a React re-render on unit movement.
       if (followEnabled.current) {
-        const selectedIds = store.selectedUnitIds;
+        const selectedIds = useUiStore.getState().selectedUnitIds; // selection is local-UI (P1-1)
         if (selectedIds.length === 0) {
           followEnabled.current = false;
         } else {

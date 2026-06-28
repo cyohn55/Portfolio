@@ -4,6 +4,7 @@ import { useLoader } from '@react-three/fiber';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { useGameStore } from '../game/state';
+import { useUiStore } from '../game/uiStore';
 import type { AnimalId, Unit } from '../game/types';
 import * as THREE from 'three';
 
@@ -476,8 +477,9 @@ export function AnimalSelectionButtons() {
   const localPlayerId = useGameStore((s) => s.localPlayerId);
   const selectedAnimalPool = useGameStore((s) => s.selectedAnimalPool);
   const units = useGameStore((s) => s.units);
-  const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
-  const selectUnits = useGameStore((s) => s.selectUnits);
+  // Selection lives on useUiStore (local-UI, P1-1).
+  const selectedUnitIds = useUiStore((s) => s.selectedUnitIds);
+  const selectUnits = useUiStore((s) => s.selectUnits);
   const pilotMonarchById = useGameStore((s) => s.pilotMonarchById);
 
   // Get player's units

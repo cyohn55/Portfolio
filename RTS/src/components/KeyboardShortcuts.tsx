@@ -66,7 +66,7 @@ export function KeyboardShortcuts() {
       const ids = state.units
         .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base' && u.animal === animal)
         .map((u) => u.id);
-      if (ids.length > 0) state.selectUnits(ids);
+      if (ids.length > 0) useUiStore.getState().selectUnits(ids); // selection is local-UI (P1-1)
     };
 
     // Fire an action once (used by tap, double-tap, a simple hold, and chord). The
@@ -97,7 +97,7 @@ export function KeyboardShortcuts() {
           const ids = state.units
             .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base')
             .map((u) => u.id);
-          if (ids.length > 0) state.selectUnits(ids);
+          if (ids.length > 0) useUiStore.getState().selectUnits(ids); // selection is local-UI (P1-1)
           break;
         }
         case 'deployUnits':

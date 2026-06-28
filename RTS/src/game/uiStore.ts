@@ -51,6 +51,18 @@ type UiStore = {
   // actual deploy order is issued separately via the placeRallied command). It lived on
   // the sim store until worker-offload P1-1; the sim-reading orchestrators that drive it
   // (incrementUnitPlacement / placeRalliedUnits in state.ts) now write these setters.
+  // The LOCAL player's current unit selection. Pure main-thread UI state since
+  // worker-offload P1-PRE severed the last sim read of it (single-player movement
+  // priority now derives from unitOrders): the simulation neither reads nor writes the
+  // selection. It is set directly by gestures (selectUnits / addToSelection here) and by
+  // the sim-reading orchestrators in state.ts (clearSelection, rallyToMonarch,
+  // beginLocalPilot, cycleFireTeam, placeRalliedUnits) and the post-tick
+  // syncLocalSelectionMirror, all of which call these setters. Moved off the sim store in
+  // P1-1 so the worker can't be asked to write it.
+  selectedUnitIds: string[];
+  selectUnits: (unitIds: string[]) => void;
+  addToSelection: (unitIds: string[]) => void;
+
   unitPlacementCount: number;
   unitPlacementCursor: PlacementCursor | null;
   setUnitPlacementCount: (count: number) => void;
@@ -69,6 +81,11 @@ export const useUiStore = create<UiStore>((set) => ({
   setPaused: (paused) => set({ isPaused: paused }),
   unpauseGame: () => set({ isPaused: false }),
   togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
+
+  selectedUnitIds: [],
+  selectUnits: (unitIds) => set({ selectedUnitIds: unitIds }),
+  addToSelection: (unitIds) =>
+    set((state) => ({ selectedUnitIds: Array.from(new Set([...state.selectedUnitIds, ...unitIds])) })),
 
   unitPlacementCount: 0,
   unitPlacementCursor: null,

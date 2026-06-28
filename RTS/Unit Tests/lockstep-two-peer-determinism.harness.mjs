@@ -79,15 +79,15 @@ function ownedNonBase(store, role) {
 
 // Run one peer end to end and return its per-tick checksum list.
 function runPeer(api, localRole) {
-  const { useGameStore, applyNetCommand, computeStateChecksum, setCommandRouter } = api;
+  const { useGameStore, useUiStore, applyNetCommand, computeStateChecksum, setCommandRouter } = api;
   // Arm a dummy command router so the sim takes the lockstep path; commands still
   // apply via applyNetCommand, which bypasses the router by design.
   setCommandRouter(() => {});
   useGameStore.getState().startMultiplayerMatch({ localRole, seed: SEED, lineups: LINEUPS });
 
   // This peer selects only ITS OWN units locally — the per-peer UI state that must
-  // no longer influence the shared simulation.
-  useGameStore.getState().selectUnits(ownedNonBase(useGameStore, localRole));
+  // no longer influence the shared simulation (now on useUiStore, P1-1; sim ignores it).
+  useUiStore.getState().selectUnits(ownedNonBase(useGameStore, localRole));
 
   const p0Units = ownedNonBase(useGameStore, 'p0');
   const p1Units = ownedNonBase(useGameStore, 'p1');

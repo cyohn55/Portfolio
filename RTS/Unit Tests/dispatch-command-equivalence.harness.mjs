@@ -104,10 +104,11 @@ function buildScript(store) {
 // Run a full match, issuing each scripted command through `issue(command)`, and
 // return the per-tick checksum list.
 function runMatch(api, issue) {
-  const { useGameStore, computeStateChecksum } = api;
+  const { useGameStore, useUiStore, computeStateChecksum } = api;
   useGameStore.getState().startMultiplayerMatch({ localRole: ROLE, seed: SEED, lineups: LINEUPS });
   // Select own units locally, like a real player — never networked, never checksummed.
-  useGameStore.getState().selectUnits(ownedNonBase(useGameStore, ROLE));
+  // Selection lives on useUiStore (P1-1); post-P1-PRE the sim ignores it entirely.
+  useUiStore.getState().selectUnits(ownedNonBase(useGameStore, ROLE));
 
   const script = buildScript(useGameStore);
   const perTick = [];

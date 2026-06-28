@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, type RefObject } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useGameStore, dispatchCommand } from '../game/state';
+import { useUiStore } from '../game/uiStore';
 
 import { useUiSettingsStore } from "../game/uiSettingsStore";
 import type { Position3D } from '../game/types';
@@ -61,12 +62,13 @@ interface PatrolDragState {
 
 export function MapInteraction() {
   const { camera, raycaster, gl } = useThree();
-  const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
+  // Selection lives on useUiStore (local-UI, P1-1); units/localPlayerId stay on the sim store.
+  const selectedUnitIds = useUiStore((s) => s.selectedUnitIds);
   const units = useGameStore((s) => s.units);
   const localPlayerId = useGameStore((s) => s.localPlayerId);
   const clearSelection = useGameStore((s) => s.clearSelection);
-  const selectUnits = useGameStore((s) => s.selectUnits);
-  const addToSelection = useGameStore((s) => s.addToSelection);
+  const selectUnits = useUiStore((s) => s.selectUnits);
+  const addToSelection = useUiStore((s) => s.addToSelection);
   // Mouse buttons are remappable via Settings -> Controls. Defaults: left=select,
   // right=command. tokenToMouseButton maps the saved token back to a DOM button.
   const keyboardBindings = useUiSettingsStore((s) => s.keyboardBindings);

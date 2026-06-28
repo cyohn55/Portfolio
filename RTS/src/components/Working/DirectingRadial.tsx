@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useGameStore, getSimSnapshot, dispatchCommand } from '../../game/state';
+import { useUiStore } from '../../game/uiStore';
 
 import { useUiSettingsStore } from "../../game/uiSettingsStore";
 import type {
@@ -61,7 +62,7 @@ const PLAY_OPTIONS: readonly RingOption[] = PLAYBOOK_OPTIONS.map((item) => ({
 
 export function DirectingRadial() {
   const matchStarted = useGameStore((s) => s.matchStarted);
-  const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
+  const selectedUnitIds = useUiStore((s) => s.selectedUnitIds); // selection is local-UI (P1-1)
   const localPlayerId = useGameStore((s) => s.localPlayerId);
   const pilotedFireTeamId = useGameStore((s) => s.pilotedFireTeamId);
   const fireTeams = useGameStore((s) => s.fireTeams);
