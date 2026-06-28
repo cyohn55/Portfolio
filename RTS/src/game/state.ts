@@ -4076,6 +4076,71 @@ export function applyNetCommand(playerId: string, command: NetCommand): void {
 }
 
 /**
+ * The single funnel through which LOCALLY-ISSUED commands (human input) enter the
+ * simulation. It is the input layer's one entry point: callers construct a
+ * serializable `NetCommand` and hand it here instead of reaching for typed store
+ * methods. That indirection is what makes the eventual worker split a one-function
+ * change — `dispatchCommand` becomes a `postMessage` to the sim worker, and every
+ * call site is already speaking the wire protocol (see Working/worker-offload-phase0.md).
+ *
+ * Behaviourally it is identical to the per-command route-or-apply the codebase
+ * already did inline, so this is a pure consolidation, not a behaviour change:
+ *
+ *   • Gameplay commands delegate to the typed store action, which already does
+ *     `routeCommand(...) ? undefined : set(apply)` — routed to lockstep in
+ *     multiplayer, applied immediately in single-player. No double routing/recording.
+ *   • Pilot/control commands keep their route separate from their pure-apply
+ *     helpers (applyPilot*), exactly as the UI handles did: route first (so MP
+ *     hands them to lockstep), otherwise apply locally as the local owner.
+ *
+ * This is distinct from `applyNetCommand`, which is the AUTHORITATIVE-apply path
+ * for commands arriving FROM lockstep/AI/replay (it suppresses routing via
+ * `applyingNetCommand` and attributes effects to an explicit issuer).
+ */
+export function dispatchCommand(command: NetCommand): void {
+  const store = useGameStore.getState();
+  switch (command.type) {
+    // Gameplay commands: the typed action self-routes (route-or-apply inline).
+    case 'moveUnits': store.moveCommand(command.payload); return;
+    case 'attackTarget': store.attackTarget(command.payload); return;
+    case 'setBehavior': store.setBehavior(command.payload); return;
+    case 'setFormation': store.setFormation(command.payload); return;
+    case 'adjustFormation': store.adjustFormation(command.payload); return;
+    case 'callPlay': store.callPlay(command.payload); return;
+    case 'setPatrol': store.setPatrol(command.payload); return;
+    case 'setQueenRally': store.setQueenRally(command.payload); return;
+    case 'setMovementHold': store.setMovementHold(command.payload.unitId); return;
+    case 'toggleTurtleShell': store.toggleTurtleShell(command.payload.unitIds); return;
+    case 'throwEggs': store.throwEggs(command.payload); return;
+    case 'fireTongues': store.fireTongues(command.payload); return;
+    case 'hiss': store.hiss(command.payload); return;
+    case 'swarm': store.swarm(command.payload); return;
+    case 'pickup': store.pickup(command.payload); return;
+    case 'deliverCargo': store.deliverCargo(command.payload); return;
+
+    // Pilot/control commands: route to lockstep in MP, else pure-apply locally as
+    // the local owner (the apply* helpers do not self-route).
+    case 'setPilot':
+    case 'pilotMove':
+    case 'rallyMonarch':
+    case 'placeRallied':
+    case 'setPilotFireTeam':
+    case 'releaseControl': {
+      if (routeCommand(command)) return;
+      const ownerId = store.localPlayerId ?? 'p0';
+      switch (command.type) {
+        case 'setPilot': store.applyPilotSelection(ownerId, command.payload.unitId); return;
+        case 'pilotMove': store.applyPilotMove(ownerId, command.payload); return;
+        case 'rallyMonarch': store.applyRallyMonarch(ownerId, command.payload.monarchId); return;
+        case 'placeRallied': store.applyPlaceRallied(ownerId, command.payload.monarchId, command.payload.count, command.payload.target); return;
+        case 'setPilotFireTeam': store.applyPilotFireTeam(ownerId, command.payload.teamId); return;
+        case 'releaseControl': store.applyReleaseControl(ownerId); return;
+      }
+    }
+  }
+}
+
+/**
  * A deterministic fingerprint of the current simulation, used by lockstep to
  * detect desync. Includes every unit's identity/health/position, the RNG state,
  * and the tick counter, sorted by id so iteration order can never affect it. Two

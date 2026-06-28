@@ -142,19 +142,48 @@ Bucket-A reads outside the accessor).
         (headless browser disabled in this env) — `state.ts` change is sim-path-
         neutral (removed non-tick settings only). Node-only spec runner:
         `npx playwright test --config Working/pw-nodeonly.config.ts <spec>`.
-- [ ] **T2** Extract Bucket C (local-UI) into `useUiStore`; split the 6 hybrid
-      pilot/selection handles into local-set + (placeholder) command.
-- [ ] **T3** Add `dispatchCommand(cmd)` (in-thread `applyNetCommand` for now).
-      **Audit result:** the `applyNetCommand` switch (`state.ts:4308`) already
-      handles **22 command types** — every in-match Bucket-B action already has a
-      variant (`moveUnits`, `setPatrol`, `setQueenRally`, `attackTarget`,
-      `setBehavior`, `set/adjustFormation`, `callPlay`, all 6 abilities,
-      `placeRallied`, `pilotMove`, `rallyMonarch`, `releaseControl`, `setPilot`,
-      `setPilotFireTeam`, `setMovementHold`). **No gameplay-command gaps.** The
-      only actions WITHOUT a command are setup/lifecycle (`initializeGame`,
-      `chooseAnimalsForLocal`, `startMatch`, `startMultiplayerMatch`) and the
-      special `tick`/`updateBridgeAnimations` — handle these as a separate
-      `control` channel, not tick-aligned commands.
+- [~] **T2** Extract Bucket C (local-UI). **Investigation (2026-06-27) found
+      Bucket C is NOT uniformly extractable** — it splits in two:
+      - **C-entangled — BLOCKED until T3/T4/T5:** `pilotedUnitId`,
+        `pilotedFireTeamId`, `selectedUnitIds` are written by the `apply*ToDraft`
+        NetCommand handlers (`state.ts:441/475/514/543`) which the tick itself
+        invokes (the tick writes `pilotedFireTeamId` directly at ~`state.ts:2786`);
+        `localPlayerId` is read sim-wide (70 refs). Moving these now would force the
+        sim/command layer to write a main-thread store — impossible once the sim is
+        in a worker. Correct fix (needs the snapshot, T5): the sim owns the
+        authoritative `*ByOwner` maps (Bucket A, already present) and the main thread
+        DERIVES these local mirrors from the snapshot. **Defer.**
+      - **C-presentation — extractable now (no tick coupling):** `currentScreen`
+        (+`transitionToScreen`), `isPaused`/`unpauseGame`/`togglePause`,
+        `unitPlacementCount`/`unitPlacementCursor` (+gesture setters). Caveat: reset
+        inside `startMatch`/`initializeGame`'s shared `set()`, so extraction must
+        split those lifecycle resets into a main-thread cross-store call (not the
+        tick — acceptable).
+      - **Implication:** the high-value Bucket-C items (selection, piloting) follow
+        the command bus. T3/T4 are the true unblocker — consider doing them before
+        the rest of T2.
+- [x] **T3 — DONE.** `dispatchCommand(command: NetCommand)` added to `state.ts` as
+      the single funnel for locally-issued input. Gameplay commands delegate to the
+      existing self-routing typed action; pilot/control commands route-then-pure-apply
+      (mirroring the UI handles). `applyNetCommand` (the authoritative lockstep/AI/replay
+      path) left untouched. Proven behaviour-neutral by
+      `Unit Tests/dispatch-command-equivalence.harness.mjs` (Node, esbuild bundle):
+      a scripted gameplay+pilot stream via `dispatchCommand` is byte-identical to the
+      same stream via `applyNetCommand` for all 300 ticks. Existing two-peer + pilot
+      determinism harnesses still green; tsc clean.
+      - **T4 scope found:** ~13 clean 1:1 gameplay sites (moveUnits/setPatrol/
+        setQueenRally/attackTarget) in HexInteraction, GamepadController, UnitsLayer;
+        PLUS the ability handles dispatched via a shared indirection
+        (`HexInteraction:418/435` bundles throwEggs/hiss/swarm/… into one handler);
+        PLUS pilot handles (entangled with the deferred Bucket-C piloting work).
+        Several sites sit in `useCallback` dep arrays (HexInteraction) needing cleanup.
+
+      - **Audit (confirmed during T3):** `applyNetCommand` already handles 22 command
+        types — every in-match Bucket-B action has a variant. No gameplay-command
+        gaps. Only setup/lifecycle (`initializeGame`, `chooseAnimalsForLocal`,
+        `startMatch`, `startMultiplayerMatch`) and the special
+        `tick`/`updateBridgeAnimations` lack a command — handle those as a separate
+        `control` channel, not tick-aligned commands.
 - [ ] **T4** Re-route all Bucket-B call sites (§2 table) to `dispatchCommand`.
 - [ ] **T5** Add `getSimSnapshot()`; re-point all 62 read sites (§3 tiers).
 - [ ] **T6** Add the two ESLint guard rules (banned reads, banned writes).
