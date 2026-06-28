@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useGameStore } from '../../game/state';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useGameStore, dispatchCommand } from '../../game/state';
 
 import { useUiSettingsStore } from "../../game/uiSettingsStore";
-import type { FireMode, TargetPriority, Unit, UnitStance } from '../../game/types';
+import type { CommandSetBehavior, FireMode, TargetPriority, Unit, UnitStance } from '../../game/types';
 import { behaviorOf } from './unitBehavior';
 import { formatKeyboardToken } from './controlBindings';
 import { type RadialHover, hoverFromVector, semicircleAngleDeg } from './radialGeometry';
@@ -46,7 +46,12 @@ export function BehaviorRadial() {
   const matchStarted = useGameStore((s) => s.matchStarted);
   const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
   const localPlayerId = useGameStore((s) => s.localPlayerId);
-  const setBehavior = useGameStore((s) => s.setBehavior);
+  // Stable adapter so the dep arrays below keep a constant reference: issues the
+  // posture change through the single command funnel instead of the store action.
+  const setBehavior = useCallback(
+    (cmd: CommandSetBehavior) => dispatchCommand({ type: 'setBehavior', payload: cmd }),
+    [],
+  );
   const keyboardBindings = useUiSettingsStore((s) => s.keyboardBindings);
 
   // We must NOT subscribe to the live `units` array: the sim publishes a fresh

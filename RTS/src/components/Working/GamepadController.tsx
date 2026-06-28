@@ -396,7 +396,7 @@ export function GamepadController() {
     }
     if (patrolPendingRef.current) {
       // Only the gesture that pinned the Queen should release her.
-      useGameStore.getState().setMovementHold(null);
+      dispatchCommand({ type: 'setMovementHold', payload: { unitId: null } });
     }
     patrolPendingRef.current = false;
     patrolArmedRef.current = false;
@@ -609,7 +609,7 @@ export function GamepadController() {
     if (!queen) return;
 
     cancelPatrolAim();
-    state.setMovementHold(queen.id); // keep her still so the line origin stays anchored
+    dispatchCommand({ type: 'setMovementHold', payload: { unitId: queen.id } }); // keep her still so the line origin stays anchored
     patrolPendingRef.current = true;
     patrolQueenIdRef.current = queen.id;
     patrolHoldTimerRef.current = setTimeout(() => {

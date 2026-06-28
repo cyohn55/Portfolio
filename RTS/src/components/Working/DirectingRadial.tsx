@@ -1,8 +1,15 @@
-import { useMemo } from 'react';
-import { useGameStore } from '../../game/state';
+import { useCallback, useMemo } from 'react';
+import { useGameStore, dispatchCommand } from '../../game/state';
 
 import { useUiSettingsStore } from "../../game/uiSettingsStore";
-import type { FormationShape, PlaybookId, Unit } from '../../game/types';
+import type {
+  CommandAdjustFormation,
+  CommandCallPlay,
+  CommandSetFormation,
+  FormationShape,
+  PlaybookId,
+  Unit,
+} from '../../game/types';
 import { formatKeyboardToken } from './controlBindings';
 import { FullRingRadial, type RadialPage, type RingOption } from './FullRingRadial';
 import {
@@ -58,9 +65,20 @@ export function DirectingRadial() {
   const localPlayerId = useGameStore((s) => s.localPlayerId);
   const pilotedFireTeamId = useGameStore((s) => s.pilotedFireTeamId);
   const fireTeams = useGameStore((s) => s.fireTeams);
-  const setFormation = useGameStore((s) => s.setFormation);
-  const adjustFormation = useGameStore((s) => s.adjustFormation);
-  const callPlay = useGameStore((s) => s.callPlay);
+  // Stable adapters so the useMemo dep array below keeps constant references:
+  // each issues its directive through the single command funnel.
+  const setFormation = useCallback(
+    (cmd: CommandSetFormation) => dispatchCommand({ type: 'setFormation', payload: cmd }),
+    [],
+  );
+  const adjustFormation = useCallback(
+    (cmd: CommandAdjustFormation) => dispatchCommand({ type: 'adjustFormation', payload: cmd }),
+    [],
+  );
+  const callPlay = useCallback(
+    (cmd: CommandCallPlay) => dispatchCommand({ type: 'callPlay', payload: cmd }),
+    [],
+  );
   const keyboardBindings = useUiSettingsStore((s) => s.keyboardBindings);
 
   // The wheel's contents change only when the selection, the piloted team, or the

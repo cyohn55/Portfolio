@@ -67,14 +67,6 @@ export function MapInteraction() {
   const clearSelection = useGameStore((s) => s.clearSelection);
   const selectUnits = useGameStore((s) => s.selectUnits);
   const addToSelection = useGameStore((s) => s.addToSelection);
-  const setMovementHold = useGameStore((s) => s.setMovementHold);
-  const toggleTurtleShell = useGameStore((s) => s.toggleTurtleShell);
-  const throwEggs = useGameStore((s) => s.throwEggs);
-  const fireTongues = useGameStore((s) => s.fireTongues);
-  const hiss = useGameStore((s) => s.hiss);
-  const swarm = useGameStore((s) => s.swarm);
-  const pickup = useGameStore((s) => s.pickup);
-  const deliverCargo = useGameStore((s) => s.deliverCargo);
   // Mouse buttons are remappable via Settings -> Controls. Defaults: left=select,
   // right=command. tokenToMouseButton maps the saved token back to a DOM button.
   const keyboardBindings = useUiSettingsStore((s) => s.keyboardBindings);
@@ -411,8 +403,17 @@ export function MapInteraction() {
   // The combo abilities and their store dispatchers, packaged for the shared
   // abilityCombo module so the mouse gesture, an optional rebound key, and the
   // controller all fire identical behaviour.
+  // Each ability is dispatched as a serializable command through the single funnel.
+  // The shared abilityCombo module still receives this same action-shaped bundle, so
+  // its dispatch logic is unchanged — only the destination (dispatchCommand) differs.
   const abilityActions: AbilityComboActions = {
-    toggleTurtleShell, throwEggs, fireTongues, hiss, swarm, pickup, deliverCargo,
+    toggleTurtleShell: (unitIds) => dispatchCommand({ type: 'toggleTurtleShell', payload: { unitIds } }),
+    throwEggs: (cmd) => dispatchCommand({ type: 'throwEggs', payload: cmd }),
+    fireTongues: (cmd) => dispatchCommand({ type: 'fireTongues', payload: cmd }),
+    hiss: (cmd) => dispatchCommand({ type: 'hiss', payload: cmd }),
+    swarm: (cmd) => dispatchCommand({ type: 'swarm', payload: cmd }),
+    pickup: (cmd) => dispatchCommand({ type: 'pickup', payload: cmd }),
+    deliverCargo: (cmd) => dispatchCommand({ type: 'deliverCargo', payload: cmd }),
   };
 
   // The combo aimed at a screen point: the ground beneath it (thrown/delivered
@@ -498,7 +499,7 @@ export function MapInteraction() {
         resetPatrolDrag();
         // Pin the Queen in place for the whole hold so the patrol line's origin
         // (her gold ring) stays anchored to her while the player aims the route.
-        setMovementHold(queen.id);
+        dispatchCommand({ type: 'setMovementHold', payload: { unitId: queen.id } });
         patrolDragRef.current = {
           pending: true,
           armed: false,
@@ -639,7 +640,7 @@ export function MapInteraction() {
     }
     // Release the movement pin: the hold is over (released, cancelled, or
     // superseded), so the Queen resumes her order/patrol/AI next tick.
-    setMovementHold(null);
+    dispatchCommand({ type: 'setMovementHold', payload: { unitId: null } });
     patrolDragRef.current = {
       pending: false,
       armed: false,
@@ -785,7 +786,7 @@ export function MapInteraction() {
       window.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, hiss, swarm, pickup, deliverCargo, primaryButton, secondaryButton, keyboardBindings]);
+  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, primaryButton, secondaryButton, keyboardBindings]);
 
   const handleGroundClick = (e: any) => {
     // Prevent browser context menu on right-click - check if preventDefault exists

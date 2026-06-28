@@ -88,6 +88,9 @@ function buildScript(store) {
   const byTick = new Map();
   const at = (tick, ...cmds) => byTick.set(tick, [...(byTick.get(tick) ?? []), ...cmds]);
 
+  at(40, { type: 'setBehavior', payload: { unitIds: units, behavior: { stance: 'defensive' } } });
+  at(50, { type: 'setMovementHold', payload: { unitId: units[0] ?? null } });
+  at(55, { type: 'setMovementHold', payload: { unitId: null } });
   at(60, { type: 'moveUnits', payload: { unitIds: units, target: { x: 0, y: 0.25, z: 0 } } });
   if (monarch) {
     at(90, { type: 'setPilot', payload: { unitId: monarch } });

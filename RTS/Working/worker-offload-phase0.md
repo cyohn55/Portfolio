@@ -194,9 +194,19 @@ Bucket-A reads outside the accessor).
         no store `.moveCommand/.setPatrol/.setQueenRally/.attackTarget(` calls remain
         outside `state.ts` (the lone `pointer.setQueenRally(x,y)` in ConquestField is
         a different object, not the store action).
-      - **Tier 2 TODO:** ability handles via the shared indirection
-        (`HexInteraction:418/435`) + `setBehavior`/`setFormation`/`adjustFormation`/
-        `callPlay`/`toggleTurtleShell`/the 6 abilities/`setMovementHold`.
+      - **Tier 2 DONE:** abilities + behavior/formation/play/movementHold migrated.
+        - HexInteraction: the `AbilityComboActions` bundle now wraps `dispatchCommand`
+          (shared `abilityCombo` module untouched — still receives an action-shaped
+          bundle); `setMovementHold` inlined; 8 dead selectors removed + dropped from
+          the `useCallback` dep array.
+        - BehaviorRadial (`setBehavior`) and DirectingRadial (`setFormation`/
+          `adjustFormation`/`callPlay`): selectors replaced with stable `useCallback`
+          adapters so their dep arrays keep constant references; call sites unchanged.
+        - GamepadController: 2 `setMovementHold` calls inlined.
+        - Verified: tsc + build clean; equivalence harness extended to cover
+          `setBehavior`/`setMovementHold` (300 ticks identical); two-peer + pilot
+          determinism green. Structural gate: no tier-2 action reached via the store
+          outside `state.ts`.
       - **Tier 3 TODO:** pilot handles (with the deferred Bucket-C piloting work).
 - [ ] **T5** Add `getSimSnapshot()`; re-point all 62 read sites (§3 tiers).
 - [ ] **T6** Add the two ESLint guard rules (banned reads, banned writes).
