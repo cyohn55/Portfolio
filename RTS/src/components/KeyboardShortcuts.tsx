@@ -89,11 +89,12 @@ export function KeyboardShortcuts() {
         case 'pilotToggleMonarch': state.togglePilotMonarchKind(); break;
         case 'cycleFireTeam': state.cycleFireTeam(); break;
         case 'rally':
-          // Only meaningful while piloting; rallyToMonarch no-ops otherwise.
-          if (state.pilotedUnitId) state.rallyToMonarch();
+          // Only meaningful while piloting; rallyToMonarch no-ops otherwise. Pilot
+          // mirror lives on useUiStore (P1-1).
+          if (useUiStore.getState().pilotedUnitId) state.rallyToMonarch();
           break;
         case 'selectAllUnits': {
-          if (!state.pilotedUnitId) keyboardCoordinator.blockCameraInput(250);
+          if (!useUiStore.getState().pilotedUnitId) keyboardCoordinator.blockCameraInput(250);
           const ids = state.units
             .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base')
             .map((u) => u.id);
@@ -102,8 +103,8 @@ export function KeyboardShortcuts() {
         }
         case 'deployUnits':
           // Tap / double-tap deploy a single unit; the proportionate batch is the
-          // Hold lifecycle below.
-          if (state.pilotedUnitId) state.placeRalliedUnits(1);
+          // Hold lifecycle below. Pilot mirror lives on useUiStore (P1-1).
+          if (useUiStore.getState().pilotedUnitId) state.placeRalliedUnits(1);
           break;
         case 'toggleBehaviorRadial':
           // The radial lives in BehaviorRadial.tsx; toggle it via an event so this
@@ -124,7 +125,8 @@ export function KeyboardShortcuts() {
     // then one more each interval (the teardrop count), and deploy them on release.
     const startDeployDesignate = () => {
       const state = useGameStore.getState();
-      if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted || !state.pilotedUnitId) return;
+      // Pilot mirror lives on useUiStore (P1-1).
+      if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted || !useUiStore.getState().pilotedUnitId) return;
       stopPlacementHold();
       state.incrementUnitPlacement();
       placementRepeatIntervalRef.current = setInterval(() => {

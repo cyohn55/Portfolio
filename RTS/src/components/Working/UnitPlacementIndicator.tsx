@@ -29,7 +29,7 @@ const CURSOR_HEADROOM = 4.5;
 
 export function UnitPlacementIndicator() {
   const groupRef = useRef<THREE.Group>(null);
-  const pilotedUnitId = useGameStore((s) => s.pilotedUnitId);
+  const pilotedUnitId = useUiStore((s) => s.pilotedUnitId); // pilot mirror is local-UI (P1-1)
   // Placement teardrop state lives on useUiStore (local-UI, P1-1).
   const placementCount = useUiStore((s) => s.unitPlacementCount);
   // When set, the teardrop floats above this ground point (the controller's

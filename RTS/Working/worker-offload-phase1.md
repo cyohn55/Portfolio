@@ -137,9 +137,38 @@ riskiest mechanical step, so it lands first and on its own.
     behavior + directing radials highlight the selected units' current postures; camera
     auto-follow eases onto the selection; reinforcements spawned behind a selected monarch join
     the selection.
-- **Remaining slices (next):** `pilotedUnitId` / `pilotedFireTeamId` (HUD ring, camera,
-  several radials), then `selectedAnimalPool`. `localPlayerId` stays on the sim store (read
-  sim-wide; becomes worker config in P1-2). Each slice: same tsc-driven pattern + an
+- **Slice 3 DONE (pilotedUnitId / pilotedFireTeamId) — 2026-06-28.** The pilot UI mirror
+  moved onto `useUiStore` (the authoritative `pilotedUnitIdByOwner` / `pilotedFireTeamByOwner`
+  maps stay sim-side). Safe because since T2-C the sim already DERIVES the mirror rather than
+  writing it. `syncLocalPilotMirror` now reads + writes the mirror on `useUiStore` (via the
+  new `setPilotMirror` setter); the optimistic gesture writes (beginLocalPilot, clearPilot,
+  clearSelection) use `useUiStore.setState`; lifecycle resets call `setPilotMirror(null, null)`.
+  - **Also fixed a T2-C straggler:** `applyRallyToDraft` was still writing the mirror
+    (`draft.pilotedFireTeamId = null`) directly from the sim; removed — the derivation from
+    `pilotedFireTeamByOwner` is the heir.
+  - tsc-driven cutover: reactive subs → `useUiStore` (HUD, DirectingRadial, UnitPlacementIndicator);
+    imperative reads → `useUiStore.getState()` (CameraController, UnitsLayer, KeyboardShortcuts,
+    GamepadController); the state.ts pilot gesture handles (pilotMonarchBySlot/ById/cycle,
+    togglePilotMonarchKind, rallyToMonarch, cycleFireTeam, increment/placeRalliedUnits) read
+    the mirror from `useUiStore`.
+  - **Verified:** tsc + vite build clean; all 8 `.mjs` harnesses + boundary guard green
+    (pilot-mirror + selection-mirror derivation harnesses updated to read the mirror on
+    `useUiStore`). **Rendering NOT browser-verified.** → **In-browser checklist:** pilot a
+    King/Queen (A / slot keys / on-screen buttons) → gold ring + HUD show the piloted monarch;
+    G swaps King/Queen; A cycles animals; drive a fire team (cycleFireTeam) → camera follows
+    the squad; on the piloted monarch's death the ring/HUD clear; the Directing radial
+    highlights the driven fire team.
+  - **Follow-up — disabled browser specs (Playwright off in this env):** several Playwright
+    specs set/read the now-moved Bucket-C fields via `window.__rtsStore` (selection: queen-
+    rally-spawn, monarch-reselect-followers; vestigial selection setup: turtle-shell-lock,
+    dynamics, etc.). `__rtsUiStore` is now exposed (dev handle) so they can be re-pointed, and
+    the selection/pilot DERIVATION behavior they covered is now covered by the runnable
+    `selection-mirror-derivation` + `pilot-mirror-derivation` harnesses. The specs still need a
+    mechanical re-point to `__rtsUiStore` (and a `syncLocalSelectionMirror` call for the spawn
+    auto-select assertions) — deferred until Playwright is re-enabled, since they can't be run
+    or verified headlessly here.
+- **Remaining slices (next):** `selectedAnimalPool`. `localPlayerId` stays on the sim store
+  (read sim-wide; becomes worker config in P1-2). Each slice: same tsc-driven pattern + an
   in-browser pass.
 
 - **Sim module (`state.ts`):** keeps Bucket A + A′ + the tick + all command handlers.

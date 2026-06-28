@@ -63,6 +63,19 @@ type UiStore = {
   selectUnits: (unitIds: string[]) => void;
   addToSelection: (unitIds: string[]) => void;
 
+  // The LOCAL player's pilot UI mirror: which monarch (pilotedUnitId) or deployed fire
+  // team (pilotedFireTeamId) the player is driving, or null. Used only by the UI (the gold
+  // ring, the camera follow, the radials) — the SIMULATION drives from the authoritative
+  // per-owner maps (pilotedUnitIdByOwner / pilotedFireTeamByOwner, Bucket-A on the sim
+  // store), never these. Since T2-C the sim no longer writes the mirror; the main thread
+  // DERIVES it from those maps each frame via syncLocalPilotMirror (state.ts), and gestures
+  // echo it optimistically. Moved off the sim store in P1-1 (this slice) so the worker can't
+  // be asked to write it. setPilotMirror is the per-frame derivation write; the optimistic
+  // single-field gesture writes go through setState directly from state.ts.
+  pilotedUnitId: string | null;
+  pilotedFireTeamId: string | null;
+  setPilotMirror: (pilotedUnitId: string | null, pilotedFireTeamId: string | null) => void;
+
   unitPlacementCount: number;
   unitPlacementCursor: PlacementCursor | null;
   setUnitPlacementCount: (count: number) => void;
@@ -86,6 +99,10 @@ export const useUiStore = create<UiStore>((set) => ({
   selectUnits: (unitIds) => set({ selectedUnitIds: unitIds }),
   addToSelection: (unitIds) =>
     set((state) => ({ selectedUnitIds: Array.from(new Set([...state.selectedUnitIds, ...unitIds])) })),
+
+  pilotedUnitId: null,
+  pilotedFireTeamId: null,
+  setPilotMirror: (pilotedUnitId, pilotedFireTeamId) => set({ pilotedUnitId, pilotedFireTeamId }),
 
   unitPlacementCount: 0,
   unitPlacementCursor: null,

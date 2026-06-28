@@ -461,11 +461,13 @@ export function CameraController({
     // Read the piloted id straight from the store so this per-frame loop never
     // forces a React re-render.
     const store = getSimSnapshot();
-    const pilotedId = store.pilotedUnitId;
+    // Pilot mirror lives on useUiStore (local-UI, P1-1).
+    const pilotUi = useUiStore.getState();
+    const pilotedId = pilotUi.pilotedUnitId;
     // The same ESDF/stick drive steers a deployed fire team when the player has
     // handed control onto one (mutually exclusive with piloting a monarch). The
     // camera follows the squad's centroid instead of a single monarch.
-    const pilotedFireTeamId = store.pilotedFireTeamId;
+    const pilotedFireTeamId = pilotUi.pilotedFireTeamId;
     const isDriving = pilotedId !== null || pilotedFireTeamId !== null;
 
     if (isDriving) {

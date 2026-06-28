@@ -156,7 +156,7 @@ async function main() {
   syncLocalPilotMirror();
   ui().setUnitPlacementCount(5);
   ui().setUnitPlacementCursor({ x: 1, y: 0, z: 1 });
-  check('piloting the King is derived', g().pilotedUnitId === king.id);
+  check('piloting the King is derived', ui().pilotedUnitId === king.id);
 
   const livingKing = g().units.find((u) => u.id === king.id);
   livingKing.hp = 0;
@@ -165,7 +165,7 @@ async function main() {
 
   console.log = realLog;
 
-  check('pilot cleared on King death', g().pilotedUnitId === null);
+  check('pilot cleared on King death', ui().pilotedUnitId === null);
   check('placement count cleared on death-release', ui().unitPlacementCount === 0);
   check('placement cursor cleared on death-release', ui().unitPlacementCursor === null);
 

@@ -1,4 +1,5 @@
 import { useGameStore } from '../game/state';
+import { useUiStore } from '../game/uiStore';
 
 import { useUiSettingsStore } from "../game/uiSettingsStore";
 import { performanceMonitor } from '../utils/PerformanceMonitor';
@@ -39,7 +40,7 @@ export function HUD() {
   const matchStats = useGameStore((s) => s.matchStats);
   const musicEnabled = useUiSettingsStore((s) => s.musicEnabled);
   const setMusicEnabled = useUiSettingsStore((s) => s.setMusicEnabled);
-  const pilotedUnitId = useGameStore((s) => s.pilotedUnitId);
+  const pilotedUnitId = useUiStore((s) => s.pilotedUnitId); // pilot mirror is local-UI (P1-1)
 
   // FPS monitoring state
   const [fps, setFps] = useState({ current: 0, average: 0, min: 0, max: 0 });

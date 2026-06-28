@@ -935,7 +935,7 @@ function InstancedUnits() {
     // The monarch the local player is actively piloting (null when none). Used to
     // gate the own-unit outline: a rallied follower only counts as "actively
     // selected" while the monarch it trails is the one being driven.
-    const pilotedMonarchId = s.pilotedUnitId;
+    const pilotedMonarchId = useUiStore.getState().pilotedUnitId; // pilot mirror is local-UI (P1-1)
     const queenAuraRadius = s.config.regenRadius;
     const kingAuraRadius = s.config.kingAuraRadius;
     // Display toggles now live in the UI settings store (Bucket D), separate from

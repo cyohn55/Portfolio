@@ -330,7 +330,7 @@ export function GamepadController() {
   // the cursor, then one more follower each interval (mirrors startDeployDesignate).
   const startCursorDeploy = () => {
     const state = useGameStore.getState();
-    if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted || !state.pilotedUnitId) return;
+    if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted || !useUiStore.getState().pilotedUnitId) return;
     cursorDeployActiveRef.current = true;
     stopCursorDeployInterval();
     // Placement teardrop state lives on useUiStore (local-UI, P1-1).
@@ -411,7 +411,7 @@ export function GamepadController() {
   // then one more each interval (the teardrop count), and deploy the batch on release.
   const startDeployDesignate = () => {
     const state = useGameStore.getState();
-    if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted || !state.pilotedUnitId) return;
+    if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted || !useUiStore.getState().pilotedUnitId) return;
     stopPlacementHold();
     state.incrementUnitPlacement();
     placementRepeatIntervalRef.current = setInterval(() => {
@@ -533,8 +533,9 @@ export function GamepadController() {
   // it on the PILOT_CURSOR_MAX_DISTANCE leash.
   const pilotedMonarch = (): Unit | null => {
     const state = getSimSnapshot();
-    if (!state.pilotedUnitId) return null;
-    const unit = state.units.find((candidate) => candidate.id === state.pilotedUnitId);
+    const pilotedUnitId = useUiStore.getState().pilotedUnitId; // pilot mirror is local-UI (P1-1)
+    if (!pilotedUnitId) return null;
+    const unit = state.units.find((candidate) => candidate.id === pilotedUnitId);
     if (!unit || unit.ownerId !== state.localPlayerId) return null;
     if (unit.kind !== 'King' && unit.kind !== 'Queen') return null;
     return unit;
@@ -980,7 +981,8 @@ export function GamepadController() {
         // The cursor commands the player's units — never the monarch they are
         // actively piloting (that one is driven by the left stick). Excluding the
         // piloted monarch stops it from marching to the cursor on a command.
-        const commandIds = useUiStore.getState().selectedUnitIds.filter((id) => id !== state.pilotedUnitId); // selection is local-UI (P1-1)
+        const pilotUi = useUiStore.getState(); // selection + pilot mirror are local-UI (P1-1)
+        const commandIds = pilotUi.selectedUnitIds.filter((id) => id !== pilotUi.pilotedUnitId);
         if (commandIds.length === 0) break;
         if (enemyId) {
           dispatchCommand({ type: 'attackTarget', payload: { unitIds: commandIds, targetId: enemyId } });
@@ -1021,7 +1023,7 @@ export function GamepadController() {
         break;
       case 'rally':
         // Rally the piloted army to follow; a no-op when not piloting.
-        if (state.pilotedUnitId) state.rallyToMonarch();
+        if (useUiStore.getState().pilotedUnitId) state.rallyToMonarch(); // pilot mirror is local-UI (P1-1)
         break;
       case 'selectAllUnits': {
         const ids = state.units
@@ -1033,7 +1035,7 @@ export function GamepadController() {
       case 'selectMonarchAnimal': {
         // Select every own unit sharing the piloted monarch's animal (e.g. piloting
         // the Bee King/Queen selects all Bees). A no-op when not piloting.
-        const piloted = state.units.find((u) => u.id === state.pilotedUnitId);
+        const piloted = state.units.find((u) => u.id === useUiStore.getState().pilotedUnitId); // pilot mirror is local-UI (P1-1)
         if (!piloted) break;
         const ids = state.units
           .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base' && u.animal === piloted.animal)
@@ -1056,7 +1058,7 @@ export function GamepadController() {
       case 'deployUnits':
         // The one-shot path (tap / double-tap / chord): deploy a single unit. The
         // proportionate batch is the Hold lifecycle (startDeployDesignate/commitDeploy).
-        if (state.pilotedUnitId) state.placeRalliedUnits(1);
+        if (useUiStore.getState().pilotedUnitId) state.placeRalliedUnits(1); // pilot mirror is local-UI (P1-1)
         break;
       case 'pilotCycleMonarch':
         state.pilotCycleMonarch();

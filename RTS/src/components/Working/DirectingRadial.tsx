@@ -64,7 +64,7 @@ export function DirectingRadial() {
   const matchStarted = useGameStore((s) => s.matchStarted);
   const selectedUnitIds = useUiStore((s) => s.selectedUnitIds); // selection is local-UI (P1-1)
   const localPlayerId = useGameStore((s) => s.localPlayerId);
-  const pilotedFireTeamId = useGameStore((s) => s.pilotedFireTeamId);
+  const pilotedFireTeamId = useUiStore((s) => s.pilotedFireTeamId); // pilot mirror is local-UI (P1-1)
   const fireTeams = useGameStore((s) => s.fireTeams);
   // Stable adapters so the useMemo dep array below keeps constant references:
   // each issues its directive through the single command funnel.

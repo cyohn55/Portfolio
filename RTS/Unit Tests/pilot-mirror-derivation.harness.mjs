@@ -67,8 +67,10 @@ async function main() {
   const realLog = console.log;
   console.log = () => {};
   const api = await import(await bundleStore());
-  const { useGameStore, dispatchCommand, syncLocalPilotMirror } = api;
+  const { useGameStore, useUiStore, dispatchCommand, syncLocalPilotMirror } = api;
   const g = () => useGameStore.getState();
+  // The pilot mirror (pilotedUnitId / pilotedFireTeamId) lives on useUiStore (P1-1).
+  const ui = () => useUiStore.getState();
 
   g().startMultiplayerMatch({ localRole: ROLE, seed: SEED, lineups: LINEUPS });
   const tick = () => { g().tick(DT, Date.now()); syncLocalPilotMirror(); };
@@ -87,13 +89,13 @@ async function main() {
   dispatchCommand({ type: 'setPilot', payload: { unitId: aKing.id } });
   syncLocalPilotMirror();
   check('pilot sets *ByOwner[local]', g().pilotedUnitIdByOwner[ROLE] === aKing.id);
-  check('derived pilotedUnitId equals *ByOwner[local]', g().pilotedUnitId === aKing.id);
+  check('derived pilotedUnitId equals *ByOwner[local]', ui().pilotedUnitId === aKing.id);
 
   // 2) Sanity: the mirror is DERIVED, not sim-written. Corrupt it, re-derive, and it
   //    snaps back to the authoritative value (proves syncLocalPilotMirror is the source).
-  useGameStore.setState({ pilotedUnitId: 'bogus-id' });
+  useUiStore.setState({ pilotedUnitId: 'bogus-id' });
   syncLocalPilotMirror();
-  check('derivation corrects a stale mirror', g().pilotedUnitId === aKing.id);
+  check('derivation corrects a stale mirror', ui().pilotedUnitId === aKing.id);
 
   // 3) Death-release: kill the piloted King the way the combat path marks a death
   //    (hp 0 + queued in deadUnitsToRemove, which gates the tick's death pass), then
@@ -103,7 +105,7 @@ async function main() {
   g().deadUnitsToRemove.push(king.id);
   tick();
   check('tick death-releases *ByOwner[local]', g().pilotedUnitIdByOwner[ROLE] === null);
-  check('derived pilotedUnitId cleared on death', g().pilotedUnitId === null);
+  check('derived pilotedUnitId cleared on death', ui().pilotedUnitId === null);
 
   if (failures.length === 0) {
     console.log('PASS: pilot mirror is correctly derived from *ByOwner (incl. tick death-release).');

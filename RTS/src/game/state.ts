@@ -362,10 +362,8 @@ type PilotMutableState = Pick<
   | 'units'
   | 'unitOrders'
   | 'localPlayerId'
-  | 'pilotedUnitId'
   | 'pilotedUnitIdByOwner'
   | 'pilotMoveByOwner'
-  | 'pilotedFireTeamId'
   | 'pilotedFireTeamByOwner'
 >;
 
@@ -512,9 +510,10 @@ function applyRallyToDraft(draft: PilotMutableState, ownerId: string, monarchId:
   }
 
   // Any team this owner was driving has just been recalled into the army, so stop
-  // steering it; the rally itself now carries those units back to the monarch.
+  // steering it; the rally itself now carries those units back to the monarch. Only the
+  // authoritative per-owner map is written — the local pilotedFireTeamId UI mirror
+  // (useUiStore, P1-1) follows via syncLocalPilotMirror, never a sim write.
   draft.pilotedFireTeamByOwner[ownerId] = null;
-  if (ownerId === draft.localPlayerId) draft.pilotedFireTeamId = null;
 }
 
 /**
@@ -663,10 +662,10 @@ function beginLocalPilot(monarchId: string | null): void {
   pilotInput.reset();
 
   // Optimistic local UI: the ring tracks the choice this frame, before the (possibly
-  // delayed) simulation switch lands. pilotedUnitId is still a useGameStore mirror;
-  // selection lives on useUiStore (P1-1) — grabbing a monarch selects it + its army,
-  // releasing (null) leaves the current selection untouched.
-  useGameStore.setState({ pilotedUnitId: monarchId });
+  // delayed) simulation switch lands. Pilot mirror + selection both live on useUiStore
+  // (P1-1) — grabbing a monarch selects it + its army, releasing (null) leaves the
+  // current selection untouched. pilotedFireTeamId follows via syncLocalPilotMirror.
+  useUiStore.setState({ pilotedUnitId: monarchId });
   if (monarchId !== null) {
     useUiStore.getState().selectUnits(selectionForMonarch(prev.units, monarchId));
   } else {
@@ -1117,10 +1116,8 @@ export const useGameStore = create<Store>((set, get) => ({
   matchStartNonce: 0,
   gameOver: false,
   winner: null,
-  pilotedUnitId: null,
   pilotedUnitIdByOwner: { p0: null, p1: null },
   pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } },
-  pilotedFireTeamId: null,
   pilotedFireTeamByOwner: { p0: null, p1: null },
   fireTeams: {},
   movementHeldUnitId: null,
@@ -1202,10 +1199,11 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, pilotedUnitId: null, pilotedUnitIdByOwner: { p0: null, p1: null }, pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } }, pilotedFireTeamId: null, pilotedFireTeamByOwner: { p0: null, p1: null }, fireTeams: {}, movementHeldUnitId: null, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
-    // Selection + placement teardrop are local-UI state on useUiStore (P1-1); clear both
-    // on a fresh game.
+    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, pilotedUnitIdByOwner: { p0: null, p1: null }, pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } }, pilotedFireTeamByOwner: { p0: null, p1: null }, fireTeams: {}, movementHeldUnitId: null, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    // Selection, pilot mirror + placement teardrop are local-UI state on useUiStore
+    // (P1-1); clear all on a fresh game.
     useUiStore.getState().selectUnits([]);
+    useUiStore.getState().setPilotMirror(null, null);
     useUiStore.getState().resetUnitPlacement();
   },
 
@@ -1290,10 +1288,8 @@ export const useGameStore = create<Store>((set, get) => ({
       matchStartNonce: state.matchStartNonce + 1,
       gameOver: false,
       winner: null,
-      pilotedUnitId: null,
       pilotedUnitIdByOwner: { p0: null, p1: null },
       pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } },
-      pilotedFireTeamId: null,
       pilotedFireTeamByOwner: { p0: null, p1: null },
       fireTeams: {},
       movementHeldUnitId: null,
@@ -1342,10 +1338,12 @@ export const useGameStore = create<Store>((set, get) => ({
     // The match opens paused: single-player waits behind the instructions popup
     // (dismissing it calls useUiStore.unpauseGame). Pause is local UI state now, so
     // set it cross-store rather than inside the sim `set()`. Multiplayer immediately
-    // unpauses below (lockstep can't pause). Selection + the placement teardrop (also
-    // useUiStore, P1-1) are cleared the same way so a new match never inherits stale UI.
+    // unpauses below (lockstep can't pause). Selection, pilot mirror + the placement
+    // teardrop (also useUiStore, P1-1) are cleared the same way so a new match never
+    // inherits stale UI.
     useUiStore.getState().setPaused(true);
     useUiStore.getState().selectUnits([]);
+    useUiStore.getState().setPilotMirror(null, null);
     useUiStore.getState().resetUnitPlacement();
   },
 
@@ -3369,9 +3367,9 @@ export const useGameStore = create<Store>((set, get) => ({
   clearSelection: () => {
     // Local UI release is immediate in both modes: empty the selection, drop the
     // gold ring, and cancel any placement hold so the controls feel responsive.
-    // Selection + placement live on useUiStore (P1-1); pilotedUnitId mirror stays here.
+    // Selection, pilot mirror + placement all live on useUiStore (P1-1).
     pilotInput.reset();
-    set({ pilotedUnitId: null });
+    useUiStore.setState({ pilotedUnitId: null });
     useUiStore.getState().selectUnits([]);
     useUiStore.getState().resetUnitPlacement();
 
@@ -3394,9 +3392,11 @@ export const useGameStore = create<Store>((set, get) => ({
     const animal = prev.selectedAnimalPool[slotIndex];
     if (!animal) return;
 
-    // If already piloting this animal's monarch, the same key unpilots it.
-    const current = prev.pilotedUnitId
-      ? prev.units.find((u) => u.id === prev.pilotedUnitId)
+    // If already piloting this animal's monarch, the same key unpilots it. Pilot mirror
+    // lives on useUiStore (P1-1).
+    const pilotedUnitId = useUiStore.getState().pilotedUnitId;
+    const current = pilotedUnitId
+      ? prev.units.find((u) => u.id === pilotedUnitId)
       : null;
     if (current && current.animal === animal) {
       beginLocalPilot(null);
@@ -3420,7 +3420,7 @@ export const useGameStore = create<Store>((set, get) => ({
     const prev = get();
     if (!prev.localPlayerId) return;
 
-    if (prev.pilotedUnitId === unitId) {
+    if (useUiStore.getState().pilotedUnitId === unitId) { // pilot mirror on useUiStore (P1-1)
       beginLocalPilot(null);
       return;
     }
@@ -3450,9 +3450,11 @@ export const useGameStore = create<Store>((set, get) => ({
     if (pool.length === 0) return;
 
     // Resolve the pool slot of the animal we are currently piloting, so the
-    // next press advances from there; default just before slot 0 otherwise.
-    const current = prev.pilotedUnitId
-      ? prev.units.find((u) => u.id === prev.pilotedUnitId)
+    // next press advances from there; default just before slot 0 otherwise. Pilot
+    // mirror lives on useUiStore (P1-1).
+    const pilotedUnitId = useUiStore.getState().pilotedUnitId;
+    const current = pilotedUnitId
+      ? prev.units.find((u) => u.id === pilotedUnitId)
       : null;
     const currentSlot = current ? pool.indexOf(current.animal) : -1;
 
@@ -3476,8 +3478,9 @@ export const useGameStore = create<Store>((set, get) => ({
   // No-op when not piloting or when the sibling monarch is dead.
   togglePilotMonarchKind: () => {
     const prev = get();
-    if (!prev.localPlayerId || !prev.pilotedUnitId) return;
-    const current = prev.units.find((u) => u.id === prev.pilotedUnitId);
+    const pilotedUnitId = useUiStore.getState().pilotedUnitId; // pilot mirror on useUiStore (P1-1)
+    if (!prev.localPlayerId || !pilotedUnitId) return;
+    const current = prev.units.find((u) => u.id === pilotedUnitId);
     if (!current || (current.kind !== 'King' && current.kind !== 'Queen')) return;
 
     const sibling = findMonarch(
@@ -3502,8 +3505,9 @@ export const useGameStore = create<Store>((set, get) => ({
   rallyToMonarch: () => {
     const prev = get();
     const localPlayerId = prev.localPlayerId;
-    if (!localPlayerId || !prev.pilotedUnitId) return;
-    const monarch = prev.units.find((u) => u.id === prev.pilotedUnitId);
+    const pilotedUnitId = useUiStore.getState().pilotedUnitId; // pilot mirror on useUiStore (P1-1)
+    if (!localPlayerId || !pilotedUnitId) return;
+    const monarch = prev.units.find((u) => u.id === pilotedUnitId);
     if (!monarch) return;
 
     // Select the piloted monarch alongside its army immediately (local-only, so it
@@ -3535,7 +3539,8 @@ export const useGameStore = create<Store>((set, get) => ({
 
     const teamIds = listFireTeamIds(prev.units, localPlayerId);
     if (teamIds.length === 0) return;
-    const nextTeamId = nextFireTeamInCycle(teamIds, prev.pilotedFireTeamId);
+    // Pilot mirror lives on useUiStore (P1-1).
+    const nextTeamId = nextFireTeamInCycle(teamIds, useUiStore.getState().pilotedFireTeamId);
 
     // Switching drive targets ends any in-progress placement hold; reset it so a
     // stale teardrop never lingers from the monarch the player just stepped off.
@@ -3573,9 +3578,10 @@ export const useGameStore = create<Store>((set, get) => ({
     // in multiplayer. This orchestrator stays on the sim store to read the follower set.
     const ui = useUiStore.getState();
     const currentCount = ui.unitPlacementCount;
-    if (!prev.localPlayerId || !prev.pilotedUnitId) return currentCount;
+    const pilotedUnitId = ui.pilotedUnitId; // pilot mirror on useUiStore (P1-1)
+    if (!prev.localPlayerId || !pilotedUnitId) return currentCount;
 
-    const monarch = prev.units.find((u) => u.id === prev.pilotedUnitId);
+    const monarch = prev.units.find((u) => u.id === pilotedUnitId);
     if (!monarch) return currentCount;
 
     const followerCount = prev.units.reduce(
@@ -3607,8 +3613,9 @@ export const useGameStore = create<Store>((set, get) => ({
     // The gesture is consumed regardless of outcome: clear the local teardrop now
     // (placement is local-UI state on useUiStore, P1-1).
     useUiStore.getState().resetUnitPlacement();
-    if (count <= 0 || !localPlayerId || !prev.pilotedUnitId) return;
-    const monarchId = prev.pilotedUnitId;
+    const pilotedUnitId = useUiStore.getState().pilotedUnitId; // pilot mirror on useUiStore (P1-1)
+    if (count <= 0 || !localPlayerId || !pilotedUnitId) return;
+    const monarchId = pilotedUnitId;
 
     // Optimistic local deselect (the sim no longer writes the selection mirror — it's
     // Bucket-C-local): the units about to be deployed leave the monarch's command group,
@@ -3650,8 +3657,9 @@ export const useGameStore = create<Store>((set, get) => ({
   clearPilot: () => {
     const prev = get();
     pilotInput.reset();
-    set({ pilotedUnitId: null });
-    useUiStore.getState().resetUnitPlacement(); // teardrop is local-UI state (P1-1)
+    // Pilot mirror + teardrop are local-UI state on useUiStore (P1-1).
+    useUiStore.setState({ pilotedUnitId: null });
+    useUiStore.getState().resetUnitPlacement();
     if (!prev.localPlayerId) return;
     dispatchCommand({ type: 'setPilot', payload: { unitId: null } });
   },
@@ -4138,7 +4146,10 @@ export function syncLocalPilotMirror(): void {
   if (!localPlayerId) return;
   const pilotedUnitId = state.pilotedUnitIdByOwner[localPlayerId] ?? null;
   const pilotedFireTeamId = state.pilotedFireTeamByOwner[localPlayerId] ?? null;
-  if (pilotedUnitId !== state.pilotedUnitId || pilotedFireTeamId !== state.pilotedFireTeamId) {
+  // The pilot mirror lives on useUiStore (P1-1) — read the current value and write the
+  // derived one there.
+  const ui = useUiStore.getState();
+  if (pilotedUnitId !== ui.pilotedUnitId || pilotedFireTeamId !== ui.pilotedFireTeamId) {
     // When a sim event leaves the local player driving NOTHING — above all the tick's
     // death-release of the piloted monarch, or a move/patrol/attack order reclaiming it
     // (the releases that used to clear these inline in stopOwnerPilot) — also clear the
@@ -4148,9 +4159,9 @@ export function syncLocalPilotMirror(): void {
     // slot is not, and that case is handled optimistically by cycleFireTeam.
     if (pilotedUnitId === null && pilotedFireTeamId === null) {
       pilotInput.reset();
-      useUiStore.getState().resetUnitPlacement();
+      ui.resetUnitPlacement();
     }
-    useGameStore.setState({ pilotedUnitId, pilotedFireTeamId });
+    ui.setPilotMirror(pilotedUnitId, pilotedFireTeamId);
   }
 }
 
@@ -4279,6 +4290,10 @@ export function computeStateChecksum(): string {
 // instead of duplicating the numbers.
 if (import.meta.env.DEV && typeof window !== 'undefined') {
   (window as any).__rtsStore = useGameStore;
+  // The local-UI store (selection, pilot mirror, placement teardrop, screen/pause).
+  // Moved off the sim store in worker-offload P1-1, so browser tests that drive or read
+  // those fields must reach them here, not on __rtsStore.
+  (window as any).__rtsUiStore = useUiStore;
   (window as any).__rtsAnimals = ANIMALS;
   (window as any).__rtsMeleeRange = MELEE_RANGE;
   // Expose leaderboard utilities so the spec in Unit Tests/ can exercise the

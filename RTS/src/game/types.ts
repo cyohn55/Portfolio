@@ -415,13 +415,11 @@ export interface GameState {
   projectiles: Projectile[]; // in-flight egg projectiles (Chicken ability)
   // Id of the local player's King/Queen the player is directly piloting (A
   // cycles through the animals' monarchs, G toggles King<->Queen), or null when
-  // not piloting. While set, the tick drives this unit purely from `pilotInput`
-  // (the ESDF/stick movement vector) and ignores its AI, orders, and combat.
-  // See monarchPilot.ts. This is the LOCAL player's pilot, used only by the UI
-  // (gold ring, camera follow, HUD, placement teardrop) and as the local-input
-  // gate; the deterministic simulation drives monarchs from pilotedUnitIdByOwner
-  // instead, so both peers agree on what every owner is piloting.
-  pilotedUnitId: string | null;
+  // NOTE: `pilotedUnitId` (the LOCAL player's piloted-monarch UI mirror) moved to
+  // `useUiStore` (src/game/uiStore.ts) in worker-offload P1-1. Since T2-C the sim derives
+  // it from pilotedUnitIdByOwner rather than writing it, so it is pure main-thread UI state
+  // and must not live on the worker-bound sim store. The authoritative per-owner map below
+  // stays here.
   // Per-owner piloted monarch id (or null), keyed by player id ('p0'/'p1'). The
   // tick drives each owner's piloted King/Queen from this map — never from the
   // local-only pilotedUnitId — so a multiplayer peer simulates BOTH players'
@@ -443,13 +441,9 @@ export interface GameState {
   // local-UI state the simulation never reads or writes, so it must not live on the
   // worker-bound sim store. The sim-reading orchestrators that drive it
   // (incrementUnitPlacement / placeRalliedUnits in state.ts) write the uiStore setters.
-  // Id of the fire team the LOCAL player is currently driving remotely (or null
-  // when driving a monarch or nothing). A piloted monarch can hand its ESDF/stick
-  // drive over to a deployed fire team so the player steers that whole squad from
-  // afar; cycling teams updates this. UI-only mirror (camera follow, selection
-  // highlight); the deterministic simulation drives teams from
-  // pilotedFireTeamByOwner instead. See monarchPilot.ts.
-  pilotedFireTeamId: string | null;
+  // NOTE: `pilotedFireTeamId` (the LOCAL player's driven-fire-team UI mirror) moved to
+  // `useUiStore` (src/game/uiStore.ts) in worker-offload P1-1, alongside pilotedUnitId —
+  // derived from pilotedFireTeamByOwner since T2-C, so pure main-thread UI state.
   // Per-owner driven fire-team id (or null), keyed by player id ('p0'/'p1'). The
   // tick steers every member of this team from the owner's pilotMoveByOwner
   // vector — never from the local-only pilotedFireTeamId — so a multiplayer peer
