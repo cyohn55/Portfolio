@@ -184,7 +184,20 @@ Bucket-A reads outside the accessor).
         `startMatch`, `startMultiplayerMatch`) and the special
         `tick`/`updateBridgeAnimations` lack a command — handle those as a separate
         `control` channel, not tick-aligned commands.
-- [ ] **T4** Re-route all Bucket-B call sites (§2 table) to `dispatchCommand`.
+- [~] **T4** Re-route all Bucket-B call sites (§2 table) to `dispatchCommand`.
+      - **Tier 1 DONE:** the 13 clean 1:1 gameplay sites
+        (`moveUnits`/`setPatrol`/`setQueenRally`/`attackTarget`) re-pointed to
+        `dispatchCommand` in HexInteraction (6), GamepadController (6), UnitsLayer (1).
+        HexInteraction's now-dead `moveCommand`/`setPatrol`/`setQueenRally` selectors
+        removed and dropped from the `useCallback` dep array. Verified: tsc clean,
+        equivalence + two-peer + pilot harnesses green, build clean. Structural gate:
+        no store `.moveCommand/.setPatrol/.setQueenRally/.attackTarget(` calls remain
+        outside `state.ts` (the lone `pointer.setQueenRally(x,y)` in ConquestField is
+        a different object, not the store action).
+      - **Tier 2 TODO:** ability handles via the shared indirection
+        (`HexInteraction:418/435`) + `setBehavior`/`setFormation`/`adjustFormation`/
+        `callPlay`/`toggleTurtleShell`/the 6 abilities/`setMovementHold`.
+      - **Tier 3 TODO:** pilot handles (with the deferred Bucket-C piloting work).
 - [ ] **T5** Add `getSimSnapshot()`; re-point all 62 read sites (§3 tiers).
 - [ ] **T6** Add the two ESLint guard rules (banned reads, banned writes).
 - [ ] **T7** Determinism harness: assert checksum parity pre/post refactor.

@@ -2,7 +2,7 @@ import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { shallow } from 'zustand/shallow';
-import { useGameStore, getSimClockMs } from '../game/state';
+import { useGameStore, getSimClockMs, dispatchCommand } from '../game/state';
 
 import { useUiSettingsStore } from "../game/uiSettingsStore";
 import type { AnimalId, Unit } from '../game/types';
@@ -1374,7 +1374,7 @@ function InstancedUnits() {
       (u) => s.selectedUnitIds.includes(u.id) && u.ownerId === s.localPlayerId
     );
     if (selectedOwn.length > 0) {
-      s.attackTarget({ unitIds: selectedOwn.map((u) => u.id), targetId: unit.id });
+      dispatchCommand({ type: 'attackTarget', payload: { unitIds: selectedOwn.map((u) => u.id), targetId: unit.id } });
     }
   };
 

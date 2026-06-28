@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, type RefObject } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
-import { useGameStore } from '../game/state';
+import { useGameStore, dispatchCommand } from '../game/state';
 
 import { useUiSettingsStore } from "../game/uiSettingsStore";
 import type { Position3D } from '../game/types';
@@ -64,12 +64,9 @@ export function MapInteraction() {
   const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
   const units = useGameStore((s) => s.units);
   const localPlayerId = useGameStore((s) => s.localPlayerId);
-  const moveCommand = useGameStore((s) => s.moveCommand);
   const clearSelection = useGameStore((s) => s.clearSelection);
   const selectUnits = useGameStore((s) => s.selectUnits);
   const addToSelection = useGameStore((s) => s.addToSelection);
-  const setPatrol = useGameStore((s) => s.setPatrol);
-  const setQueenRally = useGameStore((s) => s.setQueenRally);
   const setMovementHold = useGameStore((s) => s.setMovementHold);
   const toggleTurtleShell = useGameStore((s) => s.toggleTurtleShell);
   const throwEggs = useGameStore((s) => s.throwEggs);
@@ -478,12 +475,12 @@ export function MapInteraction() {
         resetRallyPlacement();
         if (queenId) {
           if (aim.king) {
-            setQueenRally({ queenId, target: { mode: 'follow', monarchId: aim.king.id } });
+            dispatchCommand({ type: 'setQueenRally', payload: { queenId, target: { mode: 'follow', monarchId: aim.king.id } } });
           } else if (aim.world) {
-            setQueenRally({
+            dispatchCommand({ type: 'setQueenRally', payload: {
               queenId,
               target: { mode: 'point', position: { x: aim.world.x, y: 0, z: aim.world.z } },
-            });
+            } });
           }
         }
         return;
@@ -676,7 +673,7 @@ export function MapInteraction() {
       const { comboFired, target } = deferredMoveRef.current;
       deferredMoveRef.current = { pending: false, comboFired: false, target: null };
       if (!comboFired && target && selectedUnitIds.length > 0) {
-        moveCommand({ unitIds: selectedUnitIds, target });
+        dispatchCommand({ type: 'moveUnits', payload: { unitIds: selectedUnitIds, target } });
       }
     }
 
@@ -749,17 +746,17 @@ export function MapInteraction() {
         // then walks back and forth along this line (see tick in state.ts).
         const origin = queenWorldPos(queenId);
         if (origin && endWorld) {
-          setPatrol({
+          dispatchCommand({ type: 'setPatrol', payload: {
             queenId,
             startPosition: { x: origin.x, y: origin.y, z: origin.z },
             endPosition: { x: endWorld.x, y: 0, z: endWorld.z }
-          });
+          } });
         }
       } else if (queenId && endWorld) {
         // Released before the hold threshold: a quick right-click is a normal
         // move order for the Queen (handleGroundClick deferred to us so the
         // move and the patrol gesture never both fire on one press).
-        moveCommand({ unitIds: [queenId], target: { x: endWorld.x, y: 0, z: endWorld.z } });
+        dispatchCommand({ type: 'moveUnits', payload: { unitIds: [queenId], target: { x: endWorld.x, y: 0, z: endWorld.z } } });
       }
 
       resetPatrolDrag();
@@ -788,7 +785,7 @@ export function MapInteraction() {
       window.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, hiss, swarm, pickup, deliverCargo, primaryButton, secondaryButton, setQueenRally, keyboardBindings]);
+  }, [gl.domElement, units, localPlayerId, selectedUnitIds, selectUnits, addToSelection, clearSelection, toggleTurtleShell, throwEggs, fireTongues, hiss, swarm, pickup, deliverCargo, primaryButton, secondaryButton, keyboardBindings]);
 
   const handleGroundClick = (e: any) => {
     // Prevent browser context menu on right-click - check if preventDefault exists
@@ -831,7 +828,7 @@ export function MapInteraction() {
       }
 
       // Non-combo selections keep the instant move on press.
-      moveCommand({ unitIds: selectedUnitIds, target });
+      dispatchCommand({ type: 'moveUnits', payload: { unitIds: selectedUnitIds, target } });
     }
   };
 

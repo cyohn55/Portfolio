@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useGameStore } from '../../game/state';
+import { useGameStore, dispatchCommand } from '../../game/state';
 
 import { useUiSettingsStore } from "../../game/uiSettingsStore";
 import {
@@ -588,15 +588,15 @@ export function GamepadController() {
     if (!queenId) return;
     const king = friendlyKingUnderReticle();
     if (king) {
-      useGameStore.getState().setQueenRally({ queenId, target: { mode: 'follow', monarchId: king.id } });
+      dispatchCommand({ type: 'setQueenRally', payload: { queenId, target: { mode: 'follow', monarchId: king.id } } });
       return;
     }
     const world = reticleWorldPosition();
     if (world) {
-      useGameStore.getState().setQueenRally({
+      dispatchCommand({ type: 'setQueenRally', payload: {
         queenId,
         target: { mode: 'point', position: { x: world.x, y: 0, z: world.z } },
-      });
+      } });
     }
   };
 
@@ -626,11 +626,11 @@ export function GamepadController() {
       const queen = queenById(patrolQueenIdRef.current);
       const end = reticleWorldPosition();
       if (queen && end) {
-        useGameStore.getState().setPatrol({
+        dispatchCommand({ type: 'setPatrol', payload: {
           queenId: queen.id,
           startPosition: { x: queen.position.x, y: queen.position.y, z: queen.position.z },
           endPosition: { x: end.x, y: 0, z: end.z },
-        });
+        } });
       }
     }
     cancelPatrolAim();
@@ -803,10 +803,10 @@ export function GamepadController() {
             // Keep the destination inside the playable map (the arrow may overshoot an edge).
             const clamped = new THREE.Vector3(target.x, 0, target.z);
             clampToArena(clamped);
-            useGameStore.getState().moveCommand({
+            dispatchCommand({ type: 'moveUnits', payload: {
               unitIds: memberIds,
               target: { x: clamped.x, y: 0, z: clamped.z },
-            });
+            } });
           }
           ref.consumed = true;
           ref.armedTeamIds = [];
@@ -980,14 +980,14 @@ export function GamepadController() {
         const commandIds = state.selectedUnitIds.filter((id) => id !== state.pilotedUnitId);
         if (commandIds.length === 0) break;
         if (enemyId) {
-          state.attackTarget({ unitIds: commandIds, targetId: enemyId });
+          dispatchCommand({ type: 'attackTarget', payload: { unitIds: commandIds, targetId: enemyId } });
         } else {
           const world = reticleWorldPosition();
           if (world) {
-            state.moveCommand({
+            dispatchCommand({ type: 'moveUnits', payload: {
               unitIds: commandIds,
               target: { x: world.x, y: 0, z: world.z },
-            });
+            } });
           }
         }
         break;
