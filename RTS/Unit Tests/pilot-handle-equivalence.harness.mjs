@@ -108,6 +108,11 @@ function runMatch(api) {
     // Keep the monarch moving while piloted so pilot state shows up in positions.
     if (tick >= 5 && tick < 685) drive(api, 1, 0);
     g().tick(DT, Date.now());
+    // Mirror the real game loop: reconcile the local pilot UI mirror from the
+    // authoritative *ByOwner state after each tick (HexGrid does this). The tick no
+    // longer writes pilotedUnitId/pilotedFireTeamId, so this keeps the gesture
+    // handles (which read the mirror) seeing the same state the live loop would.
+    api.syncLocalPilotMirror();
     perTick.push(computeStateChecksum());
   }
   return perTick;

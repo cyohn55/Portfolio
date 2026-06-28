@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
-import { useGameStore, getSimSnapshot, computeBridgeOccupancy } from '../game/state';
+import { useGameStore, getSimSnapshot, computeBridgeOccupancy, syncLocalPilotMirror } from '../game/state';
 import { useUiStore } from '../game/uiStore';
 import { getActiveNetEngine } from './Working/net/netMatch';
 import { runAiCommanders } from './Working/ai/aiCommander';
@@ -313,6 +313,12 @@ export function BattleMap() {
         }
       }
     }
+
+    // Reconcile the local pilot UI mirror from the authoritative per-owner sim state
+    // after the tick (single-player loop or lockstep update). The tick no longer
+    // writes pilotedUnitId/pilotedFireTeamId, so this is what propagates a sim-driven
+    // death-release of the piloted monarch/squad into the HUD/camera each frame.
+    syncLocalPilotMirror();
 
 
     // Update bridge visibility based on game state

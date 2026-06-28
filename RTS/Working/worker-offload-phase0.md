@@ -193,11 +193,32 @@ Bucket-A reads outside the accessor).
         - **unitPlacementCount / unitPlacementCursor** — NOT pure presentation: reset
           inside the pilot `apply*ToDraft` handlers (`state.ts:390/459/491`), so they ride
           with the C-entangled pilot-mirror work, not the easy slice.
-        - **pilotedUnitId / pilotedFireTeamId / selectedUnitIds** — the apply handlers
-          write these mirrors gated on `ownerId === localPlayerId`; the fix is to stop
-          writing them in the sim and DERIVE them main-thread from
-          `getSimSnapshot().{pilotedUnitIdByOwner,pilotedFireTeamByOwner}[localPlayerId]`
-          (selection-on-team-grab recomputed on the main thread). Highest desync risk.
+      - **T2-C DONE (pilotedUnitId / pilotedFireTeamId derivation).** The simulation no
+        longer writes these two mirror fields. Removed the 5 sim-side writes — in
+        `stopOwnerPilot`, `applyPilotSelectionToDraft`, `applyPilotFireTeamToDraft`, and
+        the tick's fire-team death-release (`state.ts:~2784`) — leaving only the
+        authoritative `*ByOwner` maps. Added `syncLocalPilotMirror()` (exported from
+        state.ts), which the main thread runs once per frame after the tick (HexGrid's
+        loop, covering both single-player and lockstep) to derive
+        `pilotedUnitId = pilotedUnitIdByOwner[localPlayerId]` and the fire-team analogue.
+        Local gestures keep their optimistic echo (`beginLocalPilot`/`clearPilot`/
+        `clearSelection`) for zero-lag feedback; the derivation confirms them and — the
+        whole point — propagates sim-driven changes the player didn't initiate, above all
+        the tick's **death-release** of a piloted monarch/squad.
+        - **Verification:** new `Unit Tests/pilot-mirror-derivation.harness.mjs` asserts
+          the invariant directly (mirror == `*ByOwner[local]` after a gesture; the
+          derivation corrects a corrupted mirror; and a tick death-release clears the
+          mirror) — coverage no checksum harness can give, since the mirror is local UI
+          and never enters `computeStateChecksum`. The pilot-handle harness (updated to
+          run `syncLocalPilotMirror` each tick like the real loop) still reproduces its
+          720-tick golden, proving gesture/trajectory behaviour is unchanged. tsc + build
+          clean; all 7 harnesses + boundary guard green.
+        - **Still deferred — `selectedUnitIds`:** bigger than the §1 grouping implied — the
+          TICK augments it (auto-selects newly spawned units near a selected monarch,
+          `state.ts:~1704`) on top of the team-grab selection in `applyPilotFireTeamToDraft`.
+          Deriving it main-thread means replicating that spawn-time selection, so it stays a
+          sim-side mirror for now. `unitPlacementCount/cursor` likewise remain (reset inside
+          the pilot handlers).
 - [x] **T3 — DONE.** `dispatchCommand(command: NetCommand)` added to `state.ts` as
       the single funnel for locally-issued input. Gameplay commands delegate to the
       existing self-routing typed action; pilot/control commands route-then-pure-apply

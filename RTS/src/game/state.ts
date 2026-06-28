@@ -386,8 +386,10 @@ function stopOwnerPilot(draft: PilotMutableState, ownerId: string): void {
   draft.pilotedFireTeamByOwner[ownerId] = null;
   draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
   if (ownerId === draft.localPlayerId) {
-    draft.pilotedUnitId = null;
-    draft.pilotedFireTeamId = null;
+    // pilotedUnitId / pilotedFireTeamId are NOT written here: they are derived on the
+    // main thread from the *ByOwner maps above (see syncLocalPilotMirror), so the
+    // worker tick that death-releases a monarch never touches the UI mirror. The
+    // placement teardrop + drive intent are still local-only resets.
     draft.unitPlacementCount = 0;
     draft.unitPlacementCursor = null;
     pilotInput.reset();
@@ -453,13 +455,12 @@ function applyPilotSelectionToDraft(draft: PilotMutableState, ownerId: string, u
   // vector, one target — so grabbing a monarch releases any team this owner was
   // steering (and vice versa in applyPilotFireTeamToDraft).
   if (unitId !== null) draft.pilotedFireTeamByOwner[ownerId] = null;
-  if (ownerId === draft.localPlayerId) {
-    draft.pilotedUnitId = unitId;
-    if (unitId !== null) draft.pilotedFireTeamId = null;
-    if (unitId === null) {
-      draft.unitPlacementCount = 0;
-      draft.unitPlacementCursor = null;
-    }
+  if (ownerId === draft.localPlayerId && unitId === null) {
+    // pilotedUnitId / pilotedFireTeamId are derived main-thread from the *ByOwner
+    // maps (syncLocalPilotMirror), not written here. Only the local-only placement
+    // teardrop is cleared when piloting stops.
+    draft.unitPlacementCount = 0;
+    draft.unitPlacementCursor = null;
   }
 }
 
@@ -486,9 +487,10 @@ function applyPilotFireTeamToDraft(draft: PilotMutableState, ownerId: string, te
   }
 
   if (ownerId === draft.localPlayerId) {
-    draft.pilotedFireTeamId = teamId;
+    // pilotedFireTeamId / pilotedUnitId are derived main-thread (syncLocalPilotMirror);
+    // not written here. selectedUnitIds is still a sim-side mirror for now (the tick
+    // also augments it on spawn) — deferred to a later T2 step.
     if (teamId !== null) {
-      draft.pilotedUnitId = null;
       draft.unitPlacementCount = 0;
       draft.unitPlacementCursor = null;
       pilotInput.reset();
@@ -2780,8 +2782,9 @@ export const useGameStore = create<Store>((set, get) => ({
               (u) => u.ownerId === ownerId && u.fireTeamId === teamId && u.hp > 0 && !deadSet.has(u.id)
             )
           ) {
+            // Authoritative release; the local pilotedFireTeamId mirror follows via
+            // syncLocalPilotMirror (main thread), not a write from the worker tick.
             draft.pilotedFireTeamByOwner[ownerId] = null;
-            if (ownerId === draft.localPlayerId) draft.pilotedFireTeamId = null;
           }
         }
 
@@ -4103,6 +4106,30 @@ export function applyNetCommand(playerId: string, command: NetCommand): void {
  */
 export function getSimSnapshot(): Store {
   return useGameStore.getState();
+}
+
+/**
+ * Reconcile the LOCAL player's pilot UI mirror (`pilotedUnitId` /
+ * `pilotedFireTeamId`) with the authoritative per-owner sim state. The simulation
+ * no longer writes those mirror fields — a worker can't touch the main-thread store
+ * — so the main thread derives them from the snapshot's `*ByOwner` maps once per
+ * frame, right after the tick (see HexGrid's loop). This is what carries pilot
+ * changes the local player did NOT initiate — above all the tick's death-release of
+ * a piloted monarch or fire team — into the fields the HUD/camera/selection read.
+ * Local gestures still echo their choice optimistically (beginLocalPilot et al.) for
+ * zero-lag feedback; this only confirms or corrects them (e.g. clears a dead pilot).
+ * No-op before a match has a local player. Keyed on the local player only, so each
+ * multiplayer peer derives its own mirror.
+ */
+export function syncLocalPilotMirror(): void {
+  const state = useGameStore.getState();
+  const localPlayerId = state.localPlayerId;
+  if (!localPlayerId) return;
+  const pilotedUnitId = state.pilotedUnitIdByOwner[localPlayerId] ?? null;
+  const pilotedFireTeamId = state.pilotedFireTeamByOwner[localPlayerId] ?? null;
+  if (pilotedUnitId !== state.pilotedUnitId || pilotedFireTeamId !== state.pilotedFireTeamId) {
+    useGameStore.setState({ pilotedUnitId, pilotedFireTeamId });
+  }
 }
 
 export function dispatchCommand(command: NetCommand): void {
