@@ -4097,6 +4097,23 @@ export function applyNetCommand(playerId: string, command: NetCommand): void {
  * for commands arriving FROM lockstep/AI/replay (it suppresses routing via
  * `applyingNetCommand` and attributes effects to an explicit issuer).
  */
+/**
+ * The single read-only accessor for simulation + mirror state (Bucket A plus the
+ * C-mirror fields the UI derives from it — `selectedUnitIds`, `pilotedUnitId`,
+ * etc.). Today the sim runs on the main thread, so this returns the live store;
+ * in Phase 1 it returns the main-thread snapshot kept in sync with the worker sim
+ * (up to one frame stale). Every imperative read of sim state outside `state.ts`
+ * must go through here — never `useGameStore.getState()` — so flipping the worker
+ * switch later is mechanical. (T6 adds the ESLint rule that enforces this.)
+ *
+ * The returned object must be treated as read-only: writes go through
+ * `dispatchCommand` (sim commands) or the local-UI store setters, never by
+ * mutating the snapshot.
+ */
+export function getSimSnapshot(): Store {
+  return useGameStore.getState();
+}
+
 export function dispatchCommand(command: NetCommand): void {
   const store = useGameStore.getState();
   switch (command.type) {

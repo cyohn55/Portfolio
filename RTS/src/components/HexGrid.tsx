@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
-import { useGameStore, computeBridgeOccupancy } from '../game/state';
+import { useGameStore, getSimSnapshot, computeBridgeOccupancy } from '../game/state';
 import { getActiveNetEngine } from './Working/net/netMatch';
 import { runAiCommanders } from './Working/ai/aiCommander';
 import { replayRecorderTick } from './Working/ai/replayRecorder';
@@ -286,7 +286,7 @@ export function BattleMap() {
     // for a tick have arrived, so we hand it the elapsed wall time and let it
     // decide how many ticks to run (it calls store.tick internally). The local
     // accumulator is drained so a later return to single-player starts clean.
-    const netEngine = useGameStore.getState().netMode === 'single' ? null : getActiveNetEngine();
+    const netEngine = getSimSnapshot().netMode === 'single' ? null : getActiveNetEngine();
     if (netEngine) {
       netEngine.update(frameTime);
       accumulator.current = 0;
@@ -344,7 +344,7 @@ export function BattleMap() {
     const left = leftFlagRef.current;
     if (!right && !left) return;
 
-    const { units, localPlayerId } = useGameStore.getState();
+    const { units, localPlayerId } = getSimSnapshot();
     const occupancy = computeBridgeOccupancy(units, localPlayerId);
     const ease = Math.min(1, delta * FLAG_EASE_RATE);
 

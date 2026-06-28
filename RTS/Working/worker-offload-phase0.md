@@ -208,9 +208,72 @@ Bucket-A reads outside the accessor).
           determinism green. Structural gate: no tier-2 action reached via the store
           outside `state.ts`.
       - **Tier 3 TODO:** pilot handles (with the deferred Bucket-C piloting work).
-- [ ] **T5** Add `getSimSnapshot()`; re-point all 62 read sites (§3 tiers).
-- [ ] **T6** Add the two ESLint guard rules (banned reads, banned writes).
-- [ ] **T7** Determinism harness: assert checksum parity pre/post refactor.
+- [~] **T5** Add `getSimSnapshot()`; re-point the read sites (§3 tiers).
+      - **DONE — accessor:** `getSimSnapshot(): Store` added to `state.ts` (just above
+        `dispatchCommand`) as the single read seam. Pre-worker it returns the live
+        `useGameStore.getState()` (mirror == store); in Phase 1 it returns the
+        main-thread snapshot. Documented read-only; the actual ban is T6's ESLint rule.
+      - **DONE — pure-read re-point (20 sites / 7 files):** every site where
+        `getState()` is used *only to read* sim/mirror data now calls `getSimSnapshot()`:
+        PerformanceOptimizer (units.length), HexGrid (netMode + the `updateFlagVisuals`
+        bridge-occupancy read), UnitsLayer (the per-frame render read + the right-click
+        pick), DirectingRadial (the two `commandable`/`hasAnyOwnFormation` memos),
+        UnitPlacementIndicator (the two monarch-anchor reads), CameraController (the
+        per-frame pilot read), and GamepadController's pure-read helpers
+        (`loneSelectedQueen`, `pilotedMonarch`, `friendlyKingUnderReticle`, `queenById`,
+        `handleRallyArm`, `handlePatrolPress`, the fire-team-direct read, `nearestUnitId`,
+        `nearestUnitToReticle`, the poll-loop `{isPaused,matchStarted}` read).
+      - **Deliberately LEFT on `useGameStore.getState()` (not pure reads):**
+        - **Mixed read+action surfaces** that read sim data *and* call a deferred
+          Bucket-C/pilot/placement action through the same object — they belong to
+          T2/Tier-3, which will restructure them (selection→local store, pilot→command):
+          GamepadController `fireAction` + the cursor/hold deploy lifecycles
+          (`startCursorDeploy`/`commitCursorDeploy`/`startDeployDesignate`/`commitDeploy`
+          + the placement-cursor write at ~1395); KeyboardShortcuts `selectByAnimal`/
+          `runAction`/the deploy lifecycle. Splitting their incidental guard reads now
+          would just be re-touched when those surfaces move.
+        - **Tier-3 net/harness** (move *into* the worker in Phase 1, no mirror needed):
+          `net/netMatch.ts` (tick), `net/multiplayerSession.ts`, `ai/aiCommander.ts`,
+          `ai/replayRecorder.ts`.
+        - **C-presentation reads** that aren't part of the sim mirror: `currentScreen`
+          in `App.tsx` and `parentScrollBridge.ts` (head to the UI store in T2).
+      - **Verification:** `tsc` clean (exit 0); `vite build` clean (exit 0);
+        equivalence (300 ticks), two-peer (600 ticks), and pilot (600 ticks) determinism
+        harnesses all byte-identical; structural gate — the 20 routed sites no longer
+        touch `useGameStore.getState()`, and the residual `getState()` calls are exactly
+        the deferred set above. Pure refactor, behaviour-neutral.
+- [x] **T6 — DONE.** Boundary guard implemented as a Node structural check
+      (`Unit Tests/snapshot-boundary.guard.mjs`) rather than an ESLint rule — the
+      project ships no ESLint toolchain, and T1/T3/T4 were all locked in with Node
+      structural gates, so this matches precedent (decision confirmed with the user).
+      It enforces both rules from §3/§4:
+      - **Banned reads:** a direct `useGameStore.getState()` is allowed only in
+        `state.ts` (defines the boundary) or in a file on the `DEFERRED_DIRECT_READS`
+        allowlist — the 8 surfaces still pending T2/Tier-3, each tagged with its
+        blocking task (App/parentScrollBridge currentScreen → T2; KeyboardShortcuts +
+        GamepadController selection/pilot/placement → T2/Tier-3; net/ai Tier-3 → worker
+        P1). Any direct read in an unlisted file is a NEW leak and fails. The allowlist
+        is self-pruning: an entry that no longer reads the store fails as stale, so it
+        shrinks to empty as the deferred work lands.
+      - **Banned writes:** flags any mutation *through* the read-only snapshot
+        (`getSimSnapshot().x = …` or an in-place array mutator on a snapshot member),
+        anywhere outside the boundary.
+      - Regexes unit-tested against positive/negative cases (assignment vs ==/=>/map).
+        Green now: 109 files scanned, reads confined to state.ts + 8 allowlisted, zero
+        snapshot mutations.
+- [x] **T7 — DONE.** Golden-trajectory harness
+      (`Unit Tests/sim-checksum-baseline.harness.mjs`): runs a fixed seeded
+      gameplay+pilot script through `dispatchCommand` and asserts the full per-tick
+      `computeStateChecksum()` sequence reproduces a committed digest
+      (`sha256` of all 300 checksums + the final-tick checksum + tick count). The
+      golden was captured from the Phase-0 build; because Phase 0 is a pure refactor it
+      equals the pre-refactor trajectory, so this is the §5 "checksum parity pre/post
+      refactor" gate — and it keeps guarding the sim when it moves behind the worker in
+      Phase 1 (any plumbing change that perturbs the trajectory fails loudly).
+      Re-bless on intentional sim changes via `CAPTURE_GOLDEN=1`. Complements the
+      equivalence harness (relative: dispatch == applyNet) by pinning the absolute path.
+      Verified: deterministic across repeated runs; full Phase-0 suite (guard +
+      baseline + equivalence + two-peer + pilot) all green; `tsc` + `vite build` clean.
 
 T3+T4 are the spine; T1/T2 unblock them; T5 is the bulk of the line-count;
 T6/T7 lock it in.

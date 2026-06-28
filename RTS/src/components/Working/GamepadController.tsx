@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useGameStore, dispatchCommand } from '../../game/state';
+import { useGameStore, getSimSnapshot, dispatchCommand } from '../../game/state';
 
 import { useUiSettingsStore } from "../../game/uiSettingsStore";
 import {
@@ -372,7 +372,7 @@ export function GamepadController() {
   // else null — the only selection that can carry a rally point or a patrol route
   // (mirrors isSelectedQueenOnly in the mouse path).
   const loneSelectedQueen = (): Unit | null => {
-    const state = useGameStore.getState();
+    const state = getSimSnapshot();
     if (state.selectedUnitIds.length !== 1) return null;
     const unit = state.units.find((candidate) => candidate.id === state.selectedUnitIds[0]);
     if (!unit || unit.kind !== 'Queen' || unit.ownerId !== state.localPlayerId) return null;
@@ -529,7 +529,7 @@ export function GamepadController() {
   // origin while piloting: the cursor hides under it at rest and extends out from
   // it on the PILOT_CURSOR_MAX_DISTANCE leash.
   const pilotedMonarch = (): Unit | null => {
-    const state = useGameStore.getState();
+    const state = getSimSnapshot();
     if (!state.pilotedUnitId) return null;
     const unit = state.units.find((candidate) => candidate.id === state.pilotedUnitId);
     if (!unit || unit.ownerId !== state.localPlayerId) return null;
@@ -542,7 +542,7 @@ export function GamepadController() {
   // null. Dropping a rally on your own King makes the Queen's spawns follow him
   // instead of marching to a fixed point (mirrors friendlyKingUnderCursor on mouse).
   const friendlyKingUnderReticle = (): Unit | null => {
-    const state = useGameStore.getState();
+    const state = getSimSnapshot();
     let nearest: Unit | null = null;
     let nearestDist = UNIT_PICK_RADIUS_PX;
     for (const unit of state.units) {
@@ -561,14 +561,14 @@ export function GamepadController() {
   // origin tracks her if she shifts), or null once she has died / been removed.
   const queenById = (queenId: string | null): Unit | null => {
     if (!queenId) return null;
-    return useGameStore.getState().units.find((unit) => unit.id === queenId) ?? null;
+    return getSimSnapshot().units.find((unit) => unit.id === queenId) ?? null;
   };
 
   // Rising edge of the spawn-rally button: arm (or re-anchor) the blue aim line to
   // the lone selected Queen. The commit happens on the next Move / Attack (B) in
   // fireAction. With no lone Queen selected, abandon any stale aim.
   const handleRallyArm = () => {
-    const state = useGameStore.getState();
+    const state = getSimSnapshot();
     if (state.isPaused || state.gameOver || !state.matchStarted) return;
     const queen = loneSelectedQueen();
     if (!queen) {
@@ -603,7 +603,7 @@ export function GamepadController() {
   // Rising edge of the patrol button: with a lone Queen selected, pin her and start
   // the hold timer; once it elapses the gold route line arms (drawn each frame).
   const handlePatrolPress = () => {
-    const state = useGameStore.getState();
+    const state = getSimSnapshot();
     if (state.isPaused || state.gameOver || !state.matchStarted) return;
     const queen = loneSelectedQueen();
     if (!queen) return;
@@ -722,7 +722,7 @@ export function GamepadController() {
     }
 
     const now = performance.now();
-    const { units, fireTeams, localPlayerId } = useGameStore.getState();
+    const { units, fireTeams, localPlayerId } = getSimSnapshot();
     const bindings = useUiSettingsStore.getState().controllerBindings;
     const assignments = assignFireTeamButtons(directableFireTeamIds(units, localPlayerId));
     const directableSet = new Set(assignments.map((assignment) => assignment.teamId));
@@ -896,7 +896,7 @@ export function GamepadController() {
   const nearestUnitId = (
     ownerPredicate: (ownerId: string, localId: string | null) => boolean
   ): string | null => {
-    const state = useGameStore.getState();
+    const state = getSimSnapshot();
     let bestId: string | null = null;
     let bestDist = UNIT_PICK_RADIUS_PX;
     for (const unit of state.units) {
@@ -916,7 +916,7 @@ export function GamepadController() {
   // the grab target the Owl Pickup ability reads, mirroring the mouse's
   // unitUnderCursor pick.
   const nearestUnitToReticle = () => {
-    const state = useGameStore.getState();
+    const state = getSimSnapshot();
     let nearest: typeof state.units[number] | null = null;
     let nearestDist = UNIT_PICK_RADIUS_PX;
     for (const unit of state.units) {
@@ -1148,7 +1148,7 @@ export function GamepadController() {
       return;
     }
 
-    const { isPaused, matchStarted } = useGameStore.getState();
+    const { isPaused, matchStarted } = getSimSnapshot();
     const controllerBindings = useUiSettingsStore.getState().controllerBindings;
 
     const openRadialNs = openRadialNsRef.current;

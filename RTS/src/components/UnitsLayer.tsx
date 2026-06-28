@@ -2,7 +2,7 @@ import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { shallow } from 'zustand/shallow';
-import { useGameStore, getSimClockMs, dispatchCommand } from '../game/state';
+import { useGameStore, getSimClockMs, getSimSnapshot, dispatchCommand } from '../game/state';
 
 import { useUiSettingsStore } from "../game/uiSettingsStore";
 import type { AnimalId, Unit } from '../game/types';
@@ -926,7 +926,7 @@ function InstancedUnits() {
   };
 
   useFrame(({ clock }) => {
-    const s = useGameStore.getState();
+    const s = getSimSnapshot();
     const units = s.units;
     const localPlayerId = s.localPlayerId;
     const selected = s.selectedUnitIds;
@@ -1365,7 +1365,7 @@ function InstancedUnits() {
     const id = variantUnitIds.current.get(variantKey)?.[e.instanceId];
     if (!id) return;
 
-    const s = useGameStore.getState();
+    const s = getSimSnapshot();
     const unit = s.units.find((u) => u.id === id);
     if (!unit || unit.ownerId === s.localPlayerId) return;
 

@@ -1,5 +1,5 @@
 import { useFrame, useThree } from '@react-three/fiber';
-import { useGameStore } from '../game/state';
+import { getSimSnapshot } from '../game/state';
 import { useEffect, useMemo, useRef } from 'react';
 
 // Dynamically adapts render resolution to keep the frame rate stable as unit
@@ -29,7 +29,7 @@ export function PerformanceOptimizer() {
   }, [gl, isMobile]);
 
   useFrame(() => {
-    const unitCount = useGameStore.getState().units.length;
+    const unitCount = getSimSnapshot().units.length;
 
     // Step the resolution down as the battlefield fills up.
     let targetPixelRatio = deviceMaxPixelRatio;

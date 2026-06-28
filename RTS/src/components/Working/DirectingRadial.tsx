@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import { useGameStore, dispatchCommand } from '../../game/state';
+import { useGameStore, getSimSnapshot, dispatchCommand } from '../../game/state';
 
 import { useUiSettingsStore } from "../../game/uiSettingsStore";
 import type {
@@ -91,7 +91,7 @@ export function DirectingRadial() {
   // units that are selected, plus the squad whose drive control they hold.
   const commandable = useMemo<Unit[]>(() => {
     const selected = new Set(selectedUnitIds);
-    return useGameStore.getState().units.filter(
+    return getSimSnapshot().units.filter(
       (unit) =>
         unit.ownerId === localPlayerId &&
         unit.kind === 'Unit' &&
@@ -130,7 +130,7 @@ export function DirectingRadial() {
   // per-tick `units` array. (Disbanded teams are pruned from `fireTeams` each tick.)
   const hasAnyOwnFormation = useMemo(
     () =>
-      useGameStore.getState().units.some(
+      getSimSnapshot().units.some(
         (unit) =>
           unit.ownerId === localPlayerId &&
           unit.kind === 'Unit' &&

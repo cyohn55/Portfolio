@@ -15,7 +15,7 @@ import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { useGameStore } from '../../game/state';
+import { useGameStore, getSimSnapshot } from '../../game/state';
 import { getKindTargetScale } from '../../utils/ModelPreloader';
 import type { MonarchKind } from './monarchPilot';
 
@@ -44,7 +44,7 @@ export function UnitPlacementIndicator() {
       return;
     }
     if (!pilotedUnitId) return;
-    const monarch = useGameStore.getState().units.find((unit) => unit.id === pilotedUnitId);
+    const monarch = getSimSnapshot().units.find((unit) => unit.id === pilotedUnitId);
     if (!monarch) return;
     const headroom = getKindTargetScale(monarch.animal, monarch.kind as MonarchKind) + HEADROOM_PADDING;
     group.position.set(monarch.position.x, monarch.position.y + headroom, monarch.position.z);
@@ -55,7 +55,7 @@ export function UnitPlacementIndicator() {
 
   // Seed the group at the anchor's current spot so it never flashes at the origin
   // for the first frame before useFrame takes over tracking.
-  const monarch = useGameStore.getState().units.find((unit) => unit.id === pilotedUnitId);
+  const monarch = getSimSnapshot().units.find((unit) => unit.id === pilotedUnitId);
   const initialPosition: [number, number, number] = placementCursor
     ? [placementCursor.x, placementCursor.y + CURSOR_HEADROOM, placementCursor.z]
     : monarch

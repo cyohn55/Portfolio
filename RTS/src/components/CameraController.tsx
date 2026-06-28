@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { keyboardCoordinator } from '../utils/keyboardCoordination';
-import { useGameStore } from '../game/state';
+import { useGameStore, getSimSnapshot } from '../game/state';
 
 import { useUiSettingsStore } from "../game/uiSettingsStore";
 import { gamepadInput } from './Working/gamepadInput';
@@ -459,7 +459,7 @@ export function CameraController({
     // Otherwise the controller stick plus screen-edge scroll pan the camera.
     // Read the piloted id straight from the store so this per-frame loop never
     // forces a React re-render.
-    const store = useGameStore.getState();
+    const store = getSimSnapshot();
     const pilotedId = store.pilotedUnitId;
     // The same ESDF/stick drive steers a deployed fire team when the player has
     // handed control onto one (mutually exclusive with piloting a monarch). The
