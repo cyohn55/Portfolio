@@ -1,6 +1,8 @@
 import { useRef, useState, useEffect, type RefObject } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useGameStore } from '../game/state';
+
+import { useUiSettingsStore } from "../game/uiSettingsStore";
 import type { Position3D } from '../game/types';
 import * as THREE from 'three';
 import { tokenToMouseButton, keyboardEventToToken } from './Working/controlBindings';
@@ -78,7 +80,7 @@ export function MapInteraction() {
   const deliverCargo = useGameStore((s) => s.deliverCargo);
   // Mouse buttons are remappable via Settings -> Controls. Defaults: left=select,
   // right=command. tokenToMouseButton maps the saved token back to a DOM button.
-  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
+  const keyboardBindings = useUiSettingsStore((s) => s.keyboardBindings);
   const primaryButton = tokenToMouseButton(keyboardBindings.primaryAction) ?? 0;
   const secondaryButton = tokenToMouseButton(keyboardBindings.secondaryAction) ?? 2;
 

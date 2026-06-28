@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGameStore } from '../../game/state';
+
+import { useUiSettingsStore } from "../../game/uiSettingsStore";
 import type { FireMode, TargetPriority, Unit, UnitStance } from '../../game/types';
 import { behaviorOf } from './unitBehavior';
 import { formatKeyboardToken } from './controlBindings';
@@ -45,7 +47,7 @@ export function BehaviorRadial() {
   const selectedUnitIds = useGameStore((s) => s.selectedUnitIds);
   const localPlayerId = useGameStore((s) => s.localPlayerId);
   const setBehavior = useGameStore((s) => s.setBehavior);
-  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
+  const keyboardBindings = useUiSettingsStore((s) => s.keyboardBindings);
 
   // We must NOT subscribe to the live `units` array: the sim publishes a fresh
   // `units` reference every tick, which would re-render this always-mounted wheel

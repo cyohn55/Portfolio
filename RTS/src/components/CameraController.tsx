@@ -3,6 +3,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { keyboardCoordinator } from '../utils/keyboardCoordination';
 import { useGameStore } from '../game/state';
+
+import { useUiSettingsStore } from "../game/uiSettingsStore";
 import { gamepadInput } from './Working/gamepadInput';
 import { pilotInput } from './Working/monarchPilot';
 import { getArenaBoundary } from './Working/arenaBoundary';
@@ -109,7 +111,7 @@ export function CameraController({
 
   // Live keyboard bindings, mirrored to a ref so the per-frame loop reads the
   // current layout without re-subscribing or rebuilding callbacks each render.
-  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
+  const keyboardBindings = useUiSettingsStore((s) => s.keyboardBindings);
   const bindingsRef = useRef(keyboardBindings);
   bindingsRef.current = keyboardBindings;
 
@@ -117,7 +119,7 @@ export function CameraController({
   // wheel/drag callbacks read the live values without re-subscribing. "scroll" scales
   // the zoom + camera-pan rate; the keyboard "cursor" multiplier scales edge-scroll
   // (the OS owns the real mouse pointer, so edge-scroll is what a KB&M player can tune).
-  const controlSpeeds = useGameStore((s) => s.controlSpeeds);
+  const controlSpeeds = useUiSettingsStore((s) => s.controlSpeeds);
   const speedsRef = useRef(controlSpeeds);
   speedsRef.current = controlSpeeds;
 

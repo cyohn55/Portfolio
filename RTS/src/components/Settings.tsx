@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useGameStore } from '../game/state';
+
+import { useUiSettingsStore } from "../game/uiSettingsStore";
 import { ControlBindingsPanel } from './Working/ControlBindingsPanel';
 
 interface SettingsProps {
@@ -9,14 +10,14 @@ interface SettingsProps {
 export function Settings({ onBack }: SettingsProps) {
   const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'controls'>('video');
 
-  const lightingSettings = useGameStore((s) => s.lightingSettings);
-  const updateLightingSettings = useGameStore((s) => s.updateLightingSettings);
-  const shadowsEnabled = useGameStore((s) => s.shadowsEnabled);
-  const setShadowsEnabled = useGameStore((s) => s.setShadowsEnabled);
-  const healthBarsEnabled = useGameStore((s) => s.healthBarsEnabled);
-  const setHealthBarsEnabled = useGameStore((s) => s.setHealthBarsEnabled);
-  const unitAurasEnabled = useGameStore((s) => s.unitAurasEnabled);
-  const setUnitAurasEnabled = useGameStore((s) => s.setUnitAurasEnabled);
+  const lightingSettings = useUiSettingsStore((s) => s.lightingSettings);
+  const updateLightingSettings = useUiSettingsStore((s) => s.updateLightingSettings);
+  const shadowsEnabled = useUiSettingsStore((s) => s.shadowsEnabled);
+  const setShadowsEnabled = useUiSettingsStore((s) => s.setShadowsEnabled);
+  const healthBarsEnabled = useUiSettingsStore((s) => s.healthBarsEnabled);
+  const setHealthBarsEnabled = useUiSettingsStore((s) => s.setHealthBarsEnabled);
+  const unitAurasEnabled = useUiSettingsStore((s) => s.unitAurasEnabled);
+  const setUnitAurasEnabled = useUiSettingsStore((s) => s.setUnitAurasEnabled);
 
   // Local state for settings (synced with store)
   const [sunBrightness, setSunBrightness] = useState(lightingSettings.sunBrightness);

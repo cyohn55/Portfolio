@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 import { useGameStore } from '../../game/state';
+
+import { useUiSettingsStore } from "../../game/uiSettingsStore";
 import type { FormationShape, PlaybookId, Unit } from '../../game/types';
 import { formatKeyboardToken } from './controlBindings';
 import { FullRingRadial, type RadialPage, type RingOption } from './FullRingRadial';
@@ -59,7 +61,7 @@ export function DirectingRadial() {
   const setFormation = useGameStore((s) => s.setFormation);
   const adjustFormation = useGameStore((s) => s.adjustFormation);
   const callPlay = useGameStore((s) => s.callPlay);
-  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
+  const keyboardBindings = useUiSettingsStore((s) => s.keyboardBindings);
 
   // The wheel's contents change only when the selection, the piloted team, or the
   // fire-team table changes — all of which are user-triggered and rare. We therefore

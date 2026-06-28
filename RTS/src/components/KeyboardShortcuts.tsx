@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../game/state';
+
+import { useUiSettingsStore } from "../game/uiSettingsStore";
 import { keyboardCoordinator } from '../utils/keyboardCoordination';
 import { keyboardEventToToken } from './Working/controlBindings';
 import { UNIT_PLACEMENT_REPEAT_INTERVAL_MS } from './Working/monarchPilot';
@@ -37,8 +39,8 @@ export function KeyboardShortcuts() {
   // the handlers so the store's new-array-every-tick never re-runs this effect and
   // tears down an in-progress deploy-hold timer.
   const matchStarted = useGameStore((s) => s.matchStarted);
-  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
-  const keyboardBindingModes = useGameStore((s) => s.keyboardBindingModes);
+  const keyboardBindings = useUiSettingsStore((s) => s.keyboardBindings);
+  const keyboardBindingModes = useUiSettingsStore((s) => s.keyboardBindingModes);
 
   // Deploy-hold designation timer (progressive batch), kept off the React path.
   const placementRepeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

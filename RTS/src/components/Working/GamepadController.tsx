@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../../game/state';
+
+import { useUiSettingsStore } from "../../game/uiSettingsStore";
 import {
   type ControlActionId,
   type GamepadLike,
@@ -215,8 +217,8 @@ export function GamepadController() {
     world: new THREE.Vector3(),
   });
   // Latest controller layout, subscribed so the dispatch rebuilds on a rebind.
-  const controllerBindings = useGameStore((s) => s.controllerBindings);
-  const controllerBindingModes = useGameStore((s) => s.controllerBindingModes);
+  const controllerBindings = useUiSettingsStore((s) => s.controllerBindings);
+  const controllerBindingModes = useUiSettingsStore((s) => s.controllerBindingModes);
 
   // Previous-frame active state per token, for press/release edge detection of the
   // activation-mode dispatch (and of the chord-mode actions, keyed "chord:<action>").
@@ -690,7 +692,7 @@ export function GamepadController() {
   // still fires LB's own action (Switch Monarch by default) even though the gesture
   // captures LB physically — and respects a remap rather than hard-coding the action.
   const boundActionFor = (token: string): ControlActionId | null => {
-    const bindings = useGameStore.getState().controllerBindings;
+    const bindings = useUiSettingsStore.getState().controllerBindings;
     for (const actionId of Object.keys(bindings) as ControlActionId[]) {
       if (bindings[actionId] === token) return actionId;
     }
@@ -720,7 +722,8 @@ export function GamepadController() {
     }
 
     const now = performance.now();
-    const { units, fireTeams, localPlayerId, controllerBindings: bindings } = useGameStore.getState();
+    const { units, fireTeams, localPlayerId } = useGameStore.getState();
+    const bindings = useUiSettingsStore.getState().controllerBindings;
     const assignments = assignFireTeamButtons(directableFireTeamIds(units, localPlayerId));
     const directableSet = new Set(assignments.map((assignment) => assignment.teamId));
 
@@ -1145,7 +1148,8 @@ export function GamepadController() {
       return;
     }
 
-    const { controllerBindings, isPaused, matchStarted } = useGameStore.getState();
+    const { isPaused, matchStarted } = useGameStore.getState();
+    const controllerBindings = useUiSettingsStore.getState().controllerBindings;
 
     const openRadialNs = openRadialNsRef.current;
     // A wheel owns the right stick while open, so the cursor block below is suppressed.
@@ -1243,7 +1247,7 @@ export function GamepadController() {
       // Player-tuned controller cursor-speed multiplier (1 = the tuned default). Scales
       // both the monarch-tethered leash and the free-roam reticle so the whole right
       // stick feels consistent. Read fresh each frame so a slider change applies live.
-      const cursorSpeedScale = useGameStore.getState().controlSpeeds.controllerCursor;
+      const cursorSpeedScale = useUiSettingsStore.getState().controlSpeeds.controllerCursor;
 
       const monarch = pilotedMonarch();
       const deployActive = cursorDeployActiveRef.current;

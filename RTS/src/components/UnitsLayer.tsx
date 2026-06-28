@@ -3,6 +3,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { shallow } from 'zustand/shallow';
 import { useGameStore, getSimClockMs } from '../game/state';
+
+import { useUiSettingsStore } from "../game/uiSettingsStore";
 import type { AnimalId, Unit } from '../game/types';
 import {
   ALL_ANIMAL_PATHS,
@@ -325,7 +327,7 @@ function BaseMarker({ base, isOwn }: { base: Unit; isOwn: boolean }) {
   // Per-base fill material so each bar can carry its own HP-ratio color without
   // disturbing the shared unit-bar material.
   const fillMat = useMemo(() => HEALTH_BAR_FILL_MAT.clone(), []);
-  const healthBarsEnabled = useGameStore((s) => s.healthBarsEnabled);
+  const healthBarsEnabled = useUiSettingsStore((s) => s.healthBarsEnabled);
 
   useFrame(() => {
     const group = barGroupRef.current;
@@ -935,8 +937,9 @@ function InstancedUnits() {
     const pilotedMonarchId = s.pilotedUnitId;
     const queenAuraRadius = s.config.regenRadius;
     const kingAuraRadius = s.config.kingAuraRadius;
-    const healthBarsEnabled = s.healthBarsEnabled;
-    const aurasEnabled = s.unitAurasEnabled;
+    // Display toggles now live in the UI settings store (Bucket D), separate from
+    // the sim mirror `s` read above.
+    const { healthBarsEnabled, unitAurasEnabled: aurasEnabled } = useUiSettingsStore.getState();
 
     const { position, quaternion, tiltQuaternion, identityQuaternion, scale, one, matrix, projScreen, frustum, cameraRight, color } = scratch.current;
 

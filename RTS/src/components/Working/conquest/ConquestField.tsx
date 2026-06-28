@@ -31,7 +31,8 @@ import type { AnimalId, MovementType, UnitBehavior } from '../../../game/types';
 import { ANIMAL_MOVEMENT_TYPES } from '../../../game/types';
 import { ANIMAL_FILE_MAP, OWL_WING_MODELS } from '../../../utils/ModelPreloader';
 import { createOutlineMaterial, ensureSmoothOutlineNormals, OUTLINE_OWN_COLOR, OUTLINE_ENEMY_COLOR } from '../../../utils/outlineMaterial';
-import { useGameStore } from '../../../game/state';
+
+import { useUiSettingsStore } from "../../../game/uiSettingsStore";
 import {
   keyboardEventToToken,
   isControllerTokenActive,
@@ -609,8 +610,8 @@ export function ConquestField() {
   // The SAME remappable bindings Quick Play uses, read from the shared store so a
   // player's Settings layout drives both modes. Mirrored to a ref so the per-frame
   // loop reads the current layout without re-subscribing each render.
-  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
-  const keyboardBindingModes = useGameStore((s) => s.keyboardBindingModes);
+  const keyboardBindings = useUiSettingsStore((s) => s.keyboardBindings);
+  const keyboardBindingModes = useUiSettingsStore((s) => s.keyboardBindingModes);
   const bindingsRef = useRef(keyboardBindings);
   bindingsRef.current = keyboardBindings;
 
@@ -619,8 +620,8 @@ export function ConquestField() {
   // GamepadController, so the field polls the pad itself (drive + reticle below);
   // the live layout is mirrored to a ref for the per-frame poll, and the discrete
   // controller dispatch is rebuilt whenever the layout or its modes change.
-  const controllerBindings = useGameStore((s) => s.controllerBindings);
-  const controllerBindingModes = useGameStore((s) => s.controllerBindingModes);
+  const controllerBindings = useUiSettingsStore((s) => s.controllerBindings);
+  const controllerBindingModes = useUiSettingsStore((s) => s.controllerBindingModes);
   const controllerBindingsRef = useRef(controllerBindings);
   controllerBindingsRef.current = controllerBindings;
 
@@ -917,7 +918,7 @@ export function ConquestField() {
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       // Scale the per-notch zoom by the keyboard scroll-speed setting.
-      const scrollScale = useGameStore.getState().controlSpeeds.keyboardScroll;
+      const scrollScale = useUiSettingsStore.getState().controlSpeeds.keyboardScroll;
       const factor = Math.exp(event.deltaY * 0.0012 * scrollScale);
       zoom.current = THREE.MathUtils.clamp(zoom.current * factor, ZOOM_MIN, ZOOM_MAX);
     };
@@ -1472,7 +1473,7 @@ export function ConquestField() {
     const layout = controllerBindingsRef.current;
     // Player-tuned controller cursor-speed multiplier (1 = the tuned default), shared by the
     // monarch-leashed cursor and the free-roam reticle so the right stick feels consistent.
-    const cursorSpeedScale = useGameStore.getState().controlSpeeds.controllerCursor;
+    const cursorSpeedScale = useUiSettingsStore.getState().controlSpeeds.controllerCursor;
 
     // Aim the cursor with the right stick (suppressed while the radial owns it). While a
     // monarch is piloted the cursor is LEASHED to her on the globe surface (the Quick Play
@@ -2029,7 +2030,7 @@ export function ConquestField() {
       - (zoomInKey && pressed.has(zoomInKey) ? 1 : 0);
     // Keyboard zoom keys ride the keyboard scroll-speed setting; the controller's bound
     // zoom inputs ride the controller scroll-speed setting, so they are scaled separately.
-    const scrollSpeeds = useGameStore.getState().controlSpeeds;
+    const scrollSpeeds = useUiSettingsStore.getState().controlSpeeds;
     const zoomDir = keyZoom * scrollSpeeds.keyboardScroll + padZoom * scrollSpeeds.controllerScroll;
     if (zoomDir !== 0) {
       zoom.current = THREE.MathUtils.clamp(
@@ -2461,7 +2462,7 @@ export function ConquestField() {
     // 9) Push every living unit's transform + animation pose + allegiance ring, and
     //    each monarch's aura disc.
     const auraPulse = (Math.sin(elapsedMs * 0.001 * AURA_PULSE_HZ * Math.PI * 2) + 1) * 0.5;
-    const aurasEnabled = useGameStore.getState().unitAurasEnabled;
+    const aurasEnabled = useUiSettingsStore.getState().unitAurasEnabled;
     for (const unit of liveUnits) {
       if (unit.dead || !unit.group) continue;
 

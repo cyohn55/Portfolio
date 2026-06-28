@@ -1,4 +1,6 @@
 import { useGameStore } from '../game/state';
+
+import { useUiSettingsStore } from "../game/uiSettingsStore";
 import { performanceMonitor } from '../utils/PerformanceMonitor';
 import { Minimap } from './screens/Minimap';
 import { AnimalSelectionButtons } from './AnimalSelectionButtons';
@@ -35,8 +37,8 @@ export function HUD() {
   // `rts-mutated-state-ui-trap` memory.
   const units = useGameStore((s) => s.units);
   const matchStats = useGameStore((s) => s.matchStats);
-  const musicEnabled = useGameStore((s) => s.musicEnabled);
-  const setMusicEnabled = useGameStore((s) => s.setMusicEnabled);
+  const musicEnabled = useUiSettingsStore((s) => s.musicEnabled);
+  const setMusicEnabled = useUiSettingsStore((s) => s.setMusicEnabled);
   const pilotedUnitId = useGameStore((s) => s.pilotedUnitId);
 
   // FPS monitoring state

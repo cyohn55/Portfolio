@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useGameStore } from '../../game/state';
+
+import { useUiSettingsStore } from "../../game/uiSettingsStore";
 import {
   type ControlActionId,
   type ControlCategory,
@@ -158,15 +159,15 @@ function SpeedSlider({
 }
 
 export function ControlBindingsPanel() {
-  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
-  const controllerBindings = useGameStore((s) => s.controllerBindings);
-  const keyboardBindingModes = useGameStore((s) => s.keyboardBindingModes);
-  const controllerBindingModes = useGameStore((s) => s.controllerBindingModes);
-  const setBinding = useGameStore((s) => s.setBinding);
-  const setBindingMode = useGameStore((s) => s.setBindingMode);
-  const resetBindings = useGameStore((s) => s.resetBindings);
-  const controlSpeeds = useGameStore((s) => s.controlSpeeds);
-  const updateControlSpeeds = useGameStore((s) => s.updateControlSpeeds);
+  const keyboardBindings = useUiSettingsStore((s) => s.keyboardBindings);
+  const controllerBindings = useUiSettingsStore((s) => s.controllerBindings);
+  const keyboardBindingModes = useUiSettingsStore((s) => s.keyboardBindingModes);
+  const controllerBindingModes = useUiSettingsStore((s) => s.controllerBindingModes);
+  const setBinding = useUiSettingsStore((s) => s.setBinding);
+  const setBindingMode = useUiSettingsStore((s) => s.setBindingMode);
+  const resetBindings = useUiSettingsStore((s) => s.resetBindings);
+  const controlSpeeds = useUiSettingsStore((s) => s.controlSpeeds);
+  const updateControlSpeeds = useUiSettingsStore((s) => s.updateControlSpeeds);
 
   const [device, setDevice] = useState<InputDevice>('keyboard');
   const [listeningFor, setListeningFor] = useState<ControlActionId | null>(null);

@@ -24,7 +24,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FireMode, TargetPriority, UnitBehavior, UnitStance } from '../../../game/types';
-import { useGameStore } from '../../../game/state';
+
+import { useUiSettingsStore } from "../../../game/uiSettingsStore";
 import {
   formatKeyboardToken,
   isControllerTokenActive,
@@ -59,7 +60,7 @@ function sameHover(a: RadialHover | null, b: RadialHover | null): boolean {
 
 export function ConquestBehaviorRadial() {
   const summary = useConquestStore((s) => s.behaviorSummary);
-  const keyboardBindings = useGameStore((s) => s.keyboardBindings);
+  const keyboardBindings = useUiSettingsStore((s) => s.keyboardBindings);
 
   const [isOpen, setIsOpen] = useState(false);
   // The ring + wedge the controller's right stick is currently addressing (null = no
@@ -130,7 +131,7 @@ export function ConquestBehaviorRadial() {
       raf = requestAnimationFrame(poll);
       const pad = activeConquestGamepad();
       if (!pad) { togglePrev = selectPrev = closePrev = false; return; }
-      const bindings = useGameStore.getState().controllerBindings;
+      const bindings = useUiSettingsStore.getState().controllerBindings;
 
       // Open/close on the radial toggle button (default R3), rising edge — works
       // whether the radial is open or closed, and never opens on an empty selection.

@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { Environment, Lightformer } from '@react-three/drei';
 import * as THREE from 'three';
-import { useGameStore } from '../game/state';
 
+import { useUiSettingsStore } from "../game/uiSettingsStore";
 /**
  * Production lighting layer that gives the battlefield models the bright, vivid,
  * stylized ("Pixar"-leaning) look the team-select preview has, while keeping the
@@ -29,12 +29,12 @@ import { useGameStore } from '../game/state';
 const ENV_INTENSITY_REFRESH_INTERVAL = 30;
 
 export function SceneLighting() {
-  const exposure = useGameStore((s) => s.lightingSettings.exposure);
-  const environmentIntensity = useGameStore((s) => s.lightingSettings.environmentIntensity);
-  const saturation = useGameStore((s) => s.lightingSettings.saturation);
-  const contrast = useGameStore((s) => s.lightingSettings.contrast);
-  const brightness = useGameStore((s) => s.lightingSettings.brightness);
-  const hue = useGameStore((s) => s.lightingSettings.hue);
+  const exposure = useUiSettingsStore((s) => s.lightingSettings.exposure);
+  const environmentIntensity = useUiSettingsStore((s) => s.lightingSettings.environmentIntensity);
+  const saturation = useUiSettingsStore((s) => s.lightingSettings.saturation);
+  const contrast = useUiSettingsStore((s) => s.lightingSettings.contrast);
+  const brightness = useUiSettingsStore((s) => s.lightingSettings.brightness);
+  const hue = useUiSettingsStore((s) => s.lightingSettings.hue);
 
   const { gl, scene } = useThree();
   const frameCounter = useRef(0);
