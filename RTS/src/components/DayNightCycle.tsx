@@ -1,7 +1,7 @@
 import { useRef, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useGameStore } from '../game/state';
+import { useUiStore } from '../game/uiStore';
 
 import { useUiSettingsStore } from "../game/uiSettingsStore";
 interface DayNightCycleProps {
@@ -19,7 +19,7 @@ const FALLBACK_BACKGROUND_COLOR = new THREE.Color(0x0a0e1a);
 
 export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps) {
   const lightingSettings = useUiSettingsStore((s) => s.lightingSettings);
-  const isPaused = useGameStore((s) => s.isPaused);
+  const isPaused = useUiStore((s) => s.isPaused);
   const shadowsEnabled = useUiSettingsStore((s) => s.shadowsEnabled);
   const sunRef = useRef<THREE.DirectionalLight>(null);
   const moonRef = useRef<THREE.DirectionalLight>(null);

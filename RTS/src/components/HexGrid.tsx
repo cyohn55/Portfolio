@@ -2,6 +2,7 @@ import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { useGameStore, getSimSnapshot, computeBridgeOccupancy } from '../game/state';
+import { useUiStore } from '../game/uiStore';
 import { getActiveNetEngine } from './Working/net/netMatch';
 import { runAiCommanders } from './Working/ai/aiCommander';
 import { replayRecorderTick } from './Working/ai/replayRecorder';
@@ -294,14 +295,22 @@ export function BattleMap() {
       // Drive the opt-in replay recorder (begins/ends capture on match lifecycle).
       // No-op unless recording is armed; never mutates the sim.
       replayRecorderTick();
-      while (accumulator.current >= FIXED_TIMESTEP) {
-        // Drive the AI opponent's commander for the tick about to run, applying its
-        // orders through the deterministic command bus BEFORE the tick — the same
-        // ordering the self-play harness trained against. No-ops outside
-        // single-player (lockstep has no AI).
-        runAiCommanders();
-        tick(FIXED_TIMESTEP / 1000, now);
-        accumulator.current -= FIXED_TIMESTEP;
+      // Single-player pause gate. It used to live inside tick() (which self-gated on
+      // store.isPaused); pause is now local-UI state on useUiStore, so the loop —
+      // not the worker-bound tick — withholds advancement. Reset the accumulator so
+      // the unpause doesn't fire a burst of banked catch-up ticks.
+      if (useUiStore.getState().isPaused) {
+        accumulator.current = 0;
+      } else {
+        while (accumulator.current >= FIXED_TIMESTEP) {
+          // Drive the AI opponent's commander for the tick about to run, applying its
+          // orders through the deterministic command bus BEFORE the tick — the same
+          // ordering the self-play harness trained against. No-ops outside
+          // single-player (lockstep has no AI).
+          runAiCommanders();
+          tick(FIXED_TIMESTEP / 1000, now);
+          accumulator.current -= FIXED_TIMESTEP;
+        }
       }
     }
 

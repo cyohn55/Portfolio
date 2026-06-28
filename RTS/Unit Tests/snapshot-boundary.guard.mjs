@@ -25,9 +25,8 @@ const BOUNDARY_FILE = join('src', 'game', 'state.ts');
 // so the list visibly shrinks to empty as that work lands. A direct store read in
 // ANY file not listed here is a NEW boundary leak and fails the guard.
 const DEFERRED_DIRECT_READS = new Map([
-  // C-presentation reads (currentScreen) — move to the UI store in T2.
-  [join('src', 'App.tsx'), 'T2: currentScreen → UI store'],
-  [join('src', 'components', 'Working', 'parentScrollBridge.ts'), 'T2: currentScreen → UI store'],
+  // (T2-A done: currentScreen moved to useUiStore, so App.tsx and parentScrollBridge
+  //  no longer read the sim store — removed from this list.)
   // Mixed read+action surfaces (selection / pilot / unit-placement) — these read
   // sim data AND call deferred Bucket-C/pilot/placement actions through the same
   // object; they get restructured in T2/Tier-3, not split mid-flight in T5.

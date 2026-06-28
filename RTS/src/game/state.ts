@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { produce, setAutoFreeze } from 'immer';
+import { useUiStore } from './uiStore';
 import { SpatialGrid } from '../utils/SpatialGrid';
 import { SeededRng } from '../components/Working/net/prng';
 import type { NetCommand, PlayerRole } from '../components/Working/net/netMessages';
@@ -691,10 +692,12 @@ function beginLocalPilot(monarchId: string | null): void {
       : prev.selectedUnitIds,
   });
 
-  if (routeCommand({ type: 'setPilot', payload: { unitId: monarchId } })) return;
-  useGameStore.setState((s) =>
-    produce(s, (draft) => applyPilotSelectionToDraft(draft, localPlayerId, monarchId))
-  );
+  // Authoritative pilot switch through the single sim funnel: routed to lockstep in
+  // MP, applied locally in single-player. dispatchCommand attributes the command to
+  // the local owner (=== localPlayerId, guaranteed non-null above), so this is a
+  // byte-for-byte stand-in for the prior inline routeCommand/apply pair — and in
+  // Phase 1 it becomes a worker postMessage without touching this handle.
+  dispatchCommand({ type: 'setPilot', payload: { unitId: monarchId } });
 }
 
 /**
@@ -765,12 +768,9 @@ function createEmptyMatchStats(): MatchStats {
   };
 }
 
-type GameScreen = 'menu' | 'lobby' | 'multiplayer' | 'playing' | 'postgame' | 'leaderboard' | 'conquestLobby' | 'conquest';
-
 type Store = GameState & {
-  // Screen management
-  currentScreen: GameScreen;
-  transitionToScreen: (screen: GameScreen) => void;
+  // Screen routing (currentScreen / transitionToScreen) now lives on useUiStore
+  // (src/game/uiStore.ts) — pure main-thread UI state, never read by the tick.
 
   initializeGame: () => void;
   chooseAnimalsForLocal: (animals: AnimalId[]) => void;
@@ -893,10 +893,8 @@ type Store = GameState & {
     deadUnitBatching: boolean;
     spawnOptimization: boolean;
   };
-  // Game pause state
-  isPaused: boolean;
-  unpauseGame: () => void;
-  togglePause: () => void;
+  // Pause (isPaused / unpauseGame / togglePause) now lives on useUiStore
+  // (src/game/uiStore.ts) — local-only UI state the game loop, not the tick, reads.
 };
 
 // A formation member must drift more than this far from its assigned slot before
@@ -1125,9 +1123,6 @@ function maintainFormations(draft: FormationMutableState): void {
 }
 
 export const useGameStore = create<Store>((set, get) => ({
-  // Screen state
-  currentScreen: 'menu',
-  transitionToScreen: (screen) => set({ currentScreen: screen }),
 
   config: defaultConfig,
   players: [],
@@ -1177,9 +1172,6 @@ export const useGameStore = create<Store>((set, get) => ({
     deadUnitBatching: true,
     spawnOptimization: true,
   },
-  isPaused: false,
-  unpauseGame: () => set({ isPaused: false }),
-  togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
 
   bridgeState: {
     rightBridge: {
@@ -1313,7 +1305,6 @@ export const useGameStore = create<Store>((set, get) => ({
       matchSeed,
       // Bump so views that persist across matches reset their per-match state.
       matchStartNonce: state.matchStartNonce + 1,
-      isPaused: true,
       gameOver: false,
       winner: null,
       selectedUnitIds: [],
@@ -1368,6 +1359,11 @@ export const useGameStore = create<Store>((set, get) => ({
         },
       }
     });
+    // The match opens paused: single-player waits behind the instructions popup
+    // (dismissing it calls useUiStore.unpauseGame). Pause is local UI state now, so
+    // set it cross-store rather than inside the sim `set()`. Multiplayer immediately
+    // unpauses below (lockstep can't pause).
+    useUiStore.getState().setPaused(true);
   },
 
   startMultiplayerMatch: ({ localRole, seed, lineups }) => {
@@ -1405,7 +1401,7 @@ export const useGameStore = create<Store>((set, get) => ({
     // being paused, or the engine tick and store tick desync. So unpause now; the
     // engine's input-delay buffer + stall mechanism still synchronizes the actual
     // first executed tick across the two peers.
-    set({ isPaused: false });
+    useUiStore.getState().unpauseGame();
   },
 
   // Per-frame simulation runs OUTSIDE Immer. At hundreds of units, produce()
@@ -1423,7 +1419,9 @@ export const useGameStore = create<Store>((set, get) => ({
       // subscribes to `units`, which still gets a fresh array reference from
       // the set() at the end of tick, so the screen re-renders every frame
       // and the numbers visibly climb.)
-      if (!draft.matchStarted || draft.isPaused || draft.gameOver) return;
+      // Pause is local-UI state (useUiStore), gated by the game loop BEFORE it calls
+      // tick — never read here, so the worker tick stays free of main-thread state.
+      if (!draft.matchStarted || draft.gameOver) return;
 
       // DEBUG: Initialize tick counter
       if (!draft.debugTickCount) {
@@ -3392,7 +3390,6 @@ export const useGameStore = create<Store>((set, get) => ({
   // only emptied selectedUnitIds while pilotedUnitId and followMonarchId persisted, leaving
   // the King/Queen and its army still under the player's control after they had let go.
   clearSelection: () => {
-    const prev = get();
     // Local UI release is immediate in both modes: empty the selection, drop the
     // gold ring, and cancel any placement hold so the controls feel responsive.
     pilotInput.reset();
@@ -3400,11 +3397,8 @@ export const useGameStore = create<Store>((set, get) => ({
 
     // The simulation-affecting part (stop piloting + break this owner's rally,
     // which mutates followMonarchId / unitOrders) must go through the
-    // deterministic command path, or a local deselect would desync multiplayer.
-    if (routeCommand({ type: 'releaseControl', payload: {} })) return;
-    const localPlayerId = prev.localPlayerId;
-    if (!localPlayerId) return;
-    set((s) => produce(s, (draft) => releaseOwnerControl(draft, localPlayerId)));
+    // deterministic command funnel, or a local deselect would desync multiplayer.
+    dispatchCommand({ type: 'releaseControl', payload: {} });
   },
 
   // --- Direct monarch piloting -------------------------------------------------
@@ -3543,11 +3537,11 @@ export const useGameStore = create<Store>((set, get) => ({
       .map((u) => u.id);
     set({ selectedUnitIds: [monarch.id, ...followerIds] });
 
-    // The follow state itself is simulation state: routed in multiplayer,
-    // immediate in single-player. Both peers resolve the rally the same way at
-    // apply time from the synced followMonarchId state.
-    if (routeCommand({ type: 'rallyMonarch', payload: { monarchId: monarch.id } })) return;
-    set((s) => produce(s, (draft) => applyRallyToDraft(draft, localPlayerId, monarch.id)));
+    // The follow state itself is simulation state: routed through the command
+    // funnel — to lockstep in multiplayer, applied immediately in single-player.
+    // Both peers resolve the rally the same way at apply time from the synced
+    // followMonarchId state.
+    dispatchCommand({ type: 'rallyMonarch', payload: { monarchId: monarch.id } });
   },
 
   // Cycle the local player's drive control through their deployed fire teams, then
@@ -3567,8 +3561,7 @@ export const useGameStore = create<Store>((set, get) => ({
     // stale teardrop never lingers from the monarch the player just stepped off.
     pilotInput.reset();
 
-    if (routeCommand({ type: 'setPilotFireTeam', payload: { teamId: nextTeamId } })) return;
-    set((s) => produce(s, (draft) => applyPilotFireTeamToDraft(draft, localPlayerId, nextTeamId)));
+    dispatchCommand({ type: 'setPilotFireTeam', payload: { teamId: nextTeamId } });
   },
 
   // Designate one more follower for a placement order while the rally key is held
@@ -3618,11 +3611,11 @@ export const useGameStore = create<Store>((set, get) => ({
     if (count <= 0 || !localPlayerId || !prev.pilotedUnitId) return;
     const monarchId = prev.pilotedUnitId;
 
-    // The placement issues real move orders (simulation state), so route it in
-    // multiplayer; apply at once in single-player. The follower choice is
-    // position-deterministic, so both peers peel the same units off the rally.
-    if (routeCommand({ type: 'placeRallied', payload: { monarchId, count, target } })) return;
-    set((s) => produce(s, (draft) => applyPlaceRalliedToDraft(draft, localPlayerId, monarchId, count, target)));
+    // The placement issues real move orders (simulation state), so it goes through
+    // the command funnel — routed in multiplayer, applied at once in single-player.
+    // The follower choice is position-deterministic, so both peers peel the same
+    // units off the rally.
+    dispatchCommand({ type: 'placeRallied', payload: { monarchId, count, target } });
   },
 
   // Cancel a placement hold without issuing an order (a quick tap, a deselect, or
@@ -3645,10 +3638,8 @@ export const useGameStore = create<Store>((set, get) => ({
     const prev = get();
     pilotInput.reset();
     set({ pilotedUnitId: null, unitPlacementCount: 0, unitPlacementCursor: null });
-    const localPlayerId = prev.localPlayerId;
-    if (!localPlayerId) return;
-    if (routeCommand({ type: 'setPilot', payload: { unitId: null } })) return;
-    set((s) => produce(s, (draft) => applyPilotSelectionToDraft(draft, localPlayerId, null)));
+    if (!prev.localPlayerId) return;
+    dispatchCommand({ type: 'setPilot', payload: { unitId: null } });
   },
 
   // --- Lockstep apply handlers for the piloting commands -----------------------

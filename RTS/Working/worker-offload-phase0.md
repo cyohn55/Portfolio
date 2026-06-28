@@ -162,6 +162,42 @@ Bucket-A reads outside the accessor).
       - **Implication:** the high-value Bucket-C items (selection, piloting) follow
         the command bus. T3/T4 are the true unblocker — consider doing them before
         the rest of T2.
+      - **T2-A DONE (currentScreen).** New store `src/game/uiStore.ts`
+        (`useUiStore`) holds `currentScreen` + `transitionToScreen` and the exported
+        `GameScreen` type — transient session UI, kept SEPARATE from the persisted
+        `useUiSettingsStore` (Bucket D). currentScreen had zero tick/lifecycle coupling
+        (written only by `transitionToScreen`), so this is a clean T1-style extraction:
+        removed the field/action/type from `state.ts`; re-pointed all 12
+        `transitionToScreen` callers + the 4 `currentScreen` readers (App, BackgroundMusic,
+        UINavigationController, parentScrollBridge — incl. its `subscribe`) to `useUiStore`.
+        Boundary-guard allowlist self-pruned 8→6 (App.tsx + parentScrollBridge no longer
+        read the sim store). Verified: tsc + build clean; full harness suite
+        (guard + pilot-handle + baseline + equivalence + two-peer + pilot determinism) green.
+      - **T2-B DONE (isPaused).** `isPaused` + `setPaused`/`unpauseGame`/`togglePause`
+        moved to `useUiStore`. The tick's `draft.isPaused` halt was removed (it now gates
+        only on Bucket-A `matchStarted`/`gameOver`); the single-player pause gate was
+        relocated to HexGrid's SP accumulator loop (`if (useUiStore.getState().isPaused)
+        { accumulator = 0 } else { …tick… }`) — MP never reaches it (that branch is
+        single-player-only and lockstep keeps `isPaused === false`). Lifecycle pause-sets
+        moved to cross-store calls: `startMatch` → `useUiStore.setPaused(true)` (match opens
+        paused behind the SP instructions popup), `startMultiplayerMatch` → `unpauseGame()`.
+        All ~10 input guards split (sim fields off the snapshot/store, `isPaused` off
+        `useUiStore`); `DayNightCycle`/`UINavigationController`/`App`/`PostGameScreen`/
+        `PauseMenu` re-pointed. tsc-driven cutover (removing the field surfaced every
+        consumer). **Verification gap acknowledged:** no harness exercises pause and
+        Playwright is disabled, so pause/UX behaviour is verified by reasoning + tsc, not a
+        live test — the determinism harnesses (which run the cross-store lifecycle path)
+        stay byte-identical, and the gate relocation is behaviour-preserving by construction
+        (paused ⇒ no ticks executed, accumulator not banked, exactly as the old self-gated
+        tick produced).
+        - **unitPlacementCount / unitPlacementCursor** — NOT pure presentation: reset
+          inside the pilot `apply*ToDraft` handlers (`state.ts:390/459/491`), so they ride
+          with the C-entangled pilot-mirror work, not the easy slice.
+        - **pilotedUnitId / pilotedFireTeamId / selectedUnitIds** — the apply handlers
+          write these mirrors gated on `ownerId === localPlayerId`; the fix is to stop
+          writing them in the sim and DERIVE them main-thread from
+          `getSimSnapshot().{pilotedUnitIdByOwner,pilotedFireTeamByOwner}[localPlayerId]`
+          (selection-on-team-grab recomputed on the main thread). Highest desync risk.
 - [x] **T3 — DONE.** `dispatchCommand(command: NetCommand)` added to `state.ts` as
       the single funnel for locally-issued input. Gameplay commands delegate to the
       existing self-routing typed action; pilot/control commands route-then-pure-apply
@@ -207,7 +243,28 @@ Bucket-A reads outside the accessor).
           `setBehavior`/`setMovementHold` (300 ticks identical); two-peer + pilot
           determinism green. Structural gate: no tier-2 action reached via the store
           outside `state.ts`.
-      - **Tier 3 TODO:** pilot handles (with the deferred Bucket-C piloting work).
+      - **Tier 3 DONE:** the hybrid pilot/control handles now route their
+        sim-authoritative effect through `dispatchCommand`. Each of `beginLocalPilot`
+        (the shared slot/cycle/toggle path), `clearSelection`, `rallyToMonarch`,
+        `cycleFireTeam`, `placeRalliedUnits`, and `clearPilot` previously carried its
+        own inline `routeCommand(cmd) ? return : set(applyXToDraft(...))` copy — the
+        exact route-or-apply that `dispatchCommand`'s pilot branch already performs.
+        Replaced all six with `dispatchCommand(cmd)`, so there is now ONE sim funnel
+        for pilot commands too (and Phase 1's worker postMessage is a one-function
+        change reaching these handles for free). Each handle guards `localPlayerId`
+        non-null before that point, so `dispatchCommand`'s `localPlayerId ?? 'p0'`
+        owner === the prior captured owner — byte-for-byte equivalent.
+        - **Still local (Bucket C, deferred to T2):** the handles keep their local-UI
+          decision logic (which monarch to cycle/toggle to) and the optimistic mirror
+          `set` (`pilotedUnitId`/`selectedUnitIds`/placement). Only the §2 hybrid split's
+          part (2) — "dispatchCommand for the authoritative effect" — is done here;
+          part (1), moving the mirror onto a `useUiStore`, waits for T2.
+        - **Verification:** new `Unit Tests/pilot-handle-equivalence.harness.mjs` drives
+          all six handles through a 720-tick scripted match (long enough that Queens
+          have spawned army units, so rally/placement act on real followers) and asserts
+          the per-tick checksum trajectory against a golden captured from the pre-refactor
+          build — byte-identical. tsc + build clean; boundary guard, checksum baseline,
+          dispatch-equivalence, two-peer, and pilot determinism all still green.
 - [~] **T5** Add `getSimSnapshot()`; re-point the read sites (§3 tiers).
       - **DONE — accessor:** `getSimSnapshot(): Store` added to `state.ts` (just above
         `dispatchCommand`) as the single read seam. Pre-worker it returns the live

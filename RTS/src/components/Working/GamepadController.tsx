@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore, getSimSnapshot, dispatchCommand } from '../../game/state';
+import { useUiStore } from '../../game/uiStore';
 
 import { useUiSettingsStore } from "../../game/uiSettingsStore";
 import {
@@ -329,7 +330,7 @@ export function GamepadController() {
   // the cursor, then one more follower each interval (mirrors startDeployDesignate).
   const startCursorDeploy = () => {
     const state = useGameStore.getState();
-    if (state.isPaused || state.gameOver || !state.matchStarted || !state.pilotedUnitId) return;
+    if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted || !state.pilotedUnitId) return;
     cursorDeployActiveRef.current = true;
     stopCursorDeployInterval();
     state.setUnitPlacementCursor({
@@ -408,7 +409,7 @@ export function GamepadController() {
   // then one more each interval (the teardrop count), and deploy the batch on release.
   const startDeployDesignate = () => {
     const state = useGameStore.getState();
-    if (state.isPaused || state.gameOver || !state.matchStarted || !state.pilotedUnitId) return;
+    if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted || !state.pilotedUnitId) return;
     stopPlacementHold();
     state.incrementUnitPlacement();
     placementRepeatIntervalRef.current = setInterval(() => {
@@ -569,7 +570,7 @@ export function GamepadController() {
   // fireAction. With no lone Queen selected, abandon any stale aim.
   const handleRallyArm = () => {
     const state = getSimSnapshot();
-    if (state.isPaused || state.gameOver || !state.matchStarted) return;
+    if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted) return;
     const queen = loneSelectedQueen();
     if (!queen) {
       cancelRallyAim();
@@ -604,7 +605,7 @@ export function GamepadController() {
   // the hold timer; once it elapses the gold route line arms (drawn each frame).
   const handlePatrolPress = () => {
     const state = getSimSnapshot();
-    if (state.isPaused || state.gameOver || !state.matchStarted) return;
+    if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted) return;
     const queen = loneSelectedQueen();
     if (!queen) return;
 
@@ -952,7 +953,7 @@ export function GamepadController() {
       return;
     }
     // All other gameplay actions are inert while paused or after the match ends.
-    if (state.isPaused || state.gameOver || !state.matchStarted) return;
+    if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted) return;
 
     // While the posture radial is open it owns RT (Move/Attack) and B (Deselect) as
     // its select/close inputs, so swallow those here too — defense against a chord
@@ -1148,7 +1149,8 @@ export function GamepadController() {
       return;
     }
 
-    const { isPaused, matchStarted } = getSimSnapshot();
+    const { matchStarted } = getSimSnapshot();
+    const isPaused = useUiStore.getState().isPaused;
     const controllerBindings = useUiSettingsStore.getState().controllerBindings;
 
     const openRadialNs = openRadialNsRef.current;

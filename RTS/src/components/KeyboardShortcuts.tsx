@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../game/state';
+import { useUiStore } from '../game/uiStore';
 
 import { useUiSettingsStore } from "../game/uiSettingsStore";
 import { keyboardCoordinator } from '../utils/keyboardCoordination';
@@ -77,7 +78,7 @@ export function KeyboardShortcuts() {
         return;
       }
       const state = useGameStore.getState();
-      if (state.isPaused || state.gameOver || !state.matchStarted) return;
+      if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted) return;
 
       switch (actionId) {
         case 'selectGroup1': selectByAnimal(0); break;
@@ -123,7 +124,7 @@ export function KeyboardShortcuts() {
     // then one more each interval (the teardrop count), and deploy them on release.
     const startDeployDesignate = () => {
       const state = useGameStore.getState();
-      if (state.isPaused || state.gameOver || !state.matchStarted || !state.pilotedUnitId) return;
+      if (useUiStore.getState().isPaused || state.gameOver || !state.matchStarted || !state.pilotedUnitId) return;
       stopPlacementHold();
       state.incrementUnitPlacement();
       placementRepeatIntervalRef.current = setInterval(() => {

@@ -16,6 +16,7 @@ import { PerformanceOptimizer } from './components/PerformanceOptimizer';
 import { DayNightCycle } from './components/DayNightCycle';
 import { SceneLighting } from './components/SceneLighting';
 import { useGameStore } from './game/state';
+import { useUiStore } from './game/uiStore';
 import { MainMenu } from './components/screens/MainMenu';
 import { AnimalSelectionLobby } from './components/screens/AnimalSelectionLobby';
 import { MultiplayerScreen } from './components/Working/MultiplayerScreen';
@@ -31,9 +32,9 @@ import { InstructionsPopup } from './components/screens/InstructionsPopup';
 
 export default function App() {
   const initialize = useGameStore((s) => s.initializeGame);
-  const currentScreen = useGameStore((s) => s.currentScreen);
-  const transitionToScreen = useGameStore((s) => s.transitionToScreen);
-  const unpauseGame = useGameStore((s) => s.unpauseGame);
+  const currentScreen = useUiStore((s) => s.currentScreen);
+  const transitionToScreen = useUiStore((s) => s.transitionToScreen);
+  const unpauseGame = useUiStore((s) => s.unpauseGame);
   const [showInstructions, setShowInstructions] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -241,7 +242,7 @@ export default function App() {
           // that fires `webglcontextlost` even though nothing is wrong. We treat it as
           // a real failure only when we're still on the playing screen.
           gl.domElement.addEventListener('webglcontextlost', (e) => {
-            const screen = useGameStore.getState().currentScreen;
+            const screen = useUiStore.getState().currentScreen;
             if (screen !== 'playing') {
               console.log('🧹 WebGL context released during screen transition (expected)');
               return;

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { useGameStore } from '../game/state';
+import { useUiStore } from '../game/uiStore';
 
 import { useUiSettingsStore } from "../game/uiSettingsStore";
 export function BackgroundMusic() {
   const menuMusicRef = useRef<HTMLAudioElement | null>(null);
   const gameMusicRef = useRef<HTMLAudioElement | null>(null);
-  const currentScreen = useGameStore((s) => s.currentScreen);
+  const currentScreen = useUiStore((s) => s.currentScreen);
   const musicEnabled = useUiSettingsStore((s) => s.musicEnabled);
   const [isPageVisible, setIsPageVisible] = useState(!document.hidden);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);

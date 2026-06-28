@@ -9,7 +9,7 @@
 import { Canvas, useFrame, useLoader } from '@react-three/fiber';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { useGameStore } from '../../../game/state';
+import { useUiStore } from '../../../game/uiStore';
 import { useConquestStore, effectiveController } from './conquestState';
 import { BIOMES } from './conquestBiomes';
 import {
@@ -37,7 +37,7 @@ const SKYBOX_TEXTURE_PATH =
   `${import.meta.env.BASE_URL}models/nebula_skybox/textures/Material.001_baseColor.jpeg`;
 
 export function ConquestScreen() {
-  const transitionToScreen = useGameStore((s) => s.transitionToScreen);
+  const transitionToScreen = useUiStore((s) => s.transitionToScreen);
   const reset = useConquestStore((s) => s.reset);
 
   const handleBack = () => {

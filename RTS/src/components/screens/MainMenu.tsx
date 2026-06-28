@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useGameStore } from '../../game/state';
+import { useUiStore } from '../../game/uiStore';
 
 import { useUiSettingsStore } from "../../game/uiSettingsStore";
 import { FullscreenToggle } from '../Working/FullscreenToggle';
@@ -7,7 +7,7 @@ import { TitleScreenBackground } from '../Working/TitleScreenBackground';
 import './MainMenu.css';
 
 export function MainMenu() {
-  const transitionToScreen = useGameStore((s) => s.transitionToScreen);
+  const transitionToScreen = useUiStore((s) => s.transitionToScreen);
   const musicEnabled = useUiSettingsStore((s) => s.musicEnabled);
   const setMusicEnabled = useUiSettingsStore((s) => s.setMusicEnabled);
 

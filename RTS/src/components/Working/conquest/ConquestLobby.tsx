@@ -7,7 +7,7 @@
 // picks exactly one of the shared RTS animals.
 
 import { useState } from 'react';
-import { useGameStore } from '../../../game/state';
+import { useUiStore } from '../../../game/uiStore';
 import type { AnimalId } from '../../../game/types';
 import {
   useConquestStore,
@@ -62,7 +62,7 @@ function randomSeed(): number {
 }
 
 export function ConquestLobby() {
-  const transitionToScreen = useGameStore((s) => s.transitionToScreen);
+  const transitionToScreen = useUiStore((s) => s.transitionToScreen);
   const generate = useConquestStore((s) => s.generate);
 
   const [seedText, setSeedText] = useState<string>(() => String(randomSeed()));

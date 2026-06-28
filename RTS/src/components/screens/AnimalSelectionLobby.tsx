@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useGameStore } from '../../game/state';
+import { useUiStore } from '../../game/uiStore';
 import type { AnimalId } from '../../game/types';
 import { AnimalModelPreview } from '../../../Working/AnimalModelPreview';
 import './AnimalSelectionLobby.css';
@@ -133,7 +134,7 @@ function normalizeSpeed(speed: number): number {
 }
 
 export function AnimalSelectionLobby() {
-  const transitionToScreen = useGameStore((s) => s.transitionToScreen);
+  const transitionToScreen = useUiStore((s) => s.transitionToScreen);
   const chooseAnimalsForLocal = useGameStore((s) => s.chooseAnimalsForLocal);
   const initializeGame = useGameStore((s) => s.initializeGame);
   const startMatch = useGameStore((s) => s.startMatch);

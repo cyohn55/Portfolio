@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useGameStore } from '../../game/state';
+import { useUiStore } from '../../game/uiStore';
 import { getLeaderboard, type LeaderboardEntry } from './leaderboard';
 import { fetchLeaderboard, type LeaderboardSource } from './leaderboardRemote';
 // Reuse the existing leaderboard list/row styling from the post-game screen.
@@ -21,7 +21,7 @@ import './LeaderboardScreen.css';
  * top-10 list is shared between both entry points.
  */
 export function LeaderboardScreen() {
-  const transitionToScreen = useGameStore((s) => s.transitionToScreen);
+  const transitionToScreen = useUiStore((s) => s.transitionToScreen);
 
   // Seed from the local cache so the table paints instantly with the last-seen
   // global board, then refresh from Firestore in the background. `loading`

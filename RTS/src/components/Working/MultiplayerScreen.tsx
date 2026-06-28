@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AnimalId } from '../../game/types';
-import { useGameStore } from '../../game/state';
+import { useUiStore } from '../../game/uiStore';
 import { useMultiplayerSession, consumePendingJoinCode } from './net/multiplayerSession';
 import { ShareRoomCode } from './ShareRoomCode';
 import './MultiplayerScreen.css';
@@ -25,7 +25,7 @@ const MAX_PICKS = 3;
  * its actions. The actual match runs on the 'playing' screen once both ready.
  */
 export function MultiplayerScreen() {
-  const transitionToScreen = useGameStore((s) => s.transitionToScreen);
+  const transitionToScreen = useUiStore((s) => s.transitionToScreen);
   const phase = useMultiplayerSession((s) => s.phase);
   const roomCode = useMultiplayerSession((s) => s.roomCode);
   const error = useMultiplayerSession((s) => s.error);

@@ -17,6 +17,7 @@
 import { create } from 'zustand';
 import type { AnimalId } from '../../../game/types';
 import { useGameStore } from '../../../game/state';
+import { useUiStore } from '../../../game/uiStore';
 import {
   createRoom,
   joinRoom,
@@ -148,7 +149,7 @@ export const useMultiplayerSession = create<MultiplayerSessionState>((set, get) 
         },
       },
     });
-    useGameStore.getState().transitionToScreen('playing');
+    useUiStore.getState().transitionToScreen('playing');
     set({ phase: 'in-match' });
   };
 

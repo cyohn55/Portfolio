@@ -20,9 +20,9 @@
 // -----------------------------------------------------------------------------
 
 import { useEffect } from 'react';
-import { useGameStore } from '../../game/state';
+import { useUiStore, type GameScreen } from '../../game/uiStore';
 
-type RtsScreen = 'menu' | 'lobby' | 'multiplayer' | 'playing' | 'postgame' | 'leaderboard' | 'conquestLobby' | 'conquest';
+type RtsScreen = GameScreen;
 
 const SCREEN_MESSAGE_TYPE = 'rts:screen';
 
@@ -60,12 +60,12 @@ export function useParentScrollBridge(): void {
     // Initial sync: tell the parent which screen we're currently on. This
     // matters on first iframe load (host hadn't received any messages yet)
     // and on hot-reload during development.
-    broadcastCurrentScreen(useGameStore.getState().currentScreen);
+    broadcastCurrentScreen(useUiStore.getState().currentScreen);
 
     // Subscribe to store changes. Zustand v4's plain `subscribe(listener)`
     // calls the listener on every state update, so we filter for screen
     // transitions specifically to avoid postMessage on every tick.
-    const unsubscribe = useGameStore.subscribe((state, prevState) => {
+    const unsubscribe = useUiStore.subscribe((state, prevState) => {
       if (state.currentScreen !== prevState.currentScreen) {
         broadcastCurrentScreen(state.currentScreen);
       }

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../../game/state';
+import { useUiStore } from '../../game/uiStore';
 import {
   type GamepadSnapshot,
   type NavRepeatState,
@@ -113,8 +114,8 @@ function firstConnectedGamepad(): GamepadSnapshot | null {
 export function UINavigationController() {
   // Live activation flag, read inside the rAF loop without re-subscribing it.
   const activeRef = useRef(false);
-  const currentScreen = useGameStore((state) => state.currentScreen);
-  const isPaused = useGameStore((state) => state.isPaused);
+  const currentScreen = useUiStore((state) => state.currentScreen);
+  const isPaused = useUiStore((state) => state.isPaused);
   const gameOver = useGameStore((state) => state.gameOver);
 
   useEffect(() => {

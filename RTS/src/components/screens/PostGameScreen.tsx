@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useGameStore } from '../../game/state';
+import { useUiStore } from '../../game/uiStore';
 import {
   computeScore,
   getLeaderboard,
@@ -18,12 +19,12 @@ export function PostGameScreen() {
   const players = useGameStore((s) => s.players);
   const units = useGameStore((s) => s.units);
   const matchStats = useGameStore((s) => s.matchStats);
-  const transitionToScreen = useGameStore((s) => s.transitionToScreen);
+  const transitionToScreen = useUiStore((s) => s.transitionToScreen);
   const selectedAnimalPool = useGameStore((s) => s.selectedAnimalPool);
   const initializeGame = useGameStore((s) => s.initializeGame);
   const chooseAnimalsForLocal = useGameStore((s) => s.chooseAnimalsForLocal);
   const startMatch = useGameStore((s) => s.startMatch);
-  const unpauseGame = useGameStore((s) => s.unpauseGame);
+  const unpauseGame = useUiStore((s) => s.unpauseGame);
 
   // Local UI state for leaderboard submission. Kept inside the component because
   // it has no meaning outside the postgame screen and shouldn't survive a

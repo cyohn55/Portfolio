@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useGameStore } from '../game/state';
+import { useUiStore } from '../game/uiStore';
 import { Settings } from './Settings';
 
 interface PauseMenuProps {
@@ -8,13 +9,13 @@ interface PauseMenuProps {
 
 export function PauseMenu({ onClose }: PauseMenuProps) {
   const [showSettings, setShowSettings] = useState(false);
-  const transitionToScreen = useGameStore((s) => s.transitionToScreen);
+  const transitionToScreen = useUiStore((s) => s.transitionToScreen);
 
   // Set pause state when menu opens
   useEffect(() => {
-    useGameStore.setState({ isPaused: true });
+    useUiStore.getState().setPaused(true);
     return () => {
-      useGameStore.setState({ isPaused: false });
+      useUiStore.getState().setPaused(false);
     };
   }, []);
 
