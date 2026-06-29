@@ -1995,7 +1995,23 @@ export const useGameStore = create<Store>((set, get) => ({
             // movement + a blocker scan every tick) at a realistic radius rather than the
             // tight default a lone unit can actually reach. See FORMATION_ARRIVAL_DISTANCE.
             const inFormation = unit.fireTeamId !== undefined && draft.fireTeams[unit.fireTeamId] !== undefined;
-            const arrivalThreshold = inFormation ? FORMATION_ARRIVAL_DISTANCE : 0.5;
+            let arrivalThreshold = inFormation ? FORMATION_ARRIVAL_DISTANCE : 0.5;
+
+            // Crowd-aware arrival: a loose unit converging on a point WITH teammates cannot reach
+            // the tight 0.5 default (the group's spacing holds it a ring out), so it would jitter
+            // on the spot forever. Once it is near the destination, widen its arrival radius to the
+            // blob the crowd occupies so it settles instead. Only paid when close (the marching-in
+            // phase keeps the tight default), and skipped for formation members (own slot logic).
+            // See crowdArrivalRadius / countCrowdConvergingOn. The order, once cleared, never
+            // re-acquires, so the relaxed blob simply comes to rest.
+            if (!inFormation && distanceToOrder <= CROWD_ARRIVAL_SCAN_BAND) {
+              const crowdNeighbors = draft.spatialGrid
+                ? draft.spatialGrid.getNearbyUnits(unit.position, CROWD_ARRIVAL_SCAN_BAND)
+                : draft.units;
+              if (hasCrowdConvergingOn(unit, order, crowdNeighbors)) {
+                arrivalThreshold = Math.max(arrivalThreshold, FORMATION_ARRIVAL_DISTANCE);
+              }
+            }
 
             // Check if movement is paused due to collision attempts
             const isInRecentCombat = unit.lastCombatEngagementMs && nowMs - unit.lastCombatEngagementMs < 2000;
@@ -2148,8 +2164,12 @@ export const useGameStore = create<Store>((set, get) => ({
               target = nearbyEnemy;
             }
 
-            // Clear order and enter idle state when destination reached
-            if (distanceToOrder <= arrivalThreshold) {
+            // Clear order and enter idle state when destination reached. Re-measure from the unit's
+            // CURRENT position (after this tick's step), not the stale branch-top distance: a unit
+            // converging into a crowd plows to within its crowd-aware arrival radius mid-step, and
+            // the separation pass would eject it again before the next tick — so a check against the
+            // pre-move distance would never catch the arrival, and it would jitter on the spot.
+            if (distance3D(unit.position, order) <= arrivalThreshold) {
               delete draft.unitOrders[unit.id];
               delete unit.arrivedAtDestinationMs;
               unit.unitState = 'idle';
@@ -2930,6 +2950,40 @@ export const useGameStore = create<Store>((set, get) => ({
         team.dirty = true;
       }
 
+      // Fan the loose (non-formed) movers across spaced slots around the click rather than sending
+      // every unit to the identical point — a shared destination is unreachable to the tight 0.5
+      // arrival radius once the group's spacing holds each unit a ring out, so they jitter on the
+      // spot forever (see packedSlotsAround). Each unit is matched to its NEAREST free slot so it
+      // claims ground on its own approach side instead of being sent across the blob (which would
+      // strand it on the far edge, blocked by the teammates between it and a far slot). Movers are
+      // visited in a deterministic order (distance to the click, then id) and "first free slot
+      // wins" ties resolve by slot index, so both multiplayer peers assign identically.
+      const looseMovers = cmd.unitIds
+        .map((id) => draft.units.find((x) => x.id === id))
+        .filter((u): u is Unit =>
+          !!u && u.ownerId === ownerId && !(u.fireTeamId !== undefined && draft.fireTeams[u.fireTeamId] !== undefined));
+      looseMovers.sort((a, b) =>
+        (distanceSquared3D(a.position, cmd.target) - distanceSquared3D(b.position, cmd.target)) || (a.id < b.id ? -1 : 1));
+      const slots = packedSlotsAround(cmd.target, looseMovers.length);
+      const slotTaken = new Array<boolean>(slots.length).fill(false);
+      const slotById = new Map<string, Position3D>();
+      for (const mover of looseMovers) {
+        let nearestSlot = -1;
+        let nearestDistance = Infinity;
+        for (let slotIndex = 0; slotIndex < slots.length; slotIndex++) {
+          if (slotTaken[slotIndex]) continue;
+          const candidateDistance = distanceSquared3D(mover.position, slots[slotIndex]);
+          if (candidateDistance < nearestDistance) {
+            nearestDistance = candidateDistance;
+            nearestSlot = slotIndex;
+          }
+        }
+        if (nearestSlot >= 0) {
+          slotTaken[nearestSlot] = true;
+          slotById.set(mover.id, slots[nearestSlot]);
+        }
+      }
+
       for (const id of cmd.unitIds) {
         const u = draft.units.find((x) => x.id === id);
         if (!u || u.ownerId !== ownerId) continue; // Only allow moving the acting player's units
@@ -2937,6 +2991,11 @@ export const useGameStore = create<Store>((set, get) => ({
         // Formed-team members are moved via their team anchor above; skip the
         // individual-order path so the maintenance pass keeps them in formation.
         if (u.fireTeamId !== undefined && draft.fireTeams[u.fireTeamId]) continue;
+
+        // This unit's fanned-out slot around the click (slot 0 = the exact click for the nearest
+        // unit). Falls back to the click if no slot was assigned (defensive — every loose mover
+        // gets one).
+        const destination = slotById.get(id) ?? cmd.target;
 
         // A mouse move order takes manual control back from a piloted King/Queen: stop
         // piloting it so the order actually takes effect. The pilot tick block drives the
@@ -2963,8 +3022,15 @@ export const useGameStore = create<Store>((set, get) => ({
         // the group is spread out enough for the straight lines to diverge).
         // The destination check below is shared by every unit in the command,
         // so it can't cause that asymmetry.
+        let orderTarget = destination;
         try {
-          if (!activeTerrain.canAnimalMoveTo(u.animal, cmd.target)) {
+          // A fanned slot can land on terrain this animal cannot enter (e.g. a slot pushed onto
+          // water for a ground unit) even when the click itself is valid — fall back to the click
+          // so the unit still gets a reachable order rather than being dropped or stranding offshore.
+          if (!activeTerrain.canAnimalMoveTo(u.animal, orderTarget)) {
+            orderTarget = cmd.target;
+          }
+          if (!activeTerrain.canAnimalMoveTo(u.animal, orderTarget)) {
             console.log(`❌ ${u.animal} cannot move to target position (blocked by water/terrain)`);
             continue; // Skip this unit
           }
@@ -2974,13 +3040,13 @@ export const useGameStore = create<Store>((set, get) => ({
         }
 
         // Set new movement order
-        draft.unitOrders[id] = cmd.target;
+        draft.unitOrders[id] = orderTarget;
 
         // Re-home the stance anchor to the destination: a move order is a
         // positional intent, so a Defensive/Skirmish/Guard unit now leashes and
         // returns around where it was sent, not where it started. This is the one
         // place a move updates the anchor (see UnitBehavior.anchor).
-        u.anchor = { x: cmd.target.x, y: 0, z: cmd.target.z };
+        u.anchor = { x: orderTarget.x, y: 0, z: orderTarget.z };
 
         // Cancel any patrol route: an explicit move order replaces the patrol, so
         // the Queen must NOT resume walking the route once she reaches the order's
@@ -4546,6 +4612,80 @@ function isAirborneUnit(unit: Unit): boolean {
          (unit.flightLift ?? 0) > 0;
 }
 
+// A loose (non-formation) unit ordered onto a point cannot reach the tight 0.5 arrival radius
+// once a group is sent there together: every unit chases the SAME target, but the spacing passes
+// hold each one a personal-space ring out, so they shove one another off the spot and never get
+// within 0.5 to clear the order — the user-visible "animals keep jittering and knocking each other
+// around as they close in." Kings and queens are worst: an ordered royal is a movement-priority
+// unit, so it ignores friendly collision and plows onto the exact point, only to be ejected by the
+// separation pass the same tick — a permanent in/out oscillation. The crowd never trips the
+// (enemy-only) stuck-abandon either, so the order is never dropped.
+//
+// Fix (mirrors the formation arrival fix, see FORMATION_ARRIVAL_DISTANCE): widen the arrival
+// radius to the area a converging crowd physically occupies, so a unit settles as soon as it
+// reaches the blob the group forms rather than fighting to the unreachable centre. moveCommand
+// stamps anchor = the order target on every unit it sends, so squadmates of one command share an
+// anchor; counting them gives the crowd size, and the arrival radius grows with it. Once the order
+// clears it is gone for good (no re-acquire), so a unit nudged back out by separation never
+// re-triggers — the blob simply relaxes to spacing and comes to rest.
+
+// How near a teammate's destination (its stance anchor — moveCommand stamps anchor = order target
+// on every unit it sends) must be to this unit's destination to count as a "crowd-mate" packing the
+// same patch of ground: the fanned slots of one group move sit about a spacing apart, so the radius
+// is a couple of rings wide to catch a unit's nearest slot-neighbours. Squared, in world units.
+const CROWD_ARRIVAL_ANCHOR_TOLERANCE_SQ = (UNIT_MINIMUM_SPACING * 2) * (UNIT_MINIMUM_SPACING * 2);
+// Only units already near their destination scan for crowd-mates; a unit still marching in from
+// afar keeps the tight default. Wide enough to enclose the blob of any realistic group so its
+// outermost members still see the crowd and settle.
+const CROWD_ARRIVAL_SCAN_BAND = UNIT_MINIMUM_SPACING * 5;
+
+// True when `unit` is settling into a crowd — a same-side, same-layer teammate is bound for an
+// adjacent patch of ground (anchor within tolerance of this unit's `order`). Such a unit cannot
+// reach the tight 0.5 arrival radius (its slot-neighbour's personal space holds it a ring out, so
+// it would jitter on the spot forever); the caller relaxes its arrival to the formation radius so
+// it settles where the crowd allows, exactly as a fire-team member does. A lone mover finds no
+// crowd-mate and keeps the precise default.
+function hasCrowdConvergingOn(
+  unit: Unit,
+  order: Position3D,
+  neighbors: ReadonlyArray<Unit>,
+): boolean {
+  const unitAirborne = isAirborneUnit(unit);
+  for (const other of neighbors) {
+    if (other.id === unit.id || other.kind === 'Base') continue;
+    if (other.ownerId !== unit.ownerId) continue;          // own side only
+    if (isAirborneUnit(other) !== unitAirborne) continue;  // same movement layer
+    if (!other.anchor) continue;
+    const anchorDx = other.anchor.x - order.x;
+    const anchorDz = other.anchor.z - order.z;
+    if (anchorDx * anchorDx + anchorDz * anchorDz <= CROWD_ARRIVAL_ANCHOR_TOLERANCE_SQ) return true;
+  }
+  return false;
+}
+
+// A deterministic packed layout of `count` destinations around `center`, spaced about
+// UNIT_MINIMUM_SPACING apart via a sunflower (phyllotaxis) spiral. Sending a whole group to ONE
+// point is the root cause of the close-in jitter: the spacing passes hold every unit a personal-
+// space ring out from the others, so they shove each other off the spot and never settle (worst
+// for kings/queens, which plow onto the exact point and are ejected by the separation pass the
+// same tick). Giving each unit its own pre-spaced slot lets every member arrive cleanly with no
+// dog-pile. Slot 0 is the exact click; the rest spiral outward (radius ∝ √index keeps the disk
+// evenly filled, the golden angle keeps neighbours apart).
+function packedSlotsAround(center: Position3D, count: number): Position3D[] {
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const slots: Position3D[] = [];
+  for (let index = 0; index < count; index++) {
+    if (index === 0) {
+      slots.push({ x: center.x, y: center.y, z: center.z });
+      continue;
+    }
+    const radius = UNIT_MINIMUM_SPACING * Math.sqrt(index);
+    const angle = index * goldenAngle;
+    slots.push({ x: center.x + radius * Math.cos(angle), y: center.y, z: center.z + radius * Math.sin(angle) });
+  }
+  return slots;
+}
+
 // Shared empty set so the collision/separation passes can default their priority
 // inputs without allocating, and so a missing argument can never reintroduce the
 // per-peer local state these parameters were created to keep OUT of the sim.
@@ -4833,6 +4973,16 @@ function clearPathForSelectedRoyals(draft: Store, priorityUnitIds: ReadonlySet<s
     if (royal.kind !== 'King' && royal.kind !== 'Queen') continue;
     if (!playerOwnedIds.has(royal.ownerId)) continue;
     if (!selectedIds.has(royal.id)) continue;
+
+    // Only carve a path for a royal that is actually trying to MOVE — one with an active order
+    // or under live pilot control. A selected royal standing on its destination needs no make-way,
+    // and shoving the surrounding army every tick while it is parked churns the crowd around a
+    // stationary King/Queen (the "kings and queens are especially jittery" symptom): the army is
+    // pushed out, drifts back via separation, and is pushed again. Parked royals are skipped here;
+    // the spacing/separation passes still keep the crowd off them.
+    const royalIsMoving = draft.unitOrders[royal.id] !== undefined ||
+                          draft.pilotedUnitIdByOwner[royal.ownerId] === royal.id;
+    if (!royalIsMoving) continue;
 
     // A royal carves its make-way clearance only out of teammates on its OWN layer: a flying
     // King/Queen (Bee/Owl) shoves other flyers aside but glides over grounded units, while a
