@@ -22,6 +22,8 @@ import { AnimalSelectionLobby } from './components/screens/AnimalSelectionLobby'
 import { MultiplayerScreen } from './components/Working/MultiplayerScreen';
 import { useMultiplayerSession, setPendingJoinCode } from './components/Working/net/multiplayerSession';
 import { readRoomCodeFromUrl } from './components/Working/roomInvite';
+import { applyDevFlagsFromUrl } from './components/Working/devFlags';
+import { PerfOverlay } from './components/Working/PerfOverlay';
 import { PostGameScreen } from './components/screens/PostGameScreen';
 import { LeaderboardScreen } from './components/Working/LeaderboardScreen';
 import { ConquestLobby } from './components/Working/conquest/ConquestLobby';
@@ -40,6 +42,10 @@ export default function App() {
 
   useEffect(() => {
     initialize();
+
+    // Profiling/testing toggles from the URL (?simworker=1, ?profile=1) — applied at boot so
+    // the worker flip is latched before the first match start and the overlay shows on play.
+    applyDevFlagsFromUrl(window.location.search);
 
     // A join link (…?room=CODE) drops the recipient straight into multiplayer
     // with the code pre-filled — no typing. Capture it for the multiplayer
@@ -192,6 +198,8 @@ export default function App() {
       )}
       <PostGameScreen />
       <KeyboardShortcuts />
+      {/* Opt-in frame-timing overlay (Ctrl+Shift+P or ?profile=1) for the worker-flip A/B. */}
+      <PerfOverlay />
       <div className="hud">
         <HUD />
       </div>
