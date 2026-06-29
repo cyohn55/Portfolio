@@ -99,7 +99,6 @@ test.describe('Queen spawn rally point', () => {
           queenRallyTargets: {},
           // Force the very next tick over the spawn interval threshold.
           lastSpawnAtMsByQueenId: {},
-          selectedUnitIds: ['test-queen'],
           deadUnitsToRemove: [],
           targetCache: {},
           aiThinkingOffset: {},
@@ -156,6 +155,10 @@ test.describe('Queen spawn rally point', () => {
     const result = await page.evaluate(
       async ({ queenPosition, dtMs, spawnIntervalMs }) => {
         const store = (window as any).__rtsStore;
+        // Selection lives on useUiStore since P1-1; the spawn auto-select runs in the
+        // main-thread derivation (syncLocalSelectionMirror), exposed as __rtsSyncLocalMirrors.
+        const ui = (window as any).__rtsUiStore;
+        const syncMirrors = (window as any).__rtsSyncLocalMirrors as () => void;
         const state = store.getState();
 
         const local = state.localPlayerId;
@@ -194,12 +197,16 @@ test.describe('Queen spawn rally point', () => {
 
         store.setState({
           units: [playerBase, enemyBase, queen, king],
-          matchStarted: true, isPaused: false, gameOver: false, winner: null,
+          matchStarted: true, gameOver: false, winner: null,
           unitOrders: {}, queenPatrols: {}, queenRallyTargets: {},
-          lastSpawnAtMsByQueenId: {},
-          selectedUnitIds: ['test-queen'], deadUnitsToRemove: [],
+          lastSpawnAtMsByQueenId: {}, deadUnitsToRemove: [],
           targetCache: {}, aiThinkingOffset: {},
         });
+        // Only the QUEEN is selected here (not the King). Selection is local-UI (P1-1);
+        // baseline the selection mirror against the pre-spawn units so the next sync
+        // only treats the newborn as fresh.
+        ui.getState().selectUnits(['test-queen']);
+        syncMirrors();
 
         // Designate the King as the rally target. The action validates it is a
         // living friendly monarch and stores a 'follow' target.
@@ -208,9 +215,11 @@ test.describe('Queen spawn rally point', () => {
         const followRecorded =
           Boolean(recorded) && recorded.mode === 'follow' && recorded.monarchId === 'test-king';
 
-        // Tick once past the spawn interval so the Queen spawns exactly one Unit.
+        // Tick once past the spawn interval so the Queen spawns exactly one Unit, then
+        // run the main-thread mirror derivation the real game loop runs after each tick.
         const nowMs = Date.now() + spawnIntervalMs + 1;
         store.getState().tick(dtMs / 1000, nowMs);
+        syncMirrors();
 
         const after = store.getState();
         const spawned = after.units.filter(
@@ -224,7 +233,7 @@ test.describe('Queen spawn rally point', () => {
         );
         // Gating: only the QUEEN is selected here (not the King), so the new
         // followers must NOT be auto-folded into the selection.
-        const selectedIds = new Set(after.selectedUnitIds);
+        const selectedIds = new Set(ui.getState().selectedUnitIds);
         const noneAutoSelected = spawned.every((u: any) => !selectedIds.has(u.id));
 
         return { followRecorded, spawnedCount, everySpawnedFollows, noneAutoSelected };
@@ -247,6 +256,10 @@ test.describe('Queen spawn rally point', () => {
     const result = await page.evaluate(
       async ({ queenPosition, dtMs, spawnIntervalMs }) => {
         const store = (window as any).__rtsStore;
+        // Selection is local-UI on useUiStore (P1-1); the spawn auto-select runs in the
+        // main-thread derivation (syncLocalSelectionMirror), exposed as __rtsSyncLocalMirrors.
+        const ui = (window as any).__rtsUiStore;
+        const syncMirrors = (window as any).__rtsSyncLocalMirrors as () => void;
         const state = store.getState();
 
         const local = state.localPlayerId;
@@ -283,26 +296,31 @@ test.describe('Queen spawn rally point', () => {
 
         store.setState({
           units: [playerBase, enemyBase, queen, king],
-          matchStarted: true, isPaused: false, gameOver: false, winner: null,
+          matchStarted: true, gameOver: false, winner: null,
           unitOrders: {}, queenPatrols: {}, queenRallyTargets: {},
-          lastSpawnAtMsByQueenId: {},
-          // The KING is the active selection — the trigger for auto-selecting
-          // followers as they spawn.
-          selectedUnitIds: ['test-king'], deadUnitsToRemove: [],
+          lastSpawnAtMsByQueenId: {}, deadUnitsToRemove: [],
           targetCache: {}, aiThinkingOffset: {},
         });
+        // The KING is the active selection — the trigger for auto-selecting followers as
+        // they spawn. Selection is local-UI (P1-1); baseline the mirror against the
+        // pre-spawn units so the next sync only treats the newborn as fresh.
+        ui.getState().selectUnits(['test-king']);
+        syncMirrors();
 
         store.getState().setQueenRally({ queenId: 'test-queen', target: { mode: 'follow', monarchId: 'test-king' } });
 
         const nowMs = Date.now() + spawnIntervalMs + 1;
         store.getState().tick(dtMs / 1000, nowMs);
+        // Run the main-thread mirror derivation the real game loop runs after each tick;
+        // this is what folds the newborn follower into the local selection.
+        syncMirrors();
 
         const after = store.getState();
         const spawned = after.units.filter(
           (u: any) => u.ownerId === local && u.kind === 'Unit' && !preexistingIds.has(u.id),
         );
         const spawnedCount = spawned.length;
-        const selectedIds = new Set(after.selectedUnitIds);
+        const selectedIds = new Set(ui.getState().selectedUnitIds);
         // Every newborn follower must have been folded into the selection, and the
         // King must remain selected alongside them.
         const everySpawnedSelected = spawnedCount > 0 && spawned.every((u: any) => selectedIds.has(u.id));

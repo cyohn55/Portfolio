@@ -20,9 +20,9 @@ export function PostGameScreen() {
   const units = useGameStore((s) => s.units);
   const matchStats = useGameStore((s) => s.matchStats);
   const transitionToScreen = useUiStore((s) => s.transitionToScreen);
-  const selectedAnimalPool = useGameStore((s) => s.selectedAnimalPool);
+  const selectedAnimalPool = useUiStore((s) => s.selectedAnimalPool); // lineup is local-UI (P1-1)
   const initializeGame = useGameStore((s) => s.initializeGame);
-  const chooseAnimalsForLocal = useGameStore((s) => s.chooseAnimalsForLocal);
+  const chooseAnimalsForLocal = useUiStore((s) => s.chooseAnimalsForLocal); // lineup is local-UI (P1-1)
   const startMatch = useGameStore((s) => s.startMatch);
   const unpauseGame = useUiStore((s) => s.unpauseGame);
 

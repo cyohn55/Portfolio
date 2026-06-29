@@ -708,7 +708,7 @@ function InstancedUnits() {
   // Which animals are actually fielded this match — limits how many instanced
   // meshes we create. Recomputed only when players/selection change.
   const players = useGameStore((s) => s.players);
-  const selectedAnimalPool = useGameStore((s) => s.selectedAnimalPool);
+  const selectedAnimalPool = useUiStore((s) => s.selectedAnimalPool); // lineup is local-UI (P1-1)
   const inPlayAnimals = useMemo<AnimalId[]>(() => {
     const set = new Set<AnimalId>();
     players.forEach((p) => p.animals.forEach((a) => set.add(a)));

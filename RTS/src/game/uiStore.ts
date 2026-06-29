@@ -14,6 +14,9 @@
 // cutover is behaviour-neutral.
 
 import { create } from 'zustand';
+// Type-only import (no runtime dependency, so uiStore stays a leaf module — types.ts
+// never imports a store, so there is no cycle).
+import type { AnimalId } from './types';
 
 // Position of the cursor-deploy teardrop, mirroring the sim's Position3D shape without
 // importing the sim store (uiStore stays a leaf module the worker-bound state.ts can
@@ -76,6 +79,13 @@ type UiStore = {
   pilotedFireTeamId: string | null;
   setPilotMirror: (pilotedUnitId: string | null, pilotedFireTeamId: string | null) => void;
 
+  // The local player's pre-game animal lineup (up to 3), chosen in the lobby. Pure UI
+  // selection: the simulation reads it ONCE at match setup (startMatch bakes it into the
+  // local player's units) and never per-tick, so it is main-thread state — moved off the
+  // sim store in P1-1. startMatch / startMultiplayerMatch read or seed it cross-store.
+  selectedAnimalPool: AnimalId[];
+  chooseAnimalsForLocal: (animals: AnimalId[]) => void;
+
   unitPlacementCount: number;
   unitPlacementCursor: PlacementCursor | null;
   setUnitPlacementCount: (count: number) => void;
@@ -103,6 +113,9 @@ export const useUiStore = create<UiStore>((set) => ({
   pilotedUnitId: null,
   pilotedFireTeamId: null,
   setPilotMirror: (pilotedUnitId, pilotedFireTeamId) => set({ pilotedUnitId, pilotedFireTeamId }),
+
+  selectedAnimalPool: ['Bee', 'Bear', 'Fox'],
+  chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
 
   unitPlacementCount: 0,
   unitPlacementCursor: null,

@@ -386,7 +386,9 @@ export interface GameState {
   units: Unit[];
   lastSpawnAtMsByQueenId: Record<string, number>;
   lastRegenAtMsByUnitId: Record<string, number>; // track individual unit regen timing
-  selectedAnimalPool: AnimalId[]; // UI selection for local player pre-game
+  // NOTE: `selectedAnimalPool` (the local player's pre-game lineup) moved to `useUiStore`
+  // (src/game/uiStore.ts) in worker-offload P1-1 — pure UI selection the sim reads only at
+  // match setup (never per-tick), so it is main-thread state, not sim state.
   localPlayerId: string | null;
   matchStarted: boolean;
   // Monotonic counter bumped once per startMatch(). Lets long-lived views that

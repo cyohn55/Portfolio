@@ -1001,7 +1001,7 @@ export function GamepadController() {
       case 'selectGroup2':
       case 'selectGroup3': {
         const index = Number(actionId.slice(-1)) - 1;
-        const animal = state.selectedAnimalPool[index];
+        const animal = useUiStore.getState().selectedAnimalPool[index]; // lineup is local-UI (P1-1)
         if (!animal) break;
         const ids = state.units
           .filter((u) => u.ownerId === state.localPlayerId && u.kind !== 'Base' && u.animal === animal)

@@ -754,7 +754,7 @@ type Store = GameState & {
   // (src/game/uiStore.ts) — pure main-thread UI state, never read by the tick.
 
   initializeGame: () => void;
-  chooseAnimalsForLocal: (animals: AnimalId[]) => void;
+  // chooseAnimalsForLocal moved to useUiStore (P1-1): pure pre-game UI selection.
   startMatch: (withAI?: boolean, seed?: number) => void;
   // Configure + start a 1v1 human-vs-human match from the agreed start handshake
   // (shared seed + both lineups), keyed to this peer's role. Sets up two non-AI
@@ -1110,7 +1110,6 @@ export const useGameStore = create<Store>((set, get) => ({
   units: [],
   lastSpawnAtMsByQueenId: {},
   lastRegenAtMsByUnitId: {},
-  selectedAnimalPool: ['Bee', 'Bear', 'Fox'],
   localPlayerId: null,
   matchStarted: false,
   matchStartNonce: 0,
@@ -1207,7 +1206,7 @@ export const useGameStore = create<Store>((set, get) => ({
     useUiStore.getState().resetUnitPlacement();
   },
 
-  chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),
+  // chooseAnimalsForLocal moved to useUiStore (P1-1): pure pre-game UI selection.
 
   startMatch: (withAI = true, seed?: number) => {
     const state = get();
@@ -1223,12 +1222,14 @@ export const useGameStore = create<Store>((set, get) => ({
 
     console.log('🎮 Starting match with players:', state.players);
 
+    // The local human's lineup is the lobby selection (selectedAnimalPool), now on
+    // useUiStore (P1-1) — read it once here at setup (the sim never reads it per-tick).
+    const localAnimalPool = useUiStore.getState().selectedAnimalPool;
     for (const player of state.players) {
-      // The local human's lineup is the lobby selection (selectedAnimalPool);
-      // every other player (the AI, or a remote human in multiplayer) carries its
-      // own lineup in player.animals. Keying off localPlayerId rather than isAI
-      // lets a second human player use its own lineup instead of the local pool.
-      const chosenAnimals = player.id === state.localPlayerId ? state.selectedAnimalPool : player.animals;
+      // The local human's lineup is the lobby selection; every other player (the AI, or a
+      // remote human in multiplayer) carries its own lineup in player.animals. Keying off
+      // localPlayerId rather than isAI lets a second human player use its own lineup.
+      const chosenAnimals = player.id === state.localPlayerId ? localAnimalPool : player.animals;
       // Initial facing is role/side-based, NOT "is this the local player" — in
       // multiplayer each peer is the local player on its own machine, so an
       // is-local rotation would face p0/p1 opposite ways on the two peers and
@@ -1371,9 +1372,11 @@ export const useGameStore = create<Store>((set, get) => ({
     set({
       players,
       localPlayerId: localRole,
-      selectedAnimalPool: lineups[localRole],
       netMode: localRole === 'p0' ? 'host' : 'guest',
     });
+    // The local lineup is pre-game UI state on useUiStore (P1-1); seed it before
+    // startMatch reads it to build this peer's units.
+    useUiStore.getState().chooseAnimalsForLocal(lineups[localRole]);
     // Build units + seed the deterministic sim identically on both peers.
     get().startMatch(true, seed);
     // startMatch leaves the match paused (single-player waits on the instructions
@@ -3389,7 +3392,7 @@ export const useGameStore = create<Store>((set, get) => ({
   pilotMonarchBySlot: (slotIndex) => {
     const prev = get();
     if (!prev.localPlayerId) return;
-    const animal = prev.selectedAnimalPool[slotIndex];
+    const animal = useUiStore.getState().selectedAnimalPool[slotIndex]; // lineup is local-UI (P1-1)
     if (!animal) return;
 
     // If already piloting this animal's monarch, the same key unpilots it. Pilot mirror
@@ -3446,7 +3449,7 @@ export const useGameStore = create<Store>((set, get) => ({
   pilotCycleMonarch: () => {
     const prev = get();
     if (!prev.localPlayerId) return;
-    const pool = prev.selectedAnimalPool;
+    const pool = useUiStore.getState().selectedAnimalPool; // lineup is local-UI (P1-1)
     if (pool.length === 0) return;
 
     // Resolve the pool slot of the animal we are currently piloting, so the
@@ -4294,6 +4297,13 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
   // Moved off the sim store in worker-offload P1-1, so browser tests that drive or read
   // those fields must reach them here, not on __rtsStore.
   (window as any).__rtsUiStore = useUiStore;
+  // The post-tick main-thread derivations (pilot + selection mirror). The real game loop
+  // (HexGrid) runs these each frame after the tick; a headless test that ticks manually
+  // must call this to exercise the derived UI mirrors (death-release, spawn auto-select).
+  (window as any).__rtsSyncLocalMirrors = () => {
+    syncLocalPilotMirror();
+    syncLocalSelectionMirror();
+  };
   (window as any).__rtsAnimals = ANIMALS;
   (window as any).__rtsMeleeRange = MELEE_RANGE;
   // Expose leaderboard utilities so the spec in Unit Tests/ can exercise the

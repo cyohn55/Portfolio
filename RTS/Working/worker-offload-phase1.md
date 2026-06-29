@@ -167,9 +167,36 @@ riskiest mechanical step, so it lands first and on its own.
     mechanical re-point to `__rtsUiStore` (and a `syncLocalSelectionMirror` call for the spawn
     auto-select assertions) — deferred until Playwright is re-enabled, since they can't be run
     or verified headlessly here.
-- **Remaining slices (next):** `selectedAnimalPool`. `localPlayerId` stays on the sim store
-  (read sim-wide; becomes worker config in P1-2). Each slice: same tsc-driven pattern + an
-  in-browser pass.
+- **Slice 4 DONE (selectedAnimalPool) — 2026-06-28.** The pre-game lineup + its setter
+  `chooseAnimalsForLocal` moved onto `useUiStore`. The sim reads it only ONCE at match setup
+  (startMatch bakes the local player's units from it), never per-tick, so it is main-thread
+  UI state. `startMatch` reads it cross-store (`useUiStore.getState().selectedAnimalPool`);
+  `startMultiplayerMatch` seeds it cross-store before calling startMatch. tsc-driven cutover:
+  AnimalSelectionButtons, UnitsLayer, PostGameScreen (reactive subs); KeyboardShortcuts,
+  GamepadController (selectByAnimal / selectGroup reads); AnimalSelectionLobby + PostGameScreen
+  (`chooseAnimalsForLocal`); replayRecorder (lineup capture). `useUiStore` takes a type-only
+  `AnimalId` import (no cycle). **Verified:** tsc + vite build clean; all 8 `.mjs` harnesses +
+  boundary guard green. **In-browser checklist:** lobby animal picks + "Play Again" lineup
+  carry into the match; the King/Queen selection buttons + select-group keys map to the chosen
+  3 animals.
+- **Disabled browser specs RE-POINTED (P1-1 follow-up) — 2026-06-28.** With `__rtsUiStore`
+  and a new `__rtsSyncLocalMirrors()` dev handle (runs the post-tick pilot+selection
+  derivations a manual-ticking test needs) exposed, the genuinely-broken Playwright specs were
+  fixed: `monarch-reselect-followers` (selection/pilot/pool now read+written on `__rtsUiStore`),
+  `queen-rally-spawn` ×2 (the spawn auto-select tests baseline + run `__rtsSyncLocalMirrors`
+  around the manual tick and read selection from `__rtsUiStore`), and `lockstep-determinism`
+  (lineup seeded via `__rtsUiStore.chooseAnimalsForLocal`, unpause via `__rtsUiStore.unpauseGame`
+  — the latter also fixing a stale T2-B `isPaused` reference). Still **NOT runnable here**
+  (Playwright disabled), so these are correct-by-construction, not live-verified. Specs that
+  only set `selectedUnitIds`/`isPaused` as inert setup and never read them back (move-command-*,
+  queen-patrol-stale-path, turtle-shell-lock, bridge-combat-crossing, dynamics, unit-separation)
+  were left untouched: the sim ignores selection since P1-PRE, so those keys are harmless
+  phantoms and the specs still pass.
+- **Remaining:** `localPlayerId` stays on the sim store (read sim-wide; becomes worker config
+  in P1-2). With selection / pilot / placement / lineup all off the sim store, P1-1's
+  Bucket-C extraction is essentially complete — what's left on the sim store the UI subscribes
+  to is Bucket-A (units, players, gameOver, matchStats, …), which become the worker snapshot
+  in P1-2.
 
 - **Sim module (`state.ts`):** keeps Bucket A + A′ + the tick + all command handlers.
   Becomes "the simulation," unaware of any store split.

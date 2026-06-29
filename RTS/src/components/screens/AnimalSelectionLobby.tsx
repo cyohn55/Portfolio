@@ -135,7 +135,7 @@ function normalizeSpeed(speed: number): number {
 
 export function AnimalSelectionLobby() {
   const transitionToScreen = useUiStore((s) => s.transitionToScreen);
-  const chooseAnimalsForLocal = useGameStore((s) => s.chooseAnimalsForLocal);
+  const chooseAnimalsForLocal = useUiStore((s) => s.chooseAnimalsForLocal); // lineup is local-UI (P1-1)
   const initializeGame = useGameStore((s) => s.initializeGame);
   const startMatch = useGameStore((s) => s.startMatch);
 

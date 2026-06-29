@@ -90,10 +90,14 @@ test.describe('lockstep determinism', () => {
             ...p,
             animals: [...lineup],
           }));
-          store.setState({ players, selectedAnimalPool: [...lineup] });
+          store.setState({ players });
+          // The local lineup + pause live on useUiStore since P1-1 / T2-B; startMatch
+          // reads the lineup from there to build this peer's units.
+          const ui = (window as any).__rtsUiStore;
+          ui.getState().chooseAnimalsForLocal([...lineup]);
           store.getState().startMatch(true, seed);
           // startMatch leaves the match paused; unpause so the tick advances.
-          store.setState({ isPaused: false });
+          ui.getState().unpauseGame();
         }
 
         function runOnce(): string[] {

@@ -52,6 +52,8 @@ test.describe('reselecting a King reselects his followers', () => {
     const result = await page.evaluate(
       async ({ kingAnchor }) => {
         const store = (window as any).__rtsStore;
+        // Selection, pilot mirror + the animal pool live on useUiStore since P1-1.
+        const ui = (window as any).__rtsUiStore;
         const state = store.getState();
 
         const local = state.localPlayerId;
@@ -59,7 +61,7 @@ test.describe('reselecting a King reselects his followers', () => {
         if (!otherOwner) return { setupError: 'no enemy player present' } as const;
         // pilotCycleMonarch walks the animal pool; the King must be one of those
         // animals for the cycle to land on him. The first slot is the simplest target.
-        const pool = state.selectedAnimalPool as string[];
+        const pool = ui.getState().selectedAnimalPool as string[];
         if (!pool || pool.length === 0) return { setupError: 'no animal pool' } as const;
         const kingAnimal = pool[0];
 
@@ -95,26 +97,27 @@ test.describe('reselecting a King reselects his followers', () => {
 
         store.setState({
           units: [playerBase, enemyBase, king, ...followers],
-          matchStarted: true, isPaused: false, gameOver: false, winner: null,
+          matchStarted: true, gameOver: false, winner: null,
           unitOrders: {}, queenPatrols: {}, queenRallyTargets: {},
           lastSpawnAtMsByQueenId: {}, deadUnitsToRemove: [],
           targetCache: {}, aiThinkingOffset: {},
-          // The King is NOT selected and nothing is piloted — exactly the state
-          // after cycling away from him while his band keeps following.
-          selectedUnitIds: [],
-          pilotedUnitId: null,
         });
+        // The King is NOT selected and nothing is piloted — exactly the state after
+        // cycling away from him while his band keeps following. Selection + pilot mirror
+        // live on useUiStore (P1-1).
+        ui.getState().selectUnits([]);
+        ui.setState({ pilotedUnitId: null });
 
         // Reselect the King via the real "A" cycle action. Not piloting, so it
         // lands on the first pool animal's monarch — our planted King.
         store.getState().pilotCycleMonarch();
 
-        const after = store.getState();
-        const selected = new Set(after.selectedUnitIds);
-        const landedOnKing = after.pilotedUnitId === 'test-king' && selected.has('test-king');
+        const afterUi = ui.getState();
+        const selected = new Set(afterUi.selectedUnitIds);
+        const landedOnKing = afterUi.pilotedUnitId === 'test-king' && selected.has('test-king');
         const everyFollowerSelected = followerIds.every((id) => selected.has(id));
 
-        return { landedOnKing, everyFollowerSelected, selectedCount: after.selectedUnitIds.length };
+        return { landedOnKing, everyFollowerSelected, selectedCount: afterUi.selectedUnitIds.length };
       },
       { kingAnchor: QUEEN_POSITION },
     );

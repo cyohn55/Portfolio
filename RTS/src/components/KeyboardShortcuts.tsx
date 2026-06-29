@@ -60,7 +60,7 @@ export function KeyboardShortcuts() {
     // shortcut's keys from also panning the camera.
     const selectByAnimal = (index: number) => {
       const state = useGameStore.getState();
-      const animal = state.selectedAnimalPool[index];
+      const animal = useUiStore.getState().selectedAnimalPool[index]; // lineup is local-UI (P1-1)
       if (!animal) return;
       keyboardCoordinator.blockCameraInput(250);
       const ids = state.units

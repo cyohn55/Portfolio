@@ -15,6 +15,7 @@
 // identical.
 
 import { useGameStore, setCommandRecorder } from '../../../game/state';
+import { useUiStore } from '../../../game/uiStore';
 import type { NetCommand } from '../net/netMessages';
 
 const REPLAY_VERSION = 1;
@@ -45,7 +46,8 @@ function captureLineups(state: ReturnType<typeof useGameStore.getState>): Record
   const lineups: Record<string, string[]> = {};
   for (const player of state.players) {
     lineups[player.id] =
-      player.id === state.localPlayerId ? [...state.selectedAnimalPool] : [...player.animals];
+      // Local lineup is pre-game UI state on useUiStore (P1-1).
+      player.id === state.localPlayerId ? [...useUiStore.getState().selectedAnimalPool] : [...player.animals];
   }
   return lineups;
 }

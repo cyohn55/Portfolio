@@ -475,7 +475,7 @@ function CommandToggleButton({ enabled, onClick, icon, label, title }: CommandTo
 export function AnimalSelectionButtons() {
   const matchStarted = useGameStore((s) => s.matchStarted);
   const localPlayerId = useGameStore((s) => s.localPlayerId);
-  const selectedAnimalPool = useGameStore((s) => s.selectedAnimalPool);
+  const selectedAnimalPool = useUiStore((s) => s.selectedAnimalPool); // lineup is local-UI (P1-1)
   const units = useGameStore((s) => s.units);
   // Selection lives on useUiStore (local-UI, P1-1).
   const selectedUnitIds = useUiStore((s) => s.selectedUnitIds);
