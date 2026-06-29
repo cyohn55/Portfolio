@@ -22,6 +22,7 @@ import {
 } from '../../../game/state';
 import { pathfinder } from '../pathfinder';
 import { serializeTerrain } from './terrainOracle';
+import { getArenaBoundary } from '../arenaBoundary';
 import { pilotInput } from '../monarchPilot';
 import { frameProfiler } from '../../../utils/FrameProfiler';
 import type { SimRequest, SimResponse } from './simProtocol';
@@ -133,7 +134,7 @@ export function beginSinglePlayerIfPending(): boolean {
   // From now, sim commands route to the worker instead of mutating the main-thread mirror.
   setSimWorkerSink((command) => postCommand(command));
   started = true;
-  post({ kind: 'start', mode: 'single', seed, terrain, localLineup });
+  post({ kind: 'start', mode: 'single', seed, terrain, arenaBoundary: getArenaBoundary(), localLineup });
   return true;
 }
 
@@ -187,7 +188,14 @@ export function beginNetMatchIfPending(): boolean {
 
   setSimWorkerSink((command) => postCommand(command));
   netStarted = true;
-  post({ kind: 'startNetMatch', localRole: role, seed, lineups, terrain: serializeTerrain() });
+  post({
+    kind: 'startNetMatch',
+    localRole: role,
+    seed,
+    lineups,
+    terrain: serializeTerrain(),
+    arenaBoundary: getArenaBoundary(),
+  });
   return true;
 }
 

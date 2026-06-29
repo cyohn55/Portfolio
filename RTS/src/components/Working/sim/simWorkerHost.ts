@@ -23,6 +23,7 @@ import { runAiCommanders } from '../ai/aiCommander';
 import { LockstepEngine, type LockstepTransport } from '../net/lockstep';
 import type { PlayerRole, NetCommand } from '../net/netMessages';
 import { installTerrainOracle, type TerrainOracle } from './terrainOracle';
+import { registerArenaBoundary } from '../arenaBoundary';
 import { encodeUnits } from './snapshotCodec';
 import { SIM_SNAPSHOT_FIELDS, type SimRequest, type SimSnapshot } from './simProtocol';
 
@@ -116,6 +117,9 @@ export function processSimRequest(request: SimRequest): void {
   switch (request.kind) {
     case 'start': {
       oracle = request.terrain ? installTerrainOracle(request.terrain) : null;
+      // Register the off-map clamp worker-side; without it clampToArena no-ops here and
+      // units walk off the playable field. Undefined leaves any prior boundary as-is.
+      if (request.arenaBoundary !== undefined) registerArenaBoundary(request.arenaBoundary);
       if (request.mode === 'single') {
         // Reproduce the single-player lobby path: seed the local lineup, set up the AI
         // opponent + netMode 'single', then spawn the match with the shared seed.
@@ -150,6 +154,7 @@ export function processSimRequest(request: SimRequest): void {
     // --- multiplayer (worker-side lockstep) ---
     case 'startNetMatch': {
       oracle = request.terrain ? installTerrainOracle(request.terrain) : null;
+      if (request.arenaBoundary !== undefined) registerArenaBoundary(request.arenaBoundary);
       useGameStore.getState().startMultiplayerMatch({
         localRole: request.localRole,
         seed: request.seed,

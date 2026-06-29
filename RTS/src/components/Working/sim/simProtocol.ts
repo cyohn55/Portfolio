@@ -11,6 +11,7 @@
 import type { NetCommand, PlayerRole } from '../net/netMessages';
 import type { AnimalId } from '../../../game/types';
 import type { TerrainSnapshot } from './terrainOracle';
+import type { ArenaBoundary } from '../arenaBoundary';
 import type { UnitsHot } from './snapshotCodec';
 
 // --- Main thread → worker -------------------------------------------------------------
@@ -30,12 +31,18 @@ import type { UnitsHot } from './snapshotCodec';
  * `terrain` is the serialized nav/terrain the worker installs before building the match
  * (see terrainOracle). It is OPTIONAL: the headless harnesses run terrain-free (the sim
  * degrades to permissive terrain), the live game always sends it.
+ *
+ * `arenaBoundary` is the map-static off-map clamp (pure numbers, structured-cloneable) the
+ * worker registers so `clampToArena` confines units inside the playable field — without it
+ * the worker's module-level boundary stays null and units walk off the map. OPTIONAL for the
+ * same reason as `terrain` (harnesses run boundary-free; the live game always sends it).
  */
 export interface SimStartRequest {
   kind: 'start';
   mode?: 'single' | 'multiplayer';
   seed: number;
   terrain?: TerrainSnapshot;
+  arenaBoundary?: ArenaBoundary | null;
   // Single-player: the local human's lobby lineup.
   localLineup?: AnimalId[];
   // Multiplayer (and the determinism harness): this peer's role + both lineups.
@@ -75,6 +82,7 @@ export interface SimStartNetMatchRequest {
   seed: number;
   lineups: Record<PlayerRole, AnimalId[]>;
   terrain?: TerrainSnapshot;
+  arenaBoundary?: ArenaBoundary | null;
 }
 
 /** Drive the in-worker engine one animation frame. `pilot` is the local player's live
