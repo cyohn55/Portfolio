@@ -214,14 +214,43 @@ riskiest mechanical step, so it lands first and on its own.
 
 ## P1-2 — Stand up the worker, sim runs inside it
 
-- New `src/game/sim.worker.ts`: imports the sim module, owns the authoritative state,
-  receives `NetCommand`s (+ lifecycle: start/seed/tick-or-run), runs the tick.
-- `dispatchCommand` becomes `worker.postMessage({kind:'command', command})`.
-- After each tick the worker posts a snapshot; the main thread ingests it into
-  `useSimMirrorStore`. Start with `structuredClone` of the sim state (simple, correct);
-  optimise to SoA / transferable buffers later (was the §3 "re-point at SoA buffer").
-- HexGrid's loop no longer calls `tick()` directly — it pumps the worker (SP fixed
-  accumulator → `postMessage('run', n)`; the `syncLocal*Mirror` passes run on ingest).
+> **Approach chosen (user, 2026-06-28): Option B** — `useGameStore` STAYS the main-thread
+> React store (it becomes the snapshot mirror); the sim is extracted to run in the worker.
+> Components keep subscribing to `useGameStore` (≈0 churn), so the rendering risk — the part
+> that can't be verified headlessly here — is minimised. The risk lives in the sim-extraction
+> + protocol seam, which the `.mjs` determinism harnesses CAN verify.
+
+### P1-2 progress — worker pipeline built + proven (NOT yet flipped) — 2026-06-28
+
+Built the worker pipeline **additively** (the live loop still ticks in-thread), under
+`src/components/Working/sim/`:
+- **`simProtocol.ts`** — the serializable message types (`start` / `command` / `runTicks`
+  main→worker; `snapshot` worker→main) and `SIM_SNAPSHOT_FIELDS`: the plain-data Bucket-A
+  slice the mirror ingests, deliberately EXCLUDING the worker-internal machinery that must
+  never cross the wire (the `SeededRng` + `SpatialGrid` class instances, the per-tick caches).
+- **`simWorkerHost.ts`** — the testable bridge: `processSimRequest` forwards each request to
+  the store's existing deterministic actions (`startMultiplayerMatch` / `dispatchCommand` /
+  `tick`); `buildSimSnapshot` picks the snapshot fields + stamps the checksum/tick. Holds no
+  state of its own (the `useGameStore` singleton in its module copy of `state.ts` IS the sim).
+- **`sim.worker.ts`** — the thin Web Worker shell: `self.onmessage → processSimRequest`, then
+  posts `buildSimSnapshot()`. No logic, so the host can be Node-tested in-thread.
+- **Verified — `Unit Tests/sim-worker-determinism.harness.mjs`:** drives the *exact*
+  sim-checksum-baseline script (same seed/lineups/commands) through the host's request API and
+  asserts the per-tick checksum digest equals that harness's committed in-thread GOLDEN — proof
+  the protocol/host are a **lossless, deterministic** driver (message-driven === in-thread). Also
+  asserts the posted snapshot is `structuredClone`-able, preserves every unit's id/position/hp,
+  and carries neither the RNG nor the spatial grid. tsc + vite build clean; the sim-worker dir
+  added to the boundary guard (it's sim-side, owns the store legitimately). 9 harnesses green.
+
+### Remaining P1-2 (the flip — needs in-browser verification)
+- Main-thread ingest: `useGameStore.setState(snapshot.state)` each frame (the mirror); the
+  `syncLocal*Mirror` passes run right after, unchanged.
+- `dispatchCommand` → `worker.postMessage({kind:'command', …})`; HexGrid's SP accumulator →
+  `postMessage({kind:'runTicks', …})` instead of calling `tick()` directly.
+- Thread the lifecycle (`initializeGame` single-player lineup, match start) to the worker, and
+  decide the sequencing for the AI commander + lockstep engine + replay recorder (P1-3 — they
+  run alongside the tick, so they move worker-side or are re-plumbed). This is where rendering /
+  timing / determinism-over-the-boundary must be checked in a real browser.
 
 ## P1-3 — Move the sim-side companions INTO the worker (§3 Tier-3)
 

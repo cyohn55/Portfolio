@@ -16,9 +16,14 @@ import { dirname, join, relative, sep } from 'node:path';
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC_ROOT = join(REPO_ROOT, 'src');
 
-// The one file that is allowed to reach the store directly — it DEFINES the
-// boundary (the store, `getSimSnapshot`, `dispatchCommand`, the snapshot ingest).
+// Files allowed to reach the store directly because they ARE the boundary, not a
+// consumer of it: `state.ts` defines it (the store, `getSimSnapshot`, `dispatchCommand`),
+// and the P1-2 sim-worker host owns the authoritative store inside the worker (Option B —
+// the worker drives the sim, the main thread holds a read-only mirror). Both are sim-side,
+// not UI, so a direct `useGameStore.getState()` there is correct, not a leak.
 const BOUNDARY_FILE = join('src', 'game', 'state.ts');
+const SIM_WORKER_DIR = join('src', 'components', 'Working', 'sim') + sep;
+const isBoundaryFile = (rel) => rel === BOUNDARY_FILE || rel.startsWith(SIM_WORKER_DIR);
 
 // Read-side allowlist: files that still hold a direct `useGameStore.getState()`
 // because they own work deferred past T5. Each entry must name the blocking task
@@ -70,7 +75,7 @@ for (const file of files) {
   const hasDirectRead = DIRECT_READ.test(source);
   if (hasDirectRead) seenDirectReadFiles.add(rel);
 
-  const isBoundary = rel === BOUNDARY_FILE;
+  const isBoundary = isBoundaryFile(rel);
   const isDeferred = DEFERRED_DIRECT_READS.has(rel);
 
   lines.forEach((line, i) => {
