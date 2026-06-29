@@ -24,6 +24,7 @@ import { useMultiplayerSession, setPendingJoinCode } from './components/Working/
 import { readRoomCodeFromUrl } from './components/Working/roomInvite';
 import { applyDevFlagsFromUrl } from './components/Working/devFlags';
 import { PerfOverlay } from './components/Working/PerfOverlay';
+import { frameProfiler } from './utils/FrameProfiler';
 import { PostGameScreen } from './components/screens/PostGameScreen';
 import { LeaderboardScreen } from './components/Working/LeaderboardScreen';
 import { ConquestLobby } from './components/Working/conquest/ConquestLobby';
@@ -186,7 +187,9 @@ export default function App() {
     );
   }
 
-  // Playing screen (original game view)
+  // Playing screen (original game view). Shadows default ON; ?shadows=0 disables the shadow
+  // pass for the render-cost A/B (read at Canvas mount — reload to change).
+  const shadowsEnabled = (window as { __rtsShadows?: boolean }).__rtsShadows !== false;
   return (
     <>
       <BackgroundMusic />
@@ -213,7 +216,7 @@ export default function App() {
       <EdgePanChevrons />
       <Canvas
         camera={{ fov: 45, far: 200000 }}
-        shadows
+        shadows={shadowsEnabled}
         onContextMenu={(e) => e.preventDefault()}
         gl={{
           antialias: window.innerWidth > 768, // Only enable anti-aliasing on desktop for performance
@@ -231,6 +234,19 @@ export default function App() {
             (window as any).__rtsGL = gl;
             (window as any).__rtsCamera = camera;
           }
+
+          // Frame-timing: wrap the renderer so the profiler's `render` bucket captures the
+          // CPU-side render submission (scene traversal, culling, shadow pass, draw-call
+          // submission). It excludes async GPU execution — so if `render` is large you are
+          // CPU-render-bound (cut draw calls / shadows / instance the decorations); if `render`
+          // is small but fps stays low, you are GPU-bound (overdraw / shadow-map size / AA).
+          const renderScene = gl.render.bind(gl);
+          gl.render = (renderArgScene, renderArgCamera) => {
+            const start = performance.now();
+            renderScene(renderArgScene, renderArgCamera);
+            frameProfiler.add('render', performance.now() - start);
+          };
+
           console.log('🎮 RTS Game: WebGL context created successfully');
 
           // Access the WebGL context correctly from the renderer

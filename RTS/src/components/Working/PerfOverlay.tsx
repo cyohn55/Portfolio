@@ -86,7 +86,7 @@ export function PerfOverlay() {
             </div>
           ))}
           <div style={DIVIDER} />
-          <div style={DIM}>render/idle ≈ (ms/frame) − frame − ingest</div>
+          <div style={DIM}>`render` = CPU render submit. GPU-wait/idle ≈ (ms/frame) − frame − render − ingest</div>
         </>
       )}
       <div style={DIM}>Ctrl+Shift+P to toggle</div>
