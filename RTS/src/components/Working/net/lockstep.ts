@@ -21,13 +21,24 @@
 // that inputs are almost always present by the time their tick comes up, so the
 // match runs smoothly without prediction/rollback.
 
-import type { WebRtcTransport } from './webrtcTransport';
 import {
   parseNetMessage,
   type NetCommand,
   type NetMessage,
   type PlayerRole,
 } from './netMessages';
+
+/**
+ * The slice of the transport the engine uses. WebRtcTransport satisfies it structurally,
+ * and so does the worker-side proxy transport (simWorkerHost) that bridges the engine —
+ * running inside the worker — to the real WebRTC transport on the main thread. Decoupling
+ * the engine from the concrete class is what lets lockstep move into the worker unchanged.
+ */
+export interface LockstepTransport {
+  send(message: unknown): boolean;
+  addMessageListener(listener: (message: unknown) => void): () => void;
+  addStatusListener(listener: (status: string) => void): () => void;
+}
 
 /** Fixed simulation timestep, matching the game's 60 Hz tick. */
 export const FIXED_DT_SEC = 1 / 60;
@@ -76,7 +87,7 @@ export interface LockstepCallbacks {
 }
 
 export interface LockstepOptions {
-  transport: WebRtcTransport;
+  transport: LockstepTransport;
   adapter: LockstepSimAdapter;
   /** This peer's role. Host = p0, guest = p1. */
   localPlayerId: PlayerRole;
@@ -93,7 +104,7 @@ type FrameStore = Map<number, Partial<Record<PlayerRole, NetCommand[]>>>;
  * the local command sink, then call update(realDtMs) every animation frame.
  */
 export class LockstepEngine {
-  private readonly transport: WebRtcTransport;
+  private readonly transport: LockstepTransport;
   private readonly adapter: LockstepSimAdapter;
   private readonly localPlayerId: PlayerRole;
   private readonly remotePlayerId: PlayerRole;

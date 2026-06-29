@@ -15,7 +15,43 @@ import type { NetCommand, PlayerRole } from '../components/Working/net/netMessag
 // compatible (and slightly speeds up the remaining produce() calls).
 setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
+import type { SimTerrain } from '../components/Working/sim/terrainOracle';
 import { pathfinder } from '../components/Working/pathfinder';
+
+// Worker-offload seam: the simulation reads terrain through `activeTerrain`, not the
+// concrete `terrainValidator`, so the same tick code runs against the THREE-raycast-backed
+// validator on the main thread OR a grid-backed oracle inside the worker (see terrainOracle).
+// Defaults to the real validator; the worker swaps in the oracle via setActiveTerrain. The
+// `pathfinder` singleton needs no such seam — both threads rebuild it (build / importGrid).
+let activeTerrain: SimTerrain = terrainValidator;
+
+/** Swap the terrain backend the sim reads from. Called by the worker's installTerrainOracle. */
+export function setActiveTerrain(terrain: SimTerrain): void {
+  activeTerrain = terrain;
+}
+
+// Worker-offload command seam: when the simulation runs in the worker, the main thread is a
+// read-only mirror and must NOT apply commands locally — it forwards them to the worker
+// instead. The bridge installs this sink (postMessage{command}); when null, dispatchCommand
+// applies in-thread exactly as before. Kept here (bridge → state, never state → bridge) so
+// state.ts carries no worker/DOM import.
+let simWorkerSink: ((command: NetCommand) => void) | null = null;
+
+/** Route sim commands to the worker (sink set) or apply them in-thread (sink null). */
+export function setSimWorkerSink(sink: ((command: NetCommand) => void) | null): void {
+  simWorkerSink = sink;
+}
+
+// Main-thread listeners notified at the end of every startMatch, so the worker bridge can
+// latch a match start (and serialize terrain) without the lobby importing it. Fires inside
+// the worker's own startMatch too, but no listener is registered there.
+const matchStartListeners = new Set<() => void>();
+
+/** Subscribe to match starts (worker bridge). Returns an unsubscribe. */
+export function onSimMatchStart(listener: () => void): () => void {
+  matchStartListeners.add(listener);
+  return () => matchStartListeners.delete(listener);
+}
 import { BLOCKER_LOOKAHEAD, deflectAroundBlockers, type SteerBlocker } from '../components/Working/movementSteering';
 import { slideAlongObstacle } from '../components/Working/terrainSlide';
 import { clampToArena } from '../components/Working/arenaBoundary';
@@ -1346,6 +1382,11 @@ export const useGameStore = create<Store>((set, get) => ({
     useUiStore.getState().selectUnits([]);
     useUiStore.getState().setPilotMirror(null, null);
     useUiStore.getState().resetUnitPlacement();
+
+    // Notify the worker bridge (if any) that a match has started, so it can adopt it into
+    // the worker once terrain is ready. No-op when no bridge is listening (the worker's own
+    // startMatch, the determinism harnesses).
+    matchStartListeners.forEach((listener) => listener());
   },
 
   startMultiplayerMatch: ({ localRole, seed, lineups }) => {
@@ -1968,7 +2009,7 @@ export const useGameStore = create<Store>((set, get) => ({
             // checkCollision is what lets it actually complete the crossing.
             const onBridgeMidCrossing =
               ANIMAL_MOVEMENT_TYPES[unit.animal] === 'ground' &&
-              terrainValidator.bridgeAt(unit.position).onBridge;
+              activeTerrain.bridgeAt(unit.position).onBridge;
 
             if (isCurrentlyBlocked && !onBridgeMidCrossing) {
               // Start tracking block time if not already tracking
@@ -2922,7 +2963,7 @@ export const useGameStore = create<Store>((set, get) => ({
         // The destination check below is shared by every unit in the command,
         // so it can't cause that asymmetry.
         try {
-          if (!terrainValidator.canAnimalMoveTo(u.animal, cmd.target)) {
+          if (!activeTerrain.canAnimalMoveTo(u.animal, cmd.target)) {
             console.log(`❌ ${u.animal} cannot move to target position (blocked by water/terrain)`);
             continue; // Skip this unit
           }
@@ -4131,6 +4172,19 @@ export function getSimSnapshot(): Store {
 }
 
 /**
+ * Ingest a worker snapshot into the main-thread store, which under the worker flip is a
+ * READ-ONLY mirror the UI renders from (the authoritative sim lives in the worker). Writes
+ * the plain-data Bucket-A slice the worker posted (SIM_SNAPSHOT_FIELDS) wholesale; the
+ * worker-internal machinery (RNG, spatial grid, per-tick caches) is deliberately absent and
+ * is never read on the main thread. Lives here so the store is mutated only from inside its
+ * own module (the boundary guard) and so a harness can drive ingest directly. Call once per
+ * arriving snapshot, then run the syncLocal*Mirror passes (see simWorkerBridge).
+ */
+export function ingestSimSnapshot(snapshotState: Record<string, unknown>): void {
+  useGameStore.setState(snapshotState as Partial<Store>);
+}
+
+/**
  * Reconcile the LOCAL player's pilot UI mirror (`pilotedUnitId` /
  * `pilotedFireTeamId`) with the authoritative per-owner sim state. The simulation
  * no longer writes those mirror fields — a worker can't touch the main-thread store
@@ -4223,6 +4277,13 @@ export function syncLocalSelectionMirror(): void {
 }
 
 export function dispatchCommand(command: NetCommand): void {
+  // Worker flip: forward the command to the worker instead of applying it on the main-thread
+  // mirror. The worker applies it (single-player) or schedules it on its lockstep engine
+  // (multiplayer), then the next snapshot reflects the result. No sink ⇒ apply in-thread.
+  if (simWorkerSink) {
+    simWorkerSink(command);
+    return;
+  }
   const store = useGameStore.getState();
   switch (command.type) {
     // Gameplay commands: the typed action self-routes (route-or-apply inline).
@@ -4534,7 +4595,7 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
     currentUnit.kind === 'Unit' &&
     ANIMAL_MOVEMENT_TYPES[currentUnit.animal] === 'ground' &&
     unitOrders[currentUnit.id] !== undefined &&
-    terrainValidator.bridgeAt(currentUnit.position).onBridge;
+    activeTerrain.bridgeAt(currentUnit.position).onBridge;
 
   // Use spatial grid if available for faster nearby unit lookup
   let nearbyUnits: Unit[];
@@ -4713,7 +4774,7 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
   // never blocked, so we skip the (raycast-backed) terrain query for them to keep
   // the per-tick cost down at high unit counts.
   if (ANIMAL_MOVEMENT_TYPES[currentUnit.animal] === 'ground' &&
-      !terrainValidator.canAnimalMoveTo(currentUnit.animal, adjustedPosition)) {
+      !activeTerrain.canAnimalMoveTo(currentUnit.animal, adjustedPosition)) {
     // The resolved step lands on forbidden water — usually because a friendly push shoved
     // the unit toward the bank, or it met the diagonally-running shoreline head-on. Rather
     // than dead-stall (which jams crowds at the chokepoint, with units pinned against the
@@ -4723,7 +4784,7 @@ function checkCollision(newPosition: Position3D, currentUnit: Unit, allUnits: Un
     return slideAlongObstacle(
       currentUnit.position,
       adjustedPosition,
-      (candidate) => terrainValidator.canAnimalMoveTo(currentUnit.animal, candidate),
+      (candidate) => activeTerrain.canAnimalMoveTo(currentUnit.animal, candidate),
     );
   }
 
@@ -4815,13 +4876,13 @@ function clearPathForSelectedRoyals(draft: Store, priorityUnitIds: ReadonlySet<s
       clampToArena(resolved);
 
       if (ANIMAL_MOVEMENT_TYPES[other.animal] === 'ground' &&
-          !terrainValidator.canAnimalMoveTo(other.animal, resolved)) {
+          !activeTerrain.canAnimalMoveTo(other.animal, resolved)) {
         // Shoved toward water — slide the shove along the bank instead of forcing the unit
         // in. Holds in place (no move) when boxed in on every probed heading.
         const slid = slideAlongObstacle(
           other.position,
           resolved,
-          (candidate) => terrainValidator.canAnimalMoveTo(other.animal, candidate),
+          (candidate) => activeTerrain.canAnimalMoveTo(other.animal, candidate),
         );
         other.position.x = slid.x;
         other.position.z = slid.z;
@@ -4856,13 +4917,13 @@ function enforceMonarchFollowGap(draft: Store, unitById: Map<string, Unit>): voi
     clampToArena(target);
 
     if (ANIMAL_MOVEMENT_TYPES[follower.animal] === 'ground' &&
-        !terrainValidator.canAnimalMoveTo(follower.animal, target)) {
+        !activeTerrain.canAnimalMoveTo(follower.animal, target)) {
       // Follow-gap push would land on water — slide it along the bank so a follower kept
       // off its monarch near the shore traces the coastline instead of freezing against it.
       const slid = slideAlongObstacle(
         follower.position,
         target,
-        (candidate) => terrainValidator.canAnimalMoveTo(follower.animal, candidate),
+        (candidate) => activeTerrain.canAnimalMoveTo(follower.animal, candidate),
       );
       follower.position.x = slid.x;
       follower.position.z = slid.z;
@@ -4965,14 +5026,14 @@ function separateOverlappingUnits(draft: Store, priorityUnitIds: ReadonlySet<str
     // mirroring checkCollision; if both axes are blocked the unit holds rather than clip in.
     clampToArena(resolved);
     if (ANIMAL_MOVEMENT_TYPES[unit.animal] === 'ground' &&
-        !terrainValidator.canAnimalMoveTo(unit.animal, resolved)) {
+        !activeTerrain.canAnimalMoveTo(unit.animal, resolved)) {
       // Separation nudge would land on water — slide it along the bank so a unit relaxing
       // out of a pile near the shore follows the coastline instead of freezing against it.
       // Holds in place when boxed in on every probed heading.
       const slid = slideAlongObstacle(
         unit.position,
         resolved,
-        (candidate) => terrainValidator.canAnimalMoveTo(unit.animal, candidate),
+        (candidate) => activeTerrain.canAnimalMoveTo(unit.animal, candidate),
       );
       unit.position.x = slid.x;
       unit.position.z = slid.z;
@@ -5004,9 +5065,9 @@ function rescueStrandedGroundUnits(draft: Store): void {
     if (unit.isFlying || (unit.flightLift ?? 0) > 0 || unit.owlPickup !== undefined) continue;
 
     // On walkable ground already — nothing to rescue.
-    if (terrainValidator.canAnimalMoveTo(unit.animal, unit.position)) continue;
+    if (activeTerrain.canAnimalMoveTo(unit.animal, unit.position)) continue;
 
-    const shore = terrainValidator.nearestTraversable(unit.animal, unit.position, RESCUE_SEARCH_RADIUS_CELLS);
+    const shore = activeTerrain.nearestTraversable(unit.animal, unit.position, RESCUE_SEARCH_RADIUS_CELLS);
     if (shore === null) continue; // no dry land within range — leave it rather than guess
 
     const dx = shore.x - unit.position.x;
@@ -5315,7 +5376,7 @@ function carryUnitBeneath(owl: Unit, carried: Unit): void {
 // credited to the Owl's owner. Friendlies, or any delivery (fallDamage 0), land unharmed.
 function dropCarriedUnit(draft: Store, owl: Unit, carried: Unit, fallDamage: number): void {
   carried.carriedByOwlId = undefined;
-  carried.position.y = terrainValidator.getBridgeSurfaceY(carried.position) ?? 0; // land on the ground it is over
+  carried.position.y = activeTerrain.getBridgeSurfaceY(carried.position) ?? 0; // land on the ground it is over
   carried.flightLift = undefined;
   delete draft.unitOrders[carried.id];
 
@@ -5602,7 +5663,7 @@ const DECK_LIFT_SNAP = 0.02;
 // they manage their own flight Y via the render-time vertical offset (Owl's +10 lift).
 function applyDeckElevation(unit: Unit, dtSec: number): void {
   if (ANIMAL_MOVEMENT_TYPES[unit.animal] === 'air') return;
-  const targetY = terrainValidator.getBridgeSurfaceY(unit.position) ?? 0;
+  const targetY = activeTerrain.getBridgeSurfaceY(unit.position) ?? 0;
   const currentY = unit.position.y;
   const delta = targetY - currentY;
   if (Math.abs(delta) < DECK_LIFT_SNAP) {

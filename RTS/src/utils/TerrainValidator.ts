@@ -675,6 +675,21 @@ export class TerrainValidator {
   }
 
   /**
+   * The lowered walking height of each side's deck, as getBridgeSurfaceY would return it
+   * when that side is down (center includes its headroom). Static once meshes are found, so
+   * it is captured regardless of the bridges' current raised/lowered frames — used by the
+   * worker-offload terrain serializer to bake deck heights into the portable snapshot
+   * without depending on the bridges happening to be lowered at capture time.
+   */
+  public getDeckSurfaceYs(): { right: number | null; left: number | null; center: number | null } {
+    return {
+      right: this.rightDeckSurfaceY,
+      left: this.leftDeckSurfaceY,
+      center: this.centerDeckSurfaceY === null ? null : this.centerDeckSurfaceY + CENTER_DECK_HEADROOM,
+    };
+  }
+
+  /**
    * Check if an animal can move to a specific position
    */
   public canAnimalMoveTo(animal: AnimalId, position: Position3D): boolean {

@@ -106,7 +106,7 @@ async function main() {
   const realLog = console.log;
   console.log = () => {};
   const api = await import(await bundleHost());
-  const { processSimRequest, buildSimSnapshot, useGameStore } = api;
+  const { processSimRequest, buildSimSnapshot, ingestSimSnapshot, useGameStore } = api;
 
   // Drive the whole match through the worker host's request API, exactly as the main
   // thread would post messages: start, then per tick { commands…, runTicks 1 }.
@@ -155,6 +155,33 @@ async function main() {
     check('snapshot does NOT carry the RNG instance', !('rng' in cloned.state));
     check('snapshot does NOT carry the spatial grid', !('spatialGrid' in cloned.state));
     check('snapshot checksum matches the final tick', cloned.checksum === perTick[perTick.length - 1]);
+  }
+
+  // 3) Snapshot → mirror ingest round-trip. This is what the live bridge does each frame:
+  //    the worker posts a snapshot, the main thread ingests it into the read-only mirror.
+  //    Take a (cloned, as-if-posted) snapshot, advance the sim further so the store diverges,
+  //    then ingest the snapshot back and assert the store's Bucket-A fields are restored to
+  //    the snapshot exactly — proof ingest faithfully reconstructs the mirror from plain data.
+  if (cloned) {
+    const consoleOff = console.log; console.log = () => {};
+    for (let i = 0; i < 30; i++) processSimRequest({ kind: 'runTicks', count: 1, nowMs: NOW });
+    console.log = consoleOff;
+    const advancedTick = useGameStore.getState().tickCounter;
+    check('store advanced past the snapshot before ingest', advancedTick > cloned.tickCounter);
+
+    ingestSimSnapshot(cloned.state);
+    const mirror = useGameStore.getState();
+    check('ingest restores tickCounter', mirror.tickCounter === cloned.tickCounter);
+    check('ingest restores player count', mirror.players.length === cloned.state.players.length);
+    const restoredUnits = Array.isArray(cloned.state.units) &&
+      mirror.units.length === cloned.state.units.length &&
+      mirror.units.every((u, i) =>
+        u.id === cloned.state.units[i].id &&
+        u.position.x === cloned.state.units[i].position.x &&
+        u.position.z === cloned.state.units[i].position.z &&
+        u.hp === cloned.state.units[i].hp);
+    check('ingest restores every unit id/position/hp from the snapshot', restoredUnits);
+    check('ingest restores matchStats', JSON.stringify(mirror.matchStats) === JSON.stringify(cloned.state.matchStats));
   }
 
   if (failures.length === 0) {

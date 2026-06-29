@@ -21,27 +21,63 @@ import {
 } from './lockstep';
 import type { WebRtcTransport } from './webrtcTransport';
 import type { PlayerRole, NetCommand } from './netMessages';
+import type { AnimalId } from '../../../game/types';
 import { pilotInput } from '../monarchPilot';
-
-// The currently-running match engine, or null in single-player / menus. A module
-// singleton because there is only ever one local match in flight, and both the
-// render loop and the UI need to reach it without prop-drilling through the tree.
-let activeEngine: LockstepEngine | null = null;
+import {
+  isWorkerFlagEnabled,
+  requestNetMatchStart,
+  runNetUpdate,
+  stopNetMatchInWorker,
+} from '../sim/simWorkerBridge';
 
 /**
- * Begin driving the store as a lockstep multiplayer match. Installs the command
- * router (so player inputs are scheduled, not applied immediately), builds the
- * engine, and starts it. The caller (the match-start flow) must already have run
- * startMatch with the shared seed so both peers' stores are identical.
+ * What the render loop needs from the active match: a per-frame `update`. Both the in-thread
+ * LockstepEngine and the worker proxy satisfy it, so HexGrid drives either unchanged.
+ */
+export interface ActiveNetEngine {
+  update(realDtMs: number): void;
+}
+
+// The currently-running match engine (or worker proxy), or null in single-player / menus. A
+// module singleton because there is only ever one local match in flight, and both the render
+// loop and the UI need to reach it without prop-drilling through the tree.
+let activeEngine: ActiveNetEngine | null = null;
+// True when the active match is driven by the worker (lockstep runs off-thread), so teardown
+// routes to the worker bridge rather than a local engine.
+let usingWorkerNet = false;
+
+/**
+ * Begin driving the store as a lockstep multiplayer match. The caller (the match-start flow)
+ * must already have run startMultiplayerMatch with the shared seed so both peers' stores are
+ * identical.
  *
- * Returns the engine so the caller can keep it for status display; the render
- * loop reaches it via getActiveNetEngine.
+ * Under the worker flip flag the lockstep engine runs INSIDE the worker (alongside the sim);
+ * this latches the match for the bridge to adopt once terrain is ready and returns a proxy
+ * whose `update` drives the worker engine. Otherwise it builds the in-thread engine as before.
+ * Either way the render loop reaches the result via getActiveNetEngine.
  */
 export function startNetMatch(options: {
   transport: WebRtcTransport;
   localPlayerId: PlayerRole;
+  seed: number;
+  lineups: Record<PlayerRole, AnimalId[]>;
   callbacks?: LockstepCallbacks;
-}): LockstepEngine {
+}): ActiveNetEngine {
+  if (isWorkerFlagEnabled()) {
+    // Worker flip: the lockstep engine runs in the worker. Latch the match for the bridge to
+    // adopt once terrain is ready; return a proxy whose update() drives the worker engine.
+    requestNetMatchStart({
+      role: options.localPlayerId,
+      seed: options.seed,
+      lineups: options.lineups,
+      transport: options.transport,
+      callbacks: options.callbacks ?? {},
+    });
+    usingWorkerNet = true;
+    activeEngine = { update: (realDtMs: number) => runNetUpdate(realDtMs) };
+    return activeEngine;
+  }
+
   // The adapter is the engine's view of the simulation. runTick passes a wall
   // clock to store.tick, but the store overrides it with its deterministic
   // tick-derived clock, so the value is irrelevant to the outcome — it only
@@ -67,21 +103,25 @@ export function startNetMatch(options: {
   // From now until stopNetMatch, every routed store action feeds the engine
   // instead of mutating immediately.
   setCommandRouter((command) => engine.enqueueLocalCommand(command));
+  usingWorkerNet = false;
   activeEngine = engine;
   engine.start();
   return engine;
 }
 
-/** The active match engine, or null. The render loop drives this when present. */
-export function getActiveNetEngine(): LockstepEngine | null {
+/** The active match engine (or worker proxy), or null. The render loop drives this when present. */
+export function getActiveNetEngine(): ActiveNetEngine | null {
   return activeEngine;
 }
 
-/** End the multiplayer match: stop the engine and disarm the command router. */
+/** End the multiplayer match: stop the engine (in-thread or worker) and disarm command routing. */
 export function stopNetMatch(): void {
-  if (activeEngine) {
-    activeEngine.stop();
-    activeEngine = null;
+  if (usingWorkerNet) {
+    stopNetMatchInWorker();
+  } else {
+    (activeEngine as LockstepEngine | null)?.stop();
+    setCommandRouter(null);
   }
-  setCommandRouter(null);
+  activeEngine = null;
+  usingWorkerNet = false;
 }

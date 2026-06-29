@@ -80,6 +80,22 @@ export interface PathBounds {
   maxZ: number;
 }
 
+/**
+ * A serializable copy of a built grid's geometry + cell classification. Lets the main
+ * thread ship its already-built grid to a worker (see terrainOracle) so the worker's A*
+ * is byte-identical without re-running classifyCells (which would need a TerrainQuery).
+ * The typed arrays are structured-cloneable, so it crosses a postMessage as-is.
+ */
+export interface GridSnapshot {
+  minX: number;
+  minZ: number;
+  step: number;
+  cols: number;
+  rows: number;
+  cellType: Int8Array;
+  cellSide: Int8Array;
+}
+
 export class GridPathfinder {
   private ready = false;
   private terrain: TerrainQuery | null = null;
@@ -137,6 +153,55 @@ export class GridPathfinder {
 
     this.gScore = new Float32Array(count);
     this.gStamp = new Int32Array(count); // 0 = "no search has touched this cell"
+    this.closedStamp = new Int32Array(count);
+    this.cameFrom = new Int32Array(count);
+    this.heapCell = new Int32Array(count + 1);
+    this.heapKey = new Float32Array(count + 1);
+
+    this.rightOpen = terrain.isSideOpen('right');
+    this.leftOpen = terrain.isSideOpen('left');
+    this.ready = true;
+  }
+
+  /**
+   * Export the built grid's geometry + classification as a plain-data snapshot. Throws if
+   * called before build(), since there is nothing to export. Used to ship the grid to a
+   * worker (terrainOracle.serializeTerrain).
+   */
+  public exportGrid(): GridSnapshot {
+    if (!this.ready) {
+      throw new Error('GridPathfinder.exportGrid called before build');
+    }
+    return {
+      minX: this.minX,
+      minZ: this.minZ,
+      step: this.step,
+      cols: this.cols,
+      rows: this.rows,
+      cellType: this.cellType.slice(),
+      cellSide: this.cellSide.slice(),
+    };
+  }
+
+  /**
+   * Restore a grid from a snapshot instead of classifying terrain, and bind a `TerrainQuery`
+   * for live side-bridge openness (refresh()). The worker uses this to adopt the main
+   * thread's exact A* grid (terrainOracle.installTerrainOracle). Allocates the A* search and
+   * heap working memory sized to the restored grid, so searches run as after build().
+   */
+  public importGrid(snapshot: GridSnapshot, terrain: TerrainQuery): void {
+    this.terrain = terrain;
+    this.minX = snapshot.minX;
+    this.minZ = snapshot.minZ;
+    this.step = snapshot.step;
+    this.cols = snapshot.cols;
+    this.rows = snapshot.rows;
+    this.cellType = snapshot.cellType;
+    this.cellSide = snapshot.cellSide;
+
+    const count = this.cols * this.rows;
+    this.gScore = new Float32Array(count);
+    this.gStamp = new Int32Array(count);
     this.closedStamp = new Int32Array(count);
     this.cameFrom = new Int32Array(count);
     this.heapCell = new Int32Array(count + 1);

@@ -6,6 +6,12 @@ import { useUiStore } from '../game/uiStore';
 import { getActiveNetEngine } from './Working/net/netMatch';
 import { runAiCommanders } from './Working/ai/aiCommander';
 import { replayRecorderTick } from './Working/ai/replayRecorder';
+import {
+  isSimWorkerStarted,
+  beginSinglePlayerIfPending,
+  beginNetMatchIfPending,
+  runWorkerTicks,
+} from './Working/sim/simWorkerBridge';
 import { registerArenaBoundary, confineBoundaryToPoints } from './Working/arenaBoundary';
 import { computeArenaBoundary } from './Working/arenaBoundaryScene';
 import { UnitsLayer } from './UnitsLayer';
@@ -287,19 +293,45 @@ export function BattleMap() {
     // for a tick have arrived, so we hand it the elapsed wall time and let it
     // decide how many ticks to run (it calls store.tick internally). The local
     // accumulator is drained so a later return to single-player starts clean.
+    // Worker flip (multiplayer): adopt a pending net match into the worker once terrain is
+    // ready (mirror of the single-player adoption below). No-op when not flagged / not pending;
+    // once started, the proxy returned by getActiveNetEngine drives the worker engine each frame.
+    beginNetMatchIfPending();
+
     const netEngine = getSimSnapshot().netMode === 'single' ? null : getActiveNetEngine();
     if (netEngine) {
       netEngine.update(frameTime);
       accumulator.current = 0;
+    } else if (isSimWorkerStarted()) {
+      // Worker flip (single-player): the authoritative sim runs in the worker. Pause and the
+      // fixed-step accumulator stay main-thread; we only tell the worker how many steps to
+      // run this frame. The AI opponent + replay recorder run worker-side (before each tick),
+      // and the pilot/selection mirrors are re-derived when the worker's snapshot arrives
+      // (see simWorkerBridge.onmessage) — so neither runs here.
+      if (useUiStore.getState().isPaused) {
+        accumulator.current = 0;
+      } else {
+        let ticksThisFrame = 0;
+        while (accumulator.current >= FIXED_TIMESTEP) {
+          ticksThisFrame++;
+          accumulator.current -= FIXED_TIMESTEP;
+        }
+        runWorkerTicks(ticksThisFrame, now);
+      }
     } else {
       // Drive the opt-in replay recorder (begins/ends capture on match lifecycle).
       // No-op unless recording is armed; never mutates the sim.
       replayRecorderTick();
-      // Single-player pause gate. It used to live inside tick() (which self-gated on
-      // store.isPaused); pause is now local-UI state on useUiStore, so the loop —
-      // not the worker-bound tick — withholds advancement. Reset the accumulator so
-      // the unpause doesn't fire a burst of banked catch-up ticks.
-      if (useUiStore.getState().isPaused) {
+      // Adopt a pending single-player match into the worker once terrain is ready (opt-in
+      // flag, default OFF). This flips isSimWorkerStarted() true so subsequent frames take
+      // the worker branch above; drain the accumulator so the worker gets no tick burst.
+      if (beginSinglePlayerIfPending()) {
+        accumulator.current = 0;
+      } else if (useUiStore.getState().isPaused) {
+        // Single-player pause gate. It used to live inside tick() (which self-gated on
+        // store.isPaused); pause is now local-UI state on useUiStore, so the loop —
+        // not the worker-bound tick — withholds advancement. Reset the accumulator so
+        // the unpause doesn't fire a burst of banked catch-up ticks.
         accumulator.current = 0;
       } else {
         while (accumulator.current >= FIXED_TIMESTEP) {
@@ -314,17 +346,17 @@ export function BattleMap() {
       }
     }
 
-    // Reconcile the local pilot UI mirror from the authoritative per-owner sim state
-    // after the tick (single-player loop or lockstep update). The tick no longer
-    // writes pilotedUnitId/pilotedFireTeamId, so this is what propagates a sim-driven
-    // death-release of the piloted monarch/squad into the HUD/camera each frame.
-    syncLocalPilotMirror();
-
-    // Reconcile the local selection mirror from the snapshot: fold reinforcements that
-    // just spawned in behind a selected monarch into the selection. The tick no longer
-    // writes selectedUnitIds (Bucket-C-local), so this main-thread pass is the heir to
-    // the old in-tick spawn auto-select.
-    syncLocalSelectionMirror();
+    // Reconcile the local pilot + selection UI mirrors from the authoritative per-owner sim
+    // state after the tick (single-player loop or lockstep update). The tick no longer writes
+    // pilotedUnitId/pilotedFireTeamId or selectedUnitIds (Bucket-C-local), so these passes
+    // are the heirs: pilot carries a sim-driven death-release into the HUD/camera; selection
+    // folds reinforcements that spawned behind a selected monarch. Under the worker flip the
+    // sim is off-thread, so these run on snapshot arrival (the bridge) instead — skip them
+    // here to avoid double-advancing the selection diff.
+    if (!isSimWorkerStarted()) {
+      syncLocalPilotMirror();
+      syncLocalSelectionMirror();
+    }
 
 
     // Update bridge visibility based on game state

@@ -7,7 +7,7 @@
 // NOTE: not yet wired into the live game — P1-2 builds and verifies the worker pipeline
 // additively first; flipping HexGrid's loop + dispatchCommand onto it is the final step.
 
-import { processSimRequest, buildSimSnapshot } from './simWorkerHost';
+import { processSimRequest, buildSimSnapshot, setSimOutbound } from './simWorkerHost';
 import type { SimRequest } from './simProtocol';
 
 // The dedicated-worker global. Typed minimally so this file needs no "webworker" lib in
@@ -17,11 +17,15 @@ declare const self: {
   postMessage: (message: unknown) => void;
 };
 
+// Let the host initiate worker→main messages mid-processing (the in-worker lockstep engine's
+// transport sends + its stall/desync/disconnect callbacks), not just the per-request snapshot.
+setSimOutbound((message) => self.postMessage(message));
+
 self.onmessage = (event) => {
   const request = event.data;
   processSimRequest(request);
   // Publish a fresh snapshot after any state-advancing request. Commands that arrive
   // between ticks still post (cheap, and the main-thread mirror stays current for
-  // input-read-back); the dominant case is one snapshot per `runTicks` frame.
+  // input-read-back); the dominant case is one snapshot per `runTicks` / `netUpdate` frame.
   self.postMessage(buildSimSnapshot());
 };

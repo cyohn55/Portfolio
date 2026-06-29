@@ -87,6 +87,14 @@ function finishCapture(state: ReturnType<typeof useGameStore.getState>): Replay 
 /** Serialize a replay to a timestamped JSON download and stash it on `window`. */
 function exportReplay(replay: Replay): void {
   const json = JSON.stringify(replay);
+  // Guard the DOM access so this is safe to load/run off the main thread (e.g. inside the sim
+  // worker, where `window` is undefined). Replay capture itself is a main-thread, in-thread
+  // dev tool — unsupported while the worker flip flag is on — but this keeps the module from
+  // throwing at module load or on any stray call in a worker context.
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    console.log(`📼 Replay captured (no DOM to download): ${replay.frames.length} commands, ${replay.outcome.ticks} ticks`);
+    return;
+  }
   (window as unknown as { __rtsReplayLast?: Replay }).__rtsReplayLast = replay;
   try {
     const blob = new Blob([json], { type: 'application/json' });

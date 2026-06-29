@@ -279,3 +279,46 @@ harness that drives the sim THROUGH the worker message bus and asserts the snaps
 trajectory matches the in-thread golden.
 
 Order: P1-PRE → P1-1 → P1-2 → P1-3 → P1-4. P1-1 is the spine; P1-PRE unblocks it.
+
+---
+
+## THE FLIP — P1-2 + P1-3 DONE (2026-06-29), behind an opt-in flag (default OFF)
+
+The sim worker is now wired into the live game, gated by a runtime flag so the in-thread loop
+stays the working default. Enable in-browser to verify: `localStorage.setItem('rtsSimWorker','1')`
+or `window.__rtsUseSimWorker = true`, then reload + start a match.
+
+**Terrain oracle (the prerequisite the additive pipeline missed).** The tick queries
+`terrainValidator` (~15×) + the A* pathfinder, both THREE-raycast-backed and main-thread-only.
+New `sim/terrainOracle.ts`: `serializeTerrain()` ships the pathfinder's exported grid
+(`GridPathfinder.exportGrid/importGrid`, added) + sampled water/bridge/deck grids + per-side deck
+Ys (`TerrainValidator.getDeckSurfaceYs`, added); `installTerrainOracle()` rebuilds a THREE-free
+oracle worker-side. state.ts reads terrain through a new `activeTerrain` seam (`setActiveTerrain`).
+The host re-syncs side-bridge crossability from the sim's bridgeState each batch.
+
+**P1-2 (single-player).** `sim/simWorkerBridge.ts` (main-thread: owns the Worker, posts
+start/command/runTicks, ingests snapshots → `ingestSimSnapshot`, latches the SP start via
+`onSimMatchStart`, adopts it once terrain ready from HexGrid's loop —
+`beginSinglePlayerIfPending`). `dispatchCommand` forwards to the worker via a `setSimWorkerSink`
+seam. The AI commander runs worker-side (runAiCommanders before each tick in the host). HexGrid's
+SP branch posts `runTicks`; the pilot/selection mirrors re-derive on snapshot arrival.
+
+**P1-3 (multiplayer + AI relocation).** The `LockstepEngine` moved INTO the worker (engine↔sim
+stays synchronous); the WebRTC transport + Firebase signaling stay main-thread, proxied over the
+boundary (`WorkerTransport` + netSend/netRecv/netStatus/netUpdate/netCallback). `LockstepEngine`
+now takes a structural `LockstepTransport`. `netMatch.startNetMatch` returns a proxy
+`ActiveNetEngine{update()}` under the flag, so HexGrid's `netEngine.update()` drives either path
+unchanged; the per-frame pilot vector ships in netUpdate.
+
+**Verified (flag OFF = byte-identical):** tsc + full `npm run build` (emits `sim.worker-*.js`) +
+all `.mjs` harnesses + boundary guard green. New: `terrain-oracle-roundtrip.harness.mjs`,
+`lockstep-worker-determinism.harness.mjs` (two worker hosts cross-wired through the proxy →
+byte-identical peers over 360 frames); `sim-worker-determinism` extended with an ingest round-trip.
+NOT verified: rendering/timing/real-browser MP desync (Playwright off) — the default-OFF flag is
+the safety net; needs an in-browser pass before being trusted.
+
+**Known gaps:** replay capture is unsupported under the flag (descoped, dev-only; `exportReplay`
+made worker-safe); Firebase/leaderboard is bundled into the worker (builds fine, runtime
+window-access at game-over is an unverified live risk); the worker isn't torn down on
+return-to-menu (idle/harmless, re-inits next match). P1-4 (transferable structure-of-arrays
+snapshot perf pass) is still future.

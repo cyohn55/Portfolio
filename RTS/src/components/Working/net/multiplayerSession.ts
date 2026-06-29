@@ -140,6 +140,8 @@ export const useMultiplayerSession = create<MultiplayerSessionState>((set, get) 
     startNetMatch({
       transport,
       localPlayerId: role,
+      seed,
+      lineups,
       callbacks: {
         onDesync: () => {
           set({ phase: 'error', error: 'Connection desynced — the match ended.' });

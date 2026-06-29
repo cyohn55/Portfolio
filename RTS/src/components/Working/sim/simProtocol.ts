@@ -10,17 +10,36 @@
 
 import type { NetCommand, PlayerRole } from '../net/netMessages';
 import type { AnimalId } from '../../../game/types';
+import type { TerrainSnapshot } from './terrainOracle';
 
 // --- Main thread → worker -------------------------------------------------------------
 
-/** Start (or restart) a deterministic match. Mirrors `startMultiplayerMatch`'s inputs —
- * the lineups + seed fully determine the opening on every peer, so the worker needs no
- * main-thread state to build the initial units. */
+/**
+ * Start (or restart) a deterministic match inside the worker.
+ *
+ * `mode` selects the setup the worker reproduces:
+ *  - 'single'      → the single-player path (initializeGame + startMatch): an AI opponent,
+ *                    netMode 'single', the local lineup taken from `localLineup`. The worker
+ *                    is the sole source of truth, so it mints the AI lineup itself and ships
+ *                    `players` back in the snapshot.
+ *  - 'multiplayer' → mirrors startMultiplayerMatch (both lineups + seed fully determine the
+ *                    opening on every peer). The default, so the determinism harness — which
+ *                    sends only { localRole, seed, lineups } — keeps its existing behaviour.
+ *
+ * `terrain` is the serialized nav/terrain the worker installs before building the match
+ * (see terrainOracle). It is OPTIONAL: the headless harnesses run terrain-free (the sim
+ * degrades to permissive terrain), the live game always sends it.
+ */
 export interface SimStartRequest {
   kind: 'start';
-  localRole: PlayerRole;
+  mode?: 'single' | 'multiplayer';
   seed: number;
-  lineups: Record<PlayerRole, AnimalId[]>;
+  terrain?: TerrainSnapshot;
+  // Single-player: the local human's lobby lineup.
+  localLineup?: AnimalId[];
+  // Multiplayer (and the determinism harness): this peer's role + both lineups.
+  localRole?: PlayerRole;
+  lineups?: Record<PlayerRole, AnimalId[]>;
 }
 
 /** Apply one already-attributed player/AI/lockstep command to the sim. In single-player
@@ -39,7 +58,59 @@ export interface SimRunTicksRequest {
   nowMs: number;
 }
 
-export type SimRequest = SimStartRequest | SimCommandRequest | SimRunTicksRequest;
+// --- Multiplayer (worker-side lockstep) ----------------------------------------------
+// In multiplayer the deterministic lockstep ENGINE runs in the worker alongside the sim
+// (the engine↔sim loop must stay synchronous), while the WebRTC transport + signaling stay
+// on the main thread. These messages proxy that transport across the boundary and drive the
+// in-worker engine. The wire messages (`message`) are the already-decoded NetMessage objects
+// the transport exchanges — plain and structured-cloneable — typed `unknown` here so this
+// module needs no net-protocol import.
+
+/** Build the multiplayer match in the worker AND stand up the in-worker lockstep engine
+ * (seed + lineups determine the opening identically on both peers). */
+export interface SimStartNetMatchRequest {
+  kind: 'startNetMatch';
+  localRole: PlayerRole;
+  seed: number;
+  lineups: Record<PlayerRole, AnimalId[]>;
+  terrain?: TerrainSnapshot;
+}
+
+/** Drive the in-worker engine one animation frame. `pilot` is the local player's live
+ * monarch-drive vector, sampled main-thread (pilotInput) and shipped each frame so the
+ * engine's adapter can ride it onto the tick exactly as the in-thread engine does. */
+export interface SimNetUpdateRequest {
+  kind: 'netUpdate';
+  dtMs: number;
+  pilot: { x: number; z: number };
+}
+
+/** A decoded wire message that arrived from the peer (main-thread transport → worker engine). */
+export interface SimNetRecvRequest {
+  kind: 'netRecv';
+  message: unknown;
+}
+
+/** A transport status change (main-thread transport → worker engine). */
+export interface SimNetStatusRequest {
+  kind: 'netStatus';
+  status: string;
+}
+
+/** Tear down the in-worker engine + command router. */
+export interface SimStopNetMatchRequest {
+  kind: 'stopNetMatch';
+}
+
+export type SimRequest =
+  | SimStartRequest
+  | SimCommandRequest
+  | SimRunTicksRequest
+  | SimStartNetMatchRequest
+  | SimNetUpdateRequest
+  | SimNetRecvRequest
+  | SimNetStatusRequest
+  | SimStopNetMatchRequest;
 
 // --- Worker → main thread -------------------------------------------------------------
 
@@ -88,4 +159,19 @@ export interface SimSnapshot {
   state: Record<SimSnapshotField, unknown>;
 }
 
-export type SimResponse = SimSnapshot;
+/** A wire message the in-worker engine wants transmitted to the peer (worker → main-thread
+ * transport.send). `message` is a NetMessage object. */
+export interface SimNetSend {
+  kind: 'netSend';
+  message: unknown;
+}
+
+/** A lockstep engine callback surfaced for the main-thread UI (stall/desync/disconnect). */
+export interface SimNetCallback {
+  kind: 'netCallback';
+  event: 'stall' | 'desync' | 'disconnect';
+  stalled?: boolean;
+  tick?: number;
+}
+
+export type SimResponse = SimSnapshot | SimNetSend | SimNetCallback;
