@@ -22,6 +22,7 @@ import { buildOptimizedBattleMap } from './Working/mergeBattleMap';
 import { bridgeNavigator } from './Working/bridgeNavigator';
 import { pathfinder } from './Working/pathfinder';
 import { performanceMonitor } from '../utils/PerformanceMonitor';
+import { frameProfiler } from '../utils/FrameProfiler';
 import { terrainValidator } from '../utils/TerrainValidator';
 import * as THREE from 'three';
 
@@ -298,6 +299,10 @@ export function BattleMap() {
     // once started, the proxy returned by getActiveNetEngine drives the worker engine each frame.
     beginNetMatchIfPending();
 
+    // Frame-timing: `advance` is the sim advancement on the MAIN thread — the full in-thread
+    // tick when the worker flag is OFF, or just the postMessage dispatch when it is ON (the
+    // sim's real cost then shows up as `workerSim` + `ingest`, recorded in simWorkerBridge).
+    const advanceStart = performance.now();
     const netEngine = getSimSnapshot().netMode === 'single' ? null : getActiveNetEngine();
     if (netEngine) {
       netEngine.update(frameTime);
@@ -345,6 +350,7 @@ export function BattleMap() {
         }
       }
     }
+    frameProfiler.add('advance', performance.now() - advanceStart);
 
     // Reconcile the local pilot + selection UI mirrors from the authoritative per-owner sim
     // state after the tick (single-player loop or lockstep update). The tick no longer writes
@@ -353,17 +359,18 @@ export function BattleMap() {
     // folds reinforcements that spawned behind a selected monarch. Under the worker flip the
     // sim is off-thread, so these run on snapshot arrival (the bridge) instead — skip them
     // here to avoid double-advancing the selection diff.
+    const mirrorStart = performance.now();
     if (!isSimWorkerStarted()) {
       syncLocalPilotMirror();
       syncLocalSelectionMirror();
     }
+    frameProfiler.add('mirror', performance.now() - mirrorStart);
 
-
-    // Update bridge visibility based on game state
+    // Update bridge visibility + ease the capture flags toward their team color / height.
+    const visualsStart = performance.now();
     updateBridgeVisibility();
-
-    // Ease the capture flags toward their team color + raised/lowered height.
     updateFlagVisuals(delta);
+    frameProfiler.add('visuals', performance.now() - visualsStart);
 
     // Rendering can now exceed game logic frequency for smoother visuals
 
@@ -386,6 +393,12 @@ export function BattleMap() {
       Game Logic: ${gameLogicTime.toFixed(2)}ms
       Render Time: ${renderTime.toFixed(2)}ms`);
     }
+
+    // Frame-timing breakdown (opt-in: window.__rtsFrameProfile = true). `frame` is the total
+    // main-thread work in this callback; `interval` is the wall time between frames, so
+    // (interval - frame) is render(GPU) + browser + idle. Logs a table every ~2s.
+    frameProfiler.add('frame', performance.now() - frameStart);
+    frameProfiler.endFrame(frameTime);
   });
 
   // Ease each capture flag toward the team color of whoever holds its bridge trigger

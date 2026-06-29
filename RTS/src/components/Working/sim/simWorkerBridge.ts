@@ -23,6 +23,7 @@ import {
 import { pathfinder } from '../pathfinder';
 import { serializeTerrain } from './terrainOracle';
 import { pilotInput } from '../monarchPilot';
+import { frameProfiler } from '../../../utils/FrameProfiler';
 import type { SimRequest, SimResponse } from './simProtocol';
 import type { NetCommand, PlayerRole } from '../net/netMessages';
 import type { LockstepCallbacks } from '../net/lockstep';
@@ -76,15 +77,22 @@ function ensureWorker(): Worker {
       const message = event.data;
       if (!message) return;
       switch (message.kind) {
-        case 'snapshot':
+        case 'snapshot': {
           // Refresh the mirror (decoding the structure-of-arrays units), then re-derive the
           // local pilot + selection mirrors from it (the heirs to the tick's old in-thread
           // writes) — exactly the post-tick passes the in-thread loop runs, now on snapshot
-          // arrival.
+          // arrival. Timed as `ingest` (main-thread cost of receiving a snapshot); the worker's
+          // own advance time rides along as `simMs` → `workerSim` (off-thread).
+          const ingestStart = performance.now();
           ingestSimSnapshot(message);
           syncLocalPilotMirror();
           syncLocalSelectionMirror();
+          frameProfiler.add('ingest', performance.now() - ingestStart);
+          if (typeof message.simMs === 'number' && message.simMs > 0) {
+            frameProfiler.add('workerSim', message.simMs);
+          }
           return;
+        }
         case 'netSend':
           // The in-worker lockstep engine wants a wire message transmitted to the peer; hand
           // it to the real WebRTC transport, which lives on the main thread.

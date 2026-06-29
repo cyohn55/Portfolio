@@ -93,6 +93,11 @@ let netEngine: LockstepEngine | null = null;
 // each tick by the engine's adapter (the worker has no input devices of its own).
 let localPilot = { x: 0, z: 0 };
 
+// Profiling only: the worker-thread time the last advance (runTicks / netUpdate) spent in the
+// sim, stamped onto the next snapshot (FrameProfiler's `workerSim`). Read-and-cleared by
+// buildSimSnapshot so only post-advance snapshots report it. Never feeds the sim.
+let lastSimMs = 0;
+
 /**
  * Apply one request to the authoritative simulation, forwarding to the store's existing
  * deterministic actions so a sequence of requests produces byte-identical state to the same
@@ -131,13 +136,16 @@ export function processSimRequest(request: SimRequest): void {
     case 'command':
       dispatchCommand(request.command);
       return;
-    case 'runTicks':
+    case 'runTicks': {
+      const simStart = performance.now();
       syncTerrainBridgeState();
       for (let i = 0; i < request.count; i++) {
         runAiCommanders();
         useGameStore.getState().tick(SIM_FIXED_DT_SEC, request.nowMs);
       }
+      lastSimMs = performance.now() - simStart;
       return;
+    }
 
     // --- multiplayer (worker-side lockstep) ---
     case 'startNetMatch': {
@@ -150,10 +158,13 @@ export function processSimRequest(request: SimRequest): void {
       startNetEngine(request.localRole);
       return;
     }
-    case 'netUpdate':
+    case 'netUpdate': {
       localPilot = request.pilot;
+      const simStart = performance.now();
       netEngine?.update(request.dtMs);
+      lastSimMs = performance.now() - simStart;
       return;
+    }
     case 'netRecv':
       netTransport?.deliverMessage(request.message);
       return;
@@ -236,6 +247,8 @@ export function buildSimSnapshot(): SimSnapshot {
     snapshotState[field] = state[field];
   }
   const { hot, cold } = encodeUnits(liveState.units);
+  const simMs = lastSimMs;
+  lastSimMs = 0; // only the snapshot right after an advance reports a sim time
   return {
     kind: 'snapshot',
     tickCounter: liveState.tickCounter,
@@ -243,5 +256,6 @@ export function buildSimSnapshot(): SimSnapshot {
     state: snapshotState,
     unitsHot: hot,
     unitsCold: cold,
+    simMs,
   };
 }

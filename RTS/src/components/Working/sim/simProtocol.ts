@@ -165,6 +165,10 @@ export interface SimSnapshot {
   // thread reassembles full units via snapshotCodec.decodeUnits during ingest.
   unitsHot: UnitsHot;
   unitsCold: unknown[];
+  // Profiling only (FrameProfiler): the worker-thread wall time the sim spent advancing for
+  // this snapshot (tick batch / engine update). Never feeds the sim, so determinism is
+  // unaffected. The main thread records it as the `workerSim` bucket.
+  simMs?: number;
 }
 
 /** A wire message the in-worker engine wants transmitted to the peer (worker → main-thread
