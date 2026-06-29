@@ -106,7 +106,7 @@ async function main() {
   const realLog = console.log;
   console.log = () => {};
   const api = await import(await bundleHost());
-  const { processSimRequest, buildSimSnapshot, ingestSimSnapshot, useGameStore } = api;
+  const { processSimRequest, buildSimSnapshot, ingestSimSnapshot, decodeUnits, useGameStore } = api;
 
   // Drive the whole match through the worker host's request API, exactly as the main
   // thread would post messages: start, then per tick { commands…, runTicks 1 }.
@@ -144,14 +144,22 @@ async function main() {
   }
   if (cloned) {
     const liveUnits = useGameStore.getState().units;
-    const clonedUnits = cloned.state.units;
-    check('snapshot carries every unit', Array.isArray(clonedUnits) && clonedUnits.length === liveUnits.length);
-    const samePositions = Array.isArray(clonedUnits) && clonedUnits.every((u, i) =>
+    // P1-4: units cross the wire structure-of-arrays encoded — hot columns in a transferable
+    // Float32Array + lean cold objects. Decode the cloned snapshot and assert fidelity.
+    const clonedUnits = decodeUnits(cloned.unitsHot, cloned.unitsCold);
+    check('snapshot carries every unit (decoded)', clonedUnits.length === liveUnits.length);
+    const samePositions = clonedUnits.every((u, i) =>
       u.id === liveUnits[i].id &&
       u.position.x === liveUnits[i].position.x &&
+      u.position.y === liveUnits[i].position.y &&
       u.position.z === liveUnits[i].position.z &&
+      u.rotation === liveUnits[i].rotation &&
       u.hp === liveUnits[i].hp);
-    check('cloned snapshot preserves unit id/position/hp', samePositions);
+    check('decoded snapshot preserves unit id/position/rotation/hp', samePositions);
+    check('hot columns are a transferable ArrayBuffer', cloned.unitsHot.buffer instanceof ArrayBuffer);
+    check('hot columns are packed (count*stride, f64)', cloned.unitsHot.buffer.byteLength === cloned.unitsHot.count * cloned.unitsHot.stride * 8);
+    check('cold objects drop the sim-internal A* path cache', cloned.unitsCold.every((c) => !('pathWaypoints' in c) && !('pathIndex' in c)));
+    check('snapshot state does NOT carry the units array', !('units' in cloned.state));
     check('snapshot does NOT carry the RNG instance', !('rng' in cloned.state));
     check('snapshot does NOT carry the spatial grid', !('spatialGrid' in cloned.state));
     check('snapshot checksum matches the final tick', cloned.checksum === perTick[perTick.length - 1]);
@@ -163,23 +171,25 @@ async function main() {
   //    then ingest the snapshot back and assert the store's Bucket-A fields are restored to
   //    the snapshot exactly — proof ingest faithfully reconstructs the mirror from plain data.
   if (cloned) {
+    // The snapshot's units as the bridge would reconstruct them.
+    const snapshotUnits = decodeUnits(cloned.unitsHot, cloned.unitsCold);
+
     const consoleOff = console.log; console.log = () => {};
     for (let i = 0; i < 30; i++) processSimRequest({ kind: 'runTicks', count: 1, nowMs: NOW });
     console.log = consoleOff;
     const advancedTick = useGameStore.getState().tickCounter;
     check('store advanced past the snapshot before ingest', advancedTick > cloned.tickCounter);
 
-    ingestSimSnapshot(cloned.state);
+    ingestSimSnapshot(cloned);
     const mirror = useGameStore.getState();
     check('ingest restores tickCounter', mirror.tickCounter === cloned.tickCounter);
     check('ingest restores player count', mirror.players.length === cloned.state.players.length);
-    const restoredUnits = Array.isArray(cloned.state.units) &&
-      mirror.units.length === cloned.state.units.length &&
+    const restoredUnits = mirror.units.length === snapshotUnits.length &&
       mirror.units.every((u, i) =>
-        u.id === cloned.state.units[i].id &&
-        u.position.x === cloned.state.units[i].position.x &&
-        u.position.z === cloned.state.units[i].position.z &&
-        u.hp === cloned.state.units[i].hp);
+        u.id === snapshotUnits[i].id &&
+        u.position.x === snapshotUnits[i].position.x &&
+        u.position.z === snapshotUnits[i].position.z &&
+        u.hp === snapshotUnits[i].hp);
     check('ingest restores every unit id/position/hp from the snapshot', restoredUnits);
     check('ingest restores matchStats', JSON.stringify(mirror.matchStats) === JSON.stringify(cloned.state.matchStats));
   }

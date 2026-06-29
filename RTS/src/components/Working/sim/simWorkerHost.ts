@@ -23,6 +23,7 @@ import { runAiCommanders } from '../ai/aiCommander';
 import { LockstepEngine, type LockstepTransport } from '../net/lockstep';
 import type { PlayerRole, NetCommand } from '../net/netMessages';
 import { installTerrainOracle, type TerrainOracle } from './terrainOracle';
+import { encodeUnits } from './snapshotCodec';
 import { SIM_SNAPSHOT_FIELDS, type SimRequest, type SimSnapshot } from './simProtocol';
 
 /**
@@ -42,6 +43,8 @@ export function setSimOutbound(fn: Outbound): void {
 // main code uses the host's request API and the bridge's ingest, not these — they exist for
 // the headless test seam.
 export { useGameStore, ingestSimSnapshot } from '../../../game/state';
+// Codec re-export for the headless snapshot harnesses (decode the SoA units the host encodes).
+export { encodeUnits, decodeUnits } from './snapshotCodec';
 
 // The simulation's fixed timestep (seconds). Matches FIXED_TIMESTEP/1000 in HexGrid's loop
 // and the DT every determinism harness uses, so a message-driven run reproduces them.
@@ -220,17 +223,25 @@ function syncTerrainBridgeState(): void {
  * are referenced as-is (not deep-cloned here): `postMessage`'s structured clone copies
  * them across the worker boundary, and the Node harness clones explicitly to prove the
  * slice is structured-cloneable.
+ *
+ * The heavy `units` array is encoded out-of-band (P1-4): hot numeric columns in a transferable
+ * Float32Array + a lean cold object, via snapshotCodec. The worker shell transfers
+ * `unitsHot.buffer` (zero-copy) when it posts this (see sim.worker.ts).
  */
 export function buildSimSnapshot(): SimSnapshot {
-  const state = useGameStore.getState() as unknown as Record<string, unknown>;
+  const liveState = useGameStore.getState();
+  const state = liveState as unknown as Record<string, unknown>;
   const snapshotState = {} as SimSnapshot['state'];
   for (const field of SIM_SNAPSHOT_FIELDS) {
     snapshotState[field] = state[field];
   }
+  const { hot, cold } = encodeUnits(liveState.units);
   return {
     kind: 'snapshot',
-    tickCounter: useGameStore.getState().tickCounter,
+    tickCounter: liveState.tickCounter,
     checksum: computeStateChecksum(),
     state: snapshotState,
+    unitsHot: hot,
+    unitsCold: cold,
   };
 }

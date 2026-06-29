@@ -77,10 +77,11 @@ function ensureWorker(): Worker {
       if (!message) return;
       switch (message.kind) {
         case 'snapshot':
-          // Refresh the mirror, then re-derive the local pilot + selection mirrors from it
-          // (the heirs to the tick's old in-thread writes) — exactly the post-tick passes the
-          // in-thread loop runs, now driven by snapshot arrival.
-          ingestSimSnapshot(message.state as Record<string, unknown>);
+          // Refresh the mirror (decoding the structure-of-arrays units), then re-derive the
+          // local pilot + selection mirrors from it (the heirs to the tick's old in-thread
+          // writes) — exactly the post-tick passes the in-thread loop runs, now on snapshot
+          // arrival.
+          ingestSimSnapshot(message);
           syncLocalPilotMirror();
           syncLocalSelectionMirror();
           return;

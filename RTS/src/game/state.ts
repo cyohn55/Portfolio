@@ -16,6 +16,7 @@ import type { NetCommand, PlayerRole } from '../components/Working/net/netMessag
 setAutoFreeze(false);
 import { terrainValidator } from '../utils/TerrainValidator';
 import type { SimTerrain } from '../components/Working/sim/terrainOracle';
+import { decodeUnits, type UnitsHot } from '../components/Working/sim/snapshotCodec';
 import { pathfinder } from '../components/Working/pathfinder';
 
 // Worker-offload seam: the simulation reads terrain through `activeTerrain`, not the
@@ -4180,8 +4181,15 @@ export function getSimSnapshot(): Store {
  * own module (the boundary guard) and so a harness can drive ingest directly. Call once per
  * arriving snapshot, then run the syncLocal*Mirror passes (see simWorkerBridge).
  */
-export function ingestSimSnapshot(snapshotState: Record<string, unknown>): void {
-  useGameStore.setState(snapshotState as Partial<Store>);
+export function ingestSimSnapshot(snapshot: {
+  state: Record<string, unknown>;
+  unitsHot: UnitsHot;
+  unitsCold: unknown[];
+}): void {
+  // Reassemble the units from the structure-of-arrays encoding (P1-4) — the transferred hot
+  // columns + the lean cold objects — then write the whole mirror in one setState.
+  const units = decodeUnits(snapshot.unitsHot, snapshot.unitsCold);
+  useGameStore.setState({ ...(snapshot.state as Partial<Store>), units });
 }
 
 /**

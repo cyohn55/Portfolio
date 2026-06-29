@@ -14,7 +14,7 @@ import type { SimRequest } from './simProtocol';
 // the project tsconfig (the host carries all the real types).
 declare const self: {
   onmessage: ((event: { data: SimRequest }) => void) | null;
-  postMessage: (message: unknown) => void;
+  postMessage: (message: unknown, transfer?: Transferable[]) => void;
 };
 
 // Let the host initiate worker→main messages mid-processing (the in-worker lockstep engine's
@@ -27,5 +27,8 @@ self.onmessage = (event) => {
   // Publish a fresh snapshot after any state-advancing request. Commands that arrive
   // between ticks still post (cheap, and the main-thread mirror stays current for
   // input-read-back); the dominant case is one snapshot per `runTicks` / `netUpdate` frame.
-  self.postMessage(buildSimSnapshot());
+  // TRANSFER the hot units buffer (zero-copy) — it is freshly allocated each snapshot, so
+  // detaching it here is safe.
+  const snapshot = buildSimSnapshot();
+  self.postMessage(snapshot, [snapshot.unitsHot.buffer]);
 };

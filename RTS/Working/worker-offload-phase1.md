@@ -320,5 +320,22 @@ the safety net; needs an in-browser pass before being trusted.
 **Known gaps:** replay capture is unsupported under the flag (descoped, dev-only; `exportReplay`
 made worker-safe); Firebase/leaderboard is bundled into the worker (builds fine, runtime
 window-access at game-over is an unverified live risk); the worker isn't torn down on
-return-to-menu (idle/harmless, re-inits next match). P1-4 (transferable structure-of-arrays
-snapshot perf pass) is still future.
+return-to-menu (idle/harmless, re-inits next match).
+
+## P1-4 — transferable structure-of-arrays snapshot — DONE (2026-06-29)
+
+The per-frame `units` array was the heaviest thing crossing the boundary (N objects, each with a
+nested position + the sim-internal A* path cache). New `sim/snapshotCodec.ts` splits a unit into
+HOT numeric columns (x,y,z,rotation,hp) packed in one **Float64Array** (TRANSFERRED zero-copy via
+`postMessage(snapshot, [unitsHot.buffer])`) + a lean COLD object that drops the path cache
+(audited: no main-thread reader). `buildSimSnapshot` encodes (`encodeUnits`), `ingestSimSnapshot`
+decodes (`decodeUnits`) — semantically identical to the old clone (units array still rebuilt each
+frame, all render/UI fields present, Float64 = exact), so **zero rendering-reactivity risk**;
+`units` removed from SIM_SNAPSHOT_FIELDS. Rendering already reads positions imperatively in
+useFrame (UnitsLayer/BaseRenderer), so the mirror's per-frame rebuild is what they read.
+
+Verified: `snapshot-codec-roundtrip.harness.mjs` (encode→structuredClone→decode fidelity, path-
+cache stripped, transferable buffer) + `sim-worker-determinism` extended to assert the SoA
+snapshot decodes to exact id/position/rotation/hp and the cold objects carry no path cache. The
+actual FPS win still needs an in-browser measurement (window.__rtsPerfDebug) — this reduces the
+main thread's per-frame deserialize cost; it does not change the rendering work itself.

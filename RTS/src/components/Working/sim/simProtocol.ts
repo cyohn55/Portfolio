@@ -11,6 +11,7 @@
 import type { NetCommand, PlayerRole } from '../net/netMessages';
 import type { AnimalId } from '../../../game/types';
 import type { TerrainSnapshot } from './terrainOracle';
+import type { UnitsHot } from './snapshotCodec';
 
 // --- Main thread → worker -------------------------------------------------------------
 
@@ -119,10 +120,12 @@ export type SimRequest =
  * class instances; the per-tick caches/timers are sim-private). Every field here is
  * structured-cloneable, so the worker can `postMessage` it directly. The main thread
  * ingests this wholesale into the `useGameStore` mirror (see ingestSimSnapshot). */
+// NOTE: `units` is NOT here — it is the heaviest field and crosses the boundary separately,
+// structure-of-arrays encoded (hot columns transferred zero-copy + a lean cold object), see
+// snapshotCodec + SimSnapshot.unitsHot/unitsCold. These are the remaining plain-clone fields.
 export const SIM_SNAPSHOT_FIELDS = [
   'config',
   'players',
-  'units',
   'matchStarted',
   'matchStartNonce',
   'gameOver',
@@ -157,6 +160,11 @@ export interface SimSnapshot {
   checksum: string;
   // The SIM_SNAPSHOT_FIELDS, by name. Indexed access keeps this decoupled from GameState.
   state: Record<SimSnapshotField, unknown>;
+  // The units, structure-of-arrays encoded (P1-4): `unitsHot.buffer` is TRANSFERRED across
+  // the boundary (zero-copy); `unitsCold` carries the remaining per-unit fields. The main
+  // thread reassembles full units via snapshotCodec.decodeUnits during ingest.
+  unitsHot: UnitsHot;
+  unitsCold: unknown[];
 }
 
 /** A wire message the in-worker engine wants transmitted to the peer (worker → main-thread
