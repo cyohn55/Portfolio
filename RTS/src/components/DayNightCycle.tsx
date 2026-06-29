@@ -8,6 +8,11 @@ interface DayNightCycleProps {
   cycleDurationSeconds?: number;
 }
 
+// Re-render the shadow map once every this many frames (1 = every frame). 2 halves the shadow
+// pass cost — the dominant render spike, since units cast shadows — for a one-frame trailing
+// of moving shadows that is imperceptible in play. Bump to 3 to cut it further if needed.
+const SHADOW_UPDATE_INTERVAL = 2;
+
 // Hemisphere transition endpoints, allocated once. The per-frame loop lerps
 // directly into the live light's color objects (below) so the day/night sweep
 // never allocates a Color every frame (was ~6 Color allocations per frame).
@@ -23,6 +28,8 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
   const shadowsEnabled = useUiSettingsStore((s) => s.shadowsEnabled);
   const sunRef = useRef<THREE.DirectionalLight>(null);
   const moonRef = useRef<THREE.DirectionalLight>(null);
+  // Frame counter for throttling the shadow pass (see SHADOW_UPDATE_INTERVAL).
+  const shadowFrame = useRef(0);
   const hemisphereRef = useRef<THREE.HemisphereLight>(null);
   const sunMeshRef = useRef<THREE.Mesh>(null);
   const moonMeshRef = useRef<THREE.Mesh>(null);
@@ -43,6 +50,19 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
   const cycleSpeed = (Math.PI * 2) / (lightingSettings.dayNightSpeed || cycleDurationSeconds);
 
   useFrame((state, delta) => {
+    // Shadow-cost throttle: re-render the shadow map every Nth frame rather than every frame.
+    // Units cast shadows (UnitsLayer), so in a big battle the shadow pass re-renders hundreds
+    // of animal instances each frame — the dominant render spike. At N=2 this halves that cost
+    // (and the spikes) for shadows trailing motion by at most one frame, imperceptible at 60+
+    // fps and with the sun arcing over ~120s. Runs before the pause gate so it also applies
+    // while paused (the map is static then, so one final shadow render suffices).
+    const renderer = state.gl;
+    if (renderer.shadowMap.enabled) {
+      renderer.shadowMap.autoUpdate = false;
+      shadowFrame.current = (shadowFrame.current + 1) % SHADOW_UPDATE_INTERVAL;
+      renderer.shadowMap.needsUpdate = shadowFrame.current === 0;
+    }
+
     // Pause the day/night cycle when game is paused
     if (isPaused) return;
 
@@ -238,8 +258,11 @@ export function DayNightCycle({ cycleDurationSeconds = 120 }: DayNightCycleProps
         intensity={2.5}
         color={0xFFFAF0}
         castShadow={shadowsEnabled}
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        // 1024² (down from 2048²) — a quarter of the shadow-map fill, the biggest steady
+        // render saving. Slightly softer edges, fine for the top-down RTS view. Pair with the
+        // SHADOW_UPDATE_INTERVAL throttle above for the per-frame cost.
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
         shadow-camera-near={0.5}
         shadow-camera-far={1000}
         shadow-camera-left={-300}
