@@ -7,15 +7,18 @@ import {
 import { cameraRuntime } from './cameraTuning';
 
 /**
- * In-game admin panel (toggle with F5) for experimenting with the camera's point
- * of view on the fly. Every control writes straight into the live camera-settings
- * store, which the CameraController reads each frame, so adjustments are visible
- * immediately without a reload.
+ * In-game admin panel (toggle with Ctrl+Shift+C) for experimenting with the
+ * camera's point of view on the fly. Every control writes straight into the live
+ * camera-settings store, which the CameraController reads each frame, so
+ * adjustments are visible immediately without a reload.
  *
- * DEV-only: it is mounted by App.tsx behind `import.meta.env.DEV`, so it never
- * appears in the deployed portfolio build and never hijacks F5 (browser reload)
- * for a visitor. Styling is fully inline to stay clear of the global stylesheet
- * (Vite concatenates every component's CSS, so generic class names leak between
+ * The toggle deliberately avoids F5 so it can ship in the deployed build without
+ * hijacking the browser's reload key for portfolio visitors — F5 keeps working
+ * as a normal refresh for everyone. Backtick (`) is accepted as an alternate
+ * toggle for browsers that reserve Ctrl+Shift+C for their element inspector.
+ *
+ * Styling is fully inline to stay clear of the global stylesheet (Vite
+ * concatenates every component's CSS, so generic class names leak between
  * components — see the project's CSS-collision notes).
  */
 
@@ -156,11 +159,14 @@ export function CameraAdminPanel() {
   const [liveDistance, setLiveDistance] = useState<number | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  // F5 toggles the panel. preventDefault stops the browser's reload so the key is
-  // free to act as our hotkey while developing.
+  // Ctrl+Shift+C (or backtick as a fallback) toggles the panel. Using event.code
+  // keeps the match keyboard-layout independent. Avoiding F5 means the browser's
+  // reload key stays untouched for ordinary visitors on the live site.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'F5') return;
+      const isChord = event.ctrlKey && event.shiftKey && event.code === 'KeyC';
+      const isBacktick = event.code === 'Backquote' && !event.ctrlKey && !event.metaKey && !event.altKey;
+      if (!isChord && !isBacktick) return;
       event.preventDefault();
       setIsOpen((open) => !open);
     };
@@ -190,7 +196,7 @@ export function CameraAdminPanel() {
           ✕
         </button>
       </div>
-      <p style={styles.hint}>F5 to toggle · changes apply live</p>
+      <p style={styles.hint}>Ctrl+Shift+C or ` to toggle · changes apply live</p>
 
       {/* Live zoom: reads/sets the active CameraController distance directly. */}
       <p style={styles.sectionTitle}>Live zoom</p>

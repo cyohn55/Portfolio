@@ -215,9 +215,9 @@ export default function App() {
       <DirectingRadial />
       {/* Yellow edge-scroll chevrons, lit only while the cursor is in a pan-trigger band. */}
       <EdgePanChevrons />
-      {/* DEV-only camera tuning panel (F5). Excluded from production so it never
-          hijacks the browser-reload key for portfolio visitors. */}
-      {import.meta.env.DEV && <CameraAdminPanel />}
+      {/* Camera tuning panel — toggled with Ctrl+Shift+C (or `). Bound to a
+          non-reload key so it can ship live without hijacking F5 for visitors. */}
+      <CameraAdminPanel />
       <Canvas
         camera={{ fov: 45, far: 200000 }}
         shadows={shadowsEnabled}
