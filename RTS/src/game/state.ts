@@ -4696,25 +4696,55 @@ function hasCrowdConvergingOn(
   return false;
 }
 
-// A deterministic packed layout of `count` destinations around `center`, spaced about
-// UNIT_MINIMUM_SPACING apart via a sunflower (phyllotaxis) spiral. Sending a whole group to ONE
-// point is the root cause of the close-in jitter: the spacing passes hold every unit a personal-
-// space ring out from the others, so they shove each other off the spot and never settle (worst
-// for kings/queens, which plow onto the exact point and are ejected by the separation pass the
-// same tick). Giving each unit its own pre-spaced slot lets every member arrive cleanly with no
-// dog-pile. Slot 0 is the exact click; the rest spiral outward (radius ∝ √index keeps the disk
-// evenly filled, the golden angle keeps neighbours apart).
+// A deterministic packed layout of `count` destinations around `center` on a hexagonal lattice
+// whose neighbour spacing is exactly UNIT_MINIMUM_SPACING. Sending a whole group to ONE point is
+// the root cause of the close-in jitter: the spacing passes hold every unit a personal-space ring
+// out from the others, so they shove each other off the spot and never settle (worst for kings/
+// queens, which plow onto the exact point and are ejected by the separation pass the same tick).
+// Giving each unit its own pre-spaced slot lets every member arrive cleanly with no dog-pile.
+//
+// Hexagonal close packing (not a sunflower spiral) is used so the blob is as TIGHT as the physics
+// physically allow: every neighbour sits at UNIT_MINIMUM_SPACING — the exact distance the
+// separation pass enforces, so no slot fights another — while filling the smallest possible disk.
+// A sunflower at the same minimum spacing scatters the group over ~4x the area (its outer ring is
+// ~2x the radius), which read as the units being "too loosely packed" on arrival. Slot 0 is the
+// exact click; remaining slots are the lattice cells nearest the click, so the group settles in a
+// compact patch centred on the destination.
 function packedSlotsAround(center: Position3D, count: number): Position3D[] {
-  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-  const slots: Position3D[] = [];
-  for (let index = 0; index < count; index++) {
-    if (index === 0) {
-      slots.push({ x: center.x, y: center.y, z: center.z });
-      continue;
+  if (count <= 0) return [];
+
+  // Pointy-top hex lattice basis: stepping one cell in any of the six directions moves exactly
+  // `spacing` world units. Axial (q, r) → world: x = spacing·(q + r/2), z = spacing·(√3/2)·r.
+  const spacing = UNIT_MINIMUM_SPACING;
+  const halfSqrt3 = Math.sqrt(3) / 2;
+
+  // Generate every lattice cell within enough concentric rings to cover `count`, then keep the
+  // `count` cells closest to the centre. Ring k holds 6k cells (1 + 3k(k+1) total through ring k),
+  // so ⌈√count⌉ rings always suffice; a small buffer guards the rounding.
+  const ringCount = Math.ceil(Math.sqrt(count)) + 1;
+  const cells: Array<{ x: number; z: number; distanceSquared: number; angle: number }> = [];
+  for (let q = -ringCount; q <= ringCount; q++) {
+    for (let r = -ringCount; r <= ringCount; r++) {
+      const hexDistance = (Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2;
+      if (hexDistance > ringCount) continue;
+      const offsetX = spacing * (q + r / 2);
+      const offsetZ = spacing * halfSqrt3 * r;
+      cells.push({
+        x: center.x + offsetX,
+        z: center.z + offsetZ,
+        distanceSquared: offsetX * offsetX + offsetZ * offsetZ,
+        angle: Math.atan2(offsetZ, offsetX),
+      });
     }
-    const radius = UNIT_MINIMUM_SPACING * Math.sqrt(index);
-    const angle = index * goldenAngle;
-    slots.push({ x: center.x + radius * Math.cos(angle), y: center.y, z: center.z + radius * Math.sin(angle) });
+  }
+
+  // Nearest-first, then by angle — a deterministic order (no Math.random / float-tie ambiguity)
+  // so both lockstep peers and the AI build the identical slot list.
+  cells.sort((a, b) => (a.distanceSquared - b.distanceSquared) || (a.angle - b.angle));
+
+  const slots: Position3D[] = [];
+  for (let index = 0; index < count && index < cells.length; index++) {
+    slots.push({ x: cells[index].x, y: center.y, z: cells[index].z });
   }
   return slots;
 }
