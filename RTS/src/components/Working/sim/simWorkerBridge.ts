@@ -140,7 +140,7 @@ export function beginSinglePlayerIfPending(): boolean {
 
 /** Advance the worker sim by `count` fixed timesteps (one runTicks per animation frame). */
 export function runWorkerTicks(count: number, nowMs: number): void {
-  if (started && count > 0) post({ kind: 'runTicks', count, nowMs });
+  if (started && count > 0) post({ kind: 'runTicks', count, nowMs, pilot: pilotInput.getMove() });
 }
 
 /** Forward a sim command to the worker (installed as the dispatchCommand sink). In single-

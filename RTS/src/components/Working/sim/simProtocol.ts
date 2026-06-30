@@ -59,11 +59,16 @@ export interface SimCommandRequest {
 
 /** Advance the simulation by `count` fixed timesteps. `nowMs` is a wall clock the sim
  * overrides with its own deterministic tick-derived clock, so it only satisfies the
- * `tick` signature and never affects the outcome. */
+ * `tick` signature and never affects the outcome. `pilot` is the local player's live
+ * monarch/fire-team-drive vector, sampled main-thread (pilotInput) and shipped each frame
+ * so the single-player tick can read it — the worker has no input devices of its own, so
+ * without this the worker's pilotInput stays zero and a piloted King/Queen/fire team can
+ * be selected (camera follows) but never moves. Mirrors `netUpdate.pilot` for multiplayer. */
 export interface SimRunTicksRequest {
   kind: 'runTicks';
   count: number;
   nowMs: number;
+  pilot: { x: number; z: number };
 }
 
 // --- Multiplayer (worker-side lockstep) ----------------------------------------------

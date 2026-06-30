@@ -19,6 +19,7 @@ import {
   setCommandRouter,
 } from '../../../game/state';
 import { pathfinder } from '../pathfinder';
+import { pilotInput } from '../monarchPilot';
 import { runAiCommanders } from '../ai/aiCommander';
 import { LockstepEngine, type LockstepTransport } from '../net/lockstep';
 import type { PlayerRole, NetCommand } from '../net/netMessages';
@@ -143,6 +144,13 @@ export function processSimRequest(request: SimRequest): void {
     case 'runTicks': {
       const simStart = performance.now();
       syncTerrainBridgeState();
+      // Ride the main-thread drive vector onto the worker's own pilotInput singleton so the
+      // single-player tick's direct read (state.ts, the `!isLockstepMatch` branch) sees the
+      // live keyboard/stick input. The worker has no input devices, so without this its
+      // pilotInput stays zero and a piloted King/Queen/fire team never moves. Multiplayer
+      // rides its synced vector through the engine adapter instead (see `netUpdate`).
+      const pilot = request.pilot ?? { x: 0, z: 0 };
+      pilotInput.setMove(pilot.x, pilot.z);
       for (let i = 0; i < request.count; i++) {
         runAiCommanders();
         useGameStore.getState().tick(SIM_FIXED_DT_SEC, request.nowMs);

@@ -119,7 +119,7 @@ async function main() {
     for (const command of script.get(tick) ?? []) {
       processSimRequest({ kind: 'command', command });
     }
-    processSimRequest({ kind: 'runTicks', count: 1, nowMs: NOW });
+    processSimRequest({ kind: 'runTicks', count: 1, nowMs: NOW, pilot: { x: 0, z: 0 } });
     lastSnapshot = buildSimSnapshot();
     perTick.push(lastSnapshot.checksum);
   }
@@ -175,7 +175,7 @@ async function main() {
     const snapshotUnits = decodeUnits(cloned.unitsHot, cloned.unitsCold);
 
     const consoleOff = console.log; console.log = () => {};
-    for (let i = 0; i < 30; i++) processSimRequest({ kind: 'runTicks', count: 1, nowMs: NOW });
+    for (let i = 0; i < 30; i++) processSimRequest({ kind: 'runTicks', count: 1, nowMs: NOW, pilot: { x: 0, z: 0 } });
     console.log = consoleOff;
     const advancedTick = useGameStore.getState().tickCounter;
     check('store advanced past the snapshot before ingest', advancedTick > cloned.tickCounter);
