@@ -67,17 +67,17 @@ type UiStore = {
   addToSelection: (unitIds: string[]) => void;
 
   // The LOCAL player's pilot UI mirror: which monarch (pilotedUnitId) or deployed fire
-  // team (pilotedFireTeamId) the player is driving, or null. Used only by the UI (the gold
-  // ring, the camera follow, the radials) — the SIMULATION drives from the authoritative
-  // per-owner maps (pilotedUnitIdByOwner / pilotedFireTeamByOwner, Bucket-A on the sim
-  // store), never these. Since T2-C the sim no longer writes the mirror; the main thread
-  // DERIVES it from those maps each frame via syncLocalPilotMirror (state.ts), and gestures
-  // echo it optimistically. Moved off the sim store in P1-1 (this slice) so the worker can't
-  // be asked to write it. setPilotMirror is the per-frame derivation write; the optimistic
-  // single-field gesture writes go through setState directly from state.ts.
+  // teams (pilotedFireTeamIds) the player is driving — an empty list means no team. Used
+  // only by the UI (the gold ring, the camera follow, the radials) — the SIMULATION drives
+  // from the authoritative per-owner maps (pilotedUnitIdByOwner / pilotedFireTeamByOwner,
+  // Bucket-A on the sim store), never these. Since T2-C the sim no longer writes the mirror;
+  // the main thread DERIVES it from those maps each frame via syncLocalPilotMirror (state.ts),
+  // and gestures echo it optimistically. Moved off the sim store in P1-1 (this slice) so the
+  // worker can't be asked to write it. setPilotMirror is the per-frame derivation write; the
+  // optimistic single-field gesture writes go through setState directly from state.ts.
   pilotedUnitId: string | null;
-  pilotedFireTeamId: string | null;
-  setPilotMirror: (pilotedUnitId: string | null, pilotedFireTeamId: string | null) => void;
+  pilotedFireTeamIds: string[];
+  setPilotMirror: (pilotedUnitId: string | null, pilotedFireTeamIds: string[]) => void;
 
   // The local player's pre-game animal lineup (up to 3), chosen in the lobby. Pure UI
   // selection: the simulation reads it ONCE at match setup (startMatch bakes it into the
@@ -111,8 +111,8 @@ export const useUiStore = create<UiStore>((set) => ({
     set((state) => ({ selectedUnitIds: Array.from(new Set([...state.selectedUnitIds, ...unitIds])) })),
 
   pilotedUnitId: null,
-  pilotedFireTeamId: null,
-  setPilotMirror: (pilotedUnitId, pilotedFireTeamId) => set({ pilotedUnitId, pilotedFireTeamId }),
+  pilotedFireTeamIds: [],
+  setPilotMirror: (pilotedUnitId, pilotedFireTeamIds) => set({ pilotedUnitId, pilotedFireTeamIds }),
 
   selectedAnimalPool: ['Bee', 'Bear', 'Fox'],
   chooseAnimalsForLocal: (animals) => set({ selectedAnimalPool: animals.slice(0, 3) }),

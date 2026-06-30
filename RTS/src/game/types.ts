@@ -446,12 +446,14 @@ export interface GameState {
   // NOTE: `pilotedFireTeamId` (the LOCAL player's driven-fire-team UI mirror) moved to
   // `useUiStore` (src/game/uiStore.ts) in worker-offload P1-1, alongside pilotedUnitId —
   // derived from pilotedFireTeamByOwner since T2-C, so pure main-thread UI state.
-  // Per-owner driven fire-team id (or null), keyed by player id ('p0'/'p1'). The
-  // tick steers every member of this team from the owner's pilotMoveByOwner
-  // vector — never from the local-only pilotedFireTeamId — so a multiplayer peer
-  // simulates BOTH players' fire-team driving identically. Mutually exclusive with
-  // pilotedUnitIdByOwner: grabbing a monarch clears the team and vice versa.
-  pilotedFireTeamByOwner: Record<string, string | null>;
+  // Per-owner driven fire-team ids, keyed by player id ('p0'/'p1'); an empty array
+  // means the owner is driving no team. The tick steers every member of EACH listed
+  // team from the owner's pilotMoveByOwner vector — never from the local-only
+  // pilotedFireTeamIds mirror — so a multiplayer peer simulates BOTH players'
+  // fire-team driving identically. The Fire Team Overlay can hand several teams at
+  // once; cycleFireTeam still drives one. Mutually exclusive with
+  // pilotedUnitIdByOwner: grabbing a monarch clears the teams and vice versa.
+  pilotedFireTeamByOwner: Record<string, string[]>;
   // Per-fire-team formation state, keyed by fireTeamId. A team gets an entry the
   // first time it is given a formation (setFormation) and keeps it until match
   // reset; a team with no entry holds no formation (its members just clump). Reset

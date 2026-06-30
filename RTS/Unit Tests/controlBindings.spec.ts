@@ -100,6 +100,25 @@ test.describe('default binding maps', () => {
     expect(kbModes.deployUnits).toBe('hold');
   });
 
+  test('Fire Team Overlay defaults: keyboard Shift/tap, controller LB/hold, conflict-free', () => {
+    // The remappable trigger that opens the fire-team overlay. Keyboard taps Shift to
+    // toggle it; the controller holds LB. Bare 'shift' must not collide with the
+    // shift+letter group chords, and LB-hold must not collide with useAbility (LB tap).
+    const kbModes = getDefaultModes('keyboard');
+    const padModes = getDefaultModes('controller');
+    expect(DEFAULT_KEYBOARD_BINDINGS.quickDirectFireTeams).toBe('shift');
+    expect(kbModes.quickDirectFireTeams).toBe('tap');
+    expect(DEFAULT_CONTROLLER_BINDINGS.quickDirectFireTeams).toBe('button:4');
+    expect(padModes.quickDirectFireTeams).toBe('hold');
+    // Conflict-free against every other bound default on each device.
+    expect(
+      findConflict(DEFAULT_KEYBOARD_BINDINGS, kbModes, 'shift', 'tap', 'quickDirectFireTeams')
+    ).toBeNull();
+    expect(
+      findConflict(DEFAULT_CONTROLLER_BINDINGS, padModes, 'button:4', 'hold', 'quickDirectFireTeams')
+    ).toBeNull();
+  });
+
   test('getDefaultBindings returns an independent copy', () => {
     const a = getDefaultBindings('keyboard');
     a.cameraForward = 'mutated';

@@ -16,6 +16,7 @@ import { registerArenaBoundary, confineBoundaryToPoints } from './Working/arenaB
 import { computeArenaBoundary } from './Working/arenaBoundaryScene';
 import { UnitsLayer } from './UnitsLayer';
 import { MapInteraction } from './HexInteraction';
+import { FireTeamKeyboardDirect } from './Working/FireTeamKeyboardDirect';
 import { Skybox } from './Working/Skybox';
 import { LavaEruption } from './Working/LavaEruption';
 import { buildOptimizedBattleMap } from './Working/mergeBattleMap';
@@ -505,6 +506,9 @@ export function BattleMap() {
 
       {/* Interaction Layer - Re-enabled with context menu fix */}
       <MapInteraction />
+
+      {/* Keyboard "Fire Team Overlay": tap Shift to pick fire teams, then drive them */}
+      <FireTeamKeyboardDirect />
 
       {/* Nebula Skybox - GLTF model */}
       <Skybox />

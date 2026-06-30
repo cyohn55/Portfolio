@@ -156,7 +156,7 @@ async function main() {
     const teamBeforeDrive = useGameStore.getState().fireTeams[teamId];
     const anchorBefore = { ...teamBeforeDrive.anchor };
     const facingBefore = teamBeforeDrive.facing;
-    applyNetCommand('p0', { type: 'setPilotFireTeam', payload: { teamId } });
+    applyNetCommand('p0', { type: 'setPilotFireTeam', payload: { teamIds: [teamId] } });
     console.log = () => {};
     for (let i = 0; i < 90; i++) {
       applyNetCommand('p0', { type: 'pilotMove', payload: { x: 1, z: 0 } });

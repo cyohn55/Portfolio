@@ -125,7 +125,7 @@ function runScenario(api, scenario) {
   }
 
   // T -> cycleFireTeam dispatches this exact command to grab the team.
-  applyNetCommand('p0', { type: 'setPilotFireTeam', payload: { teamId: TEAM_ID } });
+  applyNetCommand('p0', { type: 'setPilotFireTeam', payload: { teamIds: [TEAM_ID] } });
 
   const startX = new Map(
     useGameStore.getState().units.filter((u) => memberIds.includes(u.id)).map((u) => [u.id, u.position.x])

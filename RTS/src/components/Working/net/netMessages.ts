@@ -75,10 +75,11 @@ export type NetCommand =
   // controller's cursor-deploy — instead of the monarch's own position. It is a
   // plain input the host and guest apply identically, so it stays deterministic.
   | { type: 'placeRallied'; payload: { monarchId: string; count: number; target?: { x: number; z: number } } }
-  // Hand the owner's drive control onto a deployed fire team (or null to release).
-  // The issuer picks the concrete team id locally, so both peers steer the same
-  // squad from the synced pilotMove vector — deterministic like setPilot.
-  | { type: 'setPilotFireTeam'; payload: { teamId: string | null } }
+  // Hand the owner's drive control onto zero or more deployed fire teams (an empty
+  // list releases). The issuer picks the concrete team ids locally and passes them in
+  // a canonical (sorted) order, so both peers steer the same squads from the synced
+  // pilotMove vector — deterministic like setPilot.
+  | { type: 'setPilotFireTeam'; payload: { teamIds: string[] } }
   | { type: 'releaseControl'; payload: Record<string, never> };
 
 /** Discriminator values for NetCommand — used by the store's routing seam. */

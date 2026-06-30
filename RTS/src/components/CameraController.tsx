@@ -464,11 +464,11 @@ export function CameraController({
     // Pilot mirror lives on useUiStore (local-UI, P1-1).
     const pilotUi = useUiStore.getState();
     const pilotedId = pilotUi.pilotedUnitId;
-    // The same ESDF/stick drive steers a deployed fire team when the player has
-    // handed control onto one (mutually exclusive with piloting a monarch). The
-    // camera follows the squad's centroid instead of a single monarch.
-    const pilotedFireTeamId = pilotUi.pilotedFireTeamId;
-    const isDriving = pilotedId !== null || pilotedFireTeamId !== null;
+    // The same ESDF/stick drive steers deployed fire teams when the player has handed
+    // control onto one or more (mutually exclusive with piloting a monarch). The camera
+    // follows the combined centroid of every driven team's members.
+    const pilotedFireTeamIds = pilotUi.pilotedFireTeamIds;
+    const isDriving = pilotedId !== null || pilotedFireTeamIds.length > 0;
 
     if (isDriving) {
       // The drive vector is camera-relative; clamp its length to 1 so an analog
@@ -499,7 +499,7 @@ export function CameraController({
             focusCount = 1;
             break;
           }
-        } else if (unit.fireTeamId === pilotedFireTeamId && unit.hp > 0) {
+        } else if (unit.fireTeamId !== undefined && pilotedFireTeamIds.includes(unit.fireTeamId) && unit.hp > 0) {
           focusX += unit.position.x;
           focusZ += unit.position.z;
           focusCount++;

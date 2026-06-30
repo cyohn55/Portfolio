@@ -692,12 +692,15 @@ export function GamepadController() {
     hideFireTeamDirectIndicators();
   };
 
-  // The controller action currently bound to a token, or null. Used so a plain LB tap
-  // still fires LB's own action (Switch Monarch by default) even though the gesture
-  // captures LB physically — and respects a remap rather than hard-coding the action.
-  const boundActionFor = (token: string): ControlActionId | null => {
+  // The controller action currently bound to a token, or null, ignoring `excludeId`.
+  // Used so a plain trigger tap still fires the trigger button's OTHER action (e.g. LB
+  // tap → Use Ability) even though the quick-direct gesture captures the trigger while
+  // held — respecting a remap rather than hard-coding the action, and excluding the
+  // quick-direct action itself so it never resolves back to its own trigger.
+  const boundActionFor = (token: string, excludeId?: ControlActionId): ControlActionId | null => {
     const bindings = useUiSettingsStore.getState().controllerBindings;
     for (const actionId of Object.keys(bindings) as ControlActionId[]) {
+      if (actionId === excludeId) continue;
       if (bindings[actionId] === token) return actionId;
     }
     return null;
@@ -715,7 +718,14 @@ export function GamepadController() {
   // falls through to LB's bound action (Switch Monarch); releasing LB ends the gesture.
   const updateFireTeamDirect = (gamepad: GamepadLike, canDirect: boolean): boolean => {
     const ref = fireTeamDirectRef.current;
-    const lbActive = isControllerTokenActive(gamepad, LEFT_BUMPER);
+    // The trigger that opens the gesture is the remappable quickDirectFireTeams binding
+    // (Left Bumper by default), read physically like the rest of the gesture so it never
+    // collides with a remapped action. An unbound trigger ('') is never active, which
+    // simply disables the gesture. `lbActive`/`lbPrev` keep their names for the press-edge
+    // bookkeeping below.
+    const bindings = useUiSettingsStore.getState().controllerBindings;
+    const triggerToken = bindings.quickDirectFireTeams;
+    const lbActive = isControllerTokenActive(gamepad, triggerToken);
 
     // The gesture is inert while a radial owns LB (page-flip) or the match is not live.
     // Abandon any in-progress aim so a press begun elsewhere can't leak in on return.
@@ -727,7 +737,6 @@ export function GamepadController() {
 
     const now = performance.now();
     const { units, fireTeams, localPlayerId } = getSimSnapshot();
-    const bindings = useUiSettingsStore.getState().controllerBindings;
     const assignments = assignFireTeamButtons(directableFireTeamIds(units, localPlayerId));
     const directableSet = new Set(assignments.map((assignment) => assignment.teamId));
 
@@ -824,8 +833,10 @@ export function GamepadController() {
     // does not — the player was directing, not tapping. Then end the gesture.
     if (!lbActive && ref.lbPrev) {
       if (ref.engaged && !ref.consumed && now - ref.pressAt <= HOLD_ACTIVATION_MS) {
-        const lbAction = boundActionFor(LEFT_BUMPER);
-        if (lbAction) fireAction(lbAction);
+        // A quick tap fires the trigger button's OTHER bound action (e.g. LB tap → Use
+        // Ability), excluding quickDirectFireTeams so the trigger never resolves to itself.
+        const tapAction = boundActionFor(triggerToken, 'quickDirectFireTeams');
+        if (tapAction) fireAction(tapAction);
       }
       cancelFireTeamDirect();
     }
@@ -1439,9 +1450,10 @@ export function GamepadController() {
       }
     }
     if (fireTeamDirecting) {
-      // The gesture owns LB, every selector button, B (cancel), and RT (send) for the
-      // whole hold, so none of their normal actions fire underneath the picker/arrow.
-      ownedTokens.add(LEFT_BUMPER);
+      // The gesture owns its trigger, every selector button, B (cancel), and RT (send)
+      // for the whole hold, so none of their normal actions fire underneath the
+      // picker/arrow. The trigger is the remappable quickDirectFireTeams binding.
+      ownedTokens.add(controllerBindings.quickDirectFireTeams);
       for (const slot of FIRE_TEAM_BUTTON_SLOTS) ownedTokens.add(slot.token);
       ownedTokens.add(FIRE_TEAM_CANCEL_BUTTON);
       ownedTokens.add(controllerBindings.secondaryAction);

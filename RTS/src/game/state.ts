@@ -418,7 +418,7 @@ function stopOwnerPilot(draft: PilotMutableState, ownerId: string): void {
   const previouslyPiloted = draft.pilotedUnitIdByOwner[ownerId];
   if (previouslyPiloted) holdReleasedMonarch(draft, ownerId, previouslyPiloted);
   draft.pilotedUnitIdByOwner[ownerId] = null;
-  draft.pilotedFireTeamByOwner[ownerId] = null;
+  draft.pilotedFireTeamByOwner[ownerId] = [];
   draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
   // No Bucket-C-local writes here: the worker-bound sim never touches the main-thread
   // UI mirror. pilotedUnitId / pilotedFireTeamId are derived from the *ByOwner maps
@@ -483,9 +483,9 @@ function applyPilotSelectionToDraft(draft: PilotMutableState, ownerId: string, u
   draft.pilotedUnitIdByOwner[ownerId] = unitId;
   draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
   // Driving a monarch and driving a fire team are mutually exclusive — one drive
-  // vector, one target — so grabbing a monarch releases any team this owner was
+  // vector, one target — so grabbing a monarch releases any teams this owner was
   // steering (and vice versa in applyPilotFireTeamToDraft).
-  if (unitId !== null) draft.pilotedFireTeamByOwner[ownerId] = null;
+  if (unitId !== null) draft.pilotedFireTeamByOwner[ownerId] = [];
   // No Bucket-C-local writes here: pilotedUnitId is derived main-thread from the
   // *ByOwner map (syncLocalPilotMirror), and the placement teardrop is cleared by the
   // issuing gesture handle (beginLocalPilot / clearPilot) for a local stop, or by the
@@ -493,22 +493,24 @@ function applyPilotSelectionToDraft(draft: PilotMutableState, ownerId: string, u
 }
 
 /**
- * Hand an owner's drive control onto a deployed fire team (or release it when
- * teamId is null). The owner's pilot vector now steers every member of that team
- * at once; grabbing a team releases any monarch this owner was piloting (the
- * inverse of applyPilotSelectionToDraft) so there is always a single drive target.
- * For the local player it also mirrors the choice into the UI fields and selects
- * the team's members so the player sees who they are about to drive. Shared by the
+ * Hand an owner's drive control onto one or more deployed fire teams (or release it
+ * when teamIds is empty). The owner's pilot vector now steers every member of every
+ * listed team at once; grabbing teams releases any monarch this owner was piloting
+ * (the inverse of applyPilotSelectionToDraft) so there is always a single drive
+ * vector with one set of targets. For the local player the caller also mirrors the
+ * choice into the UI fields and selects the teams' members. Shared by the
  * single-player gesture path and the lockstep apply path so both peers steer the
- * same squad deterministically from the synced pilotMove vector.
+ * same squads deterministically from the synced pilotMove vector. The team-id order
+ * is preserved as given (callers pass a canonical, sorted list) so it is identical
+ * on both peers.
  */
-function applyPilotFireTeamToDraft(draft: PilotMutableState, ownerId: string, teamId: string | null): void {
-  draft.pilotedFireTeamByOwner[ownerId] = teamId;
+function applyPilotFireTeamToDraft(draft: PilotMutableState, ownerId: string, teamIds: string[]): void {
+  draft.pilotedFireTeamByOwner[ownerId] = [...teamIds];
   draft.pilotMoveByOwner[ownerId] = { x: 0, z: 0 };
-  // One drive target: taking a team releases this owner's piloted monarch. Pin
-  // that released monarch where it stands so it holds instead of marching back to
-  // a stale anchor (same fix as applyPilotSelectionToDraft).
-  if (teamId !== null) {
+  // One drive vector: taking teams releases this owner's piloted monarch. Pin that
+  // released monarch where it stands so it holds instead of marching back to a stale
+  // anchor (same fix as applyPilotSelectionToDraft).
+  if (teamIds.length > 0) {
     const previouslyPiloted = draft.pilotedUnitIdByOwner[ownerId];
     if (previouslyPiloted) holdReleasedMonarch(draft, ownerId, previouslyPiloted);
     draft.pilotedUnitIdByOwner[ownerId] = null;
@@ -548,9 +550,9 @@ function applyRallyToDraft(draft: PilotMutableState, ownerId: string, monarchId:
 
   // Any team this owner was driving has just been recalled into the army, so stop
   // steering it; the rally itself now carries those units back to the monarch. Only the
-  // authoritative per-owner map is written — the local pilotedFireTeamId UI mirror
+  // authoritative per-owner map is written — the local pilotedFireTeamIds UI mirror
   // (useUiStore, P1-1) follows via syncLocalPilotMirror, never a sim write.
-  draft.pilotedFireTeamByOwner[ownerId] = null;
+  draft.pilotedFireTeamByOwner[ownerId] = [];
 }
 
 /**
@@ -857,7 +859,7 @@ type Store = GameState & {
   applyRallyMonarch: (ownerId: string, monarchId: string) => void;
   applyPlaceRallied: (ownerId: string, monarchId: string, count: number, target?: { x: number; z: number }) => void;
   applyReleaseControl: (ownerId: string) => void;
-  applyPilotFireTeam: (ownerId: string, teamId: string | null) => void;
+  applyPilotFireTeam: (ownerId: string, teamIds: string[]) => void;
   toggleTurtleShell: (unitIds: string[]) => void;
   throwEggs: (cmd: CommandThrowEggs) => void;
   fireTongues: (cmd: CommandFireTongues) => void;
@@ -997,33 +999,39 @@ type FireTeamDriveState = Pick<
  */
 function applyFireTeamDrive(draft: FireTeamDriveState, dtSec: number): void {
   for (const ownerId of Object.keys(draft.pilotedFireTeamByOwner)) {
-    const teamId = draft.pilotedFireTeamByOwner[ownerId];
-    if (teamId === null) continue;
-    const team = draft.fireTeams[teamId];
-    if (!team) continue; // unshaped driven team — the per-unit drive block owns it
+    const teamIds = draft.pilotedFireTeamByOwner[ownerId];
+    if (teamIds.length === 0) continue;
 
     const move = draft.pilotMoveByOwner[ownerId] ?? { x: 0, z: 0 };
     const magnitude = Math.hypot(move.x, move.z);
     if (magnitude <= 0.0001) continue; // not actively driving this frame
-
-    // Pace the formation by its slowest living member so the shape doesn't tear.
-    let slowest = Infinity;
-    for (const unit of draft.units) {
-      if (unit.fireTeamId === teamId && unit.kind === 'Unit' && unit.hp > 0) {
-        if (unit.moveSpeed < slowest) slowest = unit.moveSpeed;
-      }
-    }
-    if (!Number.isFinite(slowest)) continue; // no living members
-
     const clampedMagnitude = Math.min(magnitude, 1);
-    const step = (slowest * clampedMagnitude * dtSec) / magnitude; // normalizes move
-    team.anchor = {
-      x: team.anchor.x + move.x * step,
-      y: 0,
-      z: team.anchor.z + move.z * step,
-    };
-    // No dirty flag: the anchor moved, so maintainFormations' stable branch re-homes
-    // the slots and re-orders members as they drift, without a per-frame A* re-slot.
+
+    // Advance each driven team's formation anchor by the shared pilot vector. The
+    // team-id order is the canonical (sorted) order the command supplied, so both
+    // lockstep peers move the same anchors in the same sequence.
+    for (const teamId of teamIds) {
+      const team = draft.fireTeams[teamId];
+      if (!team) continue; // unshaped driven team — the per-unit drive block owns it
+
+      // Pace each formation by its own slowest living member so the shape doesn't tear.
+      let slowest = Infinity;
+      for (const unit of draft.units) {
+        if (unit.fireTeamId === teamId && unit.kind === 'Unit' && unit.hp > 0) {
+          if (unit.moveSpeed < slowest) slowest = unit.moveSpeed;
+        }
+      }
+      if (!Number.isFinite(slowest)) continue; // no living members
+
+      const step = (slowest * clampedMagnitude * dtSec) / magnitude; // normalizes move
+      team.anchor = {
+        x: team.anchor.x + move.x * step,
+        y: 0,
+        z: team.anchor.z + move.z * step,
+      };
+      // No dirty flag: the anchor moved, so maintainFormations' stable branch re-homes
+      // the slots and re-orders members as they drift, without a per-frame A* re-slot.
+    }
   }
 }
 
@@ -1154,7 +1162,7 @@ export const useGameStore = create<Store>((set, get) => ({
   winner: null,
   pilotedUnitIdByOwner: { p0: null, p1: null },
   pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } },
-  pilotedFireTeamByOwner: { p0: null, p1: null },
+  pilotedFireTeamByOwner: { p0: [], p1: [] },
   fireTeams: {},
   movementHeldUnitId: null,
   unitOrders: {},
@@ -1235,11 +1243,11 @@ export const useGameStore = create<Store>((set, get) => ({
       },
     ];
 
-    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, pilotedUnitIdByOwner: { p0: null, p1: null }, pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } }, pilotedFireTeamByOwner: { p0: null, p1: null }, fireTeams: {}, movementHeldUnitId: null, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
+    set({ players, localPlayerId: localId, netMode: 'single', units: [], matchStarted: false, gameOver: false, winner: null, pilotedUnitIdByOwner: { p0: null, p1: null }, pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } }, pilotedFireTeamByOwner: { p0: [], p1: [] }, fireTeams: {}, movementHeldUnitId: null, unitOrders: {}, lastSpawnAtMsByQueenId: {}, lastRegenAtMsByUnitId: {}, queenPatrols: {}, queenRallyTargets: {}, unitCountCache: {}, spatialGrid: null, lastRegenCheckMs: 0, tickCounter: 0, aiThinkingOffset: {}, movementDirectionCache: {}, targetCache: {}, lastWinCheckMs: 0, deadUnitsToRemove: [], matchStats: createEmptyMatchStats(), projectiles: [], optimizations: { aiThrottling: true, combatBatching: true, movementCaching: true, regenThrottling: true, winCheckThrottling: true, deadUnitBatching: true, spawnOptimization: true } });
     // Selection, pilot mirror + placement teardrop are local-UI state on useUiStore
     // (P1-1); clear all on a fresh game.
     useUiStore.getState().selectUnits([]);
-    useUiStore.getState().setPilotMirror(null, null);
+    useUiStore.getState().setPilotMirror(null, []);
     useUiStore.getState().resetUnitPlacement();
   },
 
@@ -1328,7 +1336,7 @@ export const useGameStore = create<Store>((set, get) => ({
       winner: null,
       pilotedUnitIdByOwner: { p0: null, p1: null },
       pilotMoveByOwner: { p0: { x: 0, z: 0 }, p1: { x: 0, z: 0 } },
-      pilotedFireTeamByOwner: { p0: null, p1: null },
+      pilotedFireTeamByOwner: { p0: [], p1: [] },
       fireTeams: {},
       movementHeldUnitId: null,
       unitOrders: {},
@@ -1381,7 +1389,7 @@ export const useGameStore = create<Store>((set, get) => ({
     // inherits stale UI.
     useUiStore.getState().setPaused(true);
     useUiStore.getState().selectUnits([]);
-    useUiStore.getState().setPilotMirror(null, null);
+    useUiStore.getState().setPilotMirror(null, []);
     useUiStore.getState().resetUnitPlacement();
 
     // Notify the worker bridge (if any) that a match has started, so it can adopt it into
@@ -1912,7 +1920,7 @@ export const useGameStore = create<Store>((set, get) => ({
         // fireTeamId, so this and the monarch branch above are mutually exclusive.)
         if (
           unit.fireTeamId !== undefined &&
-          draft.pilotedFireTeamByOwner[unit.ownerId] === unit.fireTeamId &&
+          draft.pilotedFireTeamByOwner[unit.ownerId].includes(unit.fireTeamId) &&
           !draft.fireTeams[unit.fireTeamId]
         ) {
           const move = draft.pilotMoveByOwner[unit.ownerId] ?? { x: 0, z: 0 };
@@ -2841,21 +2849,21 @@ export const useGameStore = create<Store>((set, get) => ({
           }
         }
 
-        // Release a driven fire team once its last living member is gone, so the
-        // drive vector stops steering a ghost squad. Deterministic: team membership
-        // and deaths are identical on both peers.
+        // Drop any driven fire team whose last living member is gone, so the drive
+        // vector stops steering a ghost squad. A multi-team drive keeps its surviving
+        // teams. Deterministic: team membership and deaths are identical on both peers,
+        // and filter preserves the canonical team-id order.
         for (const ownerId in draft.pilotedFireTeamByOwner) {
-          const teamId = draft.pilotedFireTeamByOwner[ownerId];
-          if (
-            teamId &&
-            !draft.units.some(
+          const teamIds = draft.pilotedFireTeamByOwner[ownerId];
+          if (teamIds.length === 0) continue;
+          const surviving = teamIds.filter((teamId) =>
+            draft.units.some(
               (u) => u.ownerId === ownerId && u.fireTeamId === teamId && u.hp > 0 && !deadSet.has(u.id)
             )
-          ) {
-            // Authoritative release; the local pilotedFireTeamId mirror follows via
-            // syncLocalPilotMirror (main thread), not a write from the worker tick.
-            draft.pilotedFireTeamByOwner[ownerId] = null;
-          }
+          );
+          // Authoritative release; the local pilotedFireTeamIds mirror follows via
+          // syncLocalPilotMirror (main thread), not a write from the worker tick.
+          if (surviving.length !== teamIds.length) draft.pilotedFireTeamByOwner[ownerId] = surviving;
         }
 
         // Clear dead units from the target cache in one pass.
@@ -3680,8 +3688,10 @@ export const useGameStore = create<Store>((set, get) => ({
 
     const teamIds = listFireTeamIds(prev.units, localPlayerId);
     if (teamIds.length === 0) return;
-    // Pilot mirror lives on useUiStore (P1-1).
-    const nextTeamId = nextFireTeamInCycle(teamIds, useUiStore.getState().pilotedFireTeamId);
+    // Pilot mirror lives on useUiStore (P1-1). Cycling is single-team: step relative to
+    // the first team currently driven (the overlay may have handed several at once).
+    const currentDriven = useUiStore.getState().pilotedFireTeamIds[0] ?? null;
+    const nextTeamId = nextFireTeamInCycle(teamIds, currentDriven);
 
     // Switching drive targets ends any in-progress placement hold; reset it so a
     // stale teardrop never lingers from the monarch the player just stepped off.
@@ -3703,7 +3713,7 @@ export const useGameStore = create<Store>((set, get) => ({
       useUiStore.getState().resetUnitPlacement();
     }
 
-    dispatchCommand({ type: 'setPilotFireTeam', payload: { teamId: nextTeamId } });
+    dispatchCommand({ type: 'setPilotFireTeam', payload: { teamIds: nextTeamId !== null ? [nextTeamId] : [] } });
   },
 
   // Designate one more follower for a placement order while the rally key is held
@@ -3829,8 +3839,8 @@ export const useGameStore = create<Store>((set, get) => ({
   applyReleaseControl: (ownerId) =>
     set((prev) => produce(prev, (draft) => releaseOwnerControl(draft, ownerId))),
 
-  applyPilotFireTeam: (ownerId, teamId) =>
-    set((prev) => produce(prev, (draft) => applyPilotFireTeamToDraft(draft, ownerId, teamId))),
+  applyPilotFireTeam: (ownerId, teamIds) =>
+    set((prev) => produce(prev, (draft) => applyPilotFireTeamToDraft(draft, ownerId, teamIds))),
 
   // Toggle the "shell" lock on the local player's Turtle units in the given
   // selection. Shelling pins the unit in place (see checkCollision) and the
@@ -4223,7 +4233,7 @@ export function applyNetCommand(playerId: string, command: NetCommand): void {
       case 'pilotMove': store.applyPilotMove(playerId, command.payload); break;
       case 'rallyMonarch': store.applyRallyMonarch(playerId, command.payload.monarchId); break;
       case 'placeRallied': store.applyPlaceRallied(playerId, command.payload.monarchId, command.payload.count, command.payload.target); break;
-      case 'setPilotFireTeam': store.applyPilotFireTeam(playerId, command.payload.teamId); break;
+      case 'setPilotFireTeam': store.applyPilotFireTeam(playerId, command.payload.teamIds); break;
       case 'releaseControl': store.applyReleaseControl(playerId); break;
     }
   } finally {
@@ -4309,23 +4319,27 @@ export function syncLocalPilotMirror(): void {
   const localPlayerId = state.localPlayerId;
   if (!localPlayerId) return;
   const pilotedUnitId = state.pilotedUnitIdByOwner[localPlayerId] ?? null;
-  const pilotedFireTeamId = state.pilotedFireTeamByOwner[localPlayerId] ?? null;
+  const pilotedFireTeamIds = state.pilotedFireTeamByOwner[localPlayerId] ?? [];
   // The pilot mirror lives on useUiStore (P1-1) — read the current value and write the
-  // derived one there.
+  // derived one there. Compare the team lists shallowly (same length, same order — the
+  // sim keeps a canonical order) so an unchanged drive set never re-renders consumers.
   const ui = useUiStore.getState();
-  if (pilotedUnitId !== ui.pilotedUnitId || pilotedFireTeamId !== ui.pilotedFireTeamId) {
+  const teamsChanged =
+    pilotedFireTeamIds.length !== ui.pilotedFireTeamIds.length ||
+    pilotedFireTeamIds.some((teamId, index) => teamId !== ui.pilotedFireTeamIds[index]);
+  if (pilotedUnitId !== ui.pilotedUnitId || teamsChanged) {
     // When a sim event leaves the local player driving NOTHING — above all the tick's
     // death-release of the piloted monarch, or a move/patrol/attack order reclaiming it
     // (the releases that used to clear these inline in stopOwnerPilot) — also clear the
     // placement teardrop (useUiStore, P1-1) and the stale drive intent. Gated on the
-    // transition to no-control (both slots null) so it never zeroes the drive vector
-    // while a fire team is being driven — pilotedUnitId is null then, but the fire team
-    // slot is not, and that case is handled optimistically by cycleFireTeam.
-    if (pilotedUnitId === null && pilotedFireTeamId === null) {
+    // transition to no-control (no monarch and no teams) so it never zeroes the drive
+    // vector while a fire team is being driven — pilotedUnitId is null then, but the
+    // team list is not, and that case is handled optimistically by cycleFireTeam.
+    if (pilotedUnitId === null && pilotedFireTeamIds.length === 0) {
       pilotInput.reset();
       ui.resetUnitPlacement();
     }
-    ui.setPilotMirror(pilotedUnitId, pilotedFireTeamId);
+    ui.setPilotMirror(pilotedUnitId, pilotedFireTeamIds);
   }
 }
 
@@ -4426,7 +4440,7 @@ export function dispatchCommand(command: NetCommand): void {
         case 'pilotMove': store.applyPilotMove(ownerId, command.payload); return;
         case 'rallyMonarch': store.applyRallyMonarch(ownerId, command.payload.monarchId); return;
         case 'placeRallied': store.applyPlaceRallied(ownerId, command.payload.monarchId, command.payload.count, command.payload.target); return;
-        case 'setPilotFireTeam': store.applyPilotFireTeam(ownerId, command.payload.teamId); return;
+        case 'setPilotFireTeam': store.applyPilotFireTeam(ownerId, command.payload.teamIds); return;
         case 'releaseControl': store.applyReleaseControl(ownerId); return;
       }
     }

@@ -53,6 +53,7 @@ export type ControlActionId =
   | 'setPatrol'
   | 'toggleBehaviorRadial'
   | 'toggleDirectingRadial'
+  | 'quickDirectFireTeams'
   | 'pilotCycleMonarch'
   | 'pilotMonarch1'
   | 'pilotMonarch2'
@@ -126,7 +127,8 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
   { id: 'setPatrol', label: 'Set Patrol Route', category: 'Commands', description: 'With a single Queen selected, hold to aim a back-and-forth patrol route along the gold line, then release to commit it. Keyboard & mouse use a held right-click on the Queen instead, so this stays unbound there by default.', gestureHint: 'Hold to aim · release to set the route' },
   { id: 'toggleBehaviorRadial', label: 'Combat Posture Radial', category: 'Commands', description: 'With your units selected, open the two-ring combat-posture radial: the center toggles weapons-free / hold-fire, the inner ring sets stance (Aggressive, Skirmish, Hold Ground, Defensive, Flee), and the outer ring sets target priority (Nearest, Weakest, Threat, Ranged, Royalty). On a controller this is D-Pad Left; aim with the right stick (deflection picks the ring), press RT to apply the highlighted option, and B to close.' },
   { id: 'toggleDirectingRadial', label: 'Directing Wheel', category: 'Commands', description: 'With your units selected, open the paged Directing wheel. Flip between its three pages with LB / RB (or the on-screen tabs): Shapes — Line, Column, Wedge, Box, Echelon L/R, Skirmish; Audibles — a quick mid-play tweak (Rotate Left/Right, Expand, Contract, Disband) to the selected team; Plays — one call (Assault, Pincer, Hold, Turtle, Fall Back) re-shapes ALL your formed teams at once by their wing. On a controller this is D-Pad Right; aim with the right stick, press RT to apply the highlighted option, and B to close.' },
-  { id: 'pilotCycleMonarch', label: 'Cycle Piloted Monarch', category: 'Pilot', description: 'Tap to start piloting your first animal’s King, then cycle through your other animals’ monarchs. Drive it with the Move keys. On a controller, HOLDING Left Bumper instead quick-directs your fire teams: every other button becomes a team selector (A / X / Y / RB / LT / L3 / R3 / D-Pad), shown as a badge over each team. Tap one to extend an aim arrow from that team, rotate it with the right stick, then press RT to send the team that way — or B to cancel. A fast alternative to the Directing wheel.' },
+  { id: 'quickDirectFireTeams', label: 'Fire Team Overlay', category: 'Commands', description: 'Bring up a badge over each of your deployed fire teams so you can pick teams fast. On keyboard, TAP this (Shift by default) to open the overlay, press the key shown on a team’s badge to select it (press again to deselect — select as many as you like), then tap again to confirm: the chosen teams are selected and handed your drive control, so the Move keys steer every selected team at once. On a controller, HOLD this (Left Bumper by default) instead: every other button becomes a team selector (A / X / Y / RB / LT / L3 / R3 / D-Pad), tap one to extend an aim arrow, rotate it with the right stick, then press RT to send the team that way — or B to cancel.', gestureHint: 'Keyboard: tap to open · keys pick teams · tap to confirm + drive' },
+  { id: 'pilotCycleMonarch', label: 'Cycle Piloted Monarch', category: 'Pilot', description: 'Tap to start piloting your first animal’s King, then cycle through your other animals’ monarchs. Drive it with the Move keys.' },
   { id: 'pilotMonarch1', label: 'Pilot Monarch 1', category: 'Pilot', description: 'Directly pilot the King of your first animal (toggle Queen with Toggle Monarch). Drive it with the Move keys/stick.' },
   { id: 'pilotMonarch2', label: 'Pilot Monarch 2', category: 'Pilot', description: 'Directly pilot the King of your second animal. Drive it with the Move keys/stick.' },
   { id: 'pilotMonarch3', label: 'Pilot Monarch 3', category: 'Pilot', description: 'Directly pilot the King of your third animal. Drive it with the Move keys/stick.' },
@@ -176,6 +178,10 @@ export const DEFAULT_KEYBOARD_BINDINGS: ControlBindings = {
   // V opens the paged Directing wheel (Shapes / Audibles / Plays); flip pages with
   // Tab while it is open or click the on-screen tabs.
   toggleDirectingRadial: 'v',
+  // Tap Shift to open the fire-team overlay; number keys pick teams; tap Shift again to
+  // confirm and drive them. Bare 'shift' never collides with the shift+letter group
+  // chords (distinct tokens), and its tap mode coexists with any future Shift gesture.
+  quickDirectFireTeams: 'shift',
   // A cycles through the three animals' monarchs; G swaps the current King/Queen.
   // The per-slot pilot keys stay unbound on keyboard (they exist for the
   // controller's D-Pad), so the home row stays free for the cycle/toggle keys.
@@ -246,6 +252,10 @@ export const DEFAULT_CONTROLLER_BINDINGS: ControlBindings = {
   // (aim with the right stick, RT to select, B to close).
   toggleBehaviorRadial: 'button:11',  // R3 (double-tap) — Combat posture
   toggleDirectingRadial: 'button:11', // R3 (tap) — Directing (Shapes / Audibles / Plays)
+  // Hold LB to quick-direct fire teams. Shares LB with useAbility (LB tap) — they never
+  // collide because the modes differ (hold vs tap). GamepadController reads this binding
+  // so the trigger follows a remap rather than the old hardcoded physical Left Bumper.
+  quickDirectFireTeams: 'button:4', // LB (hold)
   pilotCycleMonarch: DPAD_LEFT, // D-Pad Left — Switch Monarch
   // The left stick pilots and D-Pad Left cycles monarchs, so the old per-slot D-Pad
   // pilots stay unbound.
@@ -296,6 +306,9 @@ export const DEFAULT_BINDING_MODES: ControlBindingModes = {
   setPatrol: 'hold',
   toggleBehaviorRadial: 'tap',
   toggleDirectingRadial: 'tap',
+  // Keyboard default: a Shift tap toggles the overlay open/closed (the controller
+  // overrides this to Hold below).
+  quickDirectFireTeams: 'tap',
   pilotCycleMonarch: 'tap',
   pilotMonarch1: 'tap',
   pilotMonarch2: 'tap',
@@ -319,6 +332,9 @@ export const DEFAULT_CONTROLLER_MODES: ControlBindingModes = {
   setQueenRally: 'hold',
   toggleBehaviorRadial: 'double-tap',
   toggleDirectingRadial: 'tap',
+  // The controller quick-directs fire teams by HOLDING the trigger (LB), unlike the
+  // keyboard's Shift tap; GamepadController implements the hold via its own press timer.
+  quickDirectFireTeams: 'hold',
 };
 
 export function getDefaultModes(device: InputDevice): ControlBindingModes {

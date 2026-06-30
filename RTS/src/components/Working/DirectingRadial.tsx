@@ -64,7 +64,7 @@ export function DirectingRadial() {
   const matchStarted = useGameStore((s) => s.matchStarted);
   const selectedUnitIds = useUiStore((s) => s.selectedUnitIds); // selection is local-UI (P1-1)
   const localPlayerId = useGameStore((s) => s.localPlayerId);
-  const pilotedFireTeamId = useUiStore((s) => s.pilotedFireTeamId); // pilot mirror is local-UI (P1-1)
+  const pilotedFireTeamIds = useUiStore((s) => s.pilotedFireTeamIds); // pilot mirror is local-UI (P1-1)
   const fireTeams = useGameStore((s) => s.fireTeams);
   // Stable adapters so the useMemo dep array below keeps constant references:
   // each issues its directive through the single command funnel.
@@ -97,12 +97,12 @@ export function DirectingRadial() {
         unit.ownerId === localPlayerId &&
         unit.kind === 'Unit' &&
         unit.hp > 0 &&
-        (selected.has(unit.id) || (pilotedFireTeamId !== null && unit.fireTeamId === pilotedFireTeamId))
+        (selected.has(unit.id) || (unit.fireTeamId !== undefined && pilotedFireTeamIds.includes(unit.fireTeamId)))
     );
     // `fireTeams` is a dep so team membership/disband changes refresh the set even
     // though it is read off the live store rather than subscribed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedUnitIds, localPlayerId, pilotedFireTeamId, fireTeams]);
+  }, [selectedUnitIds, localPlayerId, pilotedFireTeamIds, fireTeams]);
 
   const commandableIds = useMemo(() => commandable.map((unit) => unit.id), [commandable]);
 
