@@ -1813,10 +1813,18 @@ export const useGameStore = create<Store>((set, get) => ({
         // and keeps the backside-to-target rotation set in throwEggs, so the egg
         // launches cleanly from its tail rather than its face or wing. Freeze its
         // movement/rotation/combat for the pose window (like the ability guards above)
-        // so a pending move order can't spin it back around mid-throw; it resumes
-        // normal behavior the moment the pose expires.
-        if (unit.animal === 'Chicken' && unit.eggThrowUntilMs !== undefined && nowMs < unit.eggThrowUntilMs) {
-          continue;
+        // so a pending move order can't spin it back around mid-throw.
+        if (unit.animal === 'Chicken' && unit.eggThrowUntilMs !== undefined) {
+          if (nowMs < unit.eggThrowUntilMs) {
+            continue;
+          }
+          // The pose just ended: spin the chicken 180deg back around so it faces the
+          // way it fired instead of standing with its rear to the target, then clear
+          // the marker so this runs exactly once and normal AI/idle resumes. An idle
+          // chicken has no other rotation source, so without this it would hold the
+          // backside-to-target pose indefinitely.
+          unit.rotation += Math.PI;
+          unit.eggThrowUntilMs = undefined;
         }
 
         // Frog tongue-grab: a frog mid-grab is pinned and driven entirely by
