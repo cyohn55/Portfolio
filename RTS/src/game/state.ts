@@ -1943,7 +1943,16 @@ export const useGameStore = create<Store>((set, get) => ({
         // movement (which also auto-engages enemies en route) carries it there.
         // Dropping the order inside the stop band lets it idle near the monarch
         // instead of jittering against it, and a dead/missing monarch ends the rally.
-        if (isPlayerUnit && unit.followMonarchId) {
+        //
+        // A unit shaped into a formation is driven by the formation system (its slot
+        // order from maintainFormations / the driven anchor), NOT the rally chase —
+        // so it is excluded here. Shaping a rallied army leaves followMonarchId set
+        // (only the Deploy path clears it), and without this exclusion the chase
+        // would overwrite each member's slot order with the parked monarch's
+        // position, yanking the formation back and making it unsteerable.
+        const inShapedFormation =
+          unit.fireTeamId !== undefined && draft.fireTeams[unit.fireTeamId] !== undefined;
+        if (isPlayerUnit && unit.followMonarchId && !inShapedFormation) {
           const monarch = unitById.get(unit.followMonarchId);
           if (!monarch || monarch.hp <= 0) {
             delete unit.followMonarchId;
