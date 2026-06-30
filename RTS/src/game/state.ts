@@ -1498,11 +1498,11 @@ export const useGameStore = create<Store>((set, get) => ({
       }
 
       // Deterministic movement-priority inputs for the collision/separation passes.
-      // A unit with an active move order gets the "push through idle teammates / royal
-      // make-way" treatment so ordered units actually reach their destination. This is
-      // derived purely from `unitOrders` (Bucket-A sim state) in BOTH single-player and
-      // lockstep — the single source of truth the worker can read without reaching across
-      // the main-thread boundary.
+      // A unit with an active move order — or a monarch under live pilot control — gets the
+      // "push through idle teammates / royal make-way" treatment so it actually reaches its
+      // destination. Both inputs are Bucket-A sim state (`unitOrders` + `pilotedUnitIdByOwner`),
+      // readable in BOTH single-player and lockstep without reaching across the main-thread
+      // boundary, and identical on both peers.
       //
       // History: this used to read the local `selectedUnitIds` + `localPlayerId` directly,
       // but both differ between the two machines in a lockstep match (each peer selects
@@ -1515,7 +1515,20 @@ export const useGameStore = create<Store>((set, get) => ({
       // owners (the non-AI players) replace localPlayerId in the same passes: that set is
       // exactly { localPlayerId } solo and { p0, p1 } online, symmetric across humans.
       const isLockstepMatch = commandRouter !== null;
-      const movementPriorityIds: ReadonlySet<string> = new Set(Object.keys(draft.unitOrders));
+      // A unit earns movement priority either by carrying an active move order OR by being the
+      // monarch its owner is currently piloting: a stick/key-driven King or Queen is moving under
+      // direct player intent just as much as an ordered unit, so it must get the same push-through
+      // + royal make-way treatment (clearPathForSelectedRoyals shoves its army aside, and
+      // checkCollision lets it ignore friendly collision). Without the piloted monarch in this set
+      // it plowed into its own crowd and stalled. pilotedUnitIdByOwner is networked per-owner (the
+      // same source separateOverlappingUnits already keys on), so adding it stays identical on both
+      // lockstep peers — unlike main-thread-only selection.
+      const movementPrioritySet = new Set(Object.keys(draft.unitOrders));
+      for (const ownerId in draft.pilotedUnitIdByOwner) {
+        const pilotedId = draft.pilotedUnitIdByOwner[ownerId];
+        if (pilotedId) movementPrioritySet.add(pilotedId);
+      }
+      const movementPriorityIds: ReadonlySet<string> = movementPrioritySet;
       const playerControlledOwnerIds: ReadonlySet<string> = new Set(
         draft.players.filter((player) => !player.isAI).map((player) => player.id)
       );
