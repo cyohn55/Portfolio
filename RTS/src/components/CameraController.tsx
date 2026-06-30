@@ -623,18 +623,27 @@ export function CameraController() {
       target.current.z = clamped.z;
     }
 
-    // Update camera position based on target and current distance
+    // Update camera position based on target and current distance, then apply the
+    // manual world-space eye nudge (X/Y/Z offsets) on top of the orbit framing.
     const height = currentDistance.current * Math.sin(cameraAngle);
     const offset = eyeOffset(currentDistance.current * Math.cos(cameraAngle));
 
     const newCameraPos = new THREE.Vector3(
-      target.current.x + offset.x,
-      target.current.y + height,
-      target.current.z + offset.z
+      target.current.x + offset.x + settings.positionOffsetX,
+      target.current.y + height + settings.positionOffsetY,
+      target.current.z + offset.z + settings.positionOffsetZ
     );
 
-    // Set camera position directly - no lerp to avoid rocking
-    camera.position.copy(newCameraPos);
+    // Smoothing 0 snaps the eye directly (no rocking); higher values ease it in
+    // with a frame-rate-independent time constant for a cinematic glide. Only the
+    // eye is smoothed — the look-at target is already eased by the follow logic.
+    if (settings.positionSmoothing <= 0) {
+      camera.position.copy(newCameraPos);
+    } else {
+      const timeConstant = settings.positionSmoothing * 0.5; // up to ~0.5s catch-up
+      const easing = 1 - Math.exp(-delta / Math.max(timeConstant, 1e-4));
+      camera.position.lerp(newCameraPos, easing);
+    }
     camera.lookAt(target.current);
   });
 

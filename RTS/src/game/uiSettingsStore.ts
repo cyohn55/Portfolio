@@ -141,6 +141,14 @@ export const DEFAULT_CAMERA_SETTINGS = {
   // Perspective field of view, in degrees. Low = telephoto/flat (near-orthographic);
   // high = wide-angle/dramatic. Changes the sense of depth independently of zoom.
   fov: 45,
+  // Manual world-space nudge of the camera eye, layered on top of the computed
+  // orbit position so follow/pan/zoom still work underneath. 0 = no nudge.
+  positionOffsetX: 0,
+  positionOffsetY: 0,
+  positionOffsetZ: 0,
+  // How smoothly the eye glides to its computed position, 0..1. 0 = instant snap
+  // (the original behaviour); higher = longer catch-up for a cinematic glide.
+  positionSmoothing: 0,
   // How fast pan inputs (controller stick, edge-scroll, middle-drag) slide the
   // focus point across the map.
   moveSpeed: 1.5,

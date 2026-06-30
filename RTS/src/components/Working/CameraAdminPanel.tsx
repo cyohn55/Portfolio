@@ -58,6 +58,15 @@ const PANEL_SECTIONS: PanelSection[] = [
     ],
   },
   {
+    title: 'Camera position',
+    sliders: [
+      { key: 'positionOffsetX', label: 'X offset', min: -200, max: 200, step: 1 },
+      { key: 'positionOffsetY', label: 'Y offset', min: -200, max: 200, step: 1 },
+      { key: 'positionOffsetZ', label: 'Z offset', min: -200, max: 200, step: 1 },
+      { key: 'positionSmoothing', label: 'Move smoothing', min: 0, max: 1, step: 0.01 },
+    ],
+  },
+  {
     title: 'Pan feel',
     sliders: [
       { key: 'moveSpeed', label: 'Pan speed', min: 0.1, max: 6, step: 0.1 },
