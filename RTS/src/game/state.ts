@@ -3846,11 +3846,14 @@ export const useGameStore = create<Store>((set, get) => ({
         if (direction.x === 0 && direction.z === 0) continue; // target on top of the chicken
 
         // A chicken lays its egg from the rear, so turn the chicken's BACKSIDE to
-        // the target (face away, the opposite of a movement heading). The egg then
-        // launches toward the target out of the chicken's tail end instead of its
-        // face or wing. The throw-pose window holds this rotation by freezing the
-        // chicken's movement for its duration (see the egg-throw guard in tick).
-        unit.rotation = Math.atan2(-direction.x, -direction.z);
+        // the target. The Chicken model is authored facing its local -Z (the
+        // reverse of the other animals), so the plain movement heading
+        // atan2(dir.x, dir.z) — which faces other animals TOWARD travel — turns
+        // THIS model's tail toward the target. The egg then launches toward the
+        // target out of the chicken's tail end instead of its face or wing. The
+        // throw-pose window holds this rotation by freezing the chicken's movement
+        // for its duration (see the egg-throw guard in tick).
+        unit.rotation = Math.atan2(direction.x, direction.z);
         unit.lastEggAtMs = now;
         unit.eggThrowUntilMs = now + EGG_THROW_POSE_MS;
 
