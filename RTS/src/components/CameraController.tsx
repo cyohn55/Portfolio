@@ -624,14 +624,24 @@ export function CameraController() {
     }
 
     // Update camera position based on target and current distance, then apply the
-    // manual world-space eye nudge (X/Y/Z offsets) on top of the orbit framing.
+    // manual eye nudge (X/Y/Z offsets) on top of the orbit framing. The nudge is
+    // either in fixed world axes or camera-relative (X = camera-right, Z =
+    // camera-forward, both horizontal; Y = world-up), per the panel toggle.
     const height = currentDistance.current * Math.sin(cameraAngle);
     const offset = eyeOffset(currentDistance.current * Math.cos(cameraAngle));
 
+    let nudgeX = settings.positionOffsetX;
+    const nudgeY = settings.positionOffsetY;
+    let nudgeZ = settings.positionOffsetZ;
+    if (settings.positionOffsetCameraRelative) {
+      nudgeX = right.current.x * settings.positionOffsetX + forward.current.x * settings.positionOffsetZ;
+      nudgeZ = right.current.z * settings.positionOffsetX + forward.current.z * settings.positionOffsetZ;
+    }
+
     const newCameraPos = new THREE.Vector3(
-      target.current.x + offset.x + settings.positionOffsetX,
-      target.current.y + height + settings.positionOffsetY,
-      target.current.z + offset.z + settings.positionOffsetZ
+      target.current.x + offset.x + nudgeX,
+      target.current.y + height + nudgeY,
+      target.current.z + offset.z + nudgeZ
     );
 
     // Smoothing 0 snaps the eye directly (no rocking); higher values ease it in

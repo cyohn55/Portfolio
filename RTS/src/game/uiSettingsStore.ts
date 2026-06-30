@@ -141,11 +141,15 @@ export const DEFAULT_CAMERA_SETTINGS = {
   // Perspective field of view, in degrees. Low = telephoto/flat (near-orthographic);
   // high = wide-angle/dramatic. Changes the sense of depth independently of zoom.
   fov: 45,
-  // Manual world-space nudge of the camera eye, layered on top of the computed
-  // orbit position so follow/pan/zoom still work underneath. 0 = no nudge.
+  // Manual nudge of the camera eye, layered on top of the computed orbit
+  // position so follow/pan/zoom still work underneath. 0 = no nudge.
   positionOffsetX: 0,
   positionOffsetY: 0,
   positionOffsetZ: 0,
+  // When true the X/Y/Z nudge is camera-relative (X = camera-right, Z =
+  // camera-forward, Y = world-up) so it rotates with yaw — a truck/dolly/crane.
+  // When false the nudge is in fixed world axes.
+  positionOffsetCameraRelative: true,
   // How smoothly the eye glides to its computed position, 0..1. 0 = instant snap
   // (the original behaviour); higher = longer catch-up for a cinematic glide.
   positionSmoothing: 0,

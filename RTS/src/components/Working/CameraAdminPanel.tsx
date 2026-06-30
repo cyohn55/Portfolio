@@ -22,11 +22,21 @@ import { cameraRuntime } from './cameraTuning';
  * components — see the project's CSS-collision notes).
  */
 
-// One tunable row's metadata. Keeping the slider config declarative (rather than
+// Split CameraSettings keys by value type so a slider can only target a numeric
+// field and a toggle only a boolean one — the config stays in lockstep with the
+// store's shape and a mismatch is a compile error.
+type NumericSettingKey = {
+  [K in keyof CameraSettings]: CameraSettings[K] extends number ? K : never;
+}[keyof CameraSettings];
+type BooleanSettingKey = {
+  [K in keyof CameraSettings]: CameraSettings[K] extends boolean ? K : never;
+}[keyof CameraSettings];
+
+// One tunable row's metadata. Keeping the config declarative (rather than
 // hand-writing a dozen near-identical rows) keeps the panel a single source of
 // truth that mirrors the store's CameraSettings shape.
 interface SliderSpec {
-  key: keyof CameraSettings;
+  key: NumericSettingKey;
   label: string;
   min: number;
   max: number;
@@ -34,9 +44,15 @@ interface SliderSpec {
   unit?: string;
 }
 
+interface ToggleSpec {
+  key: BooleanSettingKey;
+  label: string;
+}
+
 interface PanelSection {
   title: string;
   sliders: SliderSpec[];
+  toggles?: ToggleSpec[];
 }
 
 // Grouped by what the player is actually experimenting with, most-impactful first.
@@ -59,6 +75,9 @@ const PANEL_SECTIONS: PanelSection[] = [
   },
   {
     title: 'Camera position',
+    toggles: [
+      { key: 'positionOffsetCameraRelative', label: 'Camera-relative offsets' },
+    ],
     sliders: [
       { key: 'positionOffsetX', label: 'X offset', min: -200, max: 200, step: 1 },
       { key: 'positionOffsetY', label: 'Y offset', min: -200, max: 200, step: 1 },
@@ -143,6 +162,15 @@ const styles: Record<string, React.CSSProperties> = {
   row: { marginBottom: 9 },
   rowHeader: { display: 'flex', justifyContent: 'space-between', marginBottom: 2 },
   rowValue: { color: '#9fe0ff', fontVariantNumeric: 'tabular-nums' },
+  toggleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 9,
+    cursor: 'pointer',
+    userSelect: 'none',
+  },
+  checkbox: { accentColor: '#5b8cff', cursor: 'pointer', width: 14, height: 14 },
   slider: { width: '100%', accentColor: '#5b8cff', cursor: 'pointer' },
   resetButton: {
     width: '100%',
@@ -237,6 +265,19 @@ export function CameraAdminPanel() {
       {PANEL_SECTIONS.map((section) => (
         <div key={section.title}>
           <p style={styles.sectionTitle}>{section.title}</p>
+          {section.toggles?.map((spec) => (
+            <label key={spec.key} style={styles.toggleRow}>
+              <input
+                type="checkbox"
+                style={styles.checkbox}
+                checked={cameraSettings[spec.key]}
+                onChange={(event) =>
+                  updateCameraSettings({ [spec.key]: event.target.checked } as Partial<CameraSettings>)
+                }
+              />
+              <span>{spec.label}</span>
+            </label>
+          ))}
           {section.sliders.map((spec) => {
             const value = cameraSettings[spec.key];
             return (
@@ -256,7 +297,7 @@ export function CameraAdminPanel() {
                   step={spec.step}
                   value={value}
                   onChange={(event) =>
-                    updateCameraSettings({ [spec.key]: Number(event.target.value) })
+                    updateCameraSettings({ [spec.key]: Number(event.target.value) } as Partial<CameraSettings>)
                   }
                 />
               </div>
