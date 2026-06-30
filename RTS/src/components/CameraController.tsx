@@ -11,6 +11,7 @@ import { pilotInput } from './Working/monarchPilot';
 import { getArenaBoundary } from './Working/arenaBoundary';
 import { clampCameraFocus } from './Working/cameraFocusBounds';
 import { computeActiveEdges, edgePanIndicator } from './Working/edgePanIndicator';
+import { cameraRuntime } from './Working/cameraTuning';
 
 /**
  * A camera-movement binding is only usable as a held key when it's a single
@@ -28,10 +29,10 @@ function plainKeyToken(token: string): string | null {
 // Global instance counter to detect multiple mounting
 let instanceCounter = 0;
 
-// The view a match opens on: focus point on the player's side of the map and
-// the starting zoom distance. Hoisted to module scope so the ref initializers
-// and the per-match reset (see the matchStartNonce effect) share one source of
-// truth instead of duplicating the literals.
+// All of the camera's framing/feel numbers now live in the uiSettingsStore
+// (DEFAULT_CAMERA_SETTINGS) so the F5 admin panel can tweak the point of view on
+// the fly; this component reads them live through `settingsRef`. The notes that
+// once sat on the hardcoded constants are preserved on the store fields.
 //
 // Multiplayer is deterministic lockstep: both peers run the SAME world (p0's
 // base sits at +z, p1's at -z), so the only thing that may differ per peer is
@@ -40,72 +41,34 @@ let instanceCounter = 0;
 // host's army (its enemies) while its own troops sit off-screen behind the
 // camera. `viewSignFor` returns +1 for the host/single-player (p0 orientation:
 // camera on the +z side looking toward -z) and -1 for the guest (mirrored).
-const INITIAL_FOCUS_DEPTH = 225;
-const INITIAL_DISTANCE = 200;
-
-// When the camera is following selected troops (or a piloted monarch), aim the
-// look-at point *ahead* of the unit — deeper into the battlefield — by this
-// fraction of the current zoom distance. The camera always frames its look-at
-// point at screen center, so biasing the focus forward leaves the followed unit
-// behind it: closer to the camera and sitting a touch below dead center. The
-// bias scales with zoom distance (and the shallow fixed camera angle) so the
-// on-screen placement stays put as the player zooms. Kept modest so a large,
-// spread-out selection clears the bottom-edge HUD buttons instead of hiding
-// behind them.
-const FOLLOW_SCREEN_BIAS = 0.25;
-
-// A piloted King/Queen rides a touch higher on screen than a plain selection: a
-// smaller forward bias pulls its look-at point back toward the unit, lifting the
-// monarch nearer to center while still keeping it in the lower half.
-const MONARCH_SCREEN_BIAS = 0.28;
-
 function viewSignFor(localPlayerId: string | null): number {
   return localPlayerId === 'p1' ? -1 : 1;
 }
 
-function initialFocusFor(localPlayerId: string | null): THREE.Vector3 {
-  return new THREE.Vector3(0, 0, INITIAL_FOCUS_DEPTH * viewSignFor(localPlayerId));
+function initialFocusFor(localPlayerId: string | null, focusDepth: number): THREE.Vector3 {
+  return new THREE.Vector3(0, 0, focusDepth * viewSignFor(localPlayerId));
 }
 
-interface CameraControllerProps {
-  moveSpeed?: number;
-  zoomSpeed?: number;
-  minDistance?: number;
-  maxDistance?: number;
-  // How quickly the camera eases toward the selected troops, in "fraction of
-  // the remaining distance closed per second" terms. A small value keeps the
-  // follow gentle so the camera glides rather than snaps.
-  followSpeed?: number;
-  // Width of the screen-edge band (in CSS pixels) that triggers edge-pan when
-  // the cursor enters it — the classic RTS "push the mouse to the edge to
-  // scroll" zone.
-  edgePanMargin?: number;
-  // World units the camera slides per pixel of middle-mouse drag ("grab and
-  // slide the terrain"). Scaled by moveSpeed so it tracks the overall pan feel.
-  dragPanSensitivity?: number;
-}
-
-export function CameraController({
-  moveSpeed = 0.5,
-  zoomSpeed = 2,
-  minDistance = 2,
-  maxDistance = 100,
-  followSpeed = 1.5,
-  edgePanMargin = 24,
-  dragPanSensitivity = 0.6
-}: CameraControllerProps) {
+export function CameraController() {
   instanceCounter++;
   const instanceId = instanceCounter;
 
   const { camera, gl } = useThree();
   const keysPressed = useRef(new Set<string>());
 
+  // Live, player-tunable camera framing/feel, mirrored to a ref so the per-frame
+  // loop and the wheel/drag callbacks read the current values without
+  // re-subscribing or rebuilding callbacks on every tweak.
+  const cameraSettings = useUiSettingsStore((s) => s.cameraSettings);
+  const settingsRef = useRef(cameraSettings);
+  settingsRef.current = cameraSettings;
+
   // Which peer's view this is. Drives the camera orientation so the host (p0)
   // and guest (p1) each look into the battlefield from behind their own base.
   // Null in single-player, where it falls back to the p0 orientation.
   const localPlayerId = useGameStore((s) => s.localPlayerId);
-  const target = useRef(initialFocusFor(localPlayerId));
-  const currentDistance = useRef(INITIAL_DISTANCE);
+  const target = useRef(initialFocusFor(localPlayerId, cameraSettings.initialFocusDepth));
+  const currentDistance = useRef(cameraSettings.initialDistance);
   const forward = useRef(new THREE.Vector3());
   const right = useRef(new THREE.Vector3());
   const up = useRef(new THREE.Vector3(0, 1, 0));
@@ -148,10 +111,25 @@ export function CameraController({
   // shot once its role resolves, even if that lands after the initial mount.
   const matchStartNonce = useGameStore((s) => s.matchStartNonce);
   useEffect(() => {
-    target.current.copy(initialFocusFor(localPlayerId));
-    currentDistance.current = INITIAL_DISTANCE;
+    const settings = settingsRef.current;
+    target.current.copy(initialFocusFor(localPlayerId, settings.initialFocusDepth));
+    currentDistance.current = settings.initialDistance;
     followEnabled.current = false;
   }, [matchStartNonce, localPlayerId]);
+
+  // Expose the live zoom-distance ref to the F5 admin panel so a "zoom" slider can
+  // read and nudge it. The wheel mutates this every frame, so it stays a ref
+  // (not store state) to avoid thrashing subscribers; the bridge is the seam.
+  useEffect(() => {
+    cameraRuntime.bind(
+      () => currentDistance.current,
+      (distance) => {
+        const { minDistance, maxDistance } = settingsRef.current;
+        currentDistance.current = Math.max(minDistance, Math.min(maxDistance, distance));
+      }
+    );
+    return () => cameraRuntime.unbind();
+  }, []);
 
   // Touch handling refs
   const lastTouchPos = useRef<{ x: number; y: number } | null>(null);
@@ -166,9 +144,6 @@ export function CameraController({
   const mouseOverCanvas = useRef(false);
   const isMiddleDragging = useRef(false);
   const lastDragPos = useRef<{ x: number; y: number } | null>(null);
-
-  // Fixed camera angle - lower angle for better RTS view
-  const CAMERA_ANGLE = Math.PI / 10; // 18 degrees
 
   // Clearing the pressed-key set is needed in any situation where a `keyup`
   // event might be missed (window blur, tab hidden, OS-level hotkey swallows
@@ -217,13 +192,14 @@ export function CameraController({
     event.preventDefault();
 
     // Determine zoom direction and apply, scaled by the keyboard scroll-speed setting.
+    const { zoomSpeed, minDistance, maxDistance } = settingsRef.current;
     const wheelStep = zoomSpeed * speedsRef.current.keyboardScroll;
     const zoomDelta = event.deltaY > 0 ? wheelStep : -wheelStep;
 
     // Apply zoom with constraints
     const newDistance = Math.max(minDistance, Math.min(maxDistance, currentDistance.current + zoomDelta));
     currentDistance.current = newDistance;
-  }, [zoomSpeed, minDistance, maxDistance, instanceId, gl]);
+  }, [gl]);
 
   // Start a "grab and slide" pan when the middle mouse button is pressed over
   // the canvas. preventDefault suppresses the browser's middle-click autoscroll.
@@ -260,6 +236,7 @@ export function CameraController({
     // Grabbing the terrain: dragging right slides the world right, so the focus
     // point moves left (inverted), matching the single-finger touch drag. Middle-drag
     // is a scroll gesture, so it tracks the keyboard scroll-speed setting.
+    const { moveSpeed, dragPanSensitivity } = settingsRef.current;
     const perPixel = moveSpeed * dragPanSensitivity * speedsRef.current.keyboardScroll;
     target.current.add(rightVec.multiplyScalar(-deltaX * perPixel));
     target.current.add(cameraDirection.multiplyScalar(deltaY * perPixel));
@@ -267,7 +244,7 @@ export function CameraController({
     // A manual grab cancels selection auto-follow until the next selection.
     followEnabled.current = false;
     lastDragPos.current = { x: event.clientX, y: event.clientY };
-  }, [camera, gl, moveSpeed, dragPanSensitivity]);
+  }, [camera, gl]);
 
   const handleMouseUp = useCallback((event: MouseEvent) => {
     if (event.button !== 1) return;
@@ -303,6 +280,7 @@ export function CameraController({
   const handleTouchMove = useCallback((event: TouchEvent) => {
     event.preventDefault();
 
+    const { moveSpeed, minDistance, maxDistance } = settingsRef.current;
     if (event.touches.length === 1 && isDragging.current && lastTouchPos.current) {
       // Single finger drag - move camera
       const touchX = event.touches[0].clientX;
@@ -342,7 +320,7 @@ export function CameraController({
 
       lastPinchDistance.current = currentPinchDistance;
     }
-  }, [camera, moveSpeed, minDistance, maxDistance]);
+  }, [camera]);
 
   const handleTouchEnd = useCallback(() => {
     lastTouchPos.current = null;
@@ -410,6 +388,12 @@ export function CameraController({
       camera.updateProjectionMatrix();
     }
 
+    // Live camera tuning for this frame (pitch, speeds, zoom bounds, biases),
+    // tweakable on the fly via the F5 admin panel.
+    const settings = settingsRef.current;
+    // Camera pitch above the horizon. The single biggest "point of view" knob.
+    const cameraAngle = (settings.tiltDegrees * Math.PI) / 180;
+
     // Camera orientation for this peer: +z behind the host's base, -z behind the
     // guest's. Mirrors the focus point and the eye offset so each player looks
     // into the battlefield rather than out the back of the map.
@@ -417,8 +401,8 @@ export function CameraController({
 
     // Initialize camera position if needed
     if (camera.position.length() === 0) {
-      const height = currentDistance.current * Math.sin(CAMERA_ANGLE);
-      const horizontalDistance = currentDistance.current * Math.cos(CAMERA_ANGLE);
+      const height = currentDistance.current * Math.sin(cameraAngle);
+      const horizontalDistance = currentDistance.current * Math.cos(cameraAngle);
       camera.position.set(target.current.x, height, target.current.z + horizontalDistance * viewSign);
       camera.lookAt(target.current);
     }
@@ -508,10 +492,10 @@ export function CameraController({
       if (focusCount > 0) {
         // Bias the look-at point ahead of the target so it rides in the lower
         // portion of the screen, closer to the camera.
-        const followBias = currentDistance.current * MONARCH_SCREEN_BIAS;
+        const followBias = currentDistance.current * settings.monarchScreenBias;
         const desiredX = focusX / focusCount + forward.current.x * followBias;
         const desiredZ = focusZ / focusCount + forward.current.z * followBias;
-        const easing = 1 - Math.exp(-followSpeed * delta);
+        const easing = 1 - Math.exp(-settings.followSpeed * delta);
         target.current.x += (desiredX - target.current.x) * easing;
         target.current.z += (desiredZ - target.current.z) * easing;
       }
@@ -530,7 +514,7 @@ export function CameraController({
         const { x: mouseX, y: mouseY } = mousePos.current;
         // One shared computation drives both the pan and the on-screen chevrons,
         // so the chevron for an edge is lit exactly when that edge's pan fires.
-        const edges = computeActiveEdges(mouseX, mouseY, window.innerWidth, window.innerHeight, edgePanMargin);
+        const edges = computeActiveEdges(mouseX, mouseY, window.innerWidth, window.innerHeight, settings.edgePanMargin);
         if (edges.left) edgePan.sub(right.current);
         else if (edges.right) edgePan.add(right.current);
         if (edges.top) edgePan.add(forward.current);
@@ -543,12 +527,12 @@ export function CameraController({
 
       let panned = false;
       if (stickPan.length() > 0) {
-        const moveAmount = moveSpeed * speeds.controllerScroll * 60 * delta; // 60 = frame-rate independence
+        const moveAmount = settings.moveSpeed * speeds.controllerScroll * 60 * delta; // 60 = frame-rate independence
         target.current.add(stickPan.clone().normalize().multiplyScalar(moveAmount));
         panned = true;
       }
       if (edgePan.length() > 0) {
-        const moveAmount = moveSpeed * speeds.keyboardCursor * 60 * delta;
+        const moveAmount = settings.moveSpeed * speeds.keyboardCursor * 60 * delta;
         target.current.add(edgePan.normalize().multiplyScalar(moveAmount));
         panned = true;
       }
@@ -580,10 +564,10 @@ export function CameraController({
             // forward so the selection sits in the lower third of the screen
             // (closer to the camera) instead of dead center. Only the horizontal
             // focus moves; height/zoom stay under the player's control.
-            const followBias = currentDistance.current * FOLLOW_SCREEN_BIAS;
+            const followBias = currentDistance.current * settings.followScreenBias;
             const desiredX = sumX / count + forward.current.x * followBias;
             const desiredZ = sumZ / count + forward.current.z * followBias;
-            const easing = 1 - Math.exp(-followSpeed * delta);
+            const easing = 1 - Math.exp(-settings.followSpeed * delta);
             target.current.x += (desiredX - target.current.x) * easing;
             target.current.z += (desiredZ - target.current.z) * easing;
           }
@@ -602,8 +586,8 @@ export function CameraController({
     if (zoomOutKey && keys.has(zoomOutKey)) keyboardZoom += 1;
     const applyZoom = (direction: number, speedScale: number) => {
       if (direction === 0) return;
-      const zoomAmount = direction * zoomSpeed * speedScale * 30 * delta;
-      currentDistance.current = Math.max(minDistance, Math.min(maxDistance, currentDistance.current + zoomAmount));
+      const zoomAmount = direction * settings.zoomSpeed * speedScale * 30 * delta;
+      currentDistance.current = Math.max(settings.minDistance, Math.min(settings.maxDistance, currentDistance.current + zoomAmount));
     };
     applyZoom(cameraIntent.zoom, speeds.controllerScroll);
     applyZoom(keyboardZoom, speeds.keyboardScroll);
@@ -620,8 +604,8 @@ export function CameraController({
     }
 
     // Update camera position based on target and current distance
-    const height = currentDistance.current * Math.sin(CAMERA_ANGLE);
-    const horizontalDistance = currentDistance.current * Math.cos(CAMERA_ANGLE);
+    const height = currentDistance.current * Math.sin(cameraAngle);
+    const horizontalDistance = currentDistance.current * Math.cos(cameraAngle);
 
     const newCameraPos = new THREE.Vector3(
       target.current.x,

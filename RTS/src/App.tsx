@@ -32,6 +32,7 @@ import { ConquestScreen } from './components/Working/conquest/ConquestScreen';
 import { useParentScrollBridge } from './components/Working/parentScrollBridge';
 import { BackgroundMusic } from './components/BackgroundMusic';
 import { InstructionsPopup } from './components/screens/InstructionsPopup';
+import { CameraAdminPanel } from './components/Working/CameraAdminPanel';
 
 export default function App() {
   const initialize = useGameStore((s) => s.initializeGame);
@@ -214,6 +215,9 @@ export default function App() {
       <DirectingRadial />
       {/* Yellow edge-scroll chevrons, lit only while the cursor is in a pan-trigger band. */}
       <EdgePanChevrons />
+      {/* DEV-only camera tuning panel (F5). Excluded from production so it never
+          hijacks the browser-reload key for portfolio visitors. */}
+      {import.meta.env.DEV && <CameraAdminPanel />}
       <Canvas
         camera={{ fov: 45, far: 200000 }}
         shadows={shadowsEnabled}
@@ -310,12 +314,9 @@ export default function App() {
         <Suspense fallback={null}>
           <BattleMap />
         </Suspense>
-        <CameraController
-          moveSpeed={1.5}
-          zoomSpeed={5}
-          minDistance={75}
-          maxDistance={200}
-        />
+        {/* All camera framing/feel now lives in uiSettingsStore.cameraSettings,
+            tunable live via the F5 admin panel (see CameraAdminPanel). */}
+        <CameraController />
         <GamepadController />
         {/* Blue teardrop above a piloted monarch while holding the rally key to place units. */}
         <UnitPlacementIndicator />

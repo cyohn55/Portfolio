@@ -118,6 +118,61 @@ const loadControlSpeeds = (): ControlSpeeds => {
   }
 };
 
+// --- Camera framing/feel settings -----------------------------------------
+
+const CAMERA_SETTINGS_STORAGE_KEY = 'rts-camera-settings';
+
+// The full set of live-tunable camera parameters, surfaced through the F5 admin
+// panel so the "point of view" can be experimented with on the fly. These are
+// pure main-thread presentation (Bucket D): the camera never feeds the
+// deterministic tick, so a player tweaking these can never desync multiplayer.
+//
+// Defaults reproduce the previous hardcoded behaviour exactly: `tiltDegrees` is
+// the old CAMERA_ANGLE (Math.PI/10 === 18°), and the speed/zoom values mirror
+// what App.tsx used to pass to <CameraController/> as props.
+export const DEFAULT_CAMERA_SETTINGS = {
+  // Camera pitch above the horizon, in degrees. The single biggest "point of
+  // view" knob — low angles give a flat, cinematic battlefield; high angles a
+  // top-down tactical view.
+  tiltDegrees: 18,
+  // How fast pan inputs (controller stick, edge-scroll, middle-drag) slide the
+  // focus point across the map.
+  moveSpeed: 1.5,
+  // Per-step zoom rate shared by the wheel and the continuous keyboard/controller zoom.
+  zoomSpeed: 5,
+  // Closest / farthest the camera may zoom (world units of orbit distance).
+  minDistance: 75,
+  maxDistance: 200,
+  // How quickly the camera eases toward selected troops / a piloted unit.
+  followSpeed: 1.5,
+  // Width (CSS px) of the screen-edge band that triggers edge-pan.
+  edgePanMargin: 24,
+  // World units the focus slides per pixel of middle-mouse drag.
+  dragPanSensitivity: 0.6,
+  // Fraction of zoom distance the look-at point is biased forward of a followed
+  // selection, so troops sit in the lower screen instead of dead center.
+  followScreenBias: 0.25,
+  // Same forward bias for a piloted King/Queen (rides a touch higher).
+  monarchScreenBias: 0.28,
+  // Orbit distance the camera opens each match at.
+  initialDistance: 200,
+  // Depth (toward the battlefield) of the opening focus point.
+  initialFocusDepth: 225,
+};
+export type CameraSettings = typeof DEFAULT_CAMERA_SETTINGS;
+
+const loadCameraSettings = (): CameraSettings => {
+  try {
+    const raw = localStorage.getItem(CAMERA_SETTINGS_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_CAMERA_SETTINGS };
+    const parsed = JSON.parse(raw) as Partial<CameraSettings>;
+    // Merge over defaults so a missing/older key never yields NaN or undefined.
+    return { ...DEFAULT_CAMERA_SETTINGS, ...parsed };
+  } catch {
+    return { ...DEFAULT_CAMERA_SETTINGS };
+  }
+};
+
 // Best-effort persistence: a write failure (private mode / disabled storage)
 // must never throw — the setting still applies for the current session.
 const persist = (storageKey: string, value: string): void => {
@@ -150,6 +205,13 @@ export interface UiSettingsState {
 
   controlSpeeds: ControlSpeeds;
   updateControlSpeeds: (settings: Partial<ControlSpeeds>) => void;
+
+  // Live camera framing/feel, driven by the F5 admin panel. Pure presentation
+  // (never enters the tick), so the per-frame CameraController loop is free to
+  // read these without any determinism risk.
+  cameraSettings: CameraSettings;
+  updateCameraSettings: (settings: Partial<CameraSettings>) => void;
+  resetCameraSettings: () => void;
 
   // Remappable controls. Keyboard/mouse and controller each carry a full binding
   // map (which input) plus a parallel activation-mode map (tap / double-tap /
@@ -203,6 +265,19 @@ export const useUiSettingsStore = create<UiSettingsState>((set) => ({
       return { controlSpeeds: next };
     }),
 
+  cameraSettings: loadCameraSettings(),
+  updateCameraSettings: (settings) =>
+    set((state) => {
+      const next = { ...state.cameraSettings, ...settings };
+      persist(CAMERA_SETTINGS_STORAGE_KEY, JSON.stringify(next));
+      return { cameraSettings: next };
+    }),
+  resetCameraSettings: () => {
+    const defaults = { ...DEFAULT_CAMERA_SETTINGS };
+    persist(CAMERA_SETTINGS_STORAGE_KEY, JSON.stringify(defaults));
+    set({ cameraSettings: defaults });
+  },
+
   keyboardBindings: loadBindings('keyboard'),
   controllerBindings: loadBindings('controller'),
   keyboardBindingModes: loadModes('keyboard'),
@@ -251,4 +326,5 @@ export const UI_SETTINGS_STORAGE_KEYS = {
   unitAuras: UNIT_AURAS_STORAGE_KEY,
   music: MUSIC_STORAGE_KEY,
   controlSpeeds: CONTROL_SPEEDS_STORAGE_KEY,
+  cameraSettings: CAMERA_SETTINGS_STORAGE_KEY,
 } as const;
