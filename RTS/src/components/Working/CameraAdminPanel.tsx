@@ -45,6 +45,8 @@ const PANEL_SECTIONS: PanelSection[] = [
     title: 'Point of View',
     sliders: [
       { key: 'tiltDegrees', label: 'Tilt (pitch)', min: 1, max: 89, step: 1, unit: '°' },
+      { key: 'yawDegrees', label: 'Yaw (rotate)', min: -180, max: 180, step: 1, unit: '°' },
+      { key: 'fov', label: 'Field of view', min: 15, max: 100, step: 1, unit: '°' },
     ],
   },
   {

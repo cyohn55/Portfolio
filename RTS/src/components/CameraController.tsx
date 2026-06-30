@@ -388,22 +388,42 @@ export function CameraController() {
       camera.updateProjectionMatrix();
     }
 
-    // Live camera tuning for this frame (pitch, speeds, zoom bounds, biases),
-    // tweakable on the fly via the F5 admin panel.
+    // Live camera tuning for this frame (pitch, yaw, fov, speeds, zoom bounds,
+    // biases), tweakable on the fly via the admin panel.
     const settings = settingsRef.current;
     // Camera pitch above the horizon. The single biggest "point of view" knob.
     const cameraAngle = (settings.tiltDegrees * Math.PI) / 180;
+    // Camera azimuth around the focus. 0 keeps the default battlefield-axis view.
+    const cameraYaw = (settings.yawDegrees * Math.PI) / 180;
+
+    // Live perspective field-of-view. Only a PerspectiveCamera carries `fov`;
+    // skip the projection-matrix rebuild when the value hasn't actually changed.
+    if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
+      const perspective = camera as THREE.PerspectiveCamera;
+      if (perspective.fov !== settings.fov) {
+        perspective.fov = settings.fov;
+        perspective.updateProjectionMatrix();
+      }
+    }
 
     // Camera orientation for this peer: +z behind the host's base, -z behind the
     // guest's. Mirrors the focus point and the eye offset so each player looks
     // into the battlefield rather than out the back of the map.
     const viewSign = viewSignFor(localPlayerId);
 
+    // The eye sits on a circle around the focus: yaw rotates it horizontally,
+    // tilt raises it. At yaw 0 this collapses to the legacy straight-down-the-axis
+    // offset (sin 0 = 0, cos 0 = 1), preserving the original opening shot.
+    const eyeOffset = (horizontalDistance: number): { x: number; z: number } => ({
+      x: horizontalDistance * Math.sin(cameraYaw) * viewSign,
+      z: horizontalDistance * Math.cos(cameraYaw) * viewSign,
+    });
+
     // Initialize camera position if needed
     if (camera.position.length() === 0) {
       const height = currentDistance.current * Math.sin(cameraAngle);
-      const horizontalDistance = currentDistance.current * Math.cos(cameraAngle);
-      camera.position.set(target.current.x, height, target.current.z + horizontalDistance * viewSign);
+      const offset = eyeOffset(currentDistance.current * Math.cos(cameraAngle));
+      camera.position.set(target.current.x + offset.x, height, target.current.z + offset.z);
       camera.lookAt(target.current);
     }
 
@@ -605,12 +625,12 @@ export function CameraController() {
 
     // Update camera position based on target and current distance
     const height = currentDistance.current * Math.sin(cameraAngle);
-    const horizontalDistance = currentDistance.current * Math.cos(cameraAngle);
+    const offset = eyeOffset(currentDistance.current * Math.cos(cameraAngle));
 
     const newCameraPos = new THREE.Vector3(
-      target.current.x,
+      target.current.x + offset.x,
       target.current.y + height,
-      target.current.z + horizontalDistance * viewSign
+      target.current.z + offset.z
     );
 
     // Set camera position directly - no lerp to avoid rocking

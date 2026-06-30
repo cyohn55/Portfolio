@@ -135,6 +135,12 @@ export const DEFAULT_CAMERA_SETTINGS = {
   // view" knob — low angles give a flat, cinematic battlefield; high angles a
   // top-down tactical view.
   tiltDegrees: 18,
+  // Camera azimuth (horizontal rotation) around the focus point, in degrees.
+  // 0 = the default straight-down-the-battlefield-axis view; ±90 looks across it.
+  yawDegrees: 0,
+  // Perspective field of view, in degrees. Low = telephoto/flat (near-orthographic);
+  // high = wide-angle/dramatic. Changes the sense of depth independently of zoom.
+  fov: 45,
   // How fast pan inputs (controller stick, edge-scroll, middle-drag) slide the
   // focus point across the map.
   moveSpeed: 1.5,
